@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
-import { STARTING_TREASURY, type Quantities } from "../roster";
+import { STARTING_TREASURY } from "../roster";
+import { RosterTable } from "../roster-table/RosterTable";
 import { useCreateTeamForm } from "./useCreateTeamForm";
 
 function formatGold(value: number): string {
@@ -27,8 +28,21 @@ export function CreateTeamForm() {
   const budgetPercent = Math.min(100, (form.cost / STARTING_TREASURY) * 100);
   const isOverBudget = form.cost > STARTING_TREASURY;
 
+  // Group positionals by role
+  const roleGroups = race
+    ? race.positionals.reduce(
+        (acc, positional) => {
+          const role = positional.role ?? "Other";
+          if (!acc[role]) acc[role] = [];
+          acc[role].push(positional);
+          return acc;
+        },
+        {} as Record<string, typeof race.positionals>,
+      )
+    : {};
+
   return (
-    <form onSubmit={form.handleSubmit} noValidate className="mx-auto max-w-2xl space-y-6">
+    <form onSubmit={form.handleSubmit} noValidate className="mx-auto max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Create Team</h1>
         <p className="mt-1 text-sm text-slate-400">
@@ -60,7 +74,7 @@ export function CreateTeamForm() {
         <select
           id="team-race"
           value={form.raceId}
-          onChange={(event) => form.setRaceId(event.target.value)}
+          onChange={(event) => form.changeRace(event.target.value)}
           className="w-full rounded-md border border-blue-600/20 bg-slate-800 px-3 py-2 text-white outline-none focus:border-blue-500"
         >
           <option value="">Select a race</option>
@@ -72,8 +86,38 @@ export function CreateTeamForm() {
         </select>
       </div>
 
+      {/* Race change confirmation dialog */}
+      {form.pendingRaceId !== null ? (
+        <div
+          role="alertdialog"
+          aria-label="Confirm race change"
+          className="rounded-md border border-yellow-600/40 bg-yellow-900/20 px-4 py-3"
+        >
+          <p className="text-sm text-yellow-300">
+            Changing race will clear your current roster. Your roster will be cleared. Are you sure?
+          </p>
+          <div className="mt-3 flex gap-3">
+            <button
+              type="button"
+              onClick={form.confirmRaceChange}
+              className="rounded-md bg-yellow-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-yellow-500"
+            >
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={form.cancelRaceChange}
+              className="rounded-md border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {race ? (
         <section aria-label="Roster builder">
+          {/* Budget bar */}
           <div className="mb-3 flex items-center justify-between text-sm">
             <span className="text-slate-300">
               {form.playerCount} player{form.playerCount === 1 ? "" : "s"} ·{" "}
@@ -94,57 +138,62 @@ export function CreateTeamForm() {
             />
           </div>
 
-          <ul className="space-y-2">
-            {race.positionals.map((positional) => {
-              const quantity = (form.quantities as Quantities)[positional.key] ?? 0;
-              const atLimit = quantity >= positional.max;
-              const stats = `M${positional.ma} S${positional.st} A${positional.ag} P${positional.pa} A${positional.av}`;
-              return (
-                <li
-                  key={positional.key}
-                  className="flex items-center justify-between gap-4 rounded-md border border-blue-600/20 bg-slate-800/60 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-white">
-                      {positional.name}
-                      <span className="ml-2 text-sm font-normal text-slate-400">
-                        {formatGold(positional.cost)} gc
-                      </span>
-                    </p>
-                    <p className="text-xs text-slate-400">{stats}</p>
-                    {positional.skills.length > 0 ? (
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {positional.skills.join(", ")}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      aria-label={`Remove ${positional.name}`}
-                      onClick={() => form.decrement(positional.key)}
-                      disabled={quantity === 0}
-                      className="h-8 w-8 rounded-md border border-blue-600/20 text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      −
-                    </button>
-                    <span aria-label={`${positional.name} count`} className="w-6 text-center text-slate-200">
-                      {quantity}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Add ${positional.name}`}
-                      onClick={() => form.increment(positional.key)}
-                      disabled={atLimit}
-                      className="h-8 w-8 rounded-md border border-blue-600/20 text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      +
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          {/* Role-grouped positional add sections */}
+          <div className="mb-6 space-y-4">
+            {Object.entries(roleGroups).map(([role, positionals]) => (
+              <div key={role}>
+                <h3 className="mb-2 text-sm font-semibold text-slate-400 uppercase tracking-wide">
+                  {role}s
+                </h3>
+                <ul className="space-y-2">
+                  {positionals.map((positional) => {
+                    const countForPositional = form.players.filter(
+                      (p) => p.positionalKey === positional.key,
+                    ).length;
+                    const atLimit = countForPositional >= positional.max;
+                    const overBudget = form.cost + positional.cost > STARTING_TREASURY;
+                    const atMaxPlayers = form.players.length >= 16;
+                    const disabled = atLimit || overBudget || atMaxPlayers;
+
+                    return (
+                      <li
+                        key={positional.key}
+                        className="flex items-center justify-between gap-4 rounded-md border border-blue-600/20 bg-slate-800/60 px-4 py-2"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-medium text-white">{positional.name}</span>
+                          <span className="ml-2 text-xs text-slate-400">
+                            {formatGold(positional.cost)} gc · max {positional.max}
+                          </span>
+                          <span className="ml-2 text-xs text-slate-500">
+                            ({countForPositional}/{positional.max})
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          aria-label={`Add ${positional.name}`}
+                          onClick={() => form.addPlayer(positional.key)}
+                          disabled={disabled}
+                          className="shrink-0 rounded-md border border-blue-600/30 px-3 py-1 text-sm text-slate-300 hover:border-blue-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          + Add
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+
+          {/* RosterTable */}
+          <RosterTable
+            players={form.players}
+            race={race}
+            onRename={form.renamePlayer}
+            onRemove={form.removePlayer}
+            remainingBudget={form.remainingBudget}
+          />
         </section>
       ) : (
         <p className="text-sm text-slate-400">Select a race to build your roster.</p>

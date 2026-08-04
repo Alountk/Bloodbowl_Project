@@ -64,7 +64,7 @@ describe("Team creation", () => {
     expect(screen.queryByText("Half Squad")).toBeNull();
   });
 
-  it("blocks submit when the roster exceeds the budget", () => {
+  it("blocks adding a player when it would exceed the budget", () => {
     render(
       <AppProvider>
         <TeamCreatePage />
@@ -76,15 +76,14 @@ describe("Team creation", () => {
       target: { value: "Deathroller Crew" },
     });
     fireEvent.change(screen.getByLabelText("Race"), { target: { value: "dwarf" } });
-    // 1 Deathroller (170k) + 12 Linemen (70k each) = 1,010k > 1,000k
+    // 1 Deathroller (170k) + 11 Linemen (70k each) = 940k; 12th lineman would push to 1,010k (blocked)
     fireEvent.click(screen.getByRole("button", { name: "Add Deathroller" }));
-    for (let index = 0; index < 12; index += 1) {
+    for (let index = 0; index < 11; index += 1) {
       fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     }
-    fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
-
-    expect(screen.getByText(/exceeds the 1,000,000 gc budget/i)).toBeTruthy();
-    expect(screen.queryByText("Deathroller Crew")).toBeNull();
+    // At 940k the 12th lineman button should be disabled (would exceed budget)
+    const addLinemanBtn = screen.getByRole("button", { name: "Add Lineman" }) as HTMLButtonElement;
+    expect(addLinemanBtn.disabled).toBe(true);
   });
 
   it("disables the increment button when a positional is at its max", () => {

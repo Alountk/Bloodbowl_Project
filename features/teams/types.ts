@@ -3,6 +3,8 @@ export interface Positional {
   key: string;
   /** Display name, e.g. "Lineman" */
   name: string;
+  /** Role for UI grouping, e.g. "Lineman", "Blitzer", "Thrower" */
+  role?: string;
   /** Cost in gold coins */
   cost: number;
   /** Maximum quantity allowed on a roster */
@@ -24,17 +26,25 @@ export interface Positional {
 export interface Race {
   id: string;
   name: string;
+  rerollCost: number;
   positionals: Positional[];
 }
 
+/** @deprecated Use PlayerEntry[] instead */
 export interface RosterEntry {
   positionalKey: string;
   quantity: number;
+}
+
+export interface PlayerEntry {
+  id: string;
+  name: string;
+  positionalKey: string;
 }
 
 export interface Team {
   id: number;
   name: string;
   raceId: string;
-  roster: RosterEntry[];
+  roster: PlayerEntry[];
 }

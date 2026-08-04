@@ -11,15 +11,28 @@ const fixtureTeams: Team[] = [
     name: "Reikland Reavers",
     raceId: "human",
     roster: [
-      { positionalKey: "lineman", quantity: 7 },
-      { positionalKey: "blitzer", quantity: 4 },
+      { id: "p1", name: "Player 1", positionalKey: "lineman" },
+      { id: "p2", name: "Player 2", positionalKey: "lineman" },
+      { id: "p3", name: "Player 3", positionalKey: "lineman" },
+      { id: "p4", name: "Player 4", positionalKey: "lineman" },
+      { id: "p5", name: "Player 5", positionalKey: "lineman" },
+      { id: "p6", name: "Player 6", positionalKey: "lineman" },
+      { id: "p7", name: "Player 7", positionalKey: "lineman" },
+      { id: "p8", name: "Player 8", positionalKey: "blitzer" },
+      { id: "p9", name: "Player 9", positionalKey: "blitzer" },
+      { id: "p10", name: "Player 10", positionalKey: "blitzer" },
+      { id: "p11", name: "Player 11", positionalKey: "blitzer" },
     ],
   },
   {
     id: 2,
     name: "Da Krumpaz",
     raceId: "orc",
-    roster: [{ positionalKey: "blitzer", quantity: 11 }],
+    roster: Array.from({ length: 11 }, (_, i) => ({
+      id: `op${i}`,
+      name: `Player ${i + 1}`,
+      positionalKey: "blitzer",
+    })),
   },
 ];
 

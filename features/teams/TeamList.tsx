@@ -2,7 +2,7 @@
 
 import { useApp } from "@/app/providers/AppProvider";
 import { getRaceById, RACES } from "./data/races";
-import { summarizeRoster } from "./roster";
+import { summarizeRosterFromEntries } from "./roster";
 
 export function TeamList() {
   const { teams, searchQuery } = useApp();
@@ -39,7 +39,7 @@ export function TeamList() {
               >
                 <h3 className="font-semibold text-white">{team.name}</h3>
                 <p className="mt-1 text-sm text-slate-400">{race?.name ?? team.raceId}</p>
-                <p className="mt-1 text-xs text-slate-500">{summarizeRoster(team, RACES)}</p>
+                <p className="mt-1 text-xs text-slate-500">{summarizeRosterFromEntries(team, RACES)}</p>
               </li>
             );
           })}

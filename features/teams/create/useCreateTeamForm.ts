@@ -3,18 +3,17 @@
 import { useState, type FormEvent } from "react";
 import { getRaceById } from "../data/races";
 import {
+  MAX_PLAYERS,
   MIN_PLAYERS,
   STARTING_TREASURY,
-  computeRosterCost,
-  countPlayers,
-  type Quantities,
+  computeRosterCostFromPlayers,
 } from "../roster";
-import type { RosterEntry } from "../types";
+import type { PlayerEntry } from "../types";
 
 export interface CreateTeamValues {
   name: string;
   raceId: string;
-  roster: RosterEntry[];
+  roster: PlayerEntry[];
 }
 
 interface FormErrors {
@@ -26,39 +25,64 @@ interface FormErrors {
 export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => void) {
   const [name, setName] = useState("");
   const [raceId, setRaceId] = useState("");
-  const [quantities, setQuantities] = useState<Quantities>({});
+  const [players, setPlayers] = useState<PlayerEntry[]>([]);
+  const [pendingRaceId, setPendingRaceId] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
 
   const race = raceId ? getRaceById(raceId) : undefined;
-  const cost = race ? computeRosterCost(race, quantities) : 0;
-  const playerCount = countPlayers(quantities);
+  const cost = race ? computeRosterCostFromPlayers(race, players) : 0;
+  const playerCount = players.length;
   const remainingBudget = STARTING_TREASURY - cost;
 
+  // Race change — with pending confirmation if roster is non-empty
   const changeRace = (nextRaceId: string) => {
-    setRaceId(nextRaceId);
-    setQuantities({});
+    if (players.length === 0) {
+      setRaceId(nextRaceId);
+      setPendingRaceId(null);
+    } else {
+      setPendingRaceId(nextRaceId);
+    }
   };
 
-  const increment = (positionalKey: string) => {
+  const confirmRaceChange = () => {
+    if (pendingRaceId !== null) {
+      setRaceId(pendingRaceId);
+      setPlayers([]);
+      setPendingRaceId(null);
+    }
+  };
+
+  const cancelRaceChange = () => {
+    setPendingRaceId(null);
+  };
+
+  const addPlayer = (positionalKey: string) => {
     if (!race) return;
-    const positional = race.positionals.find((candidate) => candidate.key === positionalKey);
+    const positional = race.positionals.find((p) => p.key === positionalKey);
     if (!positional) return;
-    const current = quantities[positionalKey] ?? 0;
-    if (current >= positional.max) return;
-    setQuantities((previous) => ({ ...previous, [positionalKey]: current + 1 }));
+    if (players.length >= MAX_PLAYERS) return;
+    const countForPositional = players.filter((p) => p.positionalKey === positionalKey).length;
+    if (countForPositional >= positional.max) return;
+    const nextCost = cost + positional.cost;
+    if (nextCost > STARTING_TREASURY) return;
+
+    const nextNumber = players.length + 1;
+    const newPlayer: PlayerEntry = {
+      id: crypto.randomUUID(),
+      name: `Player ${nextNumber}`,
+      positionalKey,
+    };
+    setPlayers((prev) => [...prev, newPlayer]);
   };
 
-  const decrement = (positionalKey: string) => {
-    setQuantities((previous) => {
-      const current = previous[positionalKey] ?? 0;
-      const next = { ...previous };
-      if (current <= 1) {
-        delete next[positionalKey];
-      } else {
-        next[positionalKey] = current - 1;
-      }
-      return next;
-    });
+  const removePlayer = (id: string) => {
+    setPlayers((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const renamePlayer = (id: string, playerName: string) => {
+    setPlayers((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, name: playerName } : p)),
+    );
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -73,33 +97,34 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => void) 
 
     if (Object.keys(nextErrors).length > 0 || !race) return;
 
-    const roster: RosterEntry[] = Object.entries(quantities)
-      .filter(([, quantity]) => quantity > 0)
-      .map(([positionalKey, quantity]) => ({ positionalKey, quantity }));
-
     onSubmit({
       name: name.trim(),
       raceId,
-      roster,
+      roster: players,
     });
+
     setName("");
     setRaceId("");
-    setQuantities({});
+    setPlayers([]);
+    setPendingRaceId(null);
   };
 
   return {
     name,
     setName,
     raceId,
-    setRaceId: changeRace,
-    quantities,
-    increment,
-    decrement,
+    changeRace,
+    players,
+    addPlayer,
+    removePlayer,
+    renamePlayer,
+    pendingRaceId,
+    confirmRaceChange,
+    cancelRaceChange,
     errors,
     cost,
     playerCount,
     remainingBudget,
-    countPlayers: () => countPlayers(quantities),
     handleSubmit,
   };
 }

@@ -2,19 +2,8 @@ import { describe, expect, it } from "vitest";
 import { RACES, getRaceById } from "./races";
 
 describe("race dataset", () => {
-  it("contains the 8 core BB2020 races", () => {
-    expect(RACES).toHaveLength(8);
-    const names = RACES.map((race) => race.name).sort();
-    expect(names).toEqual([
-      "Chaos Chosen",
-      "Dark Elf",
-      "Dwarf",
-      "Elven Union",
-      "Human",
-      "Orc",
-      "Shambling Undead",
-      "Skaven",
-    ]);
+  it("contains the 26 BB2020 races", () => {
+    expect(RACES).toHaveLength(26);
   });
 
   it("uses unique race ids", () => {
@@ -52,5 +41,52 @@ describe("race dataset", () => {
 
   it("returns undefined for an unknown race id", () => {
     expect(getRaceById("nuffle")).toBeUndefined();
+  });
+
+  it("data integrity: every race has rerollCost > 0", () => {
+    for (const race of RACES) {
+      expect(race.rerollCost, `${race.name} rerollCost`).toBeGreaterThan(0);
+    }
+  });
+
+  it("data integrity: every positional has a role string", () => {
+    for (const race of RACES) {
+      for (const positional of race.positionals) {
+        expect(
+          positional.role,
+          `${race.name} → ${positional.name} must have a role`,
+        ).toBeTruthy();
+      }
+    }
+  });
+
+  it("data integrity: positional keys are unique within each race", () => {
+    for (const race of RACES) {
+      const keys = race.positionals.map((p) => p.key);
+      expect(
+        new Set(keys).size,
+        `${race.name} has duplicate positional keys`,
+      ).toBe(keys.length);
+    }
+  });
+
+  it("data integrity: AG/PA/AV match expected format", () => {
+    const statPattern = /^\d+\+$|^—$/;
+    for (const race of RACES) {
+      for (const p of race.positionals) {
+        expect(p.ag, `${race.name} ${p.name} ag`).toMatch(statPattern);
+        expect(p.pa, `${race.name} ${p.name} pa`).toMatch(statPattern);
+        expect(p.av, `${race.name} ${p.name} av`).toMatch(statPattern);
+      }
+    }
+  });
+
+  it("data integrity: MA and ST are numeric", () => {
+    for (const race of RACES) {
+      for (const p of race.positionals) {
+        expect(typeof p.ma, `${race.name} ${p.name} ma`).toBe("number");
+        expect(typeof p.st, `${race.name} ${p.name} st`).toBe("number");
+      }
+    }
   });
 });
