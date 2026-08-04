@@ -4,7 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import Page from "./page";
 
 describe("Home page", () => {
-  it("renders the app shell with sidebar, topbar and team list", () => {
+  it("renders the app shell with an empty team list", () => {
     render(
       <AppShell>
         <Page />
@@ -13,7 +13,7 @@ describe("Home page", () => {
 
     expect(screen.getByRole("heading", { name: "Bloodbowl Teams" })).toBeTruthy();
     expect(screen.getByLabelText("Sidebar")).toBeTruthy();
-    expect(screen.getByText("London Arrows")).toBeTruthy();
-    expect(screen.getByText("Birmingham Boro")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy();
+    expect(screen.getByText(/no teams yet/i)).toBeTruthy();
   });
 });

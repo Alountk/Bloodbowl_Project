@@ -12,10 +12,7 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-export const INITIAL_TEAMS: Team[] = [
-  { id: 1, name: "London Arrows", league: "Premier League" },
-  { id: 2, name: "Birmingham Boro", league: "Premier League" },
-];
+export const INITIAL_TEAMS: Team[] = [];
 
 export function AppProvider({
   children,

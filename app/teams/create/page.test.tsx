@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
-import { PLAYER_POSITION_LABELS } from "@/features/teams/constants";
 import { TeamList } from "@/features/teams/TeamList";
 import TeamCreatePage from "./page";
 
@@ -10,36 +9,42 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("Team creation", () => {
-  it("renders the create team form with player positions", () => {
+  it("shows the 8 races in the selector and positionals after selecting one", () => {
     render(
       <AppProvider>
         <TeamCreatePage />
       </AppProvider>,
     );
 
-    expect(screen.getByRole("heading", { name: "Create Team" })).toBeTruthy();
+    const select = screen.getByLabelText("Race");
+    fireEvent.change(select, { target: { value: "human" } });
+
     expect(screen.getByLabelText("Team name")).toBeTruthy();
-    expect(screen.getByLabelText("League")).toBeTruthy();
-    expect(screen.getByLabelText(PLAYER_POSITION_LABELS.lineman)).toBeTruthy();
-    expect(screen.getByLabelText(PLAYER_POSITION_LABELS.thrower)).toBeTruthy();
-    expect(screen.getByLabelText(PLAYER_POSITION_LABELS.blitzer)).toBeTruthy();
-    expect(screen.getByLabelText(PLAYER_POSITION_LABELS.catcher)).toBeTruthy();
+    const rosterSection = screen.getByRole("region", { name: "Roster builder" });
+    expect(within(rosterSection).getByText("Lineman")).toBeTruthy();
+    expect(within(rosterSection).getByText("Blitzer")).toBeTruthy();
+    expect(within(rosterSection).getByText("Thrower")).toBeTruthy();
+    expect(within(rosterSection).getByText("Catcher")).toBeTruthy();
+    expect(within(rosterSection).getByText("Ogre")).toBeTruthy();
   });
 
-  it("shows validation errors when submitting an empty form", () => {
+  it("shows a name error when submitting without a name", () => {
     render(
       <AppProvider>
         <TeamCreatePage />
       </AppProvider>,
     );
 
+    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
 
     expect(screen.getByText("Team name is required")).toBeTruthy();
-    expect(screen.getByText("League is required")).toBeTruthy();
   });
 
-  it("adds the created team to the list", () => {
+  it("blocks submit with fewer than 3 players", () => {
     render(
       <AppProvider>
         <TeamCreatePage />
@@ -48,14 +53,77 @@ describe("Team creation", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Team name"), {
-      target: { value: "Orc Crushers" },
+      target: { value: "Half Squad" },
     });
-    fireEvent.change(screen.getByLabelText("League"), {
-      target: { value: "Green League" },
-    });
+    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
 
-    expect(screen.getByText("Orc Crushers")).toBeTruthy();
-    expect(screen.getByText("Green League")).toBeTruthy();
+    expect(screen.getByText(/at least 3 players/i)).toBeTruthy();
+    expect(screen.queryByText("Half Squad")).toBeNull();
+  });
+
+  it("blocks submit when the roster exceeds the budget", () => {
+    render(
+      <AppProvider>
+        <TeamCreatePage />
+        <TeamList />
+      </AppProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Team name"), {
+      target: { value: "Deathroller Crew" },
+    });
+    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "dwarf" } });
+    // 1 Deathroller (170k) + 12 Linemen (70k each) = 1,010k > 1,000k
+    fireEvent.click(screen.getByRole("button", { name: "Add Deathroller" }));
+    for (let index = 0; index < 12; index += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
+
+    expect(screen.getByText(/exceeds the 1,000,000 gc budget/i)).toBeTruthy();
+    expect(screen.queryByText("Deathroller Crew")).toBeNull();
+  });
+
+  it("disables the increment button when a positional is at its max", () => {
+    render(
+      <AppProvider>
+        <TeamCreatePage />
+      </AppProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "orc" } });
+    const addTroll = screen.getByRole("button", {
+      name: "Add Troll",
+    }) as HTMLButtonElement;
+    fireEvent.click(addTroll);
+
+    expect(addTroll.disabled).toBe(true);
+  });
+
+  it("adds a valid team to the list and shows its roster summary", () => {
+    render(
+      <AppProvider>
+        <TeamCreatePage />
+        <TeamList />
+      </AppProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Team name"), {
+      target: { value: "Reikland Reavers" },
+    });
+    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Blitzer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
+
+    expect(screen.getByText("Reikland Reavers")).toBeTruthy();
+    const teamCard = screen.getByText("Reikland Reavers").closest("li")!;
+    expect(within(teamCard).getByText("Human")).toBeTruthy();
+    expect(within(teamCard).getByText("4 players · 3x Lineman · 1x Blitzer")).toBeTruthy();
   });
 });

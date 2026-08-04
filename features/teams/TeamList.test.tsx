@@ -3,19 +3,41 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
 import { Topbar } from "@/components/Topbar";
 import { TeamList } from "./TeamList";
+import type { Team } from "./types";
+
+const fixtureTeams: Team[] = [
+  {
+    id: 1,
+    name: "Reikland Reavers",
+    raceId: "human",
+    roster: [
+      { positionalKey: "lineman", quantity: 7 },
+      { positionalKey: "blitzer", quantity: 4 },
+    ],
+  },
+  {
+    id: 2,
+    name: "Da Krumpaz",
+    raceId: "orc",
+    roster: [{ positionalKey: "blitzer", quantity: 11 }],
+  },
+];
 
 describe("TeamList", () => {
-  it("shows the initial teams", () => {
+  it("renders team name, race name and roster summary", () => {
     render(
-      <AppProvider>
+      <AppProvider initialTeams={fixtureTeams}>
         <TeamList />
       </AppProvider>,
     );
 
     expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy();
-    expect(screen.getByText("London Arrows")).toBeTruthy();
-    expect(screen.getByText("Birmingham Boro")).toBeTruthy();
-    expect(screen.getAllByText("Premier League")).toHaveLength(2);
+    expect(screen.getByText("Reikland Reavers")).toBeTruthy();
+    expect(screen.getByText("Human")).toBeTruthy();
+    expect(screen.getByText("11 players · 7x Lineman · 4x Blitzer")).toBeTruthy();
+    expect(screen.getByText("Da Krumpaz")).toBeTruthy();
+    expect(screen.getByText("Orc")).toBeTruthy();
+    expect(screen.getByText("11 players · 11x Blitzer")).toBeTruthy();
   });
 
   it("shows an empty state when there are no teams", () => {
@@ -28,19 +50,50 @@ describe("TeamList", () => {
     expect(screen.getByText(/no teams yet/i)).toBeTruthy();
   });
 
-  it("filters teams by the search query from the topbar", () => {
+  it("filters by team name from the topbar", () => {
     render(
-      <AppProvider>
+      <AppProvider initialTeams={fixtureTeams}>
         <Topbar />
         <TeamList />
       </AppProvider>,
     );
 
     fireEvent.change(screen.getByLabelText(/search teams/i), {
-      target: { value: "london" },
+      target: { value: "reikland" },
     });
 
-    expect(screen.getByText("London Arrows")).toBeTruthy();
-    expect(screen.queryByText("Birmingham Boro")).toBeNull();
+    expect(screen.getByText("Reikland Reavers")).toBeTruthy();
+    expect(screen.queryByText("Da Krumpaz")).toBeNull();
+  });
+
+  it("filters by race name from the topbar", () => {
+    render(
+      <AppProvider initialTeams={fixtureTeams}>
+        <Topbar />
+        <TeamList />
+      </AppProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/search teams/i), {
+      target: { value: "orc" },
+    });
+
+    expect(screen.getByText("Da Krumpaz")).toBeTruthy();
+    expect(screen.queryByText("Reikland Reavers")).toBeNull();
+  });
+
+  it("shows a no-matches message when the query matches nothing", () => {
+    render(
+      <AppProvider initialTeams={fixtureTeams}>
+        <Topbar />
+        <TeamList />
+      </AppProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/search teams/i), {
+      target: { value: "nuffle" },
+    });
+
+    expect(screen.getByText(/no teams match your search/i)).toBeTruthy();
   });
 });
