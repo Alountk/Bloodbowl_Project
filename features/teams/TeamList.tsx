@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useApp } from "@/app/providers/AppProvider";
 import { getRaceById, RACES } from "./data/races";
 import { summarizeRosterFromEntries } from "./roster";
@@ -37,9 +38,11 @@ export function TeamList() {
                 key={team.id}
                 className="rounded-lg border border-blue-600/20 bg-slate-800/60 p-4"
               >
-                <h3 className="font-semibold text-white">{team.name}</h3>
-                <p className="mt-1 text-sm text-slate-400">{race?.name ?? team.raceId}</p>
-                <p className="mt-1 text-xs text-slate-500">{summarizeRosterFromEntries(team, RACES)}</p>
+                <Link href={`/teams/${team.id}`} className="block">
+                  <h3 className="font-semibold text-white">{team.name}</h3>
+                  <p className="mt-1 text-sm text-slate-400">{race?.name ?? team.raceId}</p>
+                  <p className="mt-1 text-xs text-slate-500">{summarizeRosterFromEntries(team, RACES)}</p>
+                </Link>
               </li>
             );
           })}
