@@ -13,7 +13,7 @@ import {
 import type { PlayerEntry, Team } from "./types";
 
 describe("roster helpers", () => {
-  it("exposes the BB2020 budget and roster limits", () => {
+  it("exposes the BB2025 budget and roster limits", () => {
     expect(STARTING_TREASURY).toBe(1_000_000);
     expect(MIN_PLAYERS).toBe(3);
     expect(MAX_PLAYERS).toBe(16);
@@ -24,10 +24,10 @@ describe("roster helpers", () => {
       const human = getRaceById("human")!;
       const cost = computeRosterCost(human, {
         lineman: 5, // 50k each
-        blitzer: 2, // 90k each
-        thrower: 1, // 80k each
+        blitzer: 2, // 85k each (BB2025)
+        thrower: 1, // 75k each (BB2025)
       });
-      expect(cost).toBe(5 * 50_000 + 2 * 90_000 + 1 * 80_000);
+      expect(cost).toBe(5 * 50_000 + 2 * 85_000 + 1 * 75_000);
     });
 
     it("returns 0 when no players are selected", () => {
@@ -103,7 +103,7 @@ describe("roster helpers", () => {
         { id: "c", name: "Player 3", positionalKey: "blitzer" },
       ];
       const cost = computeRosterCostFromPlayers(human, players);
-      expect(cost).toBe(2 * 50_000 + 90_000);
+      expect(cost).toBe(2 * 50_000 + 85_000);
     });
 
     it("returns 0 for an empty player list", () => {
