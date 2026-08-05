@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { getRaceById } from "../data/races";
 import { useCreateTeamForm, type CreateTeamValues } from "./useCreateTeamForm";
 
-function setup(onSubmit = vi.fn()) {
+function setup(onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined)) {
   return renderHook(() => useCreateTeamForm(onSubmit));
 }
 
@@ -198,36 +198,36 @@ describe("useCreateTeamForm", () => {
 
   // --- submit validation ---
 
-  it("reports an error when fewer than 3 players are selected", () => {
-    const onSubmit = vi.fn();
+  it("reports an error when fewer than 3 players are selected", async () => {
+    const onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined);
     const { result } = setup(onSubmit);
     act(() => result.current.setName("Tiny Team"));
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
     act(() => result.current.addPlayer("lineman"));
 
-    act(() => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
+    await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(result.current.errors.players).toMatch(/at least 3/i);
   });
 
-  it("reports an error when the name is empty", () => {
-    const onSubmit = vi.fn();
+  it("reports an error when the name is empty", async () => {
+    const onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined);
     const { result } = setup(onSubmit);
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
     act(() => result.current.addPlayer("lineman"));
     act(() => result.current.addPlayer("lineman"));
 
-    act(() => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
+    await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(result.current.errors.name).toMatch(/required/i);
   });
 
-  it("submits valid values as PlayerEntry[] and resets the form", () => {
-    const onSubmit = vi.fn();
+  it("submits valid values as PlayerEntry[] and resets the form", async () => {
+    const onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined);
     const { result } = setup(onSubmit);
     act(() => result.current.setName("Reikland Reavers"));
     act(() => result.current.changeRace("human"));
@@ -235,7 +235,7 @@ describe("useCreateTeamForm", () => {
     act(() => result.current.addPlayer("lineman"));
     act(() => result.current.addPlayer("blitzer"));
 
-    act(() => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
+    await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const values = onSubmit.mock.calls[0][0] as CreateTeamValues;

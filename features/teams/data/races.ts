@@ -313,3 +313,7 @@ export const RACES: Race[] = [
 export function getRaceById(id: string): Race | undefined {
   return RACES.find((race) => race.id === id);
 }
+
+/** BB2020 ruleset version marker. Follow-up: migrate data to BB2025 when dataset is available. */
+export const RULES_METADATA = { version: "BB2020" } as const;
+

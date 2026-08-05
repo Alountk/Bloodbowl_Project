@@ -22,12 +22,13 @@ interface FormErrors {
   budget?: string;
 }
 
-export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => void) {
+export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promise<void>) {
   const [name, setName] = useState("");
   const [raceId, setRaceId] = useState("");
   const [players, setPlayers] = useState<PlayerEntry[]>([]);
   const [pendingRaceId, setPendingRaceId] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const race = raceId ? getRaceById(raceId) : undefined;
   const cost = race ? computeRosterCostFromPlayers(race, players) : 0;
@@ -97,16 +98,18 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => void) 
 
     if (Object.keys(nextErrors).length > 0 || !race) return;
 
+    setIsSubmitting(true);
     onSubmit({
       name: name.trim(),
       raceId,
       roster: players,
+    }).finally(() => {
+      setIsSubmitting(false);
+      setName("");
+      setRaceId("");
+      setPlayers([]);
+      setPendingRaceId(null);
     });
-
-    setName("");
-    setRaceId("");
-    setPlayers([]);
-    setPendingRaceId(null);
   };
 
   return {
@@ -125,6 +128,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => void) 
     cost,
     playerCount,
     remainingBudget,
+    isSubmitting,
     handleSubmit,
   };
 }

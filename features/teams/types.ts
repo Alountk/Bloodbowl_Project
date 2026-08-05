@@ -43,7 +43,7 @@ export interface PlayerEntry {
 }
 
 export interface Team {
-  id: number;
+  id: string;
   name: string;
   raceId: string;
   roster: PlayerEntry[];

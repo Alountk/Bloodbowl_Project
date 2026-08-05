@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
+import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { TeamList } from "@/features/teams/TeamList";
 import TeamCreatePage from "./page";
 
@@ -8,13 +9,31 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+function renderWithStore() {
+  const store = new InMemoryTeamStore();
+  render(
+    <AppProvider store={store}>
+      <TeamCreatePage />
+    </AppProvider>,
+  );
+  return store;
+}
+
+function renderWithStoreAndList() {
+  const store = new InMemoryTeamStore();
+  render(
+    <AppProvider store={store}>
+      <TeamCreatePage />
+      <TeamList />
+    </AppProvider>,
+  );
+  return store;
+}
+
 describe("Team creation", () => {
-  it("shows the 8 races in the selector and positionals after selecting one", () => {
-    render(
-      <AppProvider>
-        <TeamCreatePage />
-      </AppProvider>,
-    );
+  it("shows the 8 races in the selector and positionals after selecting one", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByLabelText("Race")).toBeTruthy());
 
     const select = screen.getByLabelText("Race");
     fireEvent.change(select, { target: { value: "human" } });
@@ -28,12 +47,8 @@ describe("Team creation", () => {
     expect(within(rosterSection).getByText("Ogre")).toBeTruthy();
   });
 
-  it("shows a name error when submitting without a name", () => {
-    render(
-      <AppProvider>
-        <TeamCreatePage />
-      </AppProvider>,
-    );
+  it("shows a name error when submitting without a name", async () => {
+    renderWithStore();
 
     fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
@@ -44,13 +59,9 @@ describe("Team creation", () => {
     expect(screen.getByText("Team name is required")).toBeTruthy();
   });
 
-  it("blocks submit with fewer than 3 players", () => {
-    render(
-      <AppProvider>
-        <TeamCreatePage />
-        <TeamList />
-      </AppProvider>,
-    );
+  it("blocks submit with fewer than 3 players", async () => {
+    renderWithStoreAndList();
+    await waitFor(() => expect(screen.getByLabelText("Team name")).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText("Team name"), {
       target: { value: "Half Squad" },
@@ -64,13 +75,8 @@ describe("Team creation", () => {
     expect(screen.queryByText("Half Squad")).toBeNull();
   });
 
-  it("blocks adding a player when it would exceed the budget", () => {
-    render(
-      <AppProvider>
-        <TeamCreatePage />
-        <TeamList />
-      </AppProvider>,
-    );
+  it("blocks adding a player when it would exceed the budget", async () => {
+    renderWithStoreAndList();
 
     fireEvent.change(screen.getByLabelText("Team name"), {
       target: { value: "Deathroller Crew" },
@@ -86,12 +92,8 @@ describe("Team creation", () => {
     expect(addLinemanBtn.disabled).toBe(true);
   });
 
-  it("disables the increment button when a positional is at its max", () => {
-    render(
-      <AppProvider>
-        <TeamCreatePage />
-      </AppProvider>,
-    );
+  it("disables the increment button when a positional is at its max", async () => {
+    renderWithStore();
 
     fireEvent.change(screen.getByLabelText("Race"), { target: { value: "orc" } });
     const addTroll = screen.getByRole("button", {
@@ -102,13 +104,9 @@ describe("Team creation", () => {
     expect(addTroll.disabled).toBe(true);
   });
 
-  it("adds a valid team to the list and shows its roster summary", () => {
-    render(
-      <AppProvider>
-        <TeamCreatePage />
-        <TeamList />
-      </AppProvider>,
-    );
+  it("adds a valid team to the list and shows its roster summary", async () => {
+    renderWithStoreAndList();
+    await waitFor(() => expect(screen.getByLabelText("Team name")).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText("Team name"), {
       target: { value: "Reikland Reavers" },
@@ -120,7 +118,7 @@ describe("Team creation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Blitzer" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
 
-    expect(screen.getByText("Reikland Reavers")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
     const teamCard = screen.getByText("Reikland Reavers").closest("li")!;
     expect(within(teamCard).getByText("Human")).toBeTruthy();
     expect(within(teamCard).getByText("4 players · 3x Lineman · 1x Blitzer")).toBeTruthy();

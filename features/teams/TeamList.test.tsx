@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
+import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
+import type { TeamStore } from "@/features/teams/store/TeamStore";
 import { Topbar } from "@/components/Topbar";
 import { TeamList } from "./TeamList";
 import type { Team } from "./types";
 
 const fixtureTeams: Team[] = [
   {
-    id: 1,
+    id: "team-1",
     name: "Reikland Reavers",
     raceId: "human",
     roster: [
@@ -25,7 +27,7 @@ const fixtureTeams: Team[] = [
     ],
   },
   {
-    id: 2,
+    id: "team-2",
     name: "Da Krumpaz",
     raceId: "orc",
     roster: Array.from({ length: 11 }, (_, i) => ({
@@ -36,15 +38,56 @@ const fixtureTeams: Team[] = [
   },
 ];
 
-describe("TeamList", () => {
-  it("renders team name, race name and roster summary", () => {
-    render(
-      <AppProvider initialTeams={fixtureTeams}>
-        <TeamList />
-      </AppProvider>,
-    );
+function renderWithStore(teams: Team[] = fixtureTeams) {
+  const store = new InMemoryTeamStore(teams);
+  render(
+    <AppProvider store={store}>
+      <TeamList />
+    </AppProvider>,
+  );
+}
 
-    expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy();
+function renderWithStoreAndTopbar(teams: Team[] = fixtureTeams) {
+  const store = new InMemoryTeamStore(teams);
+  render(
+    <AppProvider store={store}>
+      <Topbar />
+      <TeamList />
+    </AppProvider>,
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+class ControlledStore implements TeamStore {
+  readonly listCall = deferred<Team[]>();
+
+  list(): Promise<Team[]> {
+    return this.listCall.promise;
+  }
+
+  save(_team: Team): Promise<Team> {
+    void _team;
+    throw new Error("not needed in this test");
+  }
+
+  remove(_id: string): Promise<void> {
+    void _id;
+    throw new Error("not needed in this test");
+  }
+}
+
+describe("TeamList", () => {
+  it("renders team name, race name and roster summary", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy());
+
     expect(screen.getByText("Reikland Reavers")).toBeTruthy();
     expect(screen.getByText("Human")).toBeTruthy();
     expect(screen.getByText("11 players · 7x Lineman · 4x Blitzer")).toBeTruthy();
@@ -53,23 +96,29 @@ describe("TeamList", () => {
     expect(screen.getByText("11 players · 11x Blitzer")).toBeTruthy();
   });
 
-  it("shows an empty state when there are no teams", () => {
-    render(
-      <AppProvider initialTeams={[]}>
-        <TeamList />
-      </AppProvider>,
-    );
-
-    expect(screen.getByText(/no teams yet/i)).toBeTruthy();
+  it("shows an empty state when there are no teams", async () => {
+    renderWithStore([]);
+    await waitFor(() => expect(screen.getByText(/no teams yet/i)).toBeTruthy());
   });
 
-  it("filters by team name from the topbar", () => {
+  it("does not show the empty state until hydration completes", async () => {
+    const store = new ControlledStore();
     render(
-      <AppProvider initialTeams={fixtureTeams}>
-        <Topbar />
+      <AppProvider store={store}>
         <TeamList />
       </AppProvider>,
     );
+
+    expect(screen.queryByText(/no teams yet/i)).toBeNull();
+
+    store.listCall.resolve([]);
+
+    await waitFor(() => expect(screen.getByText(/no teams yet/i)).toBeTruthy());
+  });
+
+  it("filters by team name from the topbar", async () => {
+    renderWithStoreAndTopbar();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText(/search teams/i), {
       target: { value: "reikland" },
@@ -79,13 +128,9 @@ describe("TeamList", () => {
     expect(screen.queryByText("Da Krumpaz")).toBeNull();
   });
 
-  it("filters by race name from the topbar", () => {
-    render(
-      <AppProvider initialTeams={fixtureTeams}>
-        <Topbar />
-        <TeamList />
-      </AppProvider>,
-    );
+  it("filters by race name from the topbar", async () => {
+    renderWithStoreAndTopbar();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText(/search teams/i), {
       target: { value: "orc" },
@@ -95,13 +140,9 @@ describe("TeamList", () => {
     expect(screen.queryByText("Reikland Reavers")).toBeNull();
   });
 
-  it("shows a no-matches message when the query matches nothing", () => {
-    render(
-      <AppProvider initialTeams={fixtureTeams}>
-        <Topbar />
-        <TeamList />
-      </AppProvider>,
-    );
+  it("shows a no-matches message when the query matches nothing", async () => {
+    renderWithStoreAndTopbar();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText(/search teams/i), {
       target: { value: "nuffle" },

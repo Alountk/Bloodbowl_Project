@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RACES, getRaceById } from "./races";
+import { RACES, getRaceById, RULES_METADATA } from "./races";
 
 describe("race dataset", () => {
   it("contains the 26 BB2020 races", () => {
@@ -88,5 +88,11 @@ describe("race dataset", () => {
         expect(typeof p.st, `${race.name} ${p.name} st`).toBe("number");
       }
     }
+  });
+});
+
+describe("RULES_METADATA", () => {
+  it("version is BB2020", () => {
+    expect(RULES_METADATA.version).toBe("BB2020");
   });
 });

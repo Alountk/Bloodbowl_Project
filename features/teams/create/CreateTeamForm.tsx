@@ -14,13 +14,8 @@ function formatGold(value: number): string {
 export function CreateTeamForm() {
   const { addTeam } = useApp();
   const router = useRouter();
-  const form = useCreateTeamForm((values) => {
-    addTeam({
-      id: Date.now(),
-      name: values.name,
-      raceId: values.raceId,
-      roster: values.roster,
-    });
+  const form = useCreateTeamForm(async (values) => {
+    await addTeam(values);
     router.push("/");
   });
 

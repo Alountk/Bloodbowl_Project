@@ -5,7 +5,7 @@ import { getRaceById, RACES } from "./data/races";
 import { summarizeRosterFromEntries } from "./roster";
 
 export function TeamList() {
-  const { teams, searchQuery } = useApp();
+  const { teams, isHydrated, searchQuery } = useApp();
   const query = searchQuery.trim().toLowerCase();
   const filtered = query
     ? teams.filter((team) => {
@@ -22,7 +22,7 @@ export function TeamList() {
       <h2 id="teams-heading" className="mb-4 text-lg font-semibold text-slate-200">
         Teams
       </h2>
-      {filtered.length === 0 ? (
+      {!isHydrated ? null : filtered.length === 0 ? (
         <p className="text-slate-400">
           {teams.length === 0
             ? "No teams yet. Create your first team."

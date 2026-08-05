@@ -54,7 +54,7 @@ describe("roster helpers", () => {
   describe("summarizeRoster (legacy)", () => {
     it("formats player count and each positional count in roster order", () => {
       const team: Team = {
-        id: 1,
+        id: "1",
         name: "Reikland Reavers",
         raceId: "human",
         roster: [
@@ -83,7 +83,7 @@ describe("roster helpers", () => {
         positionalKey: "blitzer",
       }));
       const team: Team = {
-        id: 2,
+        id: "2",
         name: "Orc Crushers",
         raceId: "orc",
         roster: players,
@@ -142,7 +142,7 @@ describe("roster helpers", () => {
         { id: "b", name: "P2", positionalKey: "lineman" },
         { id: "c", name: "P3", positionalKey: "thrower" },
       ];
-      const team: Team = { id: 1, name: "T", raceId: "human", roster: players };
+      const team: Team = { id: "1", name: "T", raceId: "human", roster: players };
       expect(summarizeRosterFromEntries(team, [human])).toBe(
         "3 players · 2x Lineman · 1x Thrower",
       );
@@ -150,7 +150,7 @@ describe("roster helpers", () => {
 
     it("returns '0 players' for an empty roster", () => {
       const human = getRaceById("human")!;
-      const team: Team = { id: 1, name: "T", raceId: "human", roster: [] };
+      const team: Team = { id: "1", name: "T", raceId: "human", roster: [] };
       expect(summarizeRosterFromEntries(team, [human])).toBe("0 players");
     });
   });
