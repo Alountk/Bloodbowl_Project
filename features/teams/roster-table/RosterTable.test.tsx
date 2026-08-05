@@ -35,6 +35,20 @@ describe("RosterTable", () => {
     });
   });
 
+  describe("skills column", () => {
+    it("renders each starting skill with its category", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.getByText("Block").closest("tr")).not.toBeNull();
+      expect(screen.getByText("(general)")).toBeTruthy();
+    });
+
+    it("renders an em dash for positionals with no skills", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      const emDashes = screen.getAllByText("—");
+      expect(emDashes.length).toBeGreaterThan(0);
+    });
+  });
+
   describe("edit mode (default)", () => {
     it("renders player names as editable inputs", () => {
       render(<RosterTable players={mockPlayers} race={mockRace} />);
