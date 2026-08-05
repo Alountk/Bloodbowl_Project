@@ -2,6 +2,12 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RACES, getRaceById, RULES_METADATA } from "./races";
+import { getSkillById, getSkillByName } from "./skills";
+
+/** Resolve a skill ref (catalog id or legacy name/alias) to its stable catalog id */
+function skillRefToId(ref: string): string {
+  return getSkillById(ref)?.id ?? getSkillByName(ref)?.id ?? ref;
+}
 
 describe("race dataset", () => {
   it("contains the 30 BB2025 races", () => {
@@ -378,10 +384,10 @@ describe("REQ-RACE-06: Compatibility break explicitly documented in design and t
 // Skills are normalized: trimmed, lowercased, sorted — order-insensitive.
 // ---------------------------------------------------------------------------
 describe("REQ-RACE-04: Full positional stat/cost/skill parity against verified reference table", () => {
-  // Helper: normalize a skill list for comparison (case/whitespace/order insensitive)
+  // Helper: normalize a skill list for comparison (ref->id, case/whitespace/order insensitive)
   function normalizeSkills(skills: string[]): string[] {
     return skills
-      .map((s) => s.trim().toLowerCase())
+      .map((s) => skillRefToId(s.trim()))
       .sort();
   }
 
@@ -544,7 +550,7 @@ describe("REQ-RACE-04: Full positional stat/cost/skill parity against verified r
 // Reference: openspec/changes/bb2025-rules-migration/bb2025-reference-table.md
 // ---------------------------------------------------------------------------
 describe("REQ-RACE-04: Exhaustive parity — orc positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("orc exists, rerollCost 60000", () => { const r = getRaceById("orc")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -576,7 +582,7 @@ describe("REQ-RACE-04: Exhaustive parity — orc positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — dwarf positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("dwarf exists, rerollCost 60000", () => { const r = getRaceById("dwarf")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -608,7 +614,7 @@ describe("REQ-RACE-04: Exhaustive parity — dwarf positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — elven-union positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("elven-union exists, rerollCost 50000", () => { const r = getRaceById("elven-union")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(50_000); });
@@ -635,7 +641,7 @@ describe("REQ-RACE-04: Exhaustive parity — elven-union positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — skaven positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("skaven exists, rerollCost 50000", () => { const r = getRaceById("skaven")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(50_000); });
@@ -667,7 +673,7 @@ describe("REQ-RACE-04: Exhaustive parity — skaven positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — dark-elf positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("dark-elf exists, rerollCost 50000", () => { const r = getRaceById("dark-elf")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(50_000); });
@@ -700,7 +706,7 @@ describe("REQ-RACE-04: Exhaustive parity — dark-elf positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — shambling-undead positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("shambling-undead exists, rerollCost 70000", () => { const r = getRaceById("shambling-undead")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
@@ -732,7 +738,7 @@ describe("REQ-RACE-04: Exhaustive parity — shambling-undead positionals", () =
 });
 
 describe("REQ-RACE-04: Exhaustive parity — chaos-chosen positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("chaos-chosen exists, rerollCost 50000", () => { const r = getRaceById("chaos-chosen")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(50_000); });
@@ -760,7 +766,7 @@ describe("REQ-RACE-04: Exhaustive parity — chaos-chosen positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — amazon positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("amazon exists, rerollCost 60000", () => { const r = getRaceById("amazon")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -787,7 +793,7 @@ describe("REQ-RACE-04: Exhaustive parity — amazon positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — chaos-renegade positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("chaos-renegade exists, rerollCost 70000", () => { const r = getRaceById("chaos-renegade")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
@@ -839,7 +845,7 @@ describe("REQ-RACE-04: Exhaustive parity — chaos-renegade positionals", () => 
 });
 
 describe("REQ-RACE-04: Exhaustive parity — halfling positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("halfling exists, rerollCost 60000", () => { const r = getRaceById("halfling")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -866,7 +872,7 @@ describe("REQ-RACE-04: Exhaustive parity — halfling positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — imperial-nobility positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("imperial-nobility exists, rerollCost 60000", () => { const r = getRaceById("imperial-nobility")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -898,7 +904,7 @@ describe("REQ-RACE-04: Exhaustive parity — imperial-nobility positionals", () 
 });
 
 describe("REQ-RACE-04: Exhaustive parity — khorne positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("khorne exists, rerollCost 60000", () => { const r = getRaceById("khorne")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -926,7 +932,7 @@ describe("REQ-RACE-04: Exhaustive parity — khorne positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — lizardmen positionals (remaining)", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("lizardmen exists, rerollCost 70000", () => { const r = getRaceById("lizardmen")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
@@ -943,7 +949,7 @@ describe("REQ-RACE-04: Exhaustive parity — lizardmen positionals (remaining)",
 });
 
 describe("REQ-RACE-04: Exhaustive parity — necromantic-horror positionals (remaining)", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("necromantic-horror exists, rerollCost 70000", () => { const r = getRaceById("necromantic-horror")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
@@ -970,7 +976,7 @@ describe("REQ-RACE-04: Exhaustive parity — necromantic-horror positionals (rem
 });
 
 describe("REQ-RACE-04: Exhaustive parity — norse positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("norse exists, rerollCost 60000", () => { const r = getRaceById("norse")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -1007,7 +1013,7 @@ describe("REQ-RACE-04: Exhaustive parity — norse positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — nurgle positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("nurgle exists, rerollCost 60000", () => { const r = getRaceById("nurgle")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -1034,7 +1040,7 @@ describe("REQ-RACE-04: Exhaustive parity — nurgle positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — old-world-alliance positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("old-world-alliance exists, rerollCost 70000", () => { const r = getRaceById("old-world-alliance")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
@@ -1071,7 +1077,7 @@ describe("REQ-RACE-04: Exhaustive parity — old-world-alliance positionals", ()
 });
 
 describe("REQ-RACE-04: Exhaustive parity — snotling positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("snotling exists, rerollCost 70000", () => { const r = getRaceById("snotling")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
@@ -1103,7 +1109,7 @@ describe("REQ-RACE-04: Exhaustive parity — snotling positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — tomb-kings positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("tomb-kings exists, rerollCost 60000", () => { const r = getRaceById("tomb-kings")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -1130,7 +1136,7 @@ describe("REQ-RACE-04: Exhaustive parity — tomb-kings positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — underworld-denizens positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("underworld-denizens exists, rerollCost 70000", () => { const r = getRaceById("underworld-denizens")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
@@ -1162,7 +1168,7 @@ describe("REQ-RACE-04: Exhaustive parity — underworld-denizens positionals", (
 });
 
 describe("REQ-RACE-04: Exhaustive parity — vampire positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("vampire exists, rerollCost 60000", () => { const r = getRaceById("vampire")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -1194,7 +1200,7 @@ describe("REQ-RACE-04: Exhaustive parity — vampire positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — black-orc positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("black-orc exists, rerollCost 60000", () => { const r = getRaceById("black-orc")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
@@ -1216,7 +1222,7 @@ describe("REQ-RACE-04: Exhaustive parity — black-orc positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — goblin positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("goblin exists, rerollCost 80000", () => { const r = getRaceById("goblin")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(80_000); });
@@ -1253,7 +1259,7 @@ describe("REQ-RACE-04: Exhaustive parity — goblin positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — wood-elf positionals", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("wood-elf exists, rerollCost 50000", () => { const r = getRaceById("wood-elf")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(50_000); });
@@ -1285,7 +1291,7 @@ describe("REQ-RACE-04: Exhaustive parity — wood-elf positionals", () => {
 });
 
 describe("REQ-RACE-04: Exhaustive parity — human ogre (completing human coverage)", () => {
-  function norm(s: string[]): string[] { return s.map(x => x.trim().toLowerCase()).sort(); }
+  function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("human ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000", () => {
