@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AppProvider, useApp } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { CreateTeamForm } from "./CreateTeamForm";
@@ -127,8 +127,16 @@ describe("CreateTeamForm", () => {
 
   // --- coaching staff ---
 
-  it("renders the Coaching Staff inputs and league select", async () => {
+  it("hides the Coaching Staff section until a race is selected", async () => {
     await renderForm();
+    expect(screen.queryByRole("region", { name: "Coaching Staff" })).toBeNull();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    expect(screen.getByRole("region", { name: "Coaching Staff" })).toBeTruthy();
+  });
+
+  it("renders the Coaching Staff inputs and league select after a race is selected", async () => {
+    await renderForm();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     expect(screen.getByRole("region", { name: "Coaching Staff" })).toBeTruthy();
     expect(screen.getByLabelText("Rerolls")).toBeTruthy();
     expect(screen.getByLabelText("Dedicated Fans")).toBeTruthy();
@@ -142,8 +150,23 @@ describe("CreateTeamForm", () => {
     expect(leagueValues).toEqual(expect.arrayContaining(["exhibition", "open"]));
   });
 
+  it("shows unit costs next to each coaching field and consumes the budget", async () => {
+    await renderForm();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    const region = screen.getByRole("region", { name: "Coaching Staff" });
+    // Human rerolls cost 50k and the apothecary costs 50k: both unit costs visible.
+    expect(within(region).getAllByText("50k gc", { selector: "span" }).length).toBeGreaterThan(0);
+    // Budget starts at 1,000k with no players.
+    expect(screen.getByText(/remaining/i)).toBeTruthy();
+    const rerollInput = screen.getByLabelText("Rerolls") as HTMLInputElement;
+    fireEvent.change(rerollInput, { target: { value: "2" } });
+    // 2 rerolls x 50k = 100k; 1000k - 100k = 900k remaining.
+    expect(screen.getByText(/900k remaining/i)).toBeTruthy();
+  });
+
   it("binds the reroll input value to coaching state", async () => {
     await renderForm();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     const rerollInput = screen.getByLabelText("Rerolls") as HTMLInputElement;
     fireEvent.change(rerollInput, { target: { value: "4" } });
     expect(rerollInput.value).toBe("4");
@@ -151,8 +174,20 @@ describe("CreateTeamForm", () => {
 
   it("binds the league select value to leagueType state", async () => {
     await renderForm();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     const leagueSelect = screen.getByLabelText("League type") as HTMLSelectElement;
     fireEvent.change(leagueSelect, { target: { value: "exhibition" } });
     expect(leagueSelect.value).toBe("exhibition");
+  });
+
+  it("includes the apothecary cost in the coaching subtotal", async () => {
+    await renderForm();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    const region = screen.getByRole("region", { name: "Coaching Staff" });
+    const apothecary = screen.getByLabelText("Apothecary") as HTMLInputElement;
+    // Apothecary shows its 50k unit cost once selected.
+    expect(within(region).queryByText("50k gc · 50k", { selector: "span" })).toBeNull();
+    fireEvent.click(apothecary);
+    expect(within(region).getByText("50k gc · 50k", { selector: "span" })).toBeTruthy();
   });
 });
