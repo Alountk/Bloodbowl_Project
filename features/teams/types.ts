@@ -54,7 +54,8 @@ export interface CoachingStaff {
 
 export const DEFAULT_COACHING: CoachingStaff = {
   rerolls: 0,
-  dedicatedFans: 0,
+  // BB2025: a team always begins with a Dedicated Fans characteristic of 1.
+  dedicatedFans: 1,
   assistantCoaches: 0,
   cheerleaders: 0,
   apothecary: false,

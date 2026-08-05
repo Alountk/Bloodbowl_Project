@@ -3,9 +3,14 @@ import { getRaceById } from "./data/races";
 import {
   APOTHECARY_COST,
   ASSISTANT_COACH_COST,
+  ASSISTANT_COACH_MAX,
   CHEERLEADER_COST,
-  DEDICATED_FAN_COST,
+  CHEERLEADER_MAX,
+  DEDICATED_FAN_IMPROVEMENT_COST,
+  DEDICATED_FANS_MAX,
+  DEDICATED_FANS_START,
   MAX_PLAYERS,
+  MAX_REROLLS,
   MIN_PLAYERS,
   STARTING_TREASURY,
   computeCoachingCost,
@@ -183,11 +188,16 @@ describe("roster helpers", () => {
   describe("coaching staff costs", () => {
     const human = getRaceById("human")!; // rerollCost = 50k
 
-    it("exposes the standard BB2020 coaching costs", () => {
-      expect(DEDICATED_FAN_COST).toBe(10_000);
+    it("exposes the standard BB2025 coaching costs and limits", () => {
+      expect(DEDICATED_FAN_IMPROVEMENT_COST).toBe(5_000);
       expect(ASSISTANT_COACH_COST).toBe(10_000);
       expect(CHEERLEADER_COST).toBe(10_000);
       expect(APOTHECARY_COST).toBe(50_000);
+      expect(ASSISTANT_COACH_MAX).toBe(6);
+      expect(CHEERLEADER_MAX).toBe(6);
+      expect(MAX_REROLLS).toBe(8);
+      expect(DEDICATED_FANS_START).toBe(1);
+      expect(DEDICATED_FANS_MAX).toBe(3);
     });
 
     it("costs rerolls at the race reroll cost", () => {
@@ -195,8 +205,15 @@ describe("roster helpers", () => {
     });
 
     it("costs staff positions at their fixed unit price", () => {
-      const staff = { ...DEFAULT_COACHING, dedicatedFans: 2, assistantCoaches: 1, cheerleaders: 3 };
-      expect(computeCoachingCost(human, staff)).toBe(2 * 10_000 + 10_000 + 3 * 10_000);
+      const staff = { ...DEFAULT_COACHING, assistantCoaches: 1, cheerleaders: 3 };
+      expect(computeCoachingCost(human, staff)).toBe(10_000 + 3 * 10_000);
+    });
+
+    it("charges only for Dedicated Fan improvements above the starting 1", () => {
+      // BB2025: start at 1 free; 1 -> 3 = two upgrades at 5k each.
+      expect(computeCoachingCost(human, { ...DEFAULT_COACHING, dedicatedFans: 1 })).toBe(0);
+      expect(computeCoachingCost(human, { ...DEFAULT_COACHING, dedicatedFans: 2 })).toBe(5_000);
+      expect(computeCoachingCost(human, { ...DEFAULT_COACHING, dedicatedFans: 3 })).toBe(10_000);
     });
 
     it("charges a flat fee when the apothecary is purchased", () => {
@@ -211,11 +228,11 @@ describe("roster helpers", () => {
       const items = computeCoachingCostItems(human, {
         ...DEFAULT_COACHING,
         rerolls: 2,
-        dedicatedFans: 1,
+        dedicatedFans: 3,
       });
       const byKey = Object.fromEntries(items.map((item) => [item.key, item]));
       expect(byKey.rerolls).toMatchObject({ unitCost: 50_000, quantity: 2, total: 100_000 });
-      expect(byKey.dedicatedFans).toMatchObject({ unitCost: 10_000, quantity: 1, total: 10_000 });
+      expect(byKey.dedicatedFans).toMatchObject({ unitCost: 5_000, quantity: 3, total: 10_000 });
       expect(byKey.assistantCoaches).toMatchObject({ unitCost: 10_000, quantity: 0, total: 0 });
     });
   });
