@@ -8,12 +8,19 @@ import {
   STARTING_TREASURY,
   computeRosterCostFromPlayers,
 } from "../roster";
-import type { PlayerEntry } from "../types";
+import type {
+  CoachingStaff,
+  PlayerEntry,
+  TeamLeagueType,
+} from "../types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "../types";
 
 export interface CreateTeamValues {
   name: string;
   raceId: string;
   roster: PlayerEntry[];
+  coaching: CoachingStaff;
+  leagueType: TeamLeagueType;
 }
 
 interface FormErrors {
@@ -26,6 +33,8 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
   const [name, setName] = useState("");
   const [raceId, setRaceId] = useState("");
   const [players, setPlayers] = useState<PlayerEntry[]>([]);
+  const [coaching, setCoachingState] = useState<CoachingStaff>({ ...DEFAULT_COACHING });
+  const [leagueType, setLeagueTypeState] = useState<TeamLeagueType>(DEFAULT_LEAGUE_TYPE);
   const [pendingRaceId, setPendingRaceId] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,6 +95,14 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     );
   };
 
+  const setCoaching = (patch: Partial<CoachingStaff>) => {
+    setCoachingState((prev) => ({ ...prev, ...patch }));
+  };
+
+  const setLeagueType = (next: TeamLeagueType) => {
+    setLeagueTypeState(next);
+  };
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     const nextErrors: FormErrors = {};
@@ -103,11 +120,15 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
       name: name.trim(),
       raceId,
       roster: players,
+      coaching,
+      leagueType,
     }).finally(() => {
       setIsSubmitting(false);
       setName("");
       setRaceId("");
       setPlayers([]);
+      setCoachingState({ ...DEFAULT_COACHING });
+      setLeagueTypeState(DEFAULT_LEAGUE_TYPE);
       setPendingRaceId(null);
     });
   };
@@ -130,5 +151,9 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     remainingBudget,
     isSubmitting,
     handleSubmit,
+    coaching,
+    setCoaching,
+    leagueType,
+    setLeagueType,
   };
 }
