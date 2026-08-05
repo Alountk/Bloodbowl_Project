@@ -11,6 +11,7 @@ import {
   summarizeRosterFromEntries,
 } from "./roster";
 import type { PlayerEntry, Team } from "./types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "./types";
 
 describe("roster helpers", () => {
   it("exposes the BB2025 budget and roster limits", () => {
@@ -57,6 +58,8 @@ describe("roster helpers", () => {
         id: "1",
         name: "Reikland Reavers",
         raceId: "human",
+        coaching: { ...DEFAULT_COACHING },
+        leagueType: DEFAULT_LEAGUE_TYPE,
         roster: [
           { id: "a", name: "Player 1", positionalKey: "lineman" },
           { id: "b", name: "Player 2", positionalKey: "lineman" },
@@ -86,6 +89,8 @@ describe("roster helpers", () => {
         id: "2",
         name: "Orc Crushers",
         raceId: "orc",
+        coaching: { ...DEFAULT_COACHING },
+        leagueType: DEFAULT_LEAGUE_TYPE,
         roster: players,
       };
       expect(summarizeRosterFromEntries(team, [getRaceById("orc")!])).toBe(
@@ -142,7 +147,14 @@ describe("roster helpers", () => {
         { id: "b", name: "P2", positionalKey: "lineman" },
         { id: "c", name: "P3", positionalKey: "thrower" },
       ];
-      const team: Team = { id: "1", name: "T", raceId: "human", roster: players };
+      const team: Team = {
+        id: "1",
+        name: "T",
+        raceId: "human",
+        coaching: { ...DEFAULT_COACHING },
+        leagueType: DEFAULT_LEAGUE_TYPE,
+        roster: players,
+      };
       expect(summarizeRosterFromEntries(team, [human])).toBe(
         "3 players · 2x Lineman · 1x Thrower",
       );
@@ -150,7 +162,14 @@ describe("roster helpers", () => {
 
     it("returns '0 players' for an empty roster", () => {
       const human = getRaceById("human")!;
-      const team: Team = { id: "1", name: "T", raceId: "human", roster: [] };
+      const team: Team = {
+        id: "1",
+        name: "T",
+        raceId: "human",
+        coaching: { ...DEFAULT_COACHING },
+        leagueType: DEFAULT_LEAGUE_TYPE,
+        roster: [],
+      };
       expect(summarizeRosterFromEntries(team, [human])).toBe("0 players");
     });
   });

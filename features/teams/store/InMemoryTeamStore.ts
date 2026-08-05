@@ -1,4 +1,5 @@
 import type { Team } from "../types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE, isCoachingStaff } from "../types";
 import type { TeamStore } from "./TeamStore";
 
 /**
@@ -10,23 +11,36 @@ export class InMemoryTeamStore implements TeamStore {
   private readonly ids: string[] = [];
   private readonly map = new Map<string, Team>();
 
+  /** Backfills coaching/leagueType defaults and guarantees normalized fields on read. */
+  private normalize(team: Team): Team {
+    const coaching = isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING;
+    return {
+      ...team,
+      coaching: { ...DEFAULT_COACHING, ...coaching },
+      leagueType: team.leagueType ?? DEFAULT_LEAGUE_TYPE,
+    };
+  }
+
   constructor(seed: Team[] = []) {
     for (const team of seed) {
-      this.ids.push(team.id);
-      this.map.set(team.id, team);
+      const normalized = this.normalize(team);
+      this.ids.push(normalized.id);
+      this.map.set(normalized.id, normalized);
     }
   }
 
   list(): Promise<Team[]> {
-    return Promise.resolve(this.ids.map((id) => this.map.get(id)!));
+    const teams = this.ids.map((id) => this.map.get(id)!);
+    return Promise.resolve(teams.map((t) => this.normalize(t)));
   }
 
   save(team: Team): Promise<Team> {
-    if (!this.map.has(team.id)) {
-      this.ids.push(team.id);
+    const normalized = this.normalize(team);
+    if (!this.map.has(normalized.id)) {
+      this.ids.push(normalized.id);
     }
-    this.map.set(team.id, team);
-    return Promise.resolve(team);
+    this.map.set(normalized.id, normalized);
+    return Promise.resolve(normalized);
   }
 
   remove(id: string): Promise<void> {
