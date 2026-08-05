@@ -4,11 +4,17 @@ export const STARTING_TREASURY = 1_000_000;
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 16;
 
-// Standard Blood Bowl 2020 coaching staff costs (gold coins).
-export const DEDICATED_FAN_COST = 10_000;
+// Standard Blood Bowl 2025 coaching staff costs and limits (gold coins).
+// Source: BP2025 core rulebook, "Drafting a Blood Bowl Team" (Sideline Staff / Dedicated Fans).
 export const ASSISTANT_COACH_COST = 10_000;
+export const ASSISTANT_COACH_MAX = 6;
 export const CHEERLEADER_COST = 10_000;
+export const CHEERLEADER_MAX = 6;
 export const APOTHECARY_COST = 50_000;
+export const MAX_REROLLS = 8;
+export const DEDICATED_FANS_START = 1;
+export const DEDICATED_FANS_MAX = 3;
+export const DEDICATED_FAN_IMPROVEMENT_COST = 5_000;
 
 export interface CoachingCostItem {
   /** Indexable field on CoachingStaff */
@@ -24,12 +30,16 @@ export interface CoachingCostItem {
 export function computeCoachingCostItems(race: Race, coaching: CoachingStaff): CoachingCostItem[] {
   const items: CoachingCostItem[] = [
     { key: "rerolls", unitCost: race.rerollCost, quantity: coaching.rerolls, total: 0 },
-    { key: "dedicatedFans", unitCost: DEDICATED_FAN_COST, quantity: coaching.dedicatedFans, total: 0 },
+    { key: "dedicatedFans", unitCost: DEDICATED_FAN_IMPROVEMENT_COST, quantity: coaching.dedicatedFans, total: 0 },
     { key: "assistantCoaches", unitCost: ASSISTANT_COACH_COST, quantity: coaching.assistantCoaches, total: 0 },
     { key: "cheerleaders", unitCost: CHEERLEADER_COST, quantity: coaching.cheerleaders, total: 0 },
   ];
   for (const item of items) {
-    item.total = item.quantity * item.unitCost;
+    // Dedicated Fans start at 1 automatically; only upgrades above the starting
+    // characteristic cost gold (e.g. 1 -> 3 = two upgrades = 10k).
+    const paid =
+      item.key === "dedicatedFans" ? Math.max(0, item.quantity - DEDICATED_FANS_START) : item.quantity;
+    item.total = paid * item.unitCost;
   }
   return items;
 }

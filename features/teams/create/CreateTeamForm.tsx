@@ -3,9 +3,18 @@
 import { useRouter } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
-import { APOTHECARY_COST, STARTING_TREASURY, computeCoachingCostItems } from "../roster";
-import { LEAGUE_TYPES, type TeamLeagueType } from "../types";
+import {
+  APOTHECARY_COST,
+  ASSISTANT_COACH_MAX,
+  CHEERLEADER_MAX,
+  DEDICATED_FANS_MAX,
+  DEDICATED_FANS_START,
+  MAX_REROLLS,
+  STARTING_TREASURY,
+  computeCoachingCostItems,
+} from "../roster";
 import { RosterTable } from "../roster-table/RosterTable";
+import { LEAGUE_TYPES, type TeamLeagueType } from "../types";
 import { useCreateTeamForm } from "./useCreateTeamForm";
 
 function formatGold(value: number): string {
@@ -258,31 +267,46 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
         <span className="text-sm text-slate-400">{formatGold(coachingTotal)} gc</span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        {items.map((item) => (
-          <div key={item.key}>
-            <label
-              htmlFor={`coaching-${item.key}`}
-              className="mb-1 flex items-baseline justify-between text-sm font-medium text-slate-300"
-            >
-              <span>{COACHING_LABELS[item.key]}</span>
-              <span className="text-xs text-slate-400">
-                {formatGold(item.unitCost)} gc{item.quantity > 0 ? ` · ${formatGold(item.total)}` : ""}
-              </span>
-            </label>
-            <input
-              id={`coaching-${item.key}`}
-              aria-label={COACHING_LABELS[item.key]}
-              type="number"
-              min={0}
-              step={1}
-              value={item.quantity}
-              onChange={(event) =>
-                form.setCoaching({ [item.key]: parseCount(event.target.value) })
-              }
-              className={fieldClassName}
-            />
-          </div>
-        ))}
+        {items.map((item) => {
+          const max =
+            item.key === "rerolls"
+              ? MAX_REROLLS
+              : item.key === "dedicatedFans"
+                ? DEDICATED_FANS_MAX
+                : item.key === "assistantCoaches"
+                  ? ASSISTANT_COACH_MAX
+                  : CHEERLEADER_MAX;
+          const min = item.key === "dedicatedFans" ? DEDICATED_FANS_START : 0;
+          return (
+            <div key={item.key}>
+              <label
+                htmlFor={`coaching-${item.key}`}
+                className="mb-1 flex items-baseline justify-between text-sm font-medium text-slate-300"
+              >
+                <span>{COACHING_LABELS[item.key]}</span>
+                <span className="text-xs text-slate-400">
+                  {item.key === "dedicatedFans"
+                    ? `starts at ${DEDICATED_FANS_START} · ${formatGold(item.unitCost)} gc per upgrade`
+                    : `${formatGold(item.unitCost)} gc`}
+                  {item.quantity > min ? ` · ${formatGold(item.total)}` : ""}
+                </span>
+              </label>
+              <input
+                id={`coaching-${item.key}`}
+                aria-label={COACHING_LABELS[item.key]}
+                type="number"
+                min={min}
+                max={max}
+                step={1}
+                value={item.quantity}
+                onChange={(event) =>
+                  form.setCoaching({ [item.key]: parseCount(event.target.value) })
+                }
+                className={fieldClassName}
+              />
+            </div>
+          );
+        })}
 
         <label className="flex items-center gap-3 self-end rounded-md border border-blue-600/20 bg-slate-800 px-3 py-2 text-sm text-slate-300">
           <input

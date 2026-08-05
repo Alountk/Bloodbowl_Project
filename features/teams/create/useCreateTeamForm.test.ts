@@ -28,7 +28,7 @@ describe("useCreateTeamForm", () => {
     const { result } = setup();
     act(() => result.current.setCoaching({ rerolls: 2 }));
     expect(result.current.coaching).toEqual({ ...DEFAULT_COACHING, rerolls: 2 });
-    expect(result.current.coaching.dedicatedFans).toBe(0);
+    expect(result.current.coaching.dedicatedFans).toBe(DEFAULT_COACHING.dedicatedFans);
     expect(result.current.coaching.apothecary).toBe(false);
   });
 
