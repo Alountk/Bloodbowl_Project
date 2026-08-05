@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { getRaceById } from "./data/races";
 import {
+  APOTHECARY_COST,
+  ASSISTANT_COACH_COST,
+  CHEERLEADER_COST,
+  DEDICATED_FAN_COST,
   MAX_PLAYERS,
   MIN_PLAYERS,
   STARTING_TREASURY,
+  computeCoachingCost,
+  computeCoachingCostItems,
   computeRosterCost,
   countPlayers,
   computeRosterCostFromPlayers,
@@ -171,6 +177,46 @@ describe("roster helpers", () => {
         roster: [],
       };
       expect(summarizeRosterFromEntries(team, [human])).toBe("0 players");
+    });
+  });
+
+  describe("coaching staff costs", () => {
+    const human = getRaceById("human")!; // rerollCost = 50k
+
+    it("exposes the standard BB2020 coaching costs", () => {
+      expect(DEDICATED_FAN_COST).toBe(10_000);
+      expect(ASSISTANT_COACH_COST).toBe(10_000);
+      expect(CHEERLEADER_COST).toBe(10_000);
+      expect(APOTHECARY_COST).toBe(50_000);
+    });
+
+    it("costs rerolls at the race reroll cost", () => {
+      expect(computeCoachingCost(human, { ...DEFAULT_COACHING, rerolls: 3 })).toBe(3 * 50_000);
+    });
+
+    it("costs staff positions at their fixed unit price", () => {
+      const staff = { ...DEFAULT_COACHING, dedicatedFans: 2, assistantCoaches: 1, cheerleaders: 3 };
+      expect(computeCoachingCost(human, staff)).toBe(2 * 10_000 + 10_000 + 3 * 10_000);
+    });
+
+    it("charges a flat fee when the apothecary is purchased", () => {
+      expect(computeCoachingCost(human, { ...DEFAULT_COACHING, apothecary: true })).toBe(50_000);
+    });
+
+    it("returns 0 for a default (empty) coaching set", () => {
+      expect(computeCoachingCost(human, { ...DEFAULT_COACHING })).toBe(0);
+    });
+
+    it("breaks costs down per item with running totals", () => {
+      const items = computeCoachingCostItems(human, {
+        ...DEFAULT_COACHING,
+        rerolls: 2,
+        dedicatedFans: 1,
+      });
+      const byKey = Object.fromEntries(items.map((item) => [item.key, item]));
+      expect(byKey.rerolls).toMatchObject({ unitCost: 50_000, quantity: 2, total: 100_000 });
+      expect(byKey.dedicatedFans).toMatchObject({ unitCost: 10_000, quantity: 1, total: 10_000 });
+      expect(byKey.assistantCoaches).toMatchObject({ unitCost: 10_000, quantity: 0, total: 0 });
     });
   });
 });

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
-import { STARTING_TREASURY } from "../roster";
+import { APOTHECARY_COST, STARTING_TREASURY, computeCoachingCostItems } from "../roster";
 import { LEAGUE_TYPES, type TeamLeagueType } from "../types";
 import { RosterTable } from "../roster-table/RosterTable";
 import { useCreateTeamForm } from "./useCreateTeamForm";
@@ -22,6 +22,13 @@ function parseCount(value: string): number {
 const fieldClassName =
   "w-full rounded-md border border-blue-600/20 bg-slate-800 px-3 py-2 text-white outline-none focus:border-blue-500";
 
+const COACHING_LABELS: Record<string, string> = {
+  rerolls: "Rerolls",
+  dedicatedFans: "Dedicated Fans",
+  assistantCoaches: "Assistant Coaches",
+  cheerleaders: "Cheerleaders",
+};
+
 export function CreateTeamForm() {
   const { addTeam } = useApp();
   const router = useRouter();
@@ -31,8 +38,8 @@ export function CreateTeamForm() {
   });
 
   const race = RACES.find((candidate) => candidate.id === form.raceId);
-  const budgetPercent = Math.min(100, (form.cost / STARTING_TREASURY) * 100);
-  const isOverBudget = form.cost > STARTING_TREASURY;
+  const budgetPercent = Math.min(100, (form.totalCost / STARTING_TREASURY) * 100);
+  const isOverBudget = form.totalCost > STARTING_TREASURY;
 
   // Group positionals by role
   const roleGroups = race
@@ -127,11 +134,11 @@ export function CreateTeamForm() {
           <div className="mb-3 flex items-center justify-between text-sm">
             <span className="text-slate-300">
               {form.playerCount} player{form.playerCount === 1 ? "" : "s"} ·{" "}
-              {formatGold(form.cost)} / {formatGold(STARTING_TREASURY)} gc
+              {formatGold(form.totalCost)} / {formatGold(STARTING_TREASURY)} gc
             </span>
             <span className={isOverBudget ? "font-semibold text-red-400" : "text-slate-400"}>
               {isOverBudget
-                ? `Over budget by ${formatGold(form.cost - STARTING_TREASURY)}`
+                ? `Over budget by ${formatGold(form.totalCost - STARTING_TREASURY)}`
                 : `${formatGold(form.remainingBudget)} remaining`}
             </span>
           </div>
@@ -157,7 +164,7 @@ export function CreateTeamForm() {
                       (p) => p.positionalKey === positional.key,
                     ).length;
                     const atLimit = countForPositional >= positional.max;
-                    const overBudget = form.cost + positional.cost > STARTING_TREASURY;
+                    const overBudget = form.totalCost + positional.cost > STARTING_TREASURY;
                     const atMaxPlayers = form.players.length >= 16;
                     const disabled = atLimit || overBudget || atMaxPlayers;
 
@@ -205,123 +212,7 @@ export function CreateTeamForm() {
         <p className="text-sm text-slate-400">Select a race to build your roster.</p>
       )}
 
-      <section aria-label="Coaching Staff" className="rounded-md border border-blue-600/20 bg-slate-800/40 p-4">
-        <h2 className="mb-3 text-lg font-semibold">Coaching Staff</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="coaching-rerolls"
-              className="mb-1 block text-sm font-medium text-slate-300"
-            >
-              Rerolls
-            </label>
-            <input
-              id="coaching-rerolls"
-              aria-label="Rerolls"
-              type="number"
-              min={0}
-              step={1}
-              value={form.coaching.rerolls}
-              onChange={(event) => form.setCoaching({ rerolls: parseCount(event.target.value) })}
-              className={fieldClassName}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="coaching-dedicated-fans"
-              className="mb-1 block text-sm font-medium text-slate-300"
-            >
-              Dedicated Fans
-            </label>
-            <input
-              id="coaching-dedicated-fans"
-              aria-label="Dedicated Fans"
-              type="number"
-              min={0}
-              value={form.coaching.dedicatedFans}
-              onChange={(event) =>
-                form.setCoaching({ dedicatedFans: parseCount(event.target.value) })
-              }
-              className={fieldClassName}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="coaching-assistant-coaches"
-              className="mb-1 block text-sm font-medium text-slate-300"
-            >
-              Assistant Coaches
-            </label>
-            <input
-              id="coaching-assistant-coaches"
-              aria-label="Assistant Coaches"
-              type="number"
-              min={0}
-              value={form.coaching.assistantCoaches}
-              onChange={(event) =>
-                form.setCoaching({ assistantCoaches: parseCount(event.target.value) })
-              }
-              className={fieldClassName}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="coaching-cheerleaders"
-              className="mb-1 block text-sm font-medium text-slate-300"
-            >
-              Cheerleaders
-            </label>
-            <input
-              id="coaching-cheerleaders"
-              aria-label="Cheerleaders"
-              type="number"
-              min={0}
-              value={form.coaching.cheerleaders}
-              onChange={(event) =>
-                form.setCoaching({ cheerleaders: parseCount(event.target.value) })
-              }
-              className={fieldClassName}
-            />
-          </div>
-
-          <label className="flex items-center gap-3 self-end rounded-md border border-blue-600/20 bg-slate-800 px-3 py-2 text-sm text-slate-300">
-            <input
-              id="coaching-apothecary"
-              aria-label="Apothecary"
-              type="checkbox"
-              checked={form.coaching.apothecary}
-              onChange={(event) => form.setCoaching({ apothecary: event.target.checked })}
-              className="h-4 w-4 accent-blue-600"
-            />
-            Apothecary
-          </label>
-
-          <div>
-            <label
-              htmlFor="team-league-type"
-              className="mb-1 block text-sm font-medium text-slate-300"
-            >
-              League type
-            </label>
-            <select
-              id="team-league-type"
-              aria-label="League type"
-              value={form.leagueType}
-              onChange={(event) => form.setLeagueType(event.target.value as TeamLeagueType)}
-              className={fieldClassName}
-            >
-              {LEAGUE_TYPES.map((leagueType) => (
-                <option key={leagueType} value={leagueType}>
-                  {leagueType}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
+      {race ? <CoachingStaffSection raceId={form.raceId} form={form} /> : null}
 
       {form.errors.players ? (
         <p role="alert" className="text-sm text-red-400">
@@ -341,5 +232,97 @@ export function CreateTeamForm() {
         Create Team
       </button>
     </form>
+  );
+}
+
+type CreateTeamFormState = ReturnType<typeof useCreateTeamForm>;
+
+interface CoachingStaffSectionProps {
+  raceId: string;
+  form: CreateTeamFormState;
+}
+
+function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
+  const race = RACES.find((candidate) => candidate.id === raceId);
+  if (!race) return null;
+
+  const items = computeCoachingCostItems(race, form.coaching);
+  const staffSubtotal = items.reduce((acc, item) => acc + item.total, 0);
+  const apothecaryTotal = form.coaching.apothecary ? APOTHECARY_COST : 0;
+  const coachingTotal = staffSubtotal + apothecaryTotal;
+
+  return (
+    <section aria-label="Coaching Staff" className="rounded-md border border-blue-600/20 bg-slate-800/40 p-4">
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">Coaching Staff</h2>
+        <span className="text-sm text-slate-400">{formatGold(coachingTotal)} gc</span>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {items.map((item) => (
+          <div key={item.key}>
+            <label
+              htmlFor={`coaching-${item.key}`}
+              className="mb-1 flex items-baseline justify-between text-sm font-medium text-slate-300"
+            >
+              <span>{COACHING_LABELS[item.key]}</span>
+              <span className="text-xs text-slate-400">
+                {formatGold(item.unitCost)} gc{item.quantity > 0 ? ` · ${formatGold(item.total)}` : ""}
+              </span>
+            </label>
+            <input
+              id={`coaching-${item.key}`}
+              aria-label={COACHING_LABELS[item.key]}
+              type="number"
+              min={0}
+              step={1}
+              value={item.quantity}
+              onChange={(event) =>
+                form.setCoaching({ [item.key]: parseCount(event.target.value) })
+              }
+              className={fieldClassName}
+            />
+          </div>
+        ))}
+
+        <label className="flex items-center gap-3 self-end rounded-md border border-blue-600/20 bg-slate-800 px-3 py-2 text-sm text-slate-300">
+          <input
+            id="coaching-apothecary"
+            aria-label="Apothecary"
+            type="checkbox"
+            checked={form.coaching.apothecary}
+            onChange={(event) => form.setCoaching({ apothecary: event.target.checked })}
+            className="h-4 w-4 accent-blue-600"
+          />
+          <span className="flex items-baseline gap-1">
+            Apothecary
+            <span className="text-xs text-slate-400">
+              {formatGold(APOTHECARY_COST)} gc{apothecaryTotal > 0 ? ` · ${formatGold(apothecaryTotal)}` : ""}
+            </span>
+          </span>
+        </label>
+
+        <div>
+          <label
+            htmlFor="team-league-type"
+            className="mb-1 block text-sm font-medium text-slate-300"
+          >
+            League type
+          </label>
+          <select
+            id="team-league-type"
+            aria-label="League type"
+            value={form.leagueType}
+            onChange={(event) => form.setLeagueType(event.target.value as TeamLeagueType)}
+            className={fieldClassName}
+          >
+            {LEAGUE_TYPES.map((leagueType) => (
+              <option key={leagueType} value={leagueType}>
+                {leagueType}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </section>
   );
 }

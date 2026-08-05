@@ -6,6 +6,7 @@ import {
   MAX_PLAYERS,
   MIN_PLAYERS,
   STARTING_TREASURY,
+  computeCoachingCost,
   computeRosterCostFromPlayers,
 } from "../roster";
 import type {
@@ -41,8 +42,10 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
 
   const race = raceId ? getRaceById(raceId) : undefined;
   const cost = race ? computeRosterCostFromPlayers(race, players) : 0;
+  const coachingCost = race ? computeCoachingCost(race, coaching) : 0;
+  const totalCost = cost + coachingCost;
   const playerCount = players.length;
-  const remainingBudget = STARTING_TREASURY - cost;
+  const remainingBudget = STARTING_TREASURY - totalCost;
 
   // Race change — with pending confirmation if roster is non-empty
   const changeRace = (nextRaceId: string) => {
@@ -73,7 +76,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     if (players.length >= MAX_PLAYERS) return;
     const countForPositional = players.filter((p) => p.positionalKey === positionalKey).length;
     if (countForPositional >= positional.max) return;
-    const nextCost = cost + positional.cost;
+    const nextCost = totalCost + positional.cost;
     if (nextCost > STARTING_TREASURY) return;
 
     const nextNumber = players.length + 1;
@@ -110,7 +113,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     if (playerCount < MIN_PLAYERS) {
       nextErrors.players = `Select at least ${MIN_PLAYERS} players`;
     }
-    if (cost > STARTING_TREASURY) nextErrors.budget = "Roster exceeds the 1,000,000 gc budget";
+    if (totalCost > STARTING_TREASURY) nextErrors.budget = "Roster exceeds the 1,000,000 gc budget";
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0 || !race) return;
@@ -147,6 +150,8 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     cancelRaceChange,
     errors,
     cost,
+    coachingCost,
+    totalCost,
     playerCount,
     remainingBudget,
     isSubmitting,
