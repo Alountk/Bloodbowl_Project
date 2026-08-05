@@ -155,4 +155,29 @@ describe("TeamList", () => {
 
     expect(screen.getByText(/no teams match your search/i)).toBeTruthy();
   });
+
+  it("each team card has a link to the detail page", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    const link1 = screen.getByRole("link", { name: /reikland reavers/i });
+    expect(link1).toBeTruthy();
+    expect(link1.getAttribute("href")).toBe("/teams/team-1");
+
+    const link2 = screen.getByRole("link", { name: /da krumpaz/i });
+    expect(link2).toBeTruthy();
+    expect(link2.getAttribute("href")).toBe("/teams/team-2");
+  });
+
+  it("search filter works with links present", async () => {
+    renderWithStoreAndTopbar();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText(/search teams/i), {
+      target: { value: "reikland" },
+    });
+
+    expect(screen.getByRole("link", { name: /reikland reavers/i })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /da krumpaz/i })).toBeNull();
+  });
 });
