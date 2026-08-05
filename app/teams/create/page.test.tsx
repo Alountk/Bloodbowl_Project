@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { AppProvider } from "@/app/providers/AppProvider";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { AppProvider, useApp } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { TeamList } from "@/features/teams/TeamList";
 import TeamCreatePage from "./page";
@@ -11,28 +11,48 @@ vi.mock("next/navigation", () => ({
 
 function renderWithStore() {
   const store = new InMemoryTeamStore();
-  render(
-    <AppProvider store={store}>
-      <TeamCreatePage />
-    </AppProvider>,
-  );
+
+  act(() => {
+    render(
+      <AppProvider store={store}>
+        <HydrationProbe />
+        <TeamCreatePage />
+      </AppProvider>,
+    );
+  });
   return store;
 }
 
 function renderWithStoreAndList() {
   const store = new InMemoryTeamStore();
-  render(
-    <AppProvider store={store}>
-      <TeamCreatePage />
-      <TeamList />
-    </AppProvider>,
-  );
+
+  act(() => {
+    render(
+      <AppProvider store={store}>
+        <HydrationProbe />
+        <TeamCreatePage />
+        <TeamList />
+      </AppProvider>,
+    );
+  });
   return store;
+}
+
+function HydrationProbe() {
+  const { isHydrated } = useApp();
+  return <span data-testid="hydration-status">{isHydrated ? "hydrated" : "loading"}</span>;
+}
+
+async function waitForHydration() {
+  await waitFor(() => {
+    expect(screen.getByTestId("hydration-status").textContent).toBe("hydrated");
+  });
 }
 
 describe("Team creation", () => {
   it("shows the 8 races in the selector and positionals after selecting one", async () => {
     renderWithStore();
+    await waitForHydration();
     await waitFor(() => expect(screen.getByLabelText("Race")).toBeTruthy());
 
     const select = screen.getByLabelText("Race");
@@ -49,6 +69,7 @@ describe("Team creation", () => {
 
   it("shows a name error when submitting without a name", async () => {
     renderWithStore();
+    await waitForHydration();
 
     fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
@@ -61,6 +82,7 @@ describe("Team creation", () => {
 
   it("blocks submit with fewer than 3 players", async () => {
     renderWithStoreAndList();
+    await waitForHydration();
     await waitFor(() => expect(screen.getByLabelText("Team name")).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText("Team name"), {
@@ -77,6 +99,7 @@ describe("Team creation", () => {
 
   it("blocks adding a player when it would exceed the budget", async () => {
     renderWithStoreAndList();
+    await waitForHydration();
 
     fireEvent.change(screen.getByLabelText("Team name"), {
       target: { value: "Deathroller Crew" },
@@ -94,6 +117,7 @@ describe("Team creation", () => {
 
   it("disables the increment button when a positional is at its max", async () => {
     renderWithStore();
+    await waitForHydration();
 
     fireEvent.change(screen.getByLabelText("Race"), { target: { value: "orc" } });
     const addTroll = screen.getByRole("button", {
@@ -106,6 +130,7 @@ describe("Team creation", () => {
 
   it("adds a valid team to the list and shows its roster summary", async () => {
     renderWithStoreAndList();
+    await waitForHydration();
     await waitFor(() => expect(screen.getByLabelText("Team name")).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText("Team name"), {
