@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { AppProvider } from "@/app/providers/AppProvider";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { AppProvider, useApp } from "@/app/providers/AppProvider";
+import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { CreateTeamForm } from "./CreateTeamForm";
 
 // Mock next/navigation
@@ -9,22 +10,34 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("CreateTeamForm", () => {
-  function renderForm() {
-    return render(
-      <AppProvider>
-        <CreateTeamForm />
-      </AppProvider>,
-    );
+  function HydrationProbe() {
+    const { isHydrated } = useApp();
+    return <span data-testid="hydration-status">{isHydrated ? "hydrated" : "loading"}</span>;
   }
 
-  it("renders the team name and race inputs", () => {
-    renderForm();
+  async function renderForm() {
+    await act(async () => {
+      render(
+        <AppProvider store={new InMemoryTeamStore()}>
+          <HydrationProbe />
+          <CreateTeamForm />
+        </AppProvider>,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hydration-status").textContent).toBe("hydrated");
+    });
+  }
+
+  it("renders the team name and race inputs", async () => {
+    await renderForm();
     expect(screen.getByLabelText(/team name/i)).toBeTruthy();
     expect(screen.getByLabelText(/race/i)).toBeTruthy();
   });
 
-  it("shows stat headers MA ST AG PA AV after selecting a race", () => {
-    renderForm();
+  it("shows stat headers MA ST AG PA AV after selecting a race", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     // Add a player so RosterTable renders with headers
     const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
@@ -39,16 +52,16 @@ describe("CreateTeamForm", () => {
     expect(headers.filter((h) => h === "A")).toHaveLength(0);
   });
 
-  it("shows role-grouped positional add buttons after selecting a race", () => {
-    renderForm();
+  it("shows role-grouped positional add buttons after selecting a race", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     // Should show add buttons for at least some positionals
     const addButtons = screen.getAllByRole("button", { name: /add/i });
     expect(addButtons.length).toBeGreaterThan(0);
   });
 
-  it("adds a player to the roster when add button is clicked", () => {
-    renderForm();
+  it("adds a player to the roster when add button is clicked", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
     fireEvent.click(addButtons[0]);
@@ -56,8 +69,8 @@ describe("CreateTeamForm", () => {
     expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
   });
 
-  it("shows a confirm dialog when changing race with active roster", () => {
-    renderForm();
+  it("shows a confirm dialog when changing race with active roster", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     // Add a player
     const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
@@ -68,8 +81,8 @@ describe("CreateTeamForm", () => {
     expect(screen.getByText(/roster will be cleared/i)).toBeTruthy();
   });
 
-  it("clears roster on confirm race change", () => {
-    renderForm();
+  it("clears roster on confirm race change", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
     fireEvent.click(addButtons[0]);
@@ -79,8 +92,8 @@ describe("CreateTeamForm", () => {
     expect(screen.getByText(/no players/i)).toBeTruthy();
   });
 
-  it("keeps roster on cancel race change", () => {
-    renderForm();
+  it("keeps roster on cancel race change", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
     fireEvent.click(addButtons[0]);
@@ -93,15 +106,15 @@ describe("CreateTeamForm", () => {
     expect(playerInputs).toHaveLength(1);
   });
 
-  it("shows budget feedback", () => {
-    renderForm();
+  it("shows budget feedback", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     // Budget display should be visible (e.g. remaining gc)
     expect(screen.getByText(/remaining/i)).toBeTruthy();
   });
 
-  it("renders role-group headings for the selected race (R1: positionals grouped by role)", () => {
-    renderForm();
+  it("renders role-group headings for the selected race (R1: positionals grouped by role)", async () => {
+    await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     // Human roster has Lineman, Thrower, Blitzer, Catcher, Big Guy roles.
     // The form renders each role as an <h3> heading with text "{role}s".
