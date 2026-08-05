@@ -124,4 +124,35 @@ describe("CreateTeamForm", () => {
     expect(screen.getByRole("heading", { name: /catchers/i })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /big guys/i })).toBeTruthy();
   });
+
+  // --- coaching staff ---
+
+  it("renders the Coaching Staff inputs and league select", async () => {
+    await renderForm();
+    expect(screen.getByRole("region", { name: "Coaching Staff" })).toBeTruthy();
+    expect(screen.getByLabelText("Rerolls")).toBeTruthy();
+    expect(screen.getByLabelText("Dedicated Fans")).toBeTruthy();
+    expect(screen.getByLabelText("Assistant Coaches")).toBeTruthy();
+    expect(screen.getByLabelText("Cheerleaders")).toBeTruthy();
+    expect(screen.getByLabelText("Apothecary")).toBeTruthy();
+    const leagueSelect = screen.getByLabelText("League type");
+    expect(leagueSelect.tagName).toBe("SELECT");
+    const options = screen.getAllByRole("option") as HTMLOptionElement[];
+    const leagueValues = options.map((option) => option.value);
+    expect(leagueValues).toEqual(expect.arrayContaining(["exhibition", "open"]));
+  });
+
+  it("binds the reroll input value to coaching state", async () => {
+    await renderForm();
+    const rerollInput = screen.getByLabelText("Rerolls") as HTMLInputElement;
+    fireEvent.change(rerollInput, { target: { value: "4" } });
+    expect(rerollInput.value).toBe("4");
+  });
+
+  it("binds the league select value to leagueType state", async () => {
+    await renderForm();
+    const leagueSelect = screen.getByLabelText("League type") as HTMLSelectElement;
+    fireEvent.change(leagueSelect, { target: { value: "exhibition" } });
+    expect(leagueSelect.value).toBe("exhibition");
+  });
 });
