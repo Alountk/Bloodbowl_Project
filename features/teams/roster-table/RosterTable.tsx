@@ -2,6 +2,7 @@
 
 import type { PlayerEntry, Race } from "../types";
 import { computeRosterCostFromPlayers } from "../roster";
+import { getSkillById } from "../data/skills";
 
 export interface RosterTableProps {
   players: PlayerEntry[];
@@ -44,6 +45,7 @@ export function RosterTable({
             <th scope="col" className="pb-2 pr-2 font-medium">AG</th>
             <th scope="col" className="pb-2 pr-2 font-medium">PA</th>
             <th scope="col" className="pb-2 pr-2 font-medium">AV</th>
+            <th scope="col" className="pb-2 pr-4 font-medium">Skills</th>
             <th scope="col" className="pb-2 pr-4 font-medium">Cost</th>
             {!readOnly ? <th scope="col" className="pb-2 font-medium"></th> : null}
           </tr>
@@ -71,6 +73,25 @@ export function RosterTable({
                 <td className="py-2 pr-2 text-slate-300">{positional?.ag ?? "—"}</td>
                 <td className="py-2 pr-2 text-slate-300">{positional?.pa ?? "—"}</td>
                 <td className="py-2 pr-2 text-slate-300">{positional?.av ?? "—"}</td>
+                <td className="py-2 pr-4">
+                  {positional && positional.skills.length > 0 ? (
+                    <ul className="flex flex-wrap gap-x-2 gap-y-0.5">
+                      {positional.skills.map((skillId) => {
+                        const skill = getSkillById(skillId);
+                        return (
+                          <li key={skillId} className="text-xs">
+                            <span className="text-slate-300">{skill?.name ?? skillId}</span>
+                            {skill ? (
+                              <span className="ml-0.5 text-slate-500">({skill.category})</span>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <span className="text-slate-600">—</span>
+                  )}
+                </td>
                 <td className="py-2 pr-4 text-slate-300">
                   {positional ? formatGold(positional.cost) : "—"}
                 </td>
@@ -93,7 +114,7 @@ export function RosterTable({
         {showTotals ? (
           <tfoot>
             <tr className="border-t border-blue-600/20 font-medium text-slate-300">
-              <td colSpan={readOnly ? 7 : 7} className="pt-2 pr-4">
+              <td colSpan={8} className="pt-2 pr-4">
                 {players.length} player{players.length === 1 ? "" : "s"}
               </td>
               <td className="pt-2 pr-4">{formatGold(totalCost)}</td>
