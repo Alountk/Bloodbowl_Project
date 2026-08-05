@@ -38,3 +38,9 @@ node_modules/.cache
 
 # local pi runtime state
 .atl/
+
+# local codegraph index/runtime
+/.codegraph/
+
+# external source documents
+/external-assets/
