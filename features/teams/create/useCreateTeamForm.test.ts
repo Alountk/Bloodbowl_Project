@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { getRaceById } from "../data/races";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "../types";
 import { useCreateTeamForm, type CreateTeamValues } from "./useCreateTeamForm";
 
 function setup(onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined)) {
@@ -13,6 +14,51 @@ describe("useCreateTeamForm", () => {
     expect(result.current.name).toBe("");
     expect(result.current.raceId).toBe("");
     expect(result.current.players).toEqual([]);
+  });
+
+  // --- coaching staff ---
+
+  it("starts with DEFAULT_COACHING and the default league type", () => {
+    const { result } = setup();
+    expect(result.current.coaching).toEqual(DEFAULT_COACHING);
+    expect(result.current.leagueType).toBe(DEFAULT_LEAGUE_TYPE);
+  });
+
+  it("setCoaching updates only the patched field", () => {
+    const { result } = setup();
+    act(() => result.current.setCoaching({ rerolls: 2 }));
+    expect(result.current.coaching).toEqual({ ...DEFAULT_COACHING, rerolls: 2 });
+    expect(result.current.coaching.dedicatedFans).toBe(DEFAULT_COACHING.dedicatedFans);
+    expect(result.current.coaching.apothecary).toBe(false);
+  });
+
+  it("setLeagueType updates the league type", () => {
+    const { result } = setup();
+    act(() => result.current.setLeagueType("exhibition"));
+    expect(result.current.leagueType).toBe("exhibition");
+  });
+
+  it("submit carries coaching and leagueType and resets them after", async () => {
+    const onSubmit = vi
+      .fn<(values: CreateTeamValues) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    const { result } = setup(onSubmit);
+    act(() => result.current.setName("Reikland Reavers"));
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.addPlayer("lineman"));
+    act(() => result.current.addPlayer("lineman"));
+    act(() => result.current.addPlayer("blitzer"));
+    act(() => result.current.setCoaching({ rerolls: 3, apothecary: true }));
+    act(() => result.current.setLeagueType("exhibition"));
+
+    await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0][0].coaching).toEqual({ ...DEFAULT_COACHING, rerolls: 3, apothecary: true });
+    expect(onSubmit.mock.calls[0][0].leagueType).toBe("exhibition");
+
+    expect(result.current.coaching).toEqual(DEFAULT_COACHING);
+    expect(result.current.leagueType).toBe(DEFAULT_LEAGUE_TYPE);
   });
 
   // --- addPlayer ---

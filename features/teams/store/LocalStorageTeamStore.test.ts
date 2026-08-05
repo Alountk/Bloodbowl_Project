@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { LocalStorageTeamStore } from "./LocalStorageTeamStore";
 import type { Team } from "../types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "../types";
 
 const STORAGE_KEY = "bb_teams_v1";
 
@@ -9,6 +10,8 @@ const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   name,
   raceId: "human",
   roster: [],
+  coaching: { ...DEFAULT_COACHING },
+  leagueType: DEFAULT_LEAGUE_TYPE,
 });
 
 /** Returns a minimal localStorage stub without touching real jsdom localStorage. */
@@ -38,6 +41,32 @@ describe("LocalStorageTeamStore", () => {
     const stub = makeStorageStub(JSON.stringify(teams));
     const store = new LocalStorageTeamStore(stub as unknown as Storage);
     expect(await store.list()).toEqual(teams);
+  });
+
+  it("list() backfills defaults for legacy teams missing coaching/leagueType", async () => {
+    const legacy = [{ id: "legacy-1", name: "Legacy Team", raceId: "human", roster: [] }];
+    const stub = makeStorageStub(JSON.stringify(legacy));
+    const store = new LocalStorageTeamStore(stub as unknown as Storage);
+    const listed = await store.list();
+    expect(listed).toEqual([
+      {
+        ...legacy[0],
+        coaching: { ...DEFAULT_COACHING },
+        leagueType: DEFAULT_LEAGUE_TYPE,
+      },
+    ]);
+  });
+
+  it("save() reads normalized teams so upserts keep defaults", async () => {
+    const legacy = [{ id: "a", name: "Legacy", raceId: "human", roster: [] }];
+    const stub = makeStorageStub(JSON.stringify(legacy));
+    const store = new LocalStorageTeamStore(stub as unknown as Storage);
+    await store.save({ ...makeTeam("a"), name: "Updated" });
+    const parsed = JSON.parse(stub._stored!) as Team[];
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].name).toBe("Updated");
+    expect(parsed[0].coaching).toEqual(DEFAULT_COACHING);
+    expect(parsed[0].leagueType).toBe(DEFAULT_LEAGUE_TYPE);
   });
 
   it("list() returns [] and does NOT throw on corrupt JSON", async () => {

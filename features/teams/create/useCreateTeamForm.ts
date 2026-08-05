@@ -6,14 +6,22 @@ import {
   MAX_PLAYERS,
   MIN_PLAYERS,
   STARTING_TREASURY,
+  computeCoachingCost,
   computeRosterCostFromPlayers,
 } from "../roster";
-import type { PlayerEntry } from "../types";
+import type {
+  CoachingStaff,
+  PlayerEntry,
+  TeamLeagueType,
+} from "../types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "../types";
 
 export interface CreateTeamValues {
   name: string;
   raceId: string;
   roster: PlayerEntry[];
+  coaching: CoachingStaff;
+  leagueType: TeamLeagueType;
 }
 
 interface FormErrors {
@@ -26,14 +34,18 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
   const [name, setName] = useState("");
   const [raceId, setRaceId] = useState("");
   const [players, setPlayers] = useState<PlayerEntry[]>([]);
+  const [coaching, setCoachingState] = useState<CoachingStaff>({ ...DEFAULT_COACHING });
+  const [leagueType, setLeagueTypeState] = useState<TeamLeagueType>(DEFAULT_LEAGUE_TYPE);
   const [pendingRaceId, setPendingRaceId] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const race = raceId ? getRaceById(raceId) : undefined;
   const cost = race ? computeRosterCostFromPlayers(race, players) : 0;
+  const coachingCost = race ? computeCoachingCost(race, coaching) : 0;
+  const totalCost = cost + coachingCost;
   const playerCount = players.length;
-  const remainingBudget = STARTING_TREASURY - cost;
+  const remainingBudget = STARTING_TREASURY - totalCost;
 
   // Race change — with pending confirmation if roster is non-empty
   const changeRace = (nextRaceId: string) => {
@@ -64,7 +76,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     if (players.length >= MAX_PLAYERS) return;
     const countForPositional = players.filter((p) => p.positionalKey === positionalKey).length;
     if (countForPositional >= positional.max) return;
-    const nextCost = cost + positional.cost;
+    const nextCost = totalCost + positional.cost;
     if (nextCost > STARTING_TREASURY) return;
 
     const nextNumber = players.length + 1;
@@ -86,6 +98,14 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     );
   };
 
+  const setCoaching = (patch: Partial<CoachingStaff>) => {
+    setCoachingState((prev) => ({ ...prev, ...patch }));
+  };
+
+  const setLeagueType = (next: TeamLeagueType) => {
+    setLeagueTypeState(next);
+  };
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     const nextErrors: FormErrors = {};
@@ -93,7 +113,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     if (playerCount < MIN_PLAYERS) {
       nextErrors.players = `Select at least ${MIN_PLAYERS} players`;
     }
-    if (cost > STARTING_TREASURY) nextErrors.budget = "Roster exceeds the 1,000,000 gc budget";
+    if (totalCost > STARTING_TREASURY) nextErrors.budget = "Roster exceeds the 1,000,000 gc budget";
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0 || !race) return;
@@ -103,11 +123,15 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
       name: name.trim(),
       raceId,
       roster: players,
+      coaching,
+      leagueType,
     }).finally(() => {
       setIsSubmitting(false);
       setName("");
       setRaceId("");
       setPlayers([]);
+      setCoachingState({ ...DEFAULT_COACHING });
+      setLeagueTypeState(DEFAULT_LEAGUE_TYPE);
       setPendingRaceId(null);
     });
   };
@@ -126,9 +150,15 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     cancelRaceChange,
     errors,
     cost,
+    coachingCost,
+    totalCost,
     playerCount,
     remainingBudget,
     isSubmitting,
     handleSubmit,
+    coaching,
+    setCoaching,
+    leagueType,
+    setLeagueType,
   };
 }
