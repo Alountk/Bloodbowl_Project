@@ -1,4 +1,5 @@
 import type { Team } from "../types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE, isCoachingStaff } from "../types";
 import type { TeamStore } from "./TeamStore";
 
 const STORAGE_KEY = "bb_teams_v1";
@@ -26,11 +27,22 @@ export class LocalStorageTeamStore implements TeamStore {
     return this._storage ?? window.localStorage;
   }
 
+  /** Backfills coaching/leagueType defaults for legacy persisted teams. */
+  private normalize(team: Team): Team {
+    const coaching = isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING;
+    return {
+      ...team,
+      coaching: { ...DEFAULT_COACHING, ...coaching },
+      leagueType: team.leagueType ?? DEFAULT_LEAGUE_TYPE,
+    };
+  }
+
   private readAll(): Team[] {
     try {
       const raw = this.storage.getItem(STORAGE_KEY);
       if (!raw) return [];
-      return JSON.parse(raw) as Team[];
+      const parsed = JSON.parse(raw) as Team[];
+      return parsed.map((t) => this.normalize(t));
     } catch {
       return [];
     }

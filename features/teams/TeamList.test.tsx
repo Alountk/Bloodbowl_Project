@@ -6,12 +6,15 @@ import type { TeamStore } from "@/features/teams/store/TeamStore";
 import { Topbar } from "@/components/Topbar";
 import { TeamList } from "./TeamList";
 import type { Team } from "./types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "./types";
 
 const fixtureTeams: Team[] = [
   {
     id: "team-1",
     name: "Reikland Reavers",
     raceId: "human",
+    coaching: { ...DEFAULT_COACHING },
+    leagueType: DEFAULT_LEAGUE_TYPE,
     roster: [
       { id: "p1", name: "Player 1", positionalKey: "lineman" },
       { id: "p2", name: "Player 2", positionalKey: "lineman" },
@@ -30,6 +33,8 @@ const fixtureTeams: Team[] = [
     id: "team-2",
     name: "Da Krumpaz",
     raceId: "orc",
+    coaching: { ...DEFAULT_COACHING },
+    leagueType: DEFAULT_LEAGUE_TYPE,
     roster: Array.from({ length: 11 }, (_, i) => ({
       id: `op${i}`,
       name: `Player ${i + 1}`,
