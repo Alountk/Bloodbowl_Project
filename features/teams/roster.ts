@@ -1,8 +1,54 @@
-import type { PlayerEntry, Race, Team } from "./types";
+import type { CoachingStaff, PlayerEntry, Race, Team } from "./types";
 
 export const STARTING_TREASURY = 1_000_000;
 export const MIN_PLAYERS = 3;
 export const MAX_PLAYERS = 16;
+
+// Standard Blood Bowl 2025 coaching staff costs and limits (gold coins).
+// Source: BP2025 core rulebook, "Drafting a Blood Bowl Team" (Sideline Staff / Dedicated Fans).
+export const ASSISTANT_COACH_COST = 10_000;
+export const ASSISTANT_COACH_MAX = 6;
+export const CHEERLEADER_COST = 10_000;
+export const CHEERLEADER_MAX = 6;
+export const APOTHECARY_COST = 50_000;
+export const MAX_REROLLS = 8;
+export const DEDICATED_FANS_START = 1;
+export const DEDICATED_FANS_MAX = 3;
+export const DEDICATED_FAN_IMPROVEMENT_COST = 5_000;
+
+export interface CoachingCostItem {
+  /** Indexable field on CoachingStaff */
+  key: "rerolls" | "dedicatedFans" | "assistantCoaches" | "cheerleaders";
+  /** Unit cost in gold coins (per reroll / per staff member) */
+  unitCost: number;
+  /** Number currently purchased */
+  quantity: number;
+  /** Quantity * unitCost */
+  total: number;
+}
+
+export function computeCoachingCostItems(race: Race, coaching: CoachingStaff): CoachingCostItem[] {
+  const items: CoachingCostItem[] = [
+    { key: "rerolls", unitCost: race.rerollCost, quantity: coaching.rerolls, total: 0 },
+    { key: "dedicatedFans", unitCost: DEDICATED_FAN_IMPROVEMENT_COST, quantity: coaching.dedicatedFans, total: 0 },
+    { key: "assistantCoaches", unitCost: ASSISTANT_COACH_COST, quantity: coaching.assistantCoaches, total: 0 },
+    { key: "cheerleaders", unitCost: CHEERLEADER_COST, quantity: coaching.cheerleaders, total: 0 },
+  ];
+  for (const item of items) {
+    // Dedicated Fans start at 1 automatically; only upgrades above the starting
+    // characteristic cost gold (e.g. 1 -> 3 = two upgrades = 10k).
+    const paid =
+      item.key === "dedicatedFans" ? Math.max(0, item.quantity - DEDICATED_FANS_START) : item.quantity;
+    item.total = paid * item.unitCost;
+  }
+  return items;
+}
+
+export function computeCoachingCost(race: Race, coaching: CoachingStaff): number {
+  const items = computeCoachingCostItems(race, coaching);
+  const staff = items.reduce((acc, item) => acc + item.total, 0);
+  return staff + (coaching.apothecary ? APOTHECARY_COST : 0);
+}
 
 /** @deprecated Use computeRosterCostFromPlayers with PlayerEntry[] instead */
 export type Quantities = Record<string, number>;

@@ -44,9 +44,44 @@ export interface PlayerEntry {
   positionalKey: string;
 }
 
+export interface CoachingStaff {
+  rerolls: number;
+  dedicatedFans: number;
+  assistantCoaches: number;
+  cheerleaders: number;
+  apothecary: boolean;
+}
+
+export const DEFAULT_COACHING: CoachingStaff = {
+  rerolls: 0,
+  // BB2025: a team always begins with a Dedicated Fans characteristic of 1.
+  dedicatedFans: 1,
+  assistantCoaches: 0,
+  cheerleaders: 0,
+  apothecary: false,
+};
+
+export type TeamLeagueType = "exhibition" | "open";
+export const LEAGUE_TYPES: TeamLeagueType[] = ["exhibition", "open"];
+export const DEFAULT_LEAGUE_TYPE: TeamLeagueType = "open";
+
+export function isCoachingStaff(value: unknown): value is CoachingStaff {
+  if (typeof value !== "object" || value === null) return false;
+  const staff = value as Record<string, unknown>;
+  return (
+    typeof staff.rerolls === "number" &&
+    typeof staff.dedicatedFans === "number" &&
+    typeof staff.assistantCoaches === "number" &&
+    typeof staff.cheerleaders === "number" &&
+    typeof staff.apothecary === "boolean"
+  );
+}
+
 export interface Team {
   id: string;
   name: string;
   raceId: string;
   roster: PlayerEntry[];
+  coaching: CoachingStaff;
+  leagueType: TeamLeagueType;
 }

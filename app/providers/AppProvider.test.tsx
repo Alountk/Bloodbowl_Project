@@ -4,6 +4,7 @@ import { AppProvider, useApp } from "./AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
 import type { Team } from "@/features/teams/types";
+import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "@/features/teams/types";
 import type { CreateTeamValues } from "@/features/teams/create/useCreateTeamForm";
 
 const makeTeam = (id: string, name = `Team ${id}`): Team => ({
@@ -11,12 +12,16 @@ const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   name,
   raceId: "human",
   roster: [],
+  coaching: { ...DEFAULT_COACHING },
+  leagueType: DEFAULT_LEAGUE_TYPE,
 });
 
 const makeValues = (name = "New Team"): CreateTeamValues => ({
   name,
   raceId: "human",
   roster: [],
+  coaching: { ...DEFAULT_COACHING },
+  leagueType: DEFAULT_LEAGUE_TYPE,
 });
 
 /** Renders AppProvider and exposes the context value via a sentinel component. */
