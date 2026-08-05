@@ -96,6 +96,19 @@ export const RACES: Race[] = [
       { key: "minotaur", name: "Minotaur", role: "Big Guy", cost: 150_000, max: 1, ma: 5, st: 5, ag: "4+", pa: "6+", av: "9+", skills: ["Thick Skull", "Horns", "Frenzy", "Mighty Blow (+1)", "Unchannelled Fury", "Loner (4+)"] },
     ],
   },
+  {
+    id: "chaos-dwarf",
+    name: "Chaos Dwarf",
+    rerollCost: 70_000,
+    positionals: [
+      { key: "hobgoblin-lineman", name: "Hobgoblin Lineman", role: "Lineman", cost: 40_000, max: 16, ma: 6, st: 3, ag: "3+", pa: "4+", av: "8+", skills: [] },
+      { key: "sneaky-stabba", name: "Sneaky Stabba", role: "Runner", cost: 60_000, max: 2, ma: 6, st: 3, ag: "3+", pa: "5+", av: "8+", skills: ["Apuñalar", "Perseguir"] },
+      { key: "chaos-dwarf-blocker", name: "Chaos Dwarf Blocker", role: "Blocker", cost: 70_000, max: 4, ma: 4, st: 3, ag: "4+", pa: "6+", av: "10+", skills: ["Cabeza dura", "Piel férrea", "Placar"] },
+      { key: "flamesmith", name: "Flamesmith", role: "Blocker", cost: 80_000, max: 2, ma: 5, st: 3, ag: "4+", pa: "6+", av: "10+", skills: ["Cabeza dura", "Exhalar fuego", "Luchador", "Presencia perturbadora"] },
+      { key: "bull-centaur", name: "Bull Centaur", role: "Blitzer", cost: 130_000, max: 2, ma: 6, st: 4, ag: "4+", pa: "6+", av: "10+", skills: ["Cabeza dura", "Esprintar", "Pies firmes", "Tembloroso"] },
+      { key: "minotaur", name: "Minotaur", role: "Big Guy", cost: 150_000, max: 1, ma: 5, st: 5, ag: "4+", pa: "6+", av: "9+", skills: ["Cabeza dura", "Cuernos", "Furia", "Golpe mortífero", "Ira descontrolada", "Solitario (4+)"] },
+    ],
+  },
   // --- Additional BB2025 races ---
   {
     id: "amazon",
@@ -133,6 +146,29 @@ export const RACES: Race[] = [
       { key: "catcher", name: "Catcher", role: "Catcher", cost: 55_000, max: 4, ma: 5, st: 2, ag: "3+", pa: "4+", av: "7+", skills: ["Catch", "Sprint", "Dodge", "Right Stuff", "Titchy"] },
       { key: "hefty", name: "Hefty", role: "Blitzer", cost: 50_000, max: 2, ma: 5, st: 2, ag: "3+", pa: "3+", av: "8+", skills: ["Dodge", "Right Stuff", "Sneaky Git"] },
       { key: "treeman", name: "Treeman", role: "Big Guy", cost: 120_000, max: 2, ma: 2, st: 6, ag: "5+", pa: "5+", av: "11+", skills: ["Strong Arm", "Thick Skull", "Take Root", "Mighty Blow (+1)", "Throw Team-mate", "Stand Firm", "Timmm-ber!"] },
+    ],
+  },
+  {
+    id: "high-elf",
+    name: "High Elf",
+    rerollCost: 50_000,
+    positionals: [
+      { key: "lineman", name: "Lineman", role: "Lineman", cost: 70_000, max: 16, ma: 6, st: 3, ag: "2+", pa: "4+", av: "8+", skills: [] },
+      { key: "thrower", name: "Thrower", role: "Thrower", cost: 100_000, max: 2, ma: 6, st: 3, ag: "2+", pa: "2+", av: "8+", skills: ["Pass", "Sure Hands"] },
+      { key: "catcher", name: "Catcher", role: "Catcher", cost: 85_000, max: 4, ma: 8, st: 2, ag: "2+", pa: "4+", av: "8+", skills: ["Catch", "Dodge"] },
+      { key: "blitzer", name: "Blitzer", role: "Blitzer", cost: 110_000, max: 4, ma: 7, st: 3, ag: "2+", pa: "3+", av: "9+", skills: ["Block"] },
+    ],
+  },
+  {
+    id: "gnome",
+    name: "Gnome",
+    rerollCost: 50_000,
+    positionals: [
+      { key: "gnome-lineman", name: "Gnome Lineman", role: "Lineman", cost: 40_000, max: 16, ma: 5, st: 2, ag: "3+", pa: "4+", av: "7+", skills: ["En pie de un salto", "Escurridizo", "Forcejear", "Humanoide bala"] },
+      { key: "woodland-fox", name: "Woodland Fox", role: "Runner", cost: 50_000, max: 2, ma: 7, st: 2, ag: "2+", pa: "—", av: "6+", skills: ["Echarse a un lado", "El balón es mío", "Escurridizo", "Esquivar"] },
+      { key: "gnome-illusionist", name: "Gnome Illusionist", role: "Thrower", cost: 50_000, max: 2, ma: 5, st: 2, ag: "3+", pa: "3+", av: "7+", skills: ["Embustero", "En pie de un salto", "Escurridizo", "Forcejear"] },
+      { key: "gnome-beastmaster", name: "Gnome Beastmaster", role: "Blocker", cost: 55_000, max: 2, ma: 5, st: 2, ag: "3+", pa: "4+", av: "8+", skills: ["Defensa", "En pie de un salto", "Escurridizo", "Forcejear"] },
+      { key: "altern-forest-treeman", name: "Altern Forest Treeman", role: "Big Guy", cost: 120_000, max: 2, ma: 2, st: 6, ag: "5+", pa: "5+", av: "11+", skills: ["Brazo fuerte", "Cabeza dura", "Echar raíces", "Golpe mortífero", "Lanzar compañero", "Mantenerse firme", "¡Tronco va!"] },
     ],
   },
   {
@@ -213,6 +249,16 @@ export const RACES: Race[] = [
       { key: "pestigor", name: "Pestigor", role: "Runner", cost: 70_000, max: 4, ma: 6, st: 3, ag: "3+", pa: "4+", av: "9+", skills: ["Thick Skull", "Horns", "Sure Feet", "Regeneration"] },
       { key: "bloater", name: "Bloater", role: "Blocker", cost: 110_000, max: 4, ma: 4, st: 4, ag: "4+", pa: "6+", av: "10+", skills: ["Foul Appearance", "Stand Firm", "Disturbing Presence", "Regeneration", "Unchannelled Fury"] },
       { key: "rotspawn", name: "Rotspawn", role: "Big Guy", cost: 140_000, max: 1, ma: 4, st: 5, ag: "5+", pa: "6+", av: "10+", skills: ["Foul Appearance", "Mighty Blow (+1)", "Disturbing Presence", "Really Stupid", "Regeneration", "Tentacles", "Loner (4+)"] },
+    ],
+  },
+  {
+    id: "ogre",
+    name: "Ogre",
+    rerollCost: 70_000,
+    positionals: [
+      { key: "gnoblar-lineman", name: "Gnoblar Lineman", role: "Lineman", cost: 15_000, max: 16, ma: 5, st: 1, ag: "3+", pa: "4+", av: "6+", skills: ["Canijo", "Echarse a un lado", "Escurridizo", "Esquivar", "Humanoide bala"] },
+      { key: "ogre-blocker", name: "Ogre Blocker", role: "Blocker", cost: 140_000, max: 5, ma: 5, st: 5, ag: "4+", pa: "5+", av: "10+", skills: ["Cabeza dura", "Estúpido", "Golpe mortífero", "Lanzar compañero"] },
+      { key: "ogre-runt-punter", name: "Ogre Runt Punter", role: "Thrower", cost: 145_000, max: 1, ma: 5, st: 5, ag: "4+", pa: "4+", av: "10+", skills: ["Cabeza dura", "RP", "Chutar compañero", "Estúpido", "Golpe mortífero"] },
     ],
   },
   {
@@ -318,5 +364,4 @@ export function getRaceById(id: string): Race | undefined {
 
 /** BB2025 ruleset version marker. */
 export const RULES_METADATA = { version: "BB2025" } as const;
-
 

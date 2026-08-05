@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import { RACES, getRaceById, RULES_METADATA } from "./races";
 
 describe("race dataset", () => {
-  it("contains the 26 BB2025 races", () => {
-    expect(RACES).toHaveLength(26);
+  it("contains the 30 BB2025 races", () => {
+    expect(RACES).toHaveLength(30);
   });
 
   it("uses unique race ids", () => {
@@ -100,14 +100,20 @@ describe("RULES_METADATA", () => {
 });
 
 describe("BB2025 roster corrections", () => {
-  it("high-elf roster does not exist in BB2025", () => {
-    expect(getRaceById("high-elf")).toBeUndefined();
+  it("high-elf roster exists in BB2025", () => {
+    expect(getRaceById("high-elf")).toBeDefined();
   });
 
-  it("bretonnian roster exists as replacement for high-elf", () => {
+  it("bretonnian roster exists in BB2025", () => {
     const b = getRaceById("bretonnian");
     expect(b).toBeDefined();
     expect(b!.name).toBe("Bretonnian");
+  });
+
+  it("chaos-dwarf, gnome and ogre rosters exist in BB2025", () => {
+    expect(getRaceById("chaos-dwarf")).toBeDefined();
+    expect(getRaceById("gnome")).toBeDefined();
+    expect(getRaceById("ogre")).toBeDefined();
   });
 
   it("chaos-chosen has no beastman-runner positional", () => {
@@ -204,13 +210,13 @@ describe("REQ-RACE-01: BB2025 reference table availability", () => {
 // REQ-RACE-02: Preserve Unlisted Keys — exact race ID set and positional key inventory
 // ---------------------------------------------------------------------------
 describe("REQ-RACE-02: Exact post-migration race ID set and positional key inventory", () => {
-  // Authoritative BB2025 race ID list (26 races; high-elf removed, bretonnian added)
+  // Authoritative BB2025 race ID list (30 races)
   const EXPECTED_RACE_IDS = new Set([
     "human", "orc", "dwarf", "elven-union", "skaven", "dark-elf",
-    "shambling-undead", "chaos-chosen", "amazon", "chaos-renegade",
-    "halfling", "bretonnian", "imperial-nobility", "khorne", "lizardmen",
+    "shambling-undead", "chaos-chosen", "chaos-dwarf", "amazon", "chaos-renegade",
+    "halfling", "high-elf", "bretonnian", "gnome", "imperial-nobility", "khorne", "lizardmen",
     "necromantic-horror", "norse", "nurgle", "old-world-alliance", "snotling",
-    "tomb-kings", "underworld-denizens", "vampire", "black-orc", "goblin", "wood-elf",
+    "ogre", "tomb-kings", "underworld-denizens", "vampire", "black-orc", "goblin", "wood-elf",
   ]);
 
   // Approved positional key inventory per race (approved delta applied)
@@ -223,17 +229,21 @@ describe("REQ-RACE-02: Exact post-migration race ID set and positional key inven
     "dark-elf":            ["lineman", "blitzer", "runner", "assassin", "witch-elf"],
     "shambling-undead":    ["skeleton-lineman", "zombie-lineman", "ghoul-runner", "wight-blitzer", "mummy"],
     "chaos-chosen":        ["lineman", "chosen-blocker", "chaos-troll", "minotaur"],
+    "chaos-dwarf":         ["hobgoblin-lineman", "sneaky-stabba", "chaos-dwarf-blocker", "flamesmith", "bull-centaur", "minotaur"],
     "amazon":              ["linewoman", "thrower", "catcher", "blitzer"],
     "chaos-renegade":      ["renegade-lineman", "renegade-orc-lineman", "renegade-goblin", "renegade-skaven",
-                            "renegade-dark-elf", "chaos-ogre", "renegade-troll", "renegade-minotaur", "renegade-rat-ogre"],
+                             "renegade-dark-elf", "chaos-ogre", "renegade-troll", "renegade-minotaur", "renegade-rat-ogre"],
     "halfling":            ["hopeful", "catcher", "hefty", "treeman"],
+    "high-elf":            ["lineman", "thrower", "catcher", "blitzer"],
     "bretonnian":          ["peasant-lineman", "blitzer", "blocker", "ogre"],
+    "gnome":               ["gnome-lineman", "woodland-fox", "gnome-illusionist", "gnome-beastmaster", "altern-forest-treeman"],
     "imperial-nobility":   ["lackey-lineman", "bodyguard", "thrower", "blitzer", "ogre"],
     "khorne":              ["marauder", "khorne-blocker", "bloodseeker", "juggernaut"],
     "lizardmen":           ["skink-runner", "saurus-blocker", "kroxigor"],
     "necromantic-horror":  ["zombie-lineman", "werewolf", "flesh-golem", "wraith", "ghoul-runner"],
     "norse":               ["lineman", "thrower", "berserker", "valkyrie", "ulfwerener", "snow-troll"],
     "nurgle":              ["rotter-lineman", "pestigor", "bloater", "rotspawn"],
+    "ogre":                ["gnoblar-lineman", "ogre-blocker", "ogre-runt-punter"],
     "old-world-alliance":  ["human-lineman", "dwarf-lineman", "halfling-hopeful", "thrower", "blitzer", "ogre"],
     "snotling":            ["snotling", "fun-hoppa", "stilty-runna", "pump-wagon", "trained-troll"],
     "tomb-kings":          ["skeleton-lineman", "thro-ra", "blitz-ra", "tomb-guardian"],
@@ -244,13 +254,13 @@ describe("REQ-RACE-02: Exact post-migration race ID set and positional key inven
     "wood-elf":            ["lineman", "thrower", "catcher", "wardancer", "treeman"],
   };
 
-  it("exact post-migration race ID set equals the approved 26-race BB2025 roster", () => {
+  it("exact post-migration race ID set equals the approved 30-race BB2025 roster", () => {
     const actualIds = new Set(RACES.map((r) => r.id));
     expect(actualIds).toEqual(EXPECTED_RACE_IDS);
   });
 
-  it("high-elf is not present (approved removal)", () => {
-    expect(RACES.map((r) => r.id)).not.toContain("high-elf");
+  it("high-elf is present", () => {
+    expect(RACES.map((r) => r.id)).toContain("high-elf");
   });
 
   it("positional key inventory matches approved set for every race (no unlisted additions or removals)", () => {
@@ -267,8 +277,7 @@ describe("REQ-RACE-02: Exact post-migration race ID set and positional key inven
 // ---------------------------------------------------------------------------
 describe("REQ-RACE-04: Exact reroll costs from verified BB2025 reference table", () => {
   // Values sourced from bb2025-reference-table.md (Reroll Cost column, per-race).
-  // bretonnian is not in the reference table; value is recorded from implementation
-  // and should be revisited when the official source is confirmed.
+    // NOTE: chaos-dwarf, gnome and ogre values were OCR-extracted from the 2025 PDF.
   const EXPECTED_REROLL_COSTS: Record<string, number> = {
     "human":               50_000,
     "orc":                 60_000,
@@ -278,16 +287,20 @@ describe("REQ-RACE-04: Exact reroll costs from verified BB2025 reference table",
     "dark-elf":            50_000,
     "shambling-undead":    70_000,
     "chaos-chosen":        50_000,
+    "chaos-dwarf":         70_000,
     "amazon":              60_000,
     "chaos-renegade":      70_000,
     "halfling":            60_000,
-    "bretonnian":          50_000, // NOTE: not in reference table; confirm from official source
+    "high-elf":            50_000,
+    "bretonnian":          50_000,
+    "gnome":               50_000,
     "imperial-nobility":   60_000,
     "khorne":              60_000,
     "lizardmen":           70_000,
     "necromantic-horror":  70_000,
     "norse":               60_000,
     "nurgle":              60_000,
+    "ogre":                70_000,
     "old-world-alliance":  70_000,
     "snotling":            70_000,
     "tomb-kings":          60_000,
@@ -445,10 +458,10 @@ describe("REQ-RACE-04: Full positional stat/cost/skill parity against verified r
     });
   });
 
-  // ---- High Elf (N/A — race removed in BB2025) ----------------------------
-  describe("high-elf N/A parity", () => {
-    it("high-elf race does not exist (N/A — removed in BB2025)", () => {
-      expect(getRaceById("high-elf")).toBeUndefined();
+  // ---- High Elf ------------------------------------------------------------
+  describe("high-elf parity", () => {
+    it("high-elf race exists", () => {
+      expect(getRaceById("high-elf")).toBeDefined();
     });
   });
 
