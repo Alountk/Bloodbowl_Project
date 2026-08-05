@@ -1,3 +1,5 @@
+import type { SkillId } from "./data/skills";
+
 export interface Positional {
   /** Unique within a race, e.g. "lineman" */
   key: string;
@@ -19,8 +21,8 @@ export interface Positional {
   pa: string;
   /** Armour Value ("8+" style) */
   av: string;
-  /** Display names of starting skills */
-  skills: string[];
+  /** Stable catalog ids of starting skills (see features/teams/data/skills.ts) */
+  skills: SkillId[];
 }
 
 export interface Race {
