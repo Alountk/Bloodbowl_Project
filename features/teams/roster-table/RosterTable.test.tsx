@@ -9,7 +9,7 @@ const mockRace: Race = {
   rerollCost: 50_000,
   positionals: [
     { key: "lineman", name: "Lineman", role: "Lineman", cost: 50_000, max: 16, ma: 6, st: 3, ag: "3+", pa: "4+", av: "8+", skills: [] },
-    { key: "blitzer", name: "Blitzer", role: "Blitzer", cost: 90_000, max: 4, ma: 7, st: 3, ag: "3+", pa: "4+", av: "9+", skills: ["Block"] },
+    { key: "blitzer", name: "Blitzer", role: "Blitzer", cost: 90_000, max: 4, ma: 7, st: 3, ag: "3+", pa: "4+", av: "9+", skills: ["block"] },
   ],
 };
 
@@ -32,6 +32,20 @@ describe("RosterTable", () => {
       const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
       const aHeaders = headers.filter((h) => h === "A");
       expect(aHeaders).toHaveLength(0);
+    });
+  });
+
+  describe("skills column", () => {
+    it("renders each starting skill with its category", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.getByText("Block").closest("tr")).not.toBeNull();
+      expect(screen.getByText("(general)")).toBeTruthy();
+    });
+
+    it("renders an em dash for positionals with no skills", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      const emDashes = screen.getAllByText("—");
+      expect(emDashes.length).toBeGreaterThan(0);
     });
   });
 
