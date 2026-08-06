@@ -13,6 +13,7 @@ import type { Team } from "@/features/teams/types";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
 import { LocalStorageTeamStore } from "@/features/teams/store/LocalStorageTeamStore";
 import type { CreateTeamValues } from "@/features/teams/create/useCreateTeamForm";
+import { createId } from "@/features/teams/id";
 
 interface AppContextValue {
   teams: Team[];
@@ -45,7 +46,7 @@ export function AppProvider({
 
   const addTeam = useCallback(
     async (values: CreateTeamValues) => {
-      const team: Team = { id: crypto.randomUUID(), ...values };
+      const team: Team = { id: createId(), ...values };
       await store.save(team);
       setTeams((prev) => [...prev, team]);
     },
