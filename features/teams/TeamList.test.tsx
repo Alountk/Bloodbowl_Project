@@ -169,6 +169,17 @@ describe("TeamList", () => {
     expect(link2.getAttribute("href")).toBe("/teams/team-2");
   });
 
+  it("team card links are keyboard-focusable", async () => {
+    renderWithStore();
+    await waitFor(() =>
+      expect(screen.getByText("Reikland Reavers")).toBeTruthy(),
+    );
+
+    const link = screen.getByRole("link", { name: /reikland reavers/i });
+    link.focus();
+    expect(document.activeElement).toBe(link);
+  });
+
   it("search filter works with links present", async () => {
     renderWithStoreAndTopbar();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
