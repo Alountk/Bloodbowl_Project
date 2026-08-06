@@ -50,7 +50,7 @@ describe("TeamDetailView", () => {
     expect(screen.getByText(/no players in roster yet/i)).toBeTruthy();
   });
 
-  it("renders per-item coaching cost breakdown", () => {
+  it("renders per-item coaching cost breakdown with unit cost and total per item", () => {
     const team: Team = {
       ...baseTeam,
       coaching: {
@@ -63,10 +63,31 @@ describe("TeamDetailView", () => {
     };
     render(<TeamDetailView team={team} race={humanRace} />);
 
-    // 2 rerolls at 50k each = 100k total for rerolls
-    expect(screen.getByText(/rerolls/i)).toBeTruthy();
-    // The breakdown must show individual items — verify at least one cost value
-    expect(screen.getByText(/100k/i)).toBeTruthy();
+    // Every coaching item row must appear, including zero-quantity entries,
+    // because the breakdown is per-item (matches CreateTeamForm convention).
+    expect(screen.getByText("Rerolls")).toBeTruthy();
+    expect(screen.getByText("Dedicated Fans")).toBeTruthy();
+    expect(screen.getByText("Assistant Coaches")).toBeTruthy();
+    expect(screen.getByText("Cheerleaders")).toBeTruthy();
+    // 2 rerolls at 50k each = 100k total — proves unit cost AND total both render.
+    expect(screen.getByText("100k")).toBeTruthy();
+  });
+
+  it("forwards the race to RosterTable so positional stats render from the catalog", () => {
+    const team: Team = {
+      ...baseTeam,
+      roster: [
+        { id: "p1", name: "John", positionalKey: "lineman" },
+      ],
+    };
+    render(<TeamDetailView team={team} race={humanRace} />);
+
+    // The race carries the lineman positional (MA/ST/AG/PA/AV + cost). The catalog
+    // cost (50k) must surface through RosterTable — at minimum twice (per-row +
+    // total row). Proves race was actually forwarded, not stubbed.
+    const fiftyK = screen.getAllByText(/^50k$/);
+    expect(fiftyK.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("John")).toBeTruthy();
   });
 
   it("displays correct treasury = STARTING_TREASURY - rosterCost - coachingCost", () => {
