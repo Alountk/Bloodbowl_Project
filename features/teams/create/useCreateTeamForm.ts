@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { getRaceById } from "../data/races";
+import { createId } from "../id";
 import {
   MAX_PLAYERS,
   MIN_PLAYERS,
@@ -81,7 +82,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
 
     const nextNumber = players.length + 1;
     const newPlayer: PlayerEntry = {
-      id: crypto.randomUUID(),
+      id: createId(),
       name: `Player ${nextNumber}`,
       positionalKey,
     };

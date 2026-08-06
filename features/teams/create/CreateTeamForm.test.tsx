@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AppProvider, useApp } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
+import { RACES } from "@/features/teams/data/races";
 import { CreateTeamForm } from "./CreateTeamForm";
 
 // Mock next/navigation
@@ -34,6 +35,55 @@ describe("CreateTeamForm", () => {
     await renderForm();
     expect(screen.getByLabelText(/team name/i)).toBeTruthy();
     expect(screen.getByLabelText(/race/i)).toBeTruthy();
+  });
+
+  it("renders all race options in the select dropdown", async () => {
+    await renderForm();
+    const select = screen.getByLabelText(/race/i) as HTMLSelectElement;
+    const options = Array.from(select.options);
+    // First option is the placeholder
+    expect(options[0].value).toBe("");
+    expect(options[0].text).toBe("Select a race");
+    // Remaining options should match RACES data
+    const raceOptions = options.slice(1);
+    expect(raceOptions).toHaveLength(RACES.length);
+    RACES.forEach((race, index) => {
+      expect(raceOptions[index].value).toBe(race.id);
+      expect(raceOptions[index].text).toBe(race.name);
+    });
+  });
+
+  it("selects a race by its id and shows the placeholder when deselected", async () => {
+    await renderForm();
+    const select = screen.getByLabelText(/race/i) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "orc" } });
+    expect(select.value).toBe("orc");
+    // Deselect back to placeholder
+    fireEvent.change(select, { target: { value: "" } });
+    expect(select.value).toBe("");
+    // Roster should be gone
+    expect(screen.queryByRole("region", { name: "Roster builder" })).toBeNull();
+  });
+
+  it("shows the placeholder 'Select a race' before any race is selected", async () => {
+    await renderForm();
+    const select = screen.getByLabelText(/race/i) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    // The placeholder option should be visible
+    const placeholderOption = select.querySelector('option[value=""]');
+    expect(placeholderOption).toBeTruthy();
+    expect(placeholderOption?.textContent).toBe("Select a race");
+  });
+
+  it("renders the roster builder for every race in RACES", async () => {
+    await renderForm();
+    for (const race of RACES) {
+      fireEvent.change(screen.getByLabelText(/race/i), { target: { value: race.id } });
+      expect(screen.getByRole("region", { name: "Roster builder" })).toBeTruthy();
+      // Should show at least one positional add button
+      const addButtons = screen.getAllByRole("button", { name: /add/i });
+      expect(addButtons.length).toBeGreaterThan(0);
+    }
   });
 
   it("shows stat headers MA ST AG PA AV after selecting a race", async () => {
