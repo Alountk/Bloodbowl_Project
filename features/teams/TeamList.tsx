@@ -20,15 +20,36 @@ export function TeamList() {
 
   return (
     <section aria-labelledby="teams-heading">
-      <h2 id="teams-heading" className="mb-4 text-lg font-semibold text-slate-200">
-        Teams
-      </h2>
+      <div className="mb-4 flex items-end justify-between">
+        <h2
+          id="teams-heading"
+          className="border-b-[3px] border-[#d11938] pb-1.5 text-lg font-bold text-[#12225a]"
+        >
+          Teams
+        </h2>
+        <Link
+          href="/teams/create"
+          className="bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+        >
+          Create New Team
+        </Link>
+      </div>
       {!isHydrated ? null : filtered.length === 0 ? (
-        <p className="text-slate-400">
-          {teams.length === 0
-            ? "No teams yet. Create your first team."
-            : "No teams match your search."}
-        </p>
+        teams.length === 0 ? (
+          <div className="border border-slate-200 bg-white p-8 text-center">
+            <p className="text-sm text-slate-600">No teams yet. Create your first team.</p>
+            <Link
+              href="/teams/create"
+              className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+            >
+              Create New Team
+            </Link>
+          </div>
+        ) : (
+          <div className="border border-slate-200 bg-white p-8 text-center">
+            <p className="text-sm text-slate-600">No teams match your search.</p>
+          </div>
+        )
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((team) => {
@@ -36,12 +57,15 @@ export function TeamList() {
             return (
               <li
                 key={team.id}
-                className="rounded-lg border border-blue-600/20 bg-slate-800/60 p-4"
+                className="overflow-hidden rounded-none border border-slate-200 bg-white"
               >
-                <Link href={`/teams/${team.id}`} className="block">
-                  <h3 className="font-semibold text-white">{team.name}</h3>
-                  <p className="mt-1 text-sm text-slate-400">{race?.name ?? team.raceId}</p>
-                  <p className="mt-1 text-xs text-slate-500">{summarizeRosterFromEntries(team, RACES)}</p>
+                <div className="h-[6px] border-b-2 border-[#d11938] bg-[#12225a]" />
+                <Link href={`/teams/${team.id}`} className="block p-4">
+                  <h3 className="text-[15px] font-extrabold text-[#12225a]">{team.name}</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">{race?.name ?? team.raceId}</p>
+                  <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
+                    {summarizeRosterFromEntries(team, RACES)}
+                  </p>
                 </Link>
               </li>
             );
