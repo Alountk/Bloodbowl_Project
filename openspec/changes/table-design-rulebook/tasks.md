@@ -13,7 +13,7 @@
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: resolved — stacked-to-main (PR1 data on feat/table-rulebook-data -> main; PR2 UI on feat/table-rulebook-ui stacked on main after PR1 merged)
 400-line budget risk: High
 
 ### Suggested Work Units
@@ -34,22 +34,22 @@ Chain strategy: pending
 
 ## Phase 2: Core UI (PR 2)
 
-- [ ] 2.1 `RosterTable.tsx`: add `bannerText?`, `apothecary?` props; add `formatRulebookCost` (regex space) and local `ROLE_TRANSLATIONS` (Lineman→Línea, Thrower→Lanzador, Catcher→Receptor, Blitzer→Blitzer, Big Guy→Grandullón, fallback Otro).
-- [ ] 2.2 `RosterTable.tsx`: light container `max-w-[900px] bg-white shadow-[...]`; banner `border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[28px] text-[#12225a]` — only when roster non-empty.
-- [ ] 2.3 `RosterTable.tsx`: ES header th `CANT.|POSICIÓN|COSTE|MV|FU|AG|PS|AR|HABILIDADES Y RASGOS|PRIMARIAS|SECUNDARIAS` (+ blank th editable), `bg-[#d11938] text-white`, POSICIÓN+HABILIDADES left, rest centered; td `text-[#1a1a1a]`, zebra `odd:bg-white even:bg-[#e6eef5]`.
-- [ ] 2.4 `RosterTable.tsx`: row cells — qty `min-max`, name+subtitle `(Raza, RolEs)` (readOnly primary = `player.name`), `formatRulebookCost(cost)` in cost col only, skills `translations.es ?? name` no suffix, empty→"Ninguna", access `arr.join(" ")`|"—".
-- [ ] 2.5 `RosterTable.tsx`: totals row ABOVE footer — colSpan readOnly 10+1=11, editable 10+1+1=12; keep `formatGold` budget cell.
-- [ ] 2.6 `RosterTable.tsx`: footer `bg-[#12225a]` white bold 13px — `0-8 Segundas oportunidades: {formatRulebookCost(race.rerollCost)} M.O. cada una` (colSpan5) + `Apotecario: SÍ/NO` (colSpan6 [+`<td/>` editable]); render only when `apothecary` provided.
+- [x] 2.1 `RosterTable.tsx`: add `bannerText?`, `apothecary?` props; add `formatRulebookCost` (regex space) and local `ROLE_TRANSLATIONS` (Lineman→Línea, Thrower→Lanzador, Catcher→Receptor, Blitzer→Blitzer, Big Guy→Grandullón, fallback Otro).
+- [x] 2.2 `RosterTable.tsx`: light container `max-w-[900px] bg-white shadow-[...]`; banner `border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[28px] text-[#12225a]` — only when roster non-empty.
+- [x] 2.3 `RosterTable.tsx`: ES header th `CANT.|POSICIÓN|COSTE|MV|FU|AG|PS|AR|HABILIDADES Y RASGOS|PRIMARIAS|SECUNDARIAS` (+ blank th editable), `bg-[#d11938] text-white`, POSICIÓN+HABILIDADES left, rest centered; td `text-[#1a1a1a]`, zebra `odd:bg-white even:bg-[#e6eef5]`.
+- [x] 2.4 `RosterTable.tsx`: row cells — qty `min-max`, name+subtitle `(Raza, RolEs)` (readOnly primary = `player.name`), `formatRulebookCost(cost)` in cost col only, skills `translations.es ?? name` no suffix, empty→"Ninguna", access `arr.join(" ")`|"—".
+- [x] 2.5 `RosterTable.tsx`: totals row ABOVE footer — colSpan readOnly 10+1=11, editable 10+1+1=12; keep `formatGold` budget cell.
+- [x] 2.6 `RosterTable.tsx`: footer `bg-[#12225a]` white bold 13px — `0-8 Segundas oportunidades: {formatRulebookCost(race.rerollCost)} M.O. cada una` (colSpan5) + `Apotecario: SÍ/NO` (colSpan6 [+`<td/>` editable]); render only when `apothecary` provided.
 
 ## Phase 3: Consumers + Tests (PR 2)
 
-- [ ] 3.1 `CreateTeamForm.tsx`: pass `bannerText={form.name.trim() \|\| race.name}` and `apothecary={form.coaching.apothecary}` to `<RosterTable>`.
-- [ ] 3.2 `TeamDetailView.tsx`: pass `bannerText={team.name}` and `apothecary={team.coaching.apothecary}`.
-- [ ] 3.3 `RosterTable.test.tsx`: update headers to ES order (11, +blank editable), assert "50 000" in row+totals, "Ninguna", no "(general)", PRIMARIAS/SECUNDARIAS letters, subtitle `(Human, Línea)` + `Otro` fallback, min→"2-4", banner/footer render + absent, colSpans.
-- [ ] 3.4 `TeamDetailView.test.tsx`: L88 `/^50k$/` → assert "50 000" (row + total); keep John/Jane/remove/no-input green.
-- [ ] 3.5 Run `pnpm test` — full suite green; e2e `create-team.spec.ts` untouched and green. REFACTOR any dead/misaligned code.
+- [x] 3.1 `CreateTeamForm.tsx`: pass `bannerText={form.name.trim() \|\| race.name}` and `apothecary={form.coaching.apothecary}` to `<RosterTable>`.
+- [x] 3.2 `TeamDetailView.tsx`: pass `bannerText={team.name}` and `apothecary={team.coaching.apothecary}`.
+- [x] 3.3 `RosterTable.test.tsx`: update headers to ES order (11, +blank editable), assert "50 000" in row+totals, "Ninguna", no "(general)", PRIMARIAS/SECUNDARIAS letters, subtitle `(Human, Línea)` + `Otro` fallback, min→"2-4", banner/footer render + absent, colSpans.
+- [x] 3.4 `TeamDetailView.test.tsx`: L88 `/^50k$/` → assert "50 000" (row + total); keep John/Jane/remove/no-input green.
+- [x] 3.5 Run `pnpm test` — full suite green; e2e `create-team.spec.ts` untouched and green. REFACTOR any dead/misaligned code.
 
 ## Phase 4: Documentation
 
-- [ ] 4.1 Confirm spec deltas landed: `specs/roster-table/spec.md` (ES headers, access cols, cost/banner/footer/colSpan), `specs/race-data-bb2025/spec.md` (REQ-RACE-07 both arrays ⊆{G,A,P,S,M,F}, F valid), `openspec/.../team-detail-view.md`.
-- [ ] 4.2 Update `openspec/notes/bb2025-ocr-team-audit.md` Access normalization log to final state.
+- [x] 4.1 Confirm spec deltas landed: `specs/roster-table/spec.md` (ES headers, access cols, cost/banner/footer/colSpan), `specs/race-data-bb2025/spec.md` (REQ-RACE-07 both arrays ⊆{G,A,P,S,M,F}, F valid), `openspec/.../team-detail-view.md`.
+- [x] 4.2 Update `openspec/notes/bb2025-ocr-team-audit.md` Access normalization log to final state.
