@@ -23,7 +23,6 @@ const mockPlayers: PlayerEntry[] = [
 ];
 
 const ES_READONLY_HEADERS = ["POSICIÓN", "COSTE", "MV", "FU", "AG", "PS", "AR", "HABILIDADES Y RASGOS", "PRIMARIAS", "SECUNDARIAS"];
-const ES_EDITABLE_HEADERS = ["CANT.", ...ES_READONLY_HEADERS];
 
 describe("RosterTable", () => {
   describe("role translation", () => {
@@ -62,12 +61,13 @@ describe("RosterTable", () => {
       expect(headers.every((h) => h.textContent)).toBeTruthy();
     });
 
-    it("appends CANT. and a blank header cell in editable mode (12 columns)", () => {
+    it("appends only a blank header cell in editable mode (11 columns, no CANT.)", () => {
       render(<RosterTable players={mockPlayers} race={mockRace} />);
       const headers = screen.getAllByRole("columnheader");
-      expect(headers).toHaveLength(12);
-      expect(headers.slice(0, 11).map((h) => h.textContent)).toEqual(ES_EDITABLE_HEADERS);
-      expect(headers[11].textContent).toBe("");
+      expect(headers).toHaveLength(11);
+      expect(headers.slice(0, 10).map((h) => h.textContent)).toEqual(ES_READONLY_HEADERS);
+      expect(headers[10].textContent).toBe("");
+      expect(screen.queryByText("CANT.")).toBeNull();
     });
   });
 
@@ -94,14 +94,14 @@ describe("RosterTable", () => {
   });
 
   describe("quantity cell", () => {
-    it("shows min-max using an explicit min in editable mode", () => {
+    it("does not render a qty cell in editable mode — first cell is POSICIÓN, no min-max text", () => {
       render(<RosterTable players={[{ id: "p3", name: "Min", positionalKey: "minman" }]} race={mockRace} />);
-      expect(screen.getByText("2-4")).toBeTruthy();
-    });
-
-    it("defaults min to 0 when absent in editable mode", () => {
-      render(<RosterTable players={[{ id: "p4", name: "Plain", positionalKey: "lineman" }]} race={mockRace} />);
-      expect(screen.getByText("0-16")).toBeTruthy();
+      // First body row cell is the POSICIÓN cell containing the player-name input.
+      const row = screen.getByLabelText("Player name for Min").closest("tr") as HTMLTableRowElement;
+      expect(row.cells[0].textContent).toContain("Human");
+      // No min-max range string renders anywhere (2-4 nor 0-16).
+      expect(screen.queryByText("2-4")).toBeNull();
+      expect(screen.queryByText("0-16")).toBeNull();
     });
 
     it("does not render a quantity cell in read-only mode", () => {
@@ -237,14 +237,14 @@ describe("RosterTable", () => {
       expect(sum).toBe(10);
     });
 
-    it("keeps formatGold budget text in editable totals and spans 12 columns", () => {
+    it("keeps formatGold budget text in editable totals and spans 11 columns (label 9 + cost 1 + budget 1)", () => {
       render(<RosterTable players={mockPlayers} race={mockRace} remainingBudget={690_000} />);
       expect(screen.getByText("2 players")).toBeTruthy();
       expect(screen.getByText("690k left")).toBeTruthy();
       const totalRow = screen.getAllByRole("row").at(-1) as HTMLTableRowElement;
       const cells = Array.from(totalRow.cells) as HTMLTableCellElement[];
       const sum = cells.reduce((acc, c) => acc + (c.colSpan || 1), 0);
-      expect(sum).toBe(12);
+      expect(sum).toBe(11);
     });
   });
 
@@ -266,7 +266,7 @@ describe("RosterTable", () => {
       expect(screen.queryByText(/Apotecario/i)).toBeNull();
     });
 
-    it("spans the footer columns correctly (4+6 readOnly, 5+6+1 editable)", () => {
+    it("spans the footer columns correctly (4+6 readOnly, 4+6+1 editable)", () => {
       const readOnlyView = render(<RosterTable players={mockPlayers} race={mockRace} readOnly apothecary />);
       let footerRow = screen.getByText(/Segundas oportunidades/i).closest("tr") as HTMLTableRowElement;
       let sum = Array.from(footerRow.cells).reduce((acc, c) => acc + (c.colSpan || 1), 0);
@@ -276,7 +276,7 @@ describe("RosterTable", () => {
       const editableView = render(<RosterTable players={mockPlayers} race={mockRace} apothecary={false} />);
       footerRow = screen.getByText(/Segundas oportunidades/i).closest("tr") as HTMLTableRowElement;
       sum = Array.from(footerRow.cells).reduce((acc, c) => acc + (c.colSpan || 1), 0);
-      expect(sum).toBe(12);
+      expect(sum).toBe(11);
       editableView.unmount();
     });
   });
