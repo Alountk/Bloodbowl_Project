@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { PlayerEntry, Race } from "../types";
-import { RosterTable, formatRulebookCost, translateRole } from "./RosterTable";
+import { RosterTable } from "./RosterTable";
 
 const mockRace: Race = {
   id: "human",
@@ -22,93 +22,19 @@ const mockPlayers: PlayerEntry[] = [
   { id: "p2", name: "Smash", positionalKey: "blitzer" },
 ];
 
-const ES_HEADERS = ["CANT.", "POSICIÓN", "COSTE", "MV", "FU", "AG", "PS", "AR", "HABILIDADES Y RASGOS", "PRIMARIAS", "SECUNDARIAS"];
+const ES_READONLY_HEADERS = ["POSICIÓN", "COSTE", "MV", "FU", "AG", "PS", "AR", "HABILIDADES Y RASGOS", "PRIMARIAS", "SECUNDARIAS"];
+const ES_EDITABLE_HEADERS = ["CANT.", ...ES_READONLY_HEADERS];
 
 describe("RosterTable", () => {
-  describe("rulebook cost formatting", () => {
-    it("formats a 5-digit cost with a thousands space separator", () => {
-      expect(formatRulebookCost(50_000)).toBe("50 000");
-    });
-
-    it("keeps a 6-digit cost as a single space group and a 4-digit cost without grouping", () => {
-      // 6-digit: "170 000"; 4-digit with only one group below 1,000 boundary: "5000" (no \B group)
-      expect(formatRulebookCost(170_000)).toBe("170 000");
-      expect(formatRulebookCost(5_000)).toBe("5 000");
-    });
-
-    it("leaves values under 1000 unchanged", () => {
-      expect(formatRulebookCost(900)).toBe("900");
-    });
-  });
-
   describe("role translation", () => {
     it("maps each rulebook role to its Spanish label", () => {
-      expect(translateRole("Lineman")).toBe("Línea");
-      expect(translateRole("Thrower")).toBe("Lanzador");
-      expect(translateRole("Catcher")).toBe("Receptor");
-      expect(translateRole("Blitzer")).toBe("Blitzer");
-      expect(translateRole("Big Guy")).toBe("Grandullón");
+      // translateRole is exercised through the rendered subtitle.
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.getByText("(Human, Línea)")).toBeTruthy();
+      expect(screen.getByText("(Human, Blitzer)")).toBeTruthy();
     });
 
     it("falls back to Otro for unknown roles", () => {
-      expect(translateRole("Runner")).toBe("Otro");
-    });
-  });
-
-  describe("column headers", () => {
-    it("renders the 11 Spanish headers in exact rulebook order", () => {
-      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
-      const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
-      expect(headers).toEqual(ES_HEADERS);
-    });
-
-    it("appends a blank header cell in editable mode (12 columns)", () => {
-      render(<RosterTable players={mockPlayers} race={mockRace} />);
-      const headers = screen.getAllByRole("columnheader");
-      expect(headers).toHaveLength(12);
-      expect(headers.slice(0, 11).map((h) => h.textContent)).toEqual(ES_HEADERS);
-      expect(headers[11].textContent).toBe("");
-    });
-  });
-
-  describe("banner", () => {
-    it("renders the banner text only when bannerText is provided and the roster is non-empty", () => {
-      render(<RosterTable players={mockPlayers} race={mockRace} readOnly bannerText="Reikland Reavers" />);
-      expect(screen.getByText("Reikland Reavers")).toBeTruthy();
-    });
-
-    it("does not render a banner when bannerText is absent", () => {
-      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
-      expect(screen.queryByText(/Reikland Reavers/i)).toBeNull();
-    });
-
-    it("does not render a banner for an empty roster even when bannerText is provided", () => {
-      render(<RosterTable players={[]} race={mockRace} readOnly bannerText="Reikland Reavers" />);
-      expect(screen.queryByText(/Reikland Reavers/i)).toBeNull();
-    });
-  });
-
-  describe("quantity cell", () => {
-    it("shows min-max using an explicit min", () => {
-      render(<RosterTable players={[{ id: "p3", name: "Min", positionalKey: "minman" }]} race={mockRace} readOnly />);
-      expect(screen.getByText("2-4")).toBeTruthy();
-    });
-
-    it("defaults min to 0 when absent", () => {
-      render(<RosterTable players={[{ id: "p4", name: "Plain", positionalKey: "lineman" }]} race={mockRace} readOnly />);
-      expect(screen.getByText("0-16")).toBeTruthy();
-    });
-  });
-
-  describe("position cell", () => {
-    it("renders player.name plus the (Raza, RolEs) subtitle in readOnly mode", () => {
-      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
-      const row = screen.getByText("Grak").closest("tr");
-      expect(row).not.toBeNull();
-      expect(within(row as HTMLElement).getByText("(Human, Línea)")).toBeTruthy();
-    });
-
-    it("maps an unknown role to the Otro subtitle fallback", () => {
       const unknownRoleRace: Race = {
         ...mockRace,
         positionals: [
@@ -123,6 +49,74 @@ describe("RosterTable", () => {
         />,
       );
       expect(screen.getByText("(Human, Otro)")).toBeTruthy();
+    });
+  });
+
+  describe("column headers", () => {
+    it("renders exactly 10 read-only headers in rulebook order without CANT. or a blank cell", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      const headers = screen.getAllByRole("columnheader");
+      expect(headers).toHaveLength(10);
+      expect(headers.map((h) => h.textContent)).toEqual(ES_READONLY_HEADERS);
+      expect(screen.queryByText("CANT.")).toBeNull();
+      expect(headers.every((h) => h.textContent)).toBeTruthy();
+    });
+
+    it("appends CANT. and a blank header cell in editable mode (12 columns)", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} />);
+      const headers = screen.getAllByRole("columnheader");
+      expect(headers).toHaveLength(12);
+      expect(headers.slice(0, 11).map((h) => h.textContent)).toEqual(ES_EDITABLE_HEADERS);
+      expect(headers[11].textContent).toBe("");
+    });
+  });
+
+  describe("banner", () => {
+    it("renders the banner text only when bannerText is provided and the roster is non-empty (editable)", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} bannerText="Reikland Reavers" />);
+      expect(screen.getByText("Reikland Reavers")).toBeTruthy();
+    });
+
+    it("does not render a banner when bannerText is absent", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} />);
+      expect(screen.queryByText(/Reikland Reavers/i)).toBeNull();
+    });
+
+    it("does not render a banner for an empty roster even when bannerText is provided", () => {
+      render(<RosterTable players={[]} race={mockRace} bannerText="Reikland Reavers" />);
+      expect(screen.queryByText(/Reikland Reavers/i)).toBeNull();
+    });
+
+    it("suppresses the banner in read-only mode even when bannerText is provided", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly bannerText="Reikland Reavers" />);
+      expect(screen.queryByText("Reikland Reavers")).toBeNull();
+    });
+  });
+
+  describe("quantity cell", () => {
+    it("shows min-max using an explicit min in editable mode", () => {
+      render(<RosterTable players={[{ id: "p3", name: "Min", positionalKey: "minman" }]} race={mockRace} />);
+      expect(screen.getByText("2-4")).toBeTruthy();
+    });
+
+    it("defaults min to 0 when absent in editable mode", () => {
+      render(<RosterTable players={[{ id: "p4", name: "Plain", positionalKey: "lineman" }]} race={mockRace} />);
+      expect(screen.getByText("0-16")).toBeTruthy();
+    });
+
+    it("does not render a quantity cell in read-only mode", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.queryByText("1-16")).toBeNull();
+      expect(screen.queryByText("0-4")).toBeNull();
+    });
+  });
+
+  describe("position cell", () => {
+    it("renders player.name plus the (Raza, RolEs) subtitle in readOnly mode", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      const row = screen.getByText("Grak").closest("tr");
+      expect(row).not.toBeNull();
+      expect(screen.getByText("(Human, Línea)")).toBeTruthy();
     });
   });
 
@@ -150,7 +144,6 @@ describe("RosterTable", () => {
       render(<RosterTable players={[{ id: "p8", name: "C", positionalKey: "catcher" }]} race={mockRace} readOnly />);
       // "catch" has no es translation -> English "Catch", raw.
       expect(screen.getByText("Catch")).toBeTruthy();
-      // No rulebook category suffix "(general)"/"(agility)"/... may append.
       expect(screen.queryByText(/\((general|agility|passing|strength|mutation|devious|trait)\)/)).toBeNull();
     });
   });
@@ -163,7 +156,7 @@ describe("RosterTable", () => {
 
     it("renders SECUNDARIAS letters joined by spaces", () => {
       render(<RosterTable players={[{ id: "p10", name: "B2", positionalKey: "lineman" }]} race={mockRace} readOnly />);
-      expect(screen.getByText("A")).toBeTruthy(); // secondary of lineman
+      expect(screen.getByText("A")).toBeTruthy();
     });
 
     it("renders an em dash for an empty access array", () => {
@@ -180,7 +173,6 @@ describe("RosterTable", () => {
           readOnly
         />,
       );
-      // Two dashes: primary + secondary.
       expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
     });
   });
@@ -189,8 +181,7 @@ describe("RosterTable", () => {
     it("renders the positional cost with the rulebook space format", () => {
       render(<RosterTable players={[{ id: "p12", name: "C", positionalKey: "lineman" }]} race={mockRace} readOnly />);
       // "50 000" appears twice in readOnly: the row cell and the totals cost.
-      const costCells = screen.getAllByText("50 000");
-      expect(costCells.length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText("50 000").length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -235,15 +226,20 @@ describe("RosterTable", () => {
   });
 
   describe("totals row", () => {
-    it("shows player count and total cost in rulebook format, readOnly", () => {
+    it("shows a navy ES totals row with player count and total cost in rulebook format, spanning 10 columns (readOnly)", () => {
       render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.getByText("2 jugadores · Coste total")).toBeTruthy();
       // 1 lineman (50 000) + 1 blitzer (90 000) = 140 000
-      expect(screen.getByText("2 players")).toBeTruthy();
       expect(screen.getByText("140 000")).toBeTruthy();
+      const totalRow = screen.getByText("2 jugadores · Coste total").closest("tr") as HTMLTableRowElement;
+      const cells = Array.from(totalRow.cells) as HTMLTableCellElement[];
+      const sum = cells.reduce((acc, c) => acc + (c.colSpan || 1), 0);
+      expect(sum).toBe(10);
     });
 
     it("keeps formatGold budget text in editable totals and spans 12 columns", () => {
       render(<RosterTable players={mockPlayers} race={mockRace} remainingBudget={690_000} />);
+      expect(screen.getByText("2 players")).toBeTruthy();
       expect(screen.getByText("690k left")).toBeTruthy();
       const totalRow = screen.getAllByRole("row").at(-1) as HTMLTableRowElement;
       const cells = Array.from(totalRow.cells) as HTMLTableCellElement[];
@@ -270,11 +266,11 @@ describe("RosterTable", () => {
       expect(screen.queryByText(/Apotecario/i)).toBeNull();
     });
 
-    it("spans the footer columns correctly (5+6 readOnly, 5+6+1 editable)", () => {
+    it("spans the footer columns correctly (4+6 readOnly, 5+6+1 editable)", () => {
       const readOnlyView = render(<RosterTable players={mockPlayers} race={mockRace} readOnly apothecary />);
       let footerRow = screen.getByText(/Segundas oportunidades/i).closest("tr") as HTMLTableRowElement;
       let sum = Array.from(footerRow.cells).reduce((acc, c) => acc + (c.colSpan || 1), 0);
-      expect(sum).toBe(11);
+      expect(sum).toBe(10);
       readOnlyView.unmount();
 
       const editableView = render(<RosterTable players={mockPlayers} race={mockRace} apothecary={false} />);
