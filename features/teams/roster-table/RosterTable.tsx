@@ -61,7 +61,7 @@ export function RosterTable({
   const showBanner = !readOnly && bannerText !== undefined && bannerText.length > 0;
 
   return (
-    <div className="overflow-x-auto">
+    <div className="max-h-[55vh] overflow-auto">
       <div className="max-w-[900px] bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
         {showBanner ? (
           <div className="border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[28px] text-[#12225a]">
@@ -75,7 +75,7 @@ export function RosterTable({
                 <th
                   key={header}
                   scope="col"
-                  className={`bg-[#d11938] px-[5px] py-2 text-white ${
+                  className={`sticky top-0 z-10 bg-[#d11938] px-[5px] py-2 text-white ${
                     header === "POSICIÓN" || header === "HABILIDADES Y RASGOS"
                       ? "text-left"
                       : "text-center"
@@ -84,7 +84,7 @@ export function RosterTable({
                   {header}
                 </th>
               ))}
-              {!readOnly ? <th scope="col" className="bg-[#d11938] px-[5px] py-2"></th> : null}
+              {!readOnly ? <th scope="col" className="sticky top-0 z-10 bg-[#d11938] px-[5px] py-2"></th> : null}
             </tr>
           </thead>
           <tbody>
