@@ -8,8 +8,8 @@ const mockRace: Race = {
   name: "Human",
   rerollCost: 50_000,
   positionals: [
-    { key: "lineman", name: "Lineman", role: "Lineman", cost: 50_000, max: 16, ma: 6, st: 3, ag: "3+", pa: "4+", av: "8+", skills: [] },
-    { key: "blitzer", name: "Blitzer", role: "Blitzer", cost: 90_000, max: 4, ma: 7, st: 3, ag: "3+", pa: "4+", av: "9+", skills: ["block"] },
+    { key: "lineman", name: "Lineman", role: "Lineman", cost: 50_000, max: 16, accessPrimary: ["G"], accessSecondary: ["A"], ma: 6, st: 3, ag: "3+", pa: "4+", av: "8+", skills: [] },
+    { key: "blitzer", name: "Blitzer", role: "Blitzer", cost: 90_000, max: 4, accessPrimary: ["G", "F"], accessSecondary: ["A"], ma: 7, st: 3, ag: "3+", pa: "4+", av: "9+", skills: ["block"] },
   ],
 };
 
