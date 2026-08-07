@@ -9,6 +9,7 @@ import {
   CHEERLEADER_MAX,
   DEDICATED_FANS_MAX,
   DEDICATED_FANS_START,
+  MAX_PLAYERS,
   MAX_REROLLS,
   STARTING_TREASURY,
   computeCoachingCostItems,
@@ -16,6 +17,7 @@ import {
 import { RosterTable } from "../roster-table/RosterTable";
 import { LEAGUE_TYPES, type TeamLeagueType } from "../types";
 import { useCreateTeamForm } from "./useCreateTeamForm";
+import { PlayerAvailabilityTable } from "./PlayerAvailabilityTable";
 
 function formatGold(value: number): string {
   return `${(value / 1000).toLocaleString("en-US")}k`;
@@ -50,69 +52,142 @@ export function CreateTeamForm() {
   const budgetPercent = Math.min(100, (form.totalCost / STARTING_TREASURY) * 100);
   const isOverBudget = form.totalCost > STARTING_TREASURY;
 
-  // Group positionals by role
-  const roleGroups = race
-    ? race.positionals.reduce(
-        (acc, positional) => {
-          const role = positional.role ?? "Other";
-          if (!acc[role]) acc[role] = [];
-          acc[role].push(positional);
-          return acc;
-        },
-        {} as Record<string, typeof race.positionals>,
-      )
-    : {};
-
   return (
     <form
       onSubmit={form.handleSubmit}
       noValidate
       className="mx-auto max-w-[900px] space-y-6 bg-white px-6 py-6 text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]"
     >
-      <header className="bg-[#12225a] px-6 py-[22px] text-white">
-        <h1 className="text-[26px] font-black tracking-[0.02em]">Create Team</h1>
-        <p className="mt-2 text-[13px] text-[#cbd5e1]">
-          Pick a race, then build your roster within the 1,000,000 gc starting treasury.
-        </p>
-      </header>
+      {race && form.step === 2 ? (
+        // Step 2 — rulebook hero + builder + availability + coaching.
+        <>
+          <header className="bg-[#12225a] px-6 py-[22px] text-white">
+            <h1 className="text-[26px] font-black tracking-[0.02em]">{form.name}</h1>
+            <p className="mt-2 text-[13px] text-[#cbd5e1]">
+              {race.name} · Paso 2
+            </p>
+            <button
+              type="button"
+              onClick={form.backStep}
+              className="mt-3 inline-block rounded-md border border-white/40 px-3 py-1 text-sm text-white hover:border-white"
+            >
+              Editar nombre/raza
+            </button>
+          </header>
 
-      <div>
-        <label htmlFor="team-name" className="mb-1 block text-sm font-medium text-slate-700">
-          Team name
-        </label>
-        <input
-          id="team-name"
-          value={form.name}
-          onChange={(event) => form.setName(event.target.value)}
-          className={fieldClassName}
-        />
-        {form.errors.name ? (
-          <p role="alert" className="mt-1 text-sm text-red-600">
-            {form.errors.name}
-          </p>
-        ) : null}
-      </div>
+          {/* Plantilla */}
+          <section aria-label="Plantilla">
+            <h2 className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
+              Plantilla
+            </h2>
+            <RosterTable
+              players={form.players}
+              race={race}
+              onRename={form.renamePlayer}
+              onRemove={form.removePlayer}
+              remainingBudget={form.remainingBudget}
+              bannerText={form.name.trim() || race.name}
+              apothecary={form.coaching.apothecary}
+            />
+            {/* Budget bar */}
+            <div className="mb-3 mt-3 flex items-center justify-between text-sm">
+              <span className="text-[#334155]">
+                {form.playerCount} player{form.playerCount === 1 ? "" : "s"} ·{" "}
+                {formatGold(form.totalCost)} / {formatGold(STARTING_TREASURY)} gc
+              </span>
+              <span className={isOverBudget ? "font-semibold text-[#d11938]" : "text-[#64748b]"}>
+                {isOverBudget
+                  ? `Over budget by ${formatGold(form.totalCost - STARTING_TREASURY)}`
+                  : `${formatGold(form.remainingBudget)} remaining`}
+              </span>
+            </div>
+            <div className="mb-4 h-2 overflow-hidden rounded-full bg-[#e2e8f0]">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  isOverBudget ? "bg-[#d11938]" : "bg-[#12225a]"
+                }`}
+                style={{ width: `${budgetPercent}%` }}
+              />
+            </div>
+          </section>
 
-      <div>
-        <label htmlFor="team-race" className="mb-1 block text-sm font-medium text-slate-700">
-          Race
-        </label>
-        <select
-          id="team-race"
-          value={form.raceId}
-          onChange={(event) => form.changeRace(event.target.value)}
-          className={fieldClassName}
-        >
-          <option value="">Select a race</option>
-          {RACES.map((raceOption) => (
-            <option key={raceOption.id} value={raceOption.id}>
-              {raceOption.name}
-            </option>
-          ))}
-        </select>
-      </div>
+          {/* Jugadores disponibles */}
+          <section aria-label="Jugadores disponibles">
+            <h2 className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
+              Jugadores disponibles
+            </h2>
+            <PlayerAvailabilityTable
+              race={race}
+              players={form.players}
+              totalCost={form.totalCost}
+              onAdd={form.addPlayer}
+              maxPlayers={MAX_PLAYERS}
+            />
+          </section>
 
-      {/* Race change confirmation dialog */}
+          <CoachingStaffSection raceId={form.raceId} form={form} />
+        </>
+      ) : form.step === 1 ? (
+        // Step 1 — light book panel "Paso 1 · Datos del equipo".
+        <section aria-label="Paso 1 · Datos del equipo">
+          <h1 className="mb-4 border-b-[3px] border-[#d11938] pb-1.5 text-[26px] font-black text-[#12225a]">
+            Paso 1 · Datos del equipo
+          </h1>
+
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="team-name" className="mb-1 block text-sm font-medium text-slate-700">
+                Team name
+              </label>
+              <input
+                id="team-name"
+                value={form.name}
+                onChange={(event) => form.setName(event.target.value)}
+                className={fieldClassName}
+              />
+              {form.errors.name ? (
+                <p role="alert" className="mt-1 text-sm text-red-600">
+                  {form.errors.name}
+                </p>
+              ) : null}
+            </div>
+
+            <div>
+              <label htmlFor="team-race" className="mb-1 block text-sm font-medium text-slate-700">
+                Race
+              </label>
+              <select
+                id="team-race"
+                value={form.raceId}
+                onChange={(event) => form.changeRace(event.target.value)}
+                className={fieldClassName}
+              >
+                <option value="">Select a race</option>
+                {RACES.map((raceOption) => (
+                  <option key={raceOption.id} value={raceOption.id}>
+                    {raceOption.name}
+                  </option>
+                ))}
+              </select>
+              {form.errors.race ? (
+                <p role="alert" className="mt-1 text-sm text-red-600">
+                  {form.errors.race}
+                </p>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              onClick={form.nextStep}
+              className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48]"
+            >
+              Siguiente →
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Race change confirmation dialog — rendered wherever the race edit happens. */}
       {form.pendingRaceId !== null ? (
         <div
           role="alertdialog"
@@ -141,117 +216,27 @@ export function CreateTeamForm() {
         </div>
       ) : null}
 
-      {race ? (
-        <section aria-label="Roster builder">
-          <h2 className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
-            Roster builder
-          </h2>
+      {race && form.step === 2 ? (
+        <>
+          {form.errors.players ? (
+            <p role="alert" className="text-sm text-red-600">
+              {form.errors.players}
+            </p>
+          ) : null}
+          {form.errors.budget ? (
+            <p role="alert" className="text-sm text-red-600">
+              {form.errors.budget}
+            </p>
+          ) : null}
 
-          {/* RosterTable — first */}
-          <div className="mb-3">
-            <RosterTable
-              players={form.players}
-              race={race}
-              onRename={form.renamePlayer}
-              onRemove={form.removePlayer}
-              remainingBudget={form.remainingBudget}
-              bannerText={form.name.trim() || race.name}
-              apothecary={form.coaching.apothecary}
-            />
-          </div>
-
-          {/* Budget bar */}
-          <div className="mb-3 flex items-center justify-between text-sm">
-            <span className="text-[#334155]">
-              {form.playerCount} player{form.playerCount === 1 ? "" : "s"} ·{" "}
-              {formatGold(form.totalCost)} / {formatGold(STARTING_TREASURY)} gc
-            </span>
-            <span className={isOverBudget ? "font-semibold text-[#d11938]" : "text-[#64748b]"}>
-              {isOverBudget
-                ? `Over budget by ${formatGold(form.totalCost - STARTING_TREASURY)}`
-                : `${formatGold(form.remainingBudget)} remaining`}
-            </span>
-          </div>
-          <div className="mb-4 h-2 overflow-hidden rounded-full bg-[#e2e8f0]">
-            <div
-              className={`h-full rounded-full transition-all ${
-                isOverBudget ? "bg-[#d11938]" : "bg-[#12225a]"
-              }`}
-              style={{ width: `${budgetPercent}%` }}
-            />
-          </div>
-
-          {/* Role-grouped positional add sections */}
-          <div className="mb-6 space-y-4">
-            {Object.entries(roleGroups).map(([role, positionals]) => (
-              <div key={role}>
-                <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[#12225a]">
-                  {role}s
-                </h3>
-                <ul className="space-y-2">
-                  {positionals.map((positional) => {
-                    const countForPositional = form.players.filter(
-                      (p) => p.positionalKey === positional.key,
-                    ).length;
-                    const atLimit = countForPositional >= positional.max;
-                    const overBudget = form.totalCost + positional.cost > STARTING_TREASURY;
-                    const atMaxPlayers = form.players.length >= 16;
-                    const disabled = atLimit || overBudget || atMaxPlayers;
-
-                    return (
-                      <li
-                        key={positional.key}
-                        className="flex items-center justify-between gap-4 rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-4 py-2"
-                      >
-                        <div className="min-w-0">
-                          <span className="font-medium text-[#1a1a1a]">{positional.name}</span>
-                          <span className="ml-2 text-xs text-[#64748b]">
-                            {formatGold(positional.cost)} gc · max {positional.max}
-                          </span>
-                          <span className="ml-2 text-xs text-[#94a3b8]">
-                            ({countForPositional}/{positional.max})
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          aria-label={`Add ${positional.name}`}
-                          onClick={() => form.addPlayer(positional.key)}
-                          disabled={disabled}
-                          className="shrink-0 rounded-md border border-slate-300 px-3 py-1 text-sm text-[#334155] hover:border-[#12225a] hover:text-[#12225a] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          + Add
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : (
-        <p className="text-sm text-slate-600">Select a race to build your roster.</p>
-      )}
-
-      {race ? <CoachingStaffSection raceId={form.raceId} form={form} /> : null}
-
-      {form.errors.players ? (
-        <p role="alert" className="text-sm text-red-600">
-          {form.errors.players}
-        </p>
+          <button
+            type="submit"
+            className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48]"
+          >
+            Create Team
+          </button>
+        </>
       ) : null}
-      {form.errors.budget ? (
-        <p role="alert" className="text-sm text-red-600">
-          {form.errors.budget}
-        </p>
-      ) : null}
-
-      <button
-        type="submit"
-        className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48]"
-      >
-        Create Team
-      </button>
     </form>
   );
 }
