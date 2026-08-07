@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.gitignore
+openspec
+e2e
+playwright-report
+test-results
+playwright.config.ts
+external-assets
+*.log
+.DS_Store
