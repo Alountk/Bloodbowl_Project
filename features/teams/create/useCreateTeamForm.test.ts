@@ -16,6 +16,52 @@ describe("useCreateTeamForm", () => {
     expect(result.current.players).toEqual([]);
   });
 
+  // --- wizard step state ---
+
+  it("starts on step 1", () => {
+    const { result } = setup();
+    expect(result.current.step).toBe(1);
+  });
+
+  it("nextStep with a name and race moves to step 2", () => {
+    const { result } = setup();
+    act(() => result.current.setName("Reikland Reavers"));
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.nextStep());
+    expect(result.current.step).toBe(2);
+    expect(result.current.errors.name).toBeUndefined();
+  });
+
+  it("nextStep without a name stays on step 1 and reports a name error", () => {
+    const { result } = setup();
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.nextStep());
+    expect(result.current.step).toBe(1);
+    expect(result.current.errors.name).toMatch(/required/i);
+  });
+
+  it("nextStep without a race stays on step 1 and reports an error", () => {
+    const { result } = setup();
+    act(() => result.current.setName("Reikland Reavers"));
+    act(() => result.current.nextStep());
+    expect(result.current.step).toBe(1);
+    expect(result.current.errors.race).toMatch(/select a race/i);
+  });
+
+  it("backStep returns to step 1 and preserves entered state", () => {
+    const { result } = setup();
+    act(() => result.current.setName("Reikland Reavers"));
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.addPlayer("lineman"));
+    act(() => result.current.nextStep());
+    expect(result.current.step).toBe(2);
+    act(() => result.current.backStep());
+    expect(result.current.step).toBe(1);
+    expect(result.current.name).toBe("Reikland Reavers");
+    expect(result.current.raceId).toBe("human");
+    expect(result.current.players).toHaveLength(1);
+  });
+
   // --- coaching staff ---
 
   it("starts with DEFAULT_COACHING and the default league type", () => {
@@ -69,26 +115,16 @@ describe("useCreateTeamForm", () => {
     act(() => result.current.addPlayer("lineman"));
     expect(result.current.players).toHaveLength(1);
     expect(result.current.players[0].positionalKey).toBe("lineman");
-    expect(result.current.players[0].name).toBe("Lineman");
+    expect(result.current.players[0].name).toBe("Player 1");
     expect(result.current.players[0].id).toBeTruthy();
   });
 
-  it("addPlayer auto-increments the default name per positional", () => {
+  it("addPlayer auto-increments the default name across the roster", () => {
     const { result } = setup();
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
     act(() => result.current.addPlayer("blitzer"));
-    expect(result.current.players[0].name).toBe("Lineman");
-    expect(result.current.players[1].name).toBe("Blitzer");
-  });
-
-  it("addPlayer suffixes duplicate positional names with a counter", () => {
-    const { result } = setup();
-    act(() => result.current.changeRace("human"));
-    act(() => result.current.addPlayer("lineman"));
-    act(() => result.current.addPlayer("lineman"));
-    act(() => result.current.addPlayer("lineman"));
-    expect(result.current.players.map((p) => p.name)).toEqual(["Lineman", "Lineman 2", "Lineman 3"]);
+    expect(result.current.players.map((p) => p.name)).toEqual(["Player 1", "Player 2"]);
   });
 
   it("addPlayer assigns a unique id to each player", () => {
@@ -199,7 +235,7 @@ describe("useCreateTeamForm", () => {
     const idToRename = result.current.players[0].id;
     act(() => result.current.renamePlayer(idToRename, "Grak"));
     expect(result.current.players[0].name).toBe("Grak");
-    expect(result.current.players[1].name).toBe("Lineman 2");
+    expect(result.current.players[1].name).toBe("Player 2");
   });
 
   it("renamePlayer to empty string does not crash", () => {
