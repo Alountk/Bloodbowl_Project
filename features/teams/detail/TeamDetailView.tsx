@@ -48,7 +48,7 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
       {/* Read-only roster */}
       <section aria-labelledby="roster-heading">
         <h2 id="roster-heading">Roster</h2>
-        <RosterTable readOnly players={team.roster} race={race} />
+        <RosterTable readOnly players={team.roster} race={race} bannerText={team.name} apothecary={team.coaching.apothecary} />
       </section>
 
       {/* Coaching staff breakdown */}

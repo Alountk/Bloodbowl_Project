@@ -215,6 +215,8 @@ export function CreateTeamForm() {
             onRename={form.renamePlayer}
             onRemove={form.removePlayer}
             remainingBudget={form.remainingBudget}
+            bannerText={form.name.trim() || race.name}
+            apothecary={form.coaching.apothecary}
           />
         </section>
       ) : (
