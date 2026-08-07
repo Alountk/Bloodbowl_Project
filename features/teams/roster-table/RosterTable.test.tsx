@@ -129,6 +129,34 @@ describe("RosterTable", () => {
       expect(row).not.toBeNull();
       expect(screen.getByText("(Human, Línea)")).toBeTruthy();
     });
+
+    it("renders the editable name input plus a subtext with the positional name for its player", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} />);
+      // Player p1's positional is Lineman -> subtext "Lineman · (Human, Línea)".
+      expect(screen.getByText("Lineman · (Human, Línea)")).toBeTruthy();
+      // Player p2's positional is Blitzer -> subtext "Blitzer · (Human, Blitzer)".
+      expect(screen.getByText("Blitzer · (Human, Blitzer)")).toBeTruthy();
+      // The editable input still carries the preserved aria-label.
+      expect(screen.getByLabelText("Player name for Grak")).toBeTruthy();
+      // ReadOnly subtitle text (without the positional name) must NOT render in editable mode.
+      expect(screen.queryByText("(Human, Línea)")).toBeNull();
+    });
+
+    it("falls back role to Otro in the editable positional subtext for unknown roles", () => {
+      const unknownRoleRace: Race = {
+        ...mockRace,
+        positionals: [
+          { key: "runner", name: "Runner", role: "Runner", cost: 50_000, max: 4, accessPrimary: ["G"], accessSecondary: ["A"], ma: 6, st: 3, ag: "3+", pa: "4+", av: "9+", skills: [] },
+        ],
+      };
+      render(
+        <RosterTable
+          players={[{ id: "p5", name: "R", positionalKey: "runner" }]}
+          race={unknownRoleRace}
+        />,
+      );
+      expect(screen.getByText("Runner · (Human, Otro)")).toBeTruthy();
+    });
   });
 
   describe("skills column", () => {

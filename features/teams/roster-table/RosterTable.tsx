@@ -108,9 +108,15 @@ export function RosterTable({
                         className="w-full rounded border border-slate-300 bg-white px-2 py-0.5 text-slate-900 outline-none focus:border-blue-500"
                       />
                     )}
-                    <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
-                      ({race.name}, {translateRole(positional?.role)})
-                    </span>
+                    {readOnly ? (
+                      <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
+                        ({race.name}, {translateRole(positional?.role)})
+                      </span>
+                    ) : (
+                      <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
+                        {positional?.name ?? "Player"} · ({race.name}, {translateRole(positional?.role)})
+                      </span>
+                    )}
                   </td>
                   <td className="px-[5px] py-2 text-center align-top text-[#1a1a1a]">
                     {positional ? formatRulebookCost(positional.cost) : "—"}
