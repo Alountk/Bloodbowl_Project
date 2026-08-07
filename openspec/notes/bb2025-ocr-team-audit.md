@@ -148,9 +148,50 @@ Ask only these items:
    - Evidence: `page-187.txt:24-27`
    - Confidence: medium
 
-5. **Chaos Renegades naming consistency**
+5.  **Chaos Renegades naming consistency**
    - Team: chaos-renegade (code) vs Chaos Renegades (PDF)
    - Field: canonical ID/display convention to use when code is updated
    - Current value: ID singular in code; name plural in PDF
    - Evidence: `page-173.txt:2`
    - Confidence: high for mismatch, medium for desired canonicalization decision
+
+## Access normalization log (PR1 data foundation)
+
+Normalization rules applied (design v2):
+- Read each roster row's trailing letter token(s) after the skills text. First token(s) = **PRIMARIAS**, second = **SECUNDARIAS** (per the book's column header order, confirmed on pages 169/170/174/176/177/179 etc.).
+- Keep only letters from `{G,A,P,S,M,F}` per column. `F` = Fitness is a valid rulebook category (design: "OCR-noise assumption REVOKED"). Discard/dedupe `E`, `T` (OCR noise — e.g. `EPT`, `FG, M A,T`).
+- Dedupe and canonical order per array: `G → A → P → S → M → F`.
+- Empty column → `[]`.
+- All OCR counts are `0-N`, so `min` is `0` everywhere; no `min` fields were added to `races.ts`.
+- `high-elf` (`races.ts` race id) has **no** OCR team page (rulebook pages 168–196 cover the other 29 teams; page 197 is an ad). Its four positionals use `[]` access — no unverified letters shipped.
+
+High-confidence exact reference subset (used to lock the RED/GREEN tests): **Human** (page-180), **Orc** (page-189), **Dwarf** (page-175).
+
+Verification: `races-access.test.ts` asserts ALL of: both arrays present ×144 positionals, letters ⊆ {G,A,P,S,M,F}, no duplicates, canonical order, `min ≤ max`, plus exact Human/Orc/Dwarf values.
+
+Rows where OCR was too noisy or the code roster could not be mapped cleanly (kept `[]` per "never ship unverified letters silently"):
+
+| Team | code key | OCR raw token (page) | Chosen value | Reason |
+|---|---|---|---|---|
+| bretonnian | blitzer | n/a (page-170) | `[]`/`[]` | Code roster (Blitzer 85k, Blocker 65k, Ogre 140k) does not match OCR rows (Squire/Knight Catcher/Thrower/Grail Knight). Role+roster structure mismatch — cannot map access confidently. |
+| bretonnian | blocker | n/a (page-170) | `[]`/`[]` | Same roster-structure mismatch as above. |
+| bretonnian | ogre | n/a (page-170) | `[]`/`[]` | OCR page shows no Ogre row; code's Ogre is unmatched. |
+| high-elf | lineman/thrower/catcher/blitzer | n/a (no page) | `[]`/`[]` | No High Elf team page in OCR pages 168–196. |
+| gnome | woodland-fox | `> A` (page-177) | `[]`/`[]` | OCR token truncated/unreliable; cannot read access with confidence. |
+| necromantic-horror | ghoul-runner | `AG (rdrar` (page-184) | `[G,A]`/`[]` | Secondary token corrupted by OCR merge; primary `AG` reliable, secondary discarded. |
+| norse | lineman | `6 AFP` (page-185) | `[]`/`[A,P,F]` | Primary token misread as `6` (digit noise); secondary `AFP` reliable. Primary kept `[]`. |
+| norse | (thrower/valkyrie) | Valkyrie row (page-185) | `[G,A,P]`/`[F]` | Code has two 95k positionals (`thrower`, `valkyrie`); OCR has one Valkyrie(95k) row. Both code positionals mapped to the single rulebook Valkyrie — duplication is a pre-existing code-catalog issue. |
+| imperial-nobility | lackey-lineman | `6 AF` (page-181) | `[]`/`[A,F]` | Primary token misread as `6`; secondary `AF` reliable. |
+| imperial-nobility | blitzer | `AG 1d` (page-181) | `[G,A]`/`[]` | Secondary token OCR-corrupt (`1d`); primary `AG` reliable. |
+| tomb-kings | skeleton-lineman | `6 AJF,T` (page-193) | `[]`/`[A,F]` | Primary token misread as `6`; secondary `AJF,T→A,F` reliable. |
+| chaos-dwarf | hobgoblin-lineman | `Y A, FG` (page-172) | `[A]`/`[G,F]` | Leading `Y` OCR noise; primary `A`, secondary `FG` reliable. |
+| snotling | fun-hoppa | `AT 6` (page-192) | `[A]`/`[]` | Secondary token digit noise (`6`). |
+| snotling | stilty-runna | `A,T 6` (page-192) | `[A]`/`[]` | Secondary token digit noise (`6`). |
+| goblin | loony | `T A,F,G` (page-178) | `[]`/`[G,A,F]` | Primary token is a lone `T` (noise); secondary `A,F,G` reliable. |
+| old-world-alliance | (all) | page-188 | mapped | Code roster is a subset of OCR rows; each code positional matched to same-named OCR row (Human Lineman, Dwarf Lineman, Halfling Hopeful, Human Thrower, Human Blitzer, Ogre). |
+
+Notes on role-only mapping decisions:
+- **amazon** catcher↔Piranha Warrior(90k, role Blitzer) and blitzer↔Jaguar Warrior(110k, role Defensor): matched by cost (code catcher 90k, blitzer 110k) since OCR role labels differ from code roles.
+- **norse** thrower↔Valkyrie (95k): matched by the single 95k row; code `valkyrie` and `thrower` both map to it (see table above).
+- **dark-elf** assassin: OCR row cost reads `20000` (corrupt) but skills "Apuñalar/Atacar y huir/Perseguir" identify it; access `AT FG` → `[A]`/`[G,F]` (F kept per design).
+
