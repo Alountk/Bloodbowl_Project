@@ -1,58 +1,65 @@
-# Tasks: Create Team Rulebook Form
+# Tasks: Create Team Rulebook Form (Config 4 Wizard)
 
 ## Review Workload Forecast
 
 | Field | Value |
 |-------|-------|
-| Estimated changed lines | 270–330 |
-| 400-line budget risk | Low |
-| Chained PRs recommended | No |
-| Suggested split | single PR |
-| Delivery strategy | ask-on-risk |
+| Estimated changed lines | 420–500 (rework of prior wizard to user-approved Config 4) |
+| 400-line budget risk | Medium–High (rework supersedes prior implementation) |
+| Chained PRs recommended | No — this is the final approved design on the existing PR branch |
+| Suggested split | single PR (rework) |
+| Delivery strategy | exception-ok — rework reuses the branch's existing PR; user-approved final design |
 | Chain strategy | pending |
 
 Decision needed before apply: No
 Chained PRs recommended: No
 Chain strategy: pending
-400-line budget risk: Low
+400-line budget risk: Medium
 
-Single-PR rollback = `git revert` of the change commit (self-contained, no migration).
+Rework is an exception-to-normal-batch change on the existing `feat/create-team-rulebook` PR branch; scope is the user-approved final wizard.
 
-## Phase 1: RosterTable — Drop CANT. (TDD RED→GREEN)
+## Phase 1: Hook — Player N naming + step state (TDD RED→GREEN)
 
-- [x] 1.1 RED: In `features/teams/roster-table/RosterTable.test.tsx` update editable header test to 11 cols — 10 rulebook headers + blank th, `queryByText("CANT.")` null (replace `ES_EDITABLE_HEADERS` const).
-- [x] 1.2 RED: Replace the two qty tests with a no-qty assert: editable `min:2 max:4` positional row first cell is POSICIÓN, no `2-4`/`0-16` text via `queryByText`.
-- [x] 1.3 RED: Update editable totals test colSpan sum 12→11 (`remainingBudget={690000}`, label 9+cost 1+budget 1).
-- [x] 1.4 RED: Update footer colSpan test "5+6+1 editable"→"4+6+1=11".
-- [x] 1.5 GREEN: In `RosterTable.tsx` delete `EDITABLE_HEADERS`, render `RULEBOOK_HEADERS` in both modes; delete the qty `<td>`; editable totals `colSpan={10}`→`{9}`; footer editable `colSpan={5}`→`{4}`. Keep `min`/`max` on positionals for `(n/max)` counters.
-- [x] 1.6 Run `pnpm test` — these RosterTable + existing tests green.
+- [x] 1.1 RED: In `useCreateTeamForm.test.ts` revert naming asserts to "Player 1"/"Player 2"; add step tests (initial step 1, nextStep requires name+race, backStep preserves state).
+- [x] 1.2 GREEN: In `useCreateTeamForm.ts` revert `addPlayer` default to `Player ${players.length + 1}`; add `step`, `nextStep()` (validates name+race → step 2), `backStep()`, `goToStep`, `errors.race`; export all.
+- [x] 1.3 Run `pnpm test` — `useCreateTeamForm.test.ts` green.
 
-## Phase 2: CreateTeamForm — Rulebook Light Restyle
+## Phase 2: RosterTable editable POSICIÓN subtext (TDD RED→GREEN)
 
-- [x] 2.1 In `features/teams/create/CreateTeamForm.tsx` wrap form: `mx-auto max-w-[900px] space-y-6 bg-white px-6 py-6 text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]`; replace h1 with navy hero `header bg-[#12225a] px-6 py-[22px] text-white`, h1 `text-[26px] font-black tracking-[0.02em]` + subtitle `mt-2 text-[13px] text-[#cbd5e1]` (text unchanged).
-- [x] 2.2 Swap `fieldClassName` to `bg-white border-slate-300 text-slate-900 focus:border-blue-500`; apply to name input, race select, coaching inputs, league select. Restyle labels to `text-slate-700`.
-- [x] 2.3 Restyle race-change dialog light amber `border-amber-300 bg-amber-50 text-amber-900`; Confirm `bg-[#12225a]`, Cancel slate; keep `role="alertdialog"` + texts.
-- [x] 2.4 Add book h2 "Roster builder" `border-b-[3px] border-[#d11938] text-[16px] text-[#12225a]` at top of `<section aria-label="Roster builder">`.
-- [x] 2.5 Reorder: move `<RosterTable>` block to FIRST inside builder (before budget bar + role add sections); add `mb-3` as its separator. Keep `RosterTable` props identical.
-- [x] 2.6 Restyle budget bar via classes only: left `text-[#334155]`, right `text-[#64748b]` / over `text-[#d11938] font-semibold`, track `bg-[#e2e8f0]`, fill `bg-[#12225a]`/`bg-[#d11938]`. Keep exact strings + `formatGold`.
-- [x] 2.7 Restyle role add `<li>` cards `border-[#e2e8f0] bg-[#f1f5f9]`, name `text-[#1a1a1a]`, cost `text-[#64748b]`; keep `aria-label={"Add "+name}`, `(n/max)`, `role+`s` h3s, disabled logic.
-- [x] 2.8 Restyle Coaching Staff card `border-[#e2e8f0] bg-[#f1f5f9]`; h2 to book style; keep ENGLISH labels, `getByLabel` targets, `{X}k gc` strings.
-- [x] 2.9 Restyle errors `role="alert"` `text-red-600` and submit `bg-[#12225a] hover:bg-[#0f1d48] text-white`; keep texts byte-identical.
+- [x] 2.1 RED: In `RosterTable.test.tsx` add editable-subtext expectations ("Lineman · (Human, Línea)") and keep readOnly "(Human, Línea)" unchanged.
+- [x] 2.2 GREEN: In `RosterTable.tsx` render editable subtext `{positional.name} · ({race.name}, {roleEs})`; readOnly unchanged; keep 11/10 cols + scroll container.
+- [x] 2.3 Run `pnpm test` — `RosterTable.test.tsx` green.
 
-## Phase 3: CreateTeamForm Tests — Order & No-CANT.
+## Phase 3: PlayerAvailabilityTable (new component, TDD RED→GREEN)
 
-- [x] 3.1 ADD in `features/teams/create/CreateTeamForm.test.tsx`: table-first — `within(region "Roster builder")` the RosterTable empty-state `<p>` precedes budget bar/add `<h3>`s (assert via `compareDocumentPosition`).
-- [x] 3.2 ADD: after adding a player, `getAllByRole("columnheader")` list has no `CANT.` (11 editable cols).
-- [x] 3.3 Verify existing CreateTeamForm + `app/teams/create/page.test.tsx` text/role asserts still pass; run `pnpm test` — full suite green.
+- [x] 3.1 RED: Create `PlayerAvailabilityTable.test.tsx` — headers, subtext, cost, skills, counters, disappearing rows at max, over-budget disable.
+- [x] 3.2 GREEN: Create `PlayerAvailabilityTable.tsx` (rulebook style) with Add buttons, `{n}/{max}`, row-disappear at max, over-budget/roster-cap disable.
+- [x] 3.3 Run `pnpm test` — `PlayerAvailabilityTable.test.tsx` green.
 
-## Phase 4: E2E + Documentation
+## Phase 4: CreateTeamForm wizard (TDD RED→GREEN)
 
-- [x] 4.1 Run `e2e/create-team.spec.ts` untouched — all 14 tests green, no string diffs.
-- [x] 4.2 Confirm `useCreateTeamForm.ts` unchanged (git diff empty for it).
+- [x] 4.1 RED: Rewrite `CreateTeamForm.test.tsx` for the wizard (step 1 name/race/Siguiente; Siguiente with data → step 2; Editar preserves; step 2 sections; budget texts; race-change dialog; coaching labels).
+- [x] 4.2 GREEN: Rewrite `CreateTeamForm.tsx` to the 2-step wizard (step 1 light panel + navy Siguiente; step 2 navy hero + Plantilla + Jugadores disponibles + Coaching + submit).
+- [x] 4.3 Run `pnpm test` — `CreateTeamForm.test.tsx` green.
+
+## Phase 5: Page tests (Integration)
+
+- [x] 5.1 Update `app/teams/create/page.test.tsx` to the wizard flow (availability-table positionals, step gating, submit).
+- [x] 5.2 Run `pnpm test` — full suite green (408 unit / 19 files).
+
+## Phase 6: E2E rewrite
+
+- [x] 6.1 Rewrite `e2e/create-team.spec.ts` — all 14 scenarios to the wizard flow (step 1 → Siguiente → availability Add → budget → max rows → race-change → over-budget → full create). Keep the console-error test.
+- [x] 6.2 Run `pnpm test:e2e` — 14/14 green.
+
+## Phase 7: Docs + gates
+
+- [x] 7.1 Update `openspec/changes/create-team-rulebook/specs/{create-team,roster-table}/spec.md`, `design.md`, and `tasks.md` to the final wizard design.
+- [x] 7.2 `pnpm lint` clean; `npx tsc --noEmit` clean.
 
 ## Key Learnings
 
-1. The phase skills track the SDD pipeline from proposal through tasks while preserving every byte-identical e2e contract string.
-2. Dropping CANT. collapses editable RosterTable colSpans from 12 to 11 across headers, totals, and footer.
-3. The table-first reorder keeps the `Roster builder` region and all its add-card texts intact.
-4. Restyle touches `CreateTeamForm.tsx` Tailwind classes only, never the state hook.
+1. The user-approved Config 4 wizard supersedes the earlier table-first + positional-default-naming implementation on the same branch.
+2. Reverting default naming to `Player N` is required by the approved spec (`useCreateTeamForm.addPlayer`).
+3. The availability table rows disappear at a positional's max (explicit user requirement) instead of merely disabling the Add button.
+4. The editable `RosterTable` POSICIÓN subtext is prefixed with the positional name, while read-only detail rendering is unchanged.
