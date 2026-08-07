@@ -27,9 +27,12 @@ export interface CreateTeamValues {
 
 interface FormErrors {
   name?: string;
+  race?: string;
   players?: string;
   budget?: string;
 }
+
+type Step = 1 | 2;
 
 export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promise<void>) {
   const [name, setName] = useState("");
@@ -40,6 +43,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
   const [pendingRaceId, setPendingRaceId] = useState<string | null>(null);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [step, setStep] = useState<Step>(1);
 
   const race = raceId ? getRaceById(raceId) : undefined;
   const cost = race ? computeRosterCostFromPlayers(race, players) : 0;
@@ -70,6 +74,25 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     setPendingRaceId(null);
   };
 
+  const goToStep = (next: Step) => {
+    setStep(next);
+  };
+
+  /** Advances to step 2 only when a name and race are present; otherwise shows errors. */
+  const nextStep = () => {
+    const nextErrors: FormErrors = {};
+    if (!name.trim()) nextErrors.name = "Team name is required";
+    if (!raceId) nextErrors.race = "Select a race";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+    setStep(2);
+  };
+
+  /** Returns to step 1 while preserving all entered state. */
+  const backStep = () => {
+    setStep(1);
+  };
+
   const addPlayer = (positionalKey: string) => {
     if (!race) return;
     const positional = race.positionals.find((p) => p.key === positionalKey);
@@ -80,13 +103,9 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     const nextCost = totalCost + positional.cost;
     if (nextCost > STARTING_TREASURY) return;
 
-    const baseName = positional.name;
-    // Default the player name to the positional name, appending a counter
-    // for duplicates (e.g. "Hobgoblin Lineman", "Hobgoblin Lineman 2").
-    const name = countForPositional === 0 ? baseName : `${baseName} ${countForPositional + 1}`;
     const newPlayer: PlayerEntry = {
       id: createId(),
-      name,
+      name: `Player ${players.length + 1}`,
       positionalKey,
     };
     setPlayers((prev) => [...prev, newPlayer]);
@@ -137,10 +156,15 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
       setCoachingState({ ...DEFAULT_COACHING });
       setLeagueTypeState(DEFAULT_LEAGUE_TYPE);
       setPendingRaceId(null);
+      setStep(1);
     });
   };
 
   return {
+    step,
+    goToStep,
+    nextStep,
+    backStep,
     name,
     setName,
     raceId,
