@@ -20,4 +20,16 @@ describe("Home page", () => {
     expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy();
     await waitFor(() => expect(screen.getByText(/no teams yet/i)).toBeTruthy());
   });
+
+  it("renders the mobile hamburger button with a descriptive accessible name", () => {
+    render(
+      <AppShell>
+        <Page />
+      </AppShell>,
+    );
+
+    // The hamburger is mobile-only (md:hidden) but is still present in jsdom.
+    const hamburger = screen.getByRole("button", { name: "Open navigation menu" });
+    expect(hamburger).toBeTruthy();
+  });
 });
