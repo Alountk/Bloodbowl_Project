@@ -183,6 +183,8 @@ Rows where OCR was too noisy or the code roster could not be mapped cleanly (kep
 | norse | (thrower/valkyrie) | Valkyrie row (page-185) | `[G,A,P]`/`[F]` | Code has two 95k positionals (`thrower`, `valkyrie`); OCR has one Valkyrie(95k) row. Both code positionals mapped to the single rulebook Valkyrie — duplication is a pre-existing code-catalog issue. |
 | imperial-nobility | lackey-lineman | `6 AF` (page-181) | `[]`/`[A,F]` | Primary token misread as `6`; secondary `AF` reliable. |
 | imperial-nobility | blitzer | `AG 1d` (page-181) | `[G,A]`/`[]` | Secondary token OCR-corrupt (`1d`); primary `AG` reliable. |
+| dwarf | troll-slayer | `... T` (page-175) | `[G,F]`/`[]` | Secondary token is a lone `T` (noise); primary `GF` reliable. |
+| dwarf | deathroller | `... 6` (page-175) | `[F]`/`[]` | Secondary token is digit noise (`6`); primary `F` reliable. |
 | tomb-kings | skeleton-lineman | `6 AJF,T` (page-193) | `[]`/`[A,F]` | Primary token misread as `6`; secondary `AJF,T→A,F` reliable. |
 | chaos-dwarf | hobgoblin-lineman | `Y A, FG` (page-172) | `[A]`/`[G,F]` | Leading `Y` OCR noise; primary `A`, secondary `FG` reliable. |
 | snotling | fun-hoppa | `AT 6` (page-192) | `[A]`/`[]` | Secondary token digit noise (`6`). |
