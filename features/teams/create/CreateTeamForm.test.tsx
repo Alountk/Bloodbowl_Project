@@ -175,6 +175,32 @@ describe("CreateTeamForm", () => {
     expect(screen.getByRole("heading", { name: /big guys/i })).toBeTruthy();
   });
 
+  it("renders the RosterTable before the budget bar and role-group add headings", async () => {
+    await renderForm();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    const region = screen.getByRole("region", { name: "Roster builder" });
+    // Empty roster -> RosterTable renders its empty-state <p>.
+    const emptyState = within(region).getByText(/no players in roster yet/i);
+    const budget = within(region).getByText(/remaining/i);
+    const addHeading = within(region).getByRole("heading", { name: /linemans/i });
+    expect(
+      emptyState.compareDocumentPosition(budget) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      emptyState.compareDocumentPosition(addHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("renders an editable RosterTable with no CANT. column (11 editable columns)", async () => {
+    await renderForm();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
+    fireEvent.click(addButtons[0]);
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers).not.toContain("CANT.");
+    expect(headers).toHaveLength(11);
+  });
+
   // --- coaching staff ---
 
   it("hides the Coaching Staff section until a race is selected", async () => {
