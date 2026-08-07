@@ -11,6 +11,12 @@ export interface Positional {
   cost: number;
   /** Maximum quantity allowed on a roster */
   max: number;
+  /** Minimum roster quantity; defaults to 0 when absent; must never exceed max. */
+  min?: number;
+  /** Primary skill-access letters ⊆ {G,A,P,S,M,F}; [] renders "—". */
+  accessPrimary: string[];
+  /** Secondary skill-access letters ⊆ {G,A,P,S,M,F}; [] renders "—". */
+  accessSecondary: string[];
   /** Movement Allowance (numeric) */
   ma: number;
   /** Strength (numeric) */
