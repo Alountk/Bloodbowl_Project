@@ -94,7 +94,9 @@ describe("Team creation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
 
     expect(screen.getByText(/at least 3 players/i)).toBeTruthy();
-    expect(screen.queryByText("Half Squad")).toBeNull();
+    // The team must NOT have been added to the list: no team-card link exists.
+    // (The typed name may still appear as the RosterTable banner while editing.)
+    expect(screen.queryByRole("link", { name: /Half Squad/i })).toBeNull();
   });
 
   it("blocks adding a player when it would exceed the budget", async () => {
