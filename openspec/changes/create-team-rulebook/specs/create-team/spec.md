@@ -80,6 +80,33 @@ The form MUST render the RosterTable in editable mode without a `CANT.` header o
 - WHEN a row renders
 - THEN the remove button keeps `aria-label="Remove {name}"`
 
+### Requirement: Default Player Naming
+
+New players MUST default their name to the positional name, with a numeric suffix for duplicates (e.g. "Hobgoblin Lineman", "Hobgoblin Lineman 2"), so the table row identifies the added position; the name input remains editable.
+
+#### Scenario: First player of a position
+
+- GIVEN a race with positionals
+- WHEN a player of a positional is added first
+- THEN the player's default name is the positional name (e.g. "Lineman")
+
+#### Scenario: Duplicate positions
+
+- GIVEN two players of the same position
+- WHEN the second is added
+- THEN its default name appends a counter (e.g. "Lineman 2")
+
+### Requirement: Scrollable Roster Table
+
+The RosterTable container MUST cap its height with internal scrolling and a sticky header so the rest of the form (budget bar, add sections, coaching, submit) remains visible as the roster grows.
+
+#### Scenario: Height cap and sticky header
+
+- GIVEN a growing roster
+- WHEN the table renders
+- THEN the container has a max height and internal vertical scroll
+- AND the header row sticks to the top of the scroll container
+
 ### Requirement: Coaching Staff English Labels
 
 The Coaching Staff section MUST keep English labels (Rerolls, Dedicated Fans, Assistant Coaches, Cheerleaders, Apothecary, League type), light styling, and unchanged `formatGold` strings and aria-labels.

@@ -80,10 +80,13 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     const nextCost = totalCost + positional.cost;
     if (nextCost > STARTING_TREASURY) return;
 
-    const nextNumber = players.length + 1;
+    const baseName = positional.name;
+    // Default the player name to the positional name, appending a counter
+    // for duplicates (e.g. "Hobgoblin Lineman", "Hobgoblin Lineman 2").
+    const name = countForPositional === 0 ? baseName : `${baseName} ${countForPositional + 1}`;
     const newPlayer: PlayerEntry = {
       id: createId(),
-      name: `Player ${nextNumber}`,
+      name,
       positionalKey,
     };
     setPlayers((prev) => [...prev, newPlayer]);

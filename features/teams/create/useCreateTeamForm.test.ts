@@ -69,17 +69,26 @@ describe("useCreateTeamForm", () => {
     act(() => result.current.addPlayer("lineman"));
     expect(result.current.players).toHaveLength(1);
     expect(result.current.players[0].positionalKey).toBe("lineman");
-    expect(result.current.players[0].name).toBe("Player 1");
+    expect(result.current.players[0].name).toBe("Lineman");
     expect(result.current.players[0].id).toBeTruthy();
   });
 
-  it("addPlayer auto-increments the default name", () => {
+  it("addPlayer auto-increments the default name per positional", () => {
     const { result } = setup();
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
     act(() => result.current.addPlayer("blitzer"));
-    expect(result.current.players[0].name).toBe("Player 1");
-    expect(result.current.players[1].name).toBe("Player 2");
+    expect(result.current.players[0].name).toBe("Lineman");
+    expect(result.current.players[1].name).toBe("Blitzer");
+  });
+
+  it("addPlayer suffixes duplicate positional names with a counter", () => {
+    const { result } = setup();
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.addPlayer("lineman"));
+    act(() => result.current.addPlayer("lineman"));
+    act(() => result.current.addPlayer("lineman"));
+    expect(result.current.players.map((p) => p.name)).toEqual(["Lineman", "Lineman 2", "Lineman 3"]);
   });
 
   it("addPlayer assigns a unique id to each player", () => {
@@ -190,7 +199,7 @@ describe("useCreateTeamForm", () => {
     const idToRename = result.current.players[0].id;
     act(() => result.current.renamePlayer(idToRename, "Grak"));
     expect(result.current.players[0].name).toBe("Grak");
-    expect(result.current.players[1].name).toBe("Player 2");
+    expect(result.current.players[1].name).toBe("Lineman 2");
   });
 
   it("renamePlayer to empty string does not crash", () => {

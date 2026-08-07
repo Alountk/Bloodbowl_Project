@@ -214,8 +214,8 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await expect(page.getByText("690k remaining")).toBeVisible();
 
     // Roster table reflects the players and totals
-    await expect(page.getByLabel("Player name for Player 1")).toHaveValue("Player 1");
-    await expect(page.getByLabel("Player name for Player 5")).toHaveValue("Player 5");
+    await expect(page.getByLabel("Player name for Lineman", { exact: true })).toHaveValue("Lineman");
+    await expect(page.getByLabel("Player name for Thrower", { exact: true })).toHaveValue("Thrower");
     await expect(page.getByText("5 players", { exact: true })).toBeVisible();
     await expect(page.getByText("690k left", { exact: true })).toBeVisible();
   });
@@ -247,11 +247,11 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await expect(page.getByText("3 players · 185k / 1,000k gc")).toBeVisible();
     await expect(page.getByText("815k remaining")).toBeVisible();
 
-    // Remove Player 1 (a Lineman) -> 135k
-    await page.getByRole("button", { name: "Remove Player 1" }).click();
+    // Remove the first Lineman -> 135k
+    await page.getByRole("button", { name: "Remove Lineman", exact: true }).click();
     await expect(page.getByText("2 players · 135k / 1,000k gc")).toBeVisible();
     await expect(page.getByText("865k remaining")).toBeVisible();
-    await expect(page.getByLabel("Player name for Player 1")).not.toBeVisible();
+    await expect(page.getByLabel("Player name for Lineman", { exact: true })).not.toBeVisible();
   });
 
   test("coaching purchases update the coaching total correctly", async ({ page }) => {

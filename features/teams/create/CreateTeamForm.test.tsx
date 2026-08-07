@@ -149,9 +149,9 @@ describe("CreateTeamForm", () => {
     fireEvent.click(addButtons[0]);
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "orc" } });
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-    // Player name input should still be present (1 player)
+    // Player name input should still be present (1 player) — default name = positional name
     const playerInputs = screen.getAllByRole("textbox").filter(
-      (el) => (el as HTMLInputElement).value.startsWith("Player"),
+      (el) => (el as HTMLInputElement).value === "Lineman",
     );
     expect(playerInputs).toHaveLength(1);
   });
