@@ -39,7 +39,6 @@ function formatGold(value: number): string {
 }
 
 const RULEBOOK_HEADERS = ["POSICIÓN", "COSTE", "MV", "FU", "AG", "PS", "AR", "HABILIDADES Y RASGOS", "PRIMARIAS", "SECUNDARIAS"];
-const EDITABLE_HEADERS = ["CANT.", ...RULEBOOK_HEADERS];
 
 export function RosterTable({
   players,
@@ -62,7 +61,7 @@ export function RosterTable({
   const showBanner = !readOnly && bannerText !== undefined && bannerText.length > 0;
 
   return (
-    <div className="overflow-x-auto">
+    <div className="max-h-[55vh] overflow-auto">
       <div className="max-w-[900px] bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
         {showBanner ? (
           <div className="border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[28px] text-[#12225a]">
@@ -72,11 +71,11 @@ export function RosterTable({
         <table className="w-full text-sm">
           <thead>
             <tr>
-              {(readOnly ? RULEBOOK_HEADERS : EDITABLE_HEADERS).map((header) => (
+              {RULEBOOK_HEADERS.map((header) => (
                 <th
                   key={header}
                   scope="col"
-                  className={`bg-[#d11938] px-[5px] py-2 text-white ${
+                  className={`sticky top-0 z-10 bg-[#d11938] px-[5px] py-2 text-white ${
                     header === "POSICIÓN" || header === "HABILIDADES Y RASGOS"
                       ? "text-left"
                       : "text-center"
@@ -85,7 +84,7 @@ export function RosterTable({
                   {header}
                 </th>
               ))}
-              {!readOnly ? <th scope="col" className="bg-[#d11938] px-[5px] py-2"></th> : null}
+              {!readOnly ? <th scope="col" className="sticky top-0 z-10 bg-[#d11938] px-[5px] py-2"></th> : null}
             </tr>
           </thead>
           <tbody>
@@ -98,11 +97,6 @@ export function RosterTable({
                   key={player.id}
                   className="odd:bg-white even:bg-[#e6eef5]"
                 >
-                  {!readOnly ? (
-                    <td className="px-[5px] py-2 text-center align-top text-[#1a1a1a]">
-                      {positional ? `${Math.min(positional.min ?? 0, positional.max)}-${positional.max}` : "—"}
-                    </td>
-                  ) : null}
                   <td className="px-[5px] py-2 text-left align-top text-[#1a1a1a]">
                     {readOnly ? (
                       <span>{player.name}</span>
@@ -114,9 +108,15 @@ export function RosterTable({
                         className="w-full rounded border border-slate-300 bg-white px-2 py-0.5 text-slate-900 outline-none focus:border-blue-500"
                       />
                     )}
-                    <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
-                      ({race.name}, {translateRole(positional?.role)})
-                    </span>
+                    {readOnly ? (
+                      <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
+                        ({race.name}, {translateRole(positional?.role)})
+                      </span>
+                    ) : (
+                      <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
+                        {positional?.name ?? "Player"} · ({race.name}, {translateRole(positional?.role)})
+                      </span>
+                    )}
                   </td>
                   <td className="px-[5px] py-2 text-center align-top text-[#1a1a1a]">
                     {positional ? formatRulebookCost(positional.cost) : "—"}
@@ -177,7 +177,7 @@ export function RosterTable({
                 </tr>
               ) : (
                 <tr className="font-medium text-[#1a1a1a]">
-                  <td colSpan={10} className="px-[5px] py-2 text-left">
+                  <td colSpan={9} className="px-[5px] py-2 text-left">
                     {players.length} player{players.length === 1 ? "" : "s"}
                   </td>
                   <td className="px-[5px] py-2 text-center">{formatRulebookCost(totalCost)}</td>
@@ -190,7 +190,7 @@ export function RosterTable({
               )}
               {apothecary !== undefined ? (
                 <tr className="bg-[#12225a] text-[13px] font-bold text-white">
-                  <td colSpan={readOnly ? 4 : 5} className="px-[5px] py-2 text-left">
+                  <td colSpan={4} className="px-[5px] py-2 text-left">
                     {`0-${MAX_REROLLS} Segundas oportunidades: ${formatRulebookCost(race.rerollCost)} M.O. cada una`}
                   </td>
                   <td colSpan={6} className="px-[5px] py-2 text-left">
