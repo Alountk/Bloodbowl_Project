@@ -1,12 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
+import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { TeamList } from "./TeamList";
 import type { Team } from "./types";
 import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "./types";
+
+// The shell renders a route-aware Topbar/Sidebar. `usePathnameMock` is a mutable
+// holder accessed through the vi.mock factory; each test sets the current route.
+const nav = { pathname: "/" };
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => nav.pathname,
+}));
+
+beforeEach(() => {
+  nav.pathname = "/";
+});
 
 const fixtureTeams: Team[] = [
   {
@@ -190,5 +203,57 @@ describe("TeamList", () => {
 
     expect(screen.getByRole("link", { name: /reikland reavers/i })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /da krumpaz/i })).toBeNull();
+  });
+});
+
+describe("Sidebar navigation", () => {
+  it("shows only the Teams nav item (no Create Team link) on the home route", () => {
+    render(
+      <AppProvider store={new InMemoryTeamStore()}>
+        <Sidebar />
+      </AppProvider>,
+    );
+
+    expect(screen.getByRole("link", { name: "Teams" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Teams" }).getAttribute("href")).toBe("/");
+    expect(screen.queryByRole("link", { name: /create team/i })).toBeNull();
+  });
+});
+
+describe("Topbar route-conditional search", () => {
+  it("renders the search form on the home route", () => {
+    render(
+      <AppProvider store={new InMemoryTeamStore()}>
+        <Topbar />
+      </AppProvider>,
+    );
+
+    expect(screen.getByRole("search")).toBeTruthy();
+    expect(screen.getByLabelText(/search teams/i)).toBeTruthy();
+  });
+
+  it("hides the search form off the home route", () => {
+    nav.pathname = "/teams/create";
+
+    render(
+      <AppProvider store={new InMemoryTeamStore()}>
+        <Topbar />
+      </AppProvider>,
+    );
+
+    expect(screen.getByRole("heading", { name: "Bloodbowl Teams" })).toBeTruthy();
+    expect(screen.queryByLabelText(/search teams/i)).toBeNull();
+    expect(screen.queryByRole("search")).toBeNull();
+  });
+});
+
+describe("TeamList home heading CTA", () => {
+  it("renders the Create New Team link to /teams/create in the heading row", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    const cta = screen.getByRole("link", { name: /create new team/i });
+    expect(cta).toBeTruthy();
+    expect(cta.getAttribute("href")).toBe("/teams/create");
   });
 });
