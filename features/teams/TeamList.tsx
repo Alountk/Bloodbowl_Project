@@ -20,7 +20,7 @@ export function TeamList() {
 
   return (
     <section aria-labelledby="teams-heading">
-      <div className="mb-4 flex items-end justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2
           id="teams-heading"
           className="border-b-[3px] border-[#d11938] pb-1.5 text-lg font-bold text-[#12225a]"
@@ -29,7 +29,7 @@ export function TeamList() {
         </h2>
         <Link
           href="/teams/create"
-          className="bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+          className="bg-[#12225a] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#0f1d4d]"
         >
           Create New Team
         </Link>

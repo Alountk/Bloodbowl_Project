@@ -56,13 +56,13 @@ export function CreateTeamForm() {
     <form
       onSubmit={form.handleSubmit}
       noValidate
-      className="mx-auto max-w-[900px] space-y-6 bg-white px-6 py-6 text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]"
+      className="mx-auto max-w-[900px] space-y-6 bg-white px-4 py-6 text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)] sm:px-6"
     >
       {race && form.step === 2 ? (
         // Step 2 — rulebook hero + builder + availability + coaching.
         <>
-          <header className="bg-[#12225a] px-6 py-[22px] text-white">
-            <h1 className="text-[26px] font-black tracking-[0.02em]">{form.name}</h1>
+          <header className="bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
+            <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{form.name}</h1>
             <p className="mt-2 text-[13px] text-[#cbd5e1]">
               {race.name} · Paso 2
             </p>
