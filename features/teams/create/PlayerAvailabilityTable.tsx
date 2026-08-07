@@ -46,7 +46,8 @@ export function PlayerAvailabilityTable({
 
   return (
     <div className="max-h-[55vh] overflow-auto">
-      <div className="max-w-[900px] bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
+      <div className="overflow-x-auto">
+        <div className="min-w-[640px] md:min-w-0 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
         <table className="w-full text-sm">
           <thead>
             <tr>
@@ -134,6 +135,7 @@ export function PlayerAvailabilityTable({
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
