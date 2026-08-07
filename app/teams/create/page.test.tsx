@@ -49,22 +49,31 @@ async function waitForHydration() {
   });
 }
 
+/** Fills step 1 and advances to step 2. */
+async function goToStep2(name: string, raceId: string) {
+  await waitForHydration();
+  await waitFor(() => expect(screen.getByLabelText("Team name")).toBeTruthy());
+  fireEvent.change(screen.getByLabelText("Team name"), { target: { value: name } });
+  fireEvent.change(screen.getByLabelText("Race"), { target: { value: raceId } });
+  fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+}
+
 describe("Team creation", () => {
-  it("shows the 8 races in the selector and positionals after selecting one", async () => {
+  it("shows the positionals for a race in Jugadores disponibles after moving to step 2", async () => {
     renderWithStore();
     await waitForHydration();
     await waitFor(() => expect(screen.getByLabelText("Race")).toBeTruthy());
 
-    const select = screen.getByLabelText("Race");
-    fireEvent.change(select, { target: { value: "human" } });
+    fireEvent.change(screen.getByLabelText("Team name"), { target: { value: "Reikland Reavers" } });
+    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
 
-    expect(screen.getByLabelText("Team name")).toBeTruthy();
-    const rosterSection = screen.getByRole("region", { name: "Roster builder" });
-    expect(within(rosterSection).getByText("Lineman")).toBeTruthy();
-    expect(within(rosterSection).getByText("Blitzer")).toBeTruthy();
-    expect(within(rosterSection).getByText("Thrower")).toBeTruthy();
-    expect(within(rosterSection).getByText("Catcher")).toBeTruthy();
-    expect(within(rosterSection).getByText("Ogre")).toBeTruthy();
+    const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
+    expect(within(availability).getByText("Lineman · (Human, Línea)")).toBeTruthy();
+    expect(within(availability).getByText("Blitzer · (Human, Blitzer)")).toBeTruthy();
+    expect(within(availability).getByText("Thrower · (Human, Lanzador)")).toBeTruthy();
+    expect(within(availability).getByText("Catcher · (Human, Receptor)")).toBeTruthy();
+    expect(within(availability).getByText("Ogre · (Human, Grandullón)")).toBeTruthy();
   });
 
   it("shows a name error when submitting without a name", async () => {
@@ -72,73 +81,63 @@ describe("Team creation", () => {
     await waitForHydration();
 
     fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
-
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
     expect(screen.getByText("Team name is required")).toBeTruthy();
   });
 
   it("blocks submit with fewer than 3 players", async () => {
     renderWithStoreAndList();
-    await waitForHydration();
-    await waitFor(() => expect(screen.getByLabelText("Team name")).toBeTruthy());
+    await goToStep2("Half Squad", "human");
 
-    fireEvent.change(screen.getByLabelText("Team name"), {
-      target: { value: "Half Squad" },
-    });
-    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
 
     expect(screen.getByText(/at least 3 players/i)).toBeTruthy();
-    // The team must NOT have been added to the list: no team-card link exists.
-    // (The typed name may still appear as the RosterTable banner while editing.)
+    // The team must NOT have been added to the list.
     expect(screen.queryByRole("link", { name: /Half Squad/i })).toBeNull();
   });
 
   it("blocks adding a player when it would exceed the budget", async () => {
     renderWithStoreAndList();
-    await waitForHydration();
+    await goToStep2("Deathroller Crew", "dwarf");
 
-    fireEvent.change(screen.getByLabelText("Team name"), {
-      target: { value: "Deathroller Crew" },
-    });
-    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "dwarf" } });
-    // 1 Deathroller (170k) + 11 Linemen (70k each) = 940k; 12th lineman would push to 1,010k (blocked)
-    fireEvent.click(screen.getByRole("button", { name: "Add Deathroller" }));
+    // 1 Deathroller (170k) + 11 Linemen (70k each) = 940k; the 12th would exceed.
+    const addDeathroller = screen.getByRole("button", { name: "Add Deathroller" }) as HTMLButtonElement;
+    expect(addDeathroller.disabled).toBe(false);
+    fireEvent.click(addDeathroller);
     for (let index = 0; index < 11; index += 1) {
-      fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+      const addLineman = screen.getByRole("button", { name: "Add Lineman" }) as HTMLButtonElement;
+      expect(addLineman.disabled).toBe(false);
+      fireEvent.click(addLineman);
     }
-    // At 940k the 12th lineman button should be disabled (would exceed budget)
+    // At 940k the 12th lineman button should be disabled.
     const addLinemanBtn = screen.getByRole("button", { name: "Add Lineman" }) as HTMLButtonElement;
     expect(addLinemanBtn.disabled).toBe(true);
   });
 
-  it("disables the increment button when a positional is at its max", async () => {
+  it("disables the increment button when a positional reaches its max", async () => {
     renderWithStore();
     await waitForHydration();
 
+    fireEvent.change(screen.getByLabelText("Team name"), { target: { value: "Orc Pack" } });
     fireEvent.change(screen.getByLabelText("Race"), { target: { value: "orc" } });
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+
+    // Orc Troll has max 1.
     const addTroll = screen.getByRole("button", {
       name: "Add Troll",
     }) as HTMLButtonElement;
+    expect(addTroll.disabled).toBe(false);
     fireEvent.click(addTroll);
-
-    expect(addTroll.disabled).toBe(true);
+    // At max, the row disappears entirely (the user's explicit requirement).
+    expect(screen.queryByRole("button", { name: "Add Troll" })).toBeNull();
   });
 
   it("adds a valid team to the list and shows its roster summary", async () => {
     renderWithStoreAndList();
-    await waitForHydration();
-    await waitFor(() => expect(screen.getByLabelText("Team name")).toBeTruthy());
+    await goToStep2("Reikland Reavers", "human");
 
-    fireEvent.change(screen.getByLabelText("Team name"), {
-      target: { value: "Reikland Reavers" },
-    });
-    fireEvent.change(screen.getByLabelText("Race"), { target: { value: "human" } });
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
