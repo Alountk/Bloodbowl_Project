@@ -31,20 +31,32 @@ describe("CreateTeamForm", () => {
     });
   }
 
-  it("renders the team name and race inputs", async () => {
+  async function goToStep2(name = "Reikland Reavers", raceId = "human") {
+    await renderForm();
+    fireEvent.change(screen.getByLabelText(/team name/i), { target: { value: name } });
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: raceId } });
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+  }
+
+  // --- Step 1 ---
+
+  it("starts on step 1 and renders the team name, race and Siguiente button", async () => {
     await renderForm();
     expect(screen.getByLabelText(/team name/i)).toBeTruthy();
     expect(screen.getByLabelText(/race/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /siguiente/i })).toBeTruthy();
+    // Step-2 content must not render yet.
+    expect(screen.queryByRole("region", { name: "Plantilla" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Jugadores disponibles" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Coaching Staff" })).toBeNull();
   });
 
   it("renders all race options in the select dropdown", async () => {
     await renderForm();
     const select = screen.getByLabelText(/race/i) as HTMLSelectElement;
     const options = Array.from(select.options);
-    // First option is the placeholder
     expect(options[0].value).toBe("");
     expect(options[0].text).toBe("Select a race");
-    // Remaining options should match RACES data
     const raceOptions = options.slice(1);
     expect(raceOptions).toHaveLength(RACES.length);
     RACES.forEach((race, index) => {
@@ -53,167 +65,128 @@ describe("CreateTeamForm", () => {
     });
   });
 
-  it("selects a race by its id and shows the placeholder when deselected", async () => {
+  it("clicking Siguiente without a name stays on step 1 and shows a validation error", async () => {
     await renderForm();
-    const select = screen.getByLabelText(/race/i) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "orc" } });
-    expect(select.value).toBe("orc");
-    // Deselect back to placeholder
-    fireEvent.change(select, { target: { value: "" } });
-    expect(select.value).toBe("");
-    // Roster should be gone
-    expect(screen.queryByRole("region", { name: "Roster builder" })).toBeNull();
+    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    expect(screen.getByText(/team name is required/i)).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Plantilla" })).toBeNull();
   });
 
-  it("shows the placeholder 'Select a race' before any race is selected", async () => {
+  it("clicking Siguiente without a race stays on step 1 and shows a validation error", async () => {
     await renderForm();
-    const select = screen.getByLabelText(/race/i) as HTMLSelectElement;
-    expect(select.value).toBe("");
-    // The placeholder option should be visible
-    const placeholderOption = select.querySelector('option[value=""]');
-    expect(placeholderOption).toBeTruthy();
-    expect(placeholderOption?.textContent).toBe("Select a race");
+    fireEvent.change(screen.getByLabelText(/team name/i), { target: { value: "Team" } });
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    expect(screen.getByRole("alert").textContent).toMatch(/select a race/i);
   });
 
-  it("renders the roster builder for every race in RACES", async () => {
-    await renderForm();
-    for (const race of RACES) {
-      fireEvent.change(screen.getByLabelText(/race/i), { target: { value: race.id } });
-      expect(screen.getByRole("region", { name: "Roster builder" })).toBeTruthy();
-      // Should show at least one positional add button
-      const addButtons = screen.getAllByRole("button", { name: /add/i });
-      expect(addButtons.length).toBeGreaterThan(0);
+  // --- Step 2 ---
+
+  it("clicking Siguiente with a name and race moves to step 2 with a hero and subline", async () => {
+    await goToStep2("Reikland Reavers", "human");
+    expect(screen.getByRole("heading", { name: /reikland reavers/i })).toBeTruthy();
+    expect(screen.getByText(/human.*paso 2/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /editar nombre\/raza/i })).toBeTruthy();
+  });
+
+  it("step 2 shows the Plantilla table, budget bar, Jugadores disponibles and Coaching Staff", async () => {
+    await goToStep2();
+    expect(screen.getByRole("region", { name: "Plantilla" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Jugadores disponibles" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Coaching Staff" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /create team/i })).toBeTruthy();
+  });
+
+  it("Jugadores disponibles shows Add buttons; adding a player populates Plantilla", async () => {
+    await goToStep2();
+    const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
+    expect(within(availability).getByRole("button", { name: "Add Lineman" })).toBeTruthy();
+    // Empty Plantilla roster shows the empty-state message.
+    expect(screen.getByText(/no players in roster yet/i)).toBeTruthy();
+
+    fireEvent.click(within(availability).getByRole("button", { name: "Add Lineman" }));
+    const plantilla = screen.getByRole("region", { name: "Plantilla" });
+    expect(within(plantilla).getByRole("textbox")).toBeTruthy();
+    expect(screen.getByLabelText("Player name for Player 1")).toBeTruthy();
+    // Empty-state message is gone now that the roster has a player.
+    expect(screen.queryByText(/no players in roster yet/i)).toBeNull();
+  });
+
+  it("Editar nombre/raza returns to step 1 and preserves the entered team name", async () => {
+    await goToStep2("Reikland Reavers", "human");
+    fireEvent.click(screen.getByRole("button", { name: /editar nombre\/raza/i }));
+    expect(screen.getByRole("button", { name: /siguiente/i })).toBeTruthy();
+    const nameInput = screen.getByLabelText(/team name/i) as HTMLInputElement;
+    expect(nameInput.value).toBe("Reikland Reavers");
+    const raceSelect = screen.getByLabelText(/race/i) as HTMLSelectElement;
+    expect(raceSelect.value).toBe("human");
+  });
+
+  it("step 2 hides rows in Jugadores disponibles once a positional reaches its max", async () => {
+    await goToStep2();
+    // Add 4 Blitzers (human max 4) through the availability table.
+    const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
+    for (let i = 0; i < 4; i += 1) {
+      fireEvent.click(within(availability).getByRole("button", { name: "Add Blitzer" }));
     }
+    expect(screen.queryByRole("button", { name: "Add Blitzer" })).toBeNull();
+    // Other positionals still available.
+    expect(screen.getByRole("button", { name: "Add Lineman" })).toBeTruthy();
   });
 
-  it("shows Spanish stat headers MV FU AG PS AR after selecting a race", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    // Add a player so RosterTable renders with headers
-    const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
-    fireEvent.click(addButtons[0]);
-    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
-    expect(headers).toContain("MV");
-    expect(headers).toContain("FU");
-    expect(headers).toContain("AG");
-    expect(headers).toContain("PS");
-    expect(headers).toContain("AR");
-    // No duplicate "A" column
-    expect(headers.filter((h) => h === "A")).toHaveLength(0);
+  it("shows budget feedback with formatGold strings in step 2", async () => {
+    await goToStep2();
+    expect(screen.getByText(/0 players · 0k \/ 1,000k gc/i)).toBeTruthy();
+    expect(screen.getByText(/1,000k remaining/i)).toBeTruthy();
   });
 
-  it("shows role-grouped positional add buttons after selecting a race", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    // Should show add buttons for at least some positionals
-    const addButtons = screen.getAllByRole("button", { name: /add/i });
-    expect(addButtons.length).toBeGreaterThan(0);
-  });
+  // --- Race change dialog (in step 2 context after editing step 1) ---
 
-  it("adds a player to the roster when add button is clicked", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
-    fireEvent.click(addButtons[0]);
-    // RosterTable should now show a player
-    expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
-  });
-
-  it("shows a confirm dialog when changing race with active roster", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    // Add a player
-    const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
-    fireEvent.click(addButtons[0]);
-    // Change race
+  it("shows a confirm dialog when changing race with an active roster", async () => {
+    await goToStep2("Reikland Reavers", "human");
+    // Add a player from the availability table (step 2).
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    // Return to step 1 where the race select lives.
+    fireEvent.click(screen.getByRole("button", { name: /editar nombre\/raza/i }));
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "orc" } });
-    // Confirm dialog should appear
     expect(screen.getByText(/roster will be cleared/i)).toBeTruthy();
   });
 
   it("clears roster on confirm race change", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
-    fireEvent.click(addButtons[0]);
+    await goToStep2("Reikland Reavers", "human");
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: /editar nombre\/raza/i }));
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "orc" } });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-    // RosterTable should show empty state message (no player inputs)
-    expect(screen.getByText(/no players/i)).toBeTruthy();
+    // Return to step 2 to see the empty roster.
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    expect(screen.getByText(/no players in roster yet/i)).toBeTruthy();
   });
 
   it("keeps roster on cancel race change", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
-    fireEvent.click(addButtons[0]);
+    await goToStep2("Reikland Reavers", "human");
+    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: /editar nombre\/raza/i }));
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "orc" } });
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-    // Player name input should still be present (1 player) — default name = positional name
-    const playerInputs = screen.getAllByRole("textbox").filter(
-      (el) => (el as HTMLInputElement).value === "Lineman",
-    );
-    expect(playerInputs).toHaveLength(1);
+    // Player remains in step 2 after clicking Siguiente again.
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    expect(screen.getByLabelText("Player name for Player 1")).toBeTruthy();
   });
 
-  it("shows budget feedback", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    // Budget display should be visible (e.g. remaining gc)
-    expect(screen.getByText(/remaining/i)).toBeTruthy();
-  });
+  // --- Coaching staff ---
 
-  it("renders role-group headings for the selected race (R1: positionals grouped by role)", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    // Human roster has Lineman, Thrower, Blitzer, Catcher, Big Guy roles.
-    // The form renders each role as an <h3> heading with text "{role}s".
-    expect(screen.getByRole("heading", { name: /linemans/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /throwers/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /blitzers/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /catchers/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /big guys/i })).toBeTruthy();
-  });
-
-  it("renders the RosterTable before the budget bar and role-group add headings", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    const region = screen.getByRole("region", { name: "Roster builder" });
-    // Empty roster -> RosterTable renders its empty-state <p>.
-    const emptyState = within(region).getByText(/no players in roster yet/i);
-    const budget = within(region).getByText(/remaining/i);
-    const addHeading = within(region).getByRole("heading", { name: /linemans/i });
-    expect(
-      emptyState.compareDocumentPosition(budget) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      emptyState.compareDocumentPosition(addHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it("renders an editable RosterTable with no CANT. column (11 editable columns)", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
-    fireEvent.click(addButtons[0]);
-    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
-    expect(headers).not.toContain("CANT.");
-    expect(headers).toHaveLength(11);
-  });
-
-  // --- coaching staff ---
-
-  it("hides the Coaching Staff section until a race is selected", async () => {
+  it("hides Coaching Staff on step 1 and shows it on step 2", async () => {
     await renderForm();
     expect(screen.queryByRole("region", { name: "Coaching Staff" })).toBeNull();
+    fireEvent.change(screen.getByLabelText(/team name/i), { target: { value: "Team" } });
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
     expect(screen.getByRole("region", { name: "Coaching Staff" })).toBeTruthy();
   });
 
-  it("renders the Coaching Staff inputs and league select after a race is selected", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    expect(screen.getByRole("region", { name: "Coaching Staff" })).toBeTruthy();
+  it("renders the Coaching Staff inputs and league select", async () => {
+    await goToStep2();
     expect(screen.getByLabelText("Rerolls")).toBeTruthy();
     expect(screen.getByLabelText("Dedicated Fans")).toBeTruthy();
     expect(screen.getByLabelText("Assistant Coaches")).toBeTruthy();
@@ -227,41 +200,18 @@ describe("CreateTeamForm", () => {
   });
 
   it("shows unit costs next to each coaching field and consumes the budget", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    await goToStep2();
     const region = screen.getByRole("region", { name: "Coaching Staff" });
-    // Human rerolls cost 50k and the apothecary costs 50k: both unit costs visible.
     expect(within(region).getAllByText("50k gc", { selector: "span" }).length).toBeGreaterThan(0);
-    // Budget starts at 1,000k with no players.
-    expect(screen.getByText(/remaining/i)).toBeTruthy();
     const rerollInput = screen.getByLabelText("Rerolls") as HTMLInputElement;
     fireEvent.change(rerollInput, { target: { value: "2" } });
-    // 2 rerolls x 50k = 100k; 1000k - 100k = 900k remaining.
     expect(screen.getByText(/900k remaining/i)).toBeTruthy();
   });
 
-  it("binds the reroll input value to coaching state", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    const rerollInput = screen.getByLabelText("Rerolls") as HTMLInputElement;
-    fireEvent.change(rerollInput, { target: { value: "4" } });
-    expect(rerollInput.value).toBe("4");
-  });
-
-  it("binds the league select value to leagueType state", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
-    const leagueSelect = screen.getByLabelText("League type") as HTMLSelectElement;
-    fireEvent.change(leagueSelect, { target: { value: "exhibition" } });
-    expect(leagueSelect.value).toBe("exhibition");
-  });
-
   it("includes the apothecary cost in the coaching subtotal", async () => {
-    await renderForm();
-    fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
+    await goToStep2();
     const region = screen.getByRole("region", { name: "Coaching Staff" });
     const apothecary = screen.getByLabelText("Apothecary") as HTMLInputElement;
-    // Apothecary shows its 50k unit cost once selected.
     expect(within(region).queryByText("50k gc · 50k", { selector: "span" })).toBeNull();
     fireEvent.click(apothecary);
     expect(within(region).getByText("50k gc · 50k", { selector: "span" })).toBeTruthy();

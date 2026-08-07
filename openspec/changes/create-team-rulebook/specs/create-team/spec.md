@@ -2,139 +2,140 @@
 
 ## Purpose
 
-Contract for the `CreateTeamForm` rulebook-light experience (navy hero, red-bordered headings, light fields, table-first roster builder) with byte-identical e2e contract strings.
+Contract for the `CreateTeamForm` **2-step wizard** (Config 4, user-approved): a light book panel for team data (Step 1), then a navy rulebook hero with the roster builder, rulebook availability table, coaching staff, and submit (Step 2). Supports default `Player N` naming, editable `POSICIÓN` subtext, and a rulebook-style `Jugadores disponibles` table where rows disappear at a positional's max and Add buttons disable when over budget.
 
 ## Requirements
 
-### Requirement: Form Layout Order
+### Requirement: Two-Step Wizard Navigation
 
-The system MUST render the form in fixed order: team name, race select, optional race-change dialog, `Roster builder` (when a race is selected), `Coaching Staff`, error alerts, submit button.
+The form MUST present two distinct steps. Step 1 collects the team name and race in a light book panel titled "Paso 1 · Datos del equipo" with a navy "Siguiente →" button. Submitting step 1 (with a name and race) advances to step 2. A user may return to step 1 via an "Editar nombre/raza" action while preserving all entered state.
 
-#### Scenario: Happy path order
+#### Scenario: Initial step is 1
 
-- GIVEN the page renders with a race selected
-- WHEN the form renders
-- THEN team name and race controls precede the Roster builder
-- AND Coaching Staff and submit follow it
+- GIVEN the form renders fresh
+- WHEN it renders
+- THEN it shows the "Paso 1 · Datos del equipo" panel with team name and race controls and a "Siguiente →" button
 
-### Requirement: Table-First Roster Builder
+#### Scenario: Advance to step 2 with valid data
 
-The RosterTable MUST render BEFORE the budget bar and the role-group "Add" sections inside the `Roster builder` section.
+- GIVEN a name and race are entered on step 1
+- WHEN "Siguiente →" is clicked
+- THEN step 2 renders with a navy hero showing the team name and a "{race.name} · Paso 2" subline
+- AND step 2 exposes Plantilla, Jugadores disponibles, and Coaching Staff
 
-#### Scenario: Table above budget bar
+#### Scenario: Validation blocks step advance
 
-- GIVEN a race is selected
-- WHEN the section renders
-- THEN the RosterTable precedes the budget bar and add sections
+- GIVEN a missing name OR missing race on step 1
+- WHEN "Siguiente →" is clicked
+- THEN the form stays on step 1 and shows a validation alert ("Team name is required" and/or "Select a race")
 
-#### Scenario: Empty state visible first
+#### Scenario: Return to step 1 preserves state
 
-- GIVEN a race selected with no players
-- WHEN the section renders
-- THEN the "No players in roster yet." empty state appears above the budget bar
+- GIVEN step 2 is active with a name, race, and roster
+- WHEN "Editar nombre/raza" is clicked
+- THEN step 1 re-renders with the previously entered name and race intact
 
-### Requirement: Rulebook Light Styling
+### Requirement: Step 2 Plantilla Section
 
-The form MUST render in a white panel (max-w 900px) with a navy `#12225a` hero titled "Create Team" plus subtitle. Section headings MUST be 16px `#12225a` with a 3px `#d11938` bottom border; inputs and selects MUST be light (white background, slate border, dark text).
+Step 2 MUST render a "Plantilla" section containing the editable `RosterTable` at the top, followed by the budget bar (using `formatGold` strings "{n} player(s) · {cost}k / 1,000k gc", "{X}k remaining", "Over budget by {X}k"). An empty roster MUST show the table's empty-state message ("No players in roster yet.").
 
-#### Scenario: Hero and headings
+#### Scenario: Empty roster message
 
-- GIVEN the form renders
-- THEN a navy hero shows "Create Team" and subtitle
-- AND section headings use the red-bordered 16px style
+- GIVEN step 2 renders with no players
+- WHEN the Plantilla section renders
+- THEN the "No players in roster yet." message is visible
 
-#### Scenario: Light fields
-
-- GIVEN the form renders
-- THEN inputs and selects use white backgrounds with dark text
-
-### Requirement: Budget Bar Contract
-
-The budget bar MUST keep byte-identical strings ("{n} player(s) · {cost}k / 1,000k gc", "{X}k remaining", "Over budget by {X}k"), restyled via classes only; the `formatGold` k-format MUST NOT change.
-
-#### Scenario: Within budget
+#### Scenario: Budget bar contract
 
 - GIVEN a roster costing 690k of 1,000k
 - WHEN the budget bar renders
-- THEN it shows "5 players · 690k / 1,000k gc" and "310k remaining"
+- THEN it shows "5 players · 690k / 1,000k gc"
+- AND over budget shows "Over budget by 110k"
 
-#### Scenario: Over budget
+### Requirement: Jugadores Disponibles Availability Table
 
-- GIVEN a roster costing 110k over budget
-- WHEN the budget bar renders
-- THEN it shows "Over budget by 110k"
+When a race is selected, Step 2 MUST render a "Jugadores disponibles" rulebook-style table with columns POSICIÓN | COSTE | MV | FU | AG | PS | AR | HABILIDADES Y RASGOS | DISP. Each row shows a positional's name with an "(Raza, RolEs)" subtext, its `formatRulebookCost` cost, stats, Spanish skills (fallback to English, "Ninguna" if empty), and a DISP. cell with a `{n}/{max}` counter plus a button `aria-label="Add {positional.name}"` labeled "+ Add".
 
-### Requirement: Editable Table Without CANT.
+#### Scenario: Rulebook headers and subtext
 
-The form MUST render the RosterTable in editable mode without a `CANT.` header or qty cell — 11 columns (10 rulebook headers + blank trailing `th`) — keeping rename/remove aria-labels.
+- GIVEN a race is selected on step 2
+- WHEN the availability table renders
+- THEN the nine rulebook headers appear
+- AND each row shows "{positional.name} · ({race.name}, {roleEs})" in POSICIÓN
 
-#### Scenario: Header set
+#### Scenario: Add and counter
 
-- GIVEN an editable roster in the form
-- WHEN the table header renders
-- THEN 11 columns render without `CANT.`
+- GIVEN a race with positionals
+- WHEN the availability table renders
+- THEN the DISP. cell shows "{n}/{max}"
+- AND an "Add {positional.name}" button is present for every available positional
 
-#### Scenario: Remove control preserved
+#### Scenario: Disappearing row at max
 
-- GIVEN an editable roster
-- WHEN a row renders
-- THEN the remove button keeps `aria-label="Remove {name}"`
+- GIVEN a positional has reached its max count
+- WHEN the availability table renders
+- THEN that row (including its Add button) is NOT rendered
+
+#### Scenario: Over-budget Add disabled
+
+- GIVEN adding a positional would exceed the 1,000,000 gc budget
+- WHEN the availability table renders
+- THEN its Add button is disabled but the row stays visible
 
 ### Requirement: Default Player Naming
 
-New players MUST default their name to the positional name, with a numeric suffix for duplicates (e.g. "Hobgoblin Lineman", "Hobgoblin Lineman 2"), so the table row identifies the added position; the name input remains editable.
+New players MUST default their name to "Player N" (incrementing per player added, e.g. "Player 1", "Player 2"), and the name input remains editable.
 
-#### Scenario: First player of a position
+#### Scenario: First player
 
-- GIVEN a race with positionals
-- WHEN a player of a positional is added first
-- THEN the player's default name is the positional name (e.g. "Lineman")
+- GIVEN a fresh roster
+- WHEN a player is added
+- THEN its default name is "Player 1"
 
-#### Scenario: Duplicate positions
+#### Scenario: Incrementing names
 
-- GIVEN two players of the same position
-- WHEN the second is added
-- THEN its default name appends a counter (e.g. "Lineman 2")
+- GIVEN two players
+- WHEN a second is added
+- THEN its default name is "Player 2"
 
-### Requirement: Scrollable Roster Table
+### Requirement: Editable POSICIÓN Subtext
 
-The RosterTable container MUST cap its height with internal scrolling and a sticky header so the rest of the form (budget bar, add sections, coaching, submit) remains visible as the roster grows.
+In editable mode the `RosterTable` POSICIÓN cell MUST render a subtext of "{positional.name} · ({race.name}, {roleEs})" (e.g. "Hobgoblin Lineman · (Chaos Dwarf, Línea)"). Read-only mode MUST retain the existing "({race.name}, {roleEs})" subtext unchanged.
 
-#### Scenario: Height cap and sticky header
+#### Scenario: Editable subtext includes positional name
 
-- GIVEN a growing roster
-- WHEN the table renders
-- THEN the container has a max height and internal vertical scroll
-- AND the header row sticks to the top of the scroll container
+- GIVEN an editable roster
+- WHEN a row's POSICIÓN cell renders
+- THEN the subtext shows the positional name, race name, and Spanish role
+
+#### Scenario: Read-only subtext unchanged
+
+- GIVEN a read-only roster
+- WHEN a row's POSICIÓN cell renders
+- THEN the subtext shows only "({race.name}, {roleEs})"
 
 ### Requirement: Coaching Staff English Labels
 
-The Coaching Staff section MUST keep English labels (Rerolls, Dedicated Fans, Assistant Coaches, Cheerleaders, Apothecary, League type), light styling, and unchanged `formatGold` strings and aria-labels.
+The Coaching Staff section MUST keep English labels (Rerolls, Dedicated Fans, Assistant Coaches, Cheerleaders, Apothecary, League type), light styling, unchanged `formatGold` `{X}k gc` strings, and region `aria-label="Coaching Staff"`.
 
-#### Scenario: Labels and aria
+#### Scenario: Labels and cost strings
 
 - GIVEN the Coaching Staff renders
-- THEN the six English labels appear
-- AND inputs stay reachable via `getByLabel("Rerolls")` etc.
+- THEN the six English labels appear reachable via `getByLabel`
+- AND the total is shown in `{X}k gc` format
 
-#### Scenario: Cost strings
+### Requirement: Submit Team
 
-- GIVEN coaching quantities set
-- WHEN the section renders
-- THEN cost text stays in `{X}k gc` format (e.g. "150k gc")
+Step 2 MUST render a navy "Create Team" submit button. On submit the form reuses the existing validation (name required, at least 3 players, budget not exceeded) and clears the form on success.
 
-### Requirement: Accessibility Contract Preservation
+#### Scenario: Submit valid
 
-The restyle MUST NOT change region names ("Roster builder", "Coaching Staff"), "Add {name}" labels, "(n/max)" counters, "Create Team" heading, the race-change `role="alertdialog"`, or the `role="alert"` error texts.
+- GIVEN step 2 with a valid roster
+- WHEN "Create Team" is clicked
+- THEN the team is created and the form resets to step 1
 
-#### Scenario: Regions and counters
+#### Scenario: Submit blocked when over budget
 
-- GIVEN the restyled form
-- WHEN it renders
-- THEN regions, "Add X" labels, and "(n/max)" counters match previous values exactly
-
-#### Scenario: Errors unchanged
-
-- GIVEN an invalid submission
-- WHEN error alerts render
-- THEN "Team name is required", "at least 3", and "Roster exceeds the 1,000,000 gc budget" texts are unchanged
+- GIVEN a roster over the 1,000,000 gc budget
+- WHEN "Create Team" is clicked
+- THEN the submission is blocked and "Roster exceeds the 1,000,000 gc budget" is shown
