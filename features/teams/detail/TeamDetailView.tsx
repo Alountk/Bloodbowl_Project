@@ -80,7 +80,9 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
           >
             Cuerpo técnico
           </h2>
-          <table className="w-full text-[13px]">
+          <div className="overflow-x-auto">
+            <div className="min-w-[640px] md:min-w-0">
+              <table className="w-full text-[13px]">
             <thead>
               <tr className="bg-[#12225a] text-white">
                 <th scope="col" className="px-[10px] py-[7px] text-left text-[12px] font-bold uppercase">
@@ -132,7 +134,9 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
                 </td>
               </tr>
             </tbody>
-          </table>
+            </table>
+            </div>
+          </div>
         </section>
 
         {/* Tesorería */}
