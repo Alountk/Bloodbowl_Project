@@ -158,7 +158,7 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
             </div>
             <div className="flex-1 rounded border border-[#e2e8f0] bg-[#f1f5f9] p-2.5 text-center">
               <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">Tesorería restante</p>
-              <p className="mt-0.5 text-[18px] font-extrabold text-[#12225a]">
+              <p className="mt-0.5 text-[18px] font-extrabold text-[#d11938]">
                 {formatRulebookCost(treasury)}
               </p>
             </div>
