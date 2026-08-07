@@ -83,9 +83,9 @@ describe("TeamDetailView", () => {
     render(<TeamDetailView team={team} race={humanRace} />);
 
     // The race carries the lineman positional (MA/ST/AG/PA/AV + cost). The catalog
-    // cost (50k) must surface through RosterTable — at minimum twice (per-row +
-    // total row). Proves race was actually forwarded, not stubbed.
-    const fiftyK = screen.getAllByText(/^50k$/);
+    // cost (50 000 in rulebook format) must surface through RosterTable — at
+    // minimum twice (per-row + total row). Proves race was actually forwarded.
+    const fiftyK = screen.getAllByText("50 000");
     expect(fiftyK.length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("John")).toBeTruthy();
   });

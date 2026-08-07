@@ -86,18 +86,18 @@ describe("CreateTeamForm", () => {
     }
   });
 
-  it("shows stat headers MA ST AG PA AV after selecting a race", async () => {
+  it("shows Spanish stat headers MV FU AG PS AR after selecting a race", async () => {
     await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
     // Add a player so RosterTable renders with headers
     const addButtons = screen.getAllByRole("button", { name: /add lineman/i });
     fireEvent.click(addButtons[0]);
     const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
-    expect(headers).toContain("MA");
-    expect(headers).toContain("ST");
+    expect(headers).toContain("MV");
+    expect(headers).toContain("FU");
     expect(headers).toContain("AG");
-    expect(headers).toContain("PA");
-    expect(headers).toContain("AV");
+    expect(headers).toContain("PS");
+    expect(headers).toContain("AR");
     // No duplicate "A" column
     expect(headers.filter((h) => h === "A")).toHaveLength(0);
   });
