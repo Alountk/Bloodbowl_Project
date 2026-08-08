@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { Team } from "@/features/teams/types";
+import { MAX_PLAYERS, MIN_PLAYERS } from "@/features/teams/roster";
 
 /** Returns the session user id or null when the request is unauthenticated. */
 async function getSessionUserId(): Promise<string | null> {
@@ -47,13 +48,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Team name and race are required" }, { status: 400 });
   }
 
+  // Server-side roster bounds: the client form also guards, but a direct POST
+  // must not create a team below the BB2025 minimum (or above the cap).
+  const roster = Array.isArray(body.roster) ? body.roster : [];
+  if (roster.length < MIN_PLAYERS || roster.length > MAX_PLAYERS) {
+    return NextResponse.json(
+      { error: `A team needs between ${MIN_PLAYERS} and ${MAX_PLAYERS} players` },
+      { status: 400 },
+    );
+  }
+
   const team = await prisma.team.create({
     data: {
       userId,
       name: body.name,
       raceId: body.raceId,
       leagueId: null,
-      roster: (body.roster ?? []) as object,
+      roster: roster as object,
       coaching: (body.coaching ?? {}) as object,
     },
   });
