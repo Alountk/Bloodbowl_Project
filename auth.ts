@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "@/auth.config";
+import { normalizeEmail } from "@/lib/email";
 
 /**
  * Node-runtime Auth.js configuration.
@@ -23,11 +24,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = credentials?.email;
+        const rawEmail = credentials?.email;
         const password = credentials?.password;
-        if (typeof email !== "string" || typeof password !== "string") {
+        if (typeof rawEmail !== "string" || typeof password !== "string") {
           return null;
         }
+        // Emails are stored lowercased (see lib/email normalizeEmail). Normalize
+        // here so a mixed-case login matches the stored user.
+        const email = normalizeEmail(rawEmail);
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) return null;

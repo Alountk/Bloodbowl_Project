@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, act, waitFor } from "@testing-library/react";
 import { AppProvider, useApp } from "./AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
@@ -31,12 +31,18 @@ function renderProvider(store: TeamStore = new InMemoryTeamStore()) {
     ctx = useApp();
     return null;
   }
-  render(
-    <AppProvider store={store}>
+  const view = render(
+    <AppProvider store={store} reloadVersion={0}>
       <Probe />
     </AppProvider>,
   );
-  return { getCtx: () => ctx };
+  return { getCtx: () => ctx, rerender: (reloadVersion: number) =>
+    view.rerender(
+      <AppProvider store={store} reloadVersion={reloadVersion}>
+        <Probe />
+      </AppProvider>,
+    ),
+  };
 }
 
 function deferred<T>() {
@@ -108,6 +114,37 @@ describe("AppProvider — hydration", () => {
     );
     await waitFor(() => expect(ctx.isHydrated).toBe(true));
     expect(ctx.teams).toEqual([]); // real localStorage is empty in vitest jsdom
+  });
+});
+
+describe("AppProvider — re-hydration after migration", () => {
+  it("re-lists the store when reloadVersion changes (migrated teams appear)", async () => {
+    // A store whose list() grows over time, simulating teams POSTed by the
+    // migration behind the store's back.
+    const mutable = new InMemoryTeamStore();
+    const { getCtx, rerender } = renderProvider(mutable);
+    await waitFor(() => expect(getCtx().isHydrated).toBe(true));
+    expect(getCtx().teams).toHaveLength(0);
+
+    // The migration adds the team directly into the store (as /api/teams would).
+    await act(async () => {
+      await mutable.save(makeTeam("m1", "Legacy Reavers"));
+    });
+
+    // Bumping reloadVersion must re-list so the migrated team appears.
+    rerender(1);
+    await waitFor(() => expect(getCtx().teams).toHaveLength(1));
+    expect(getCtx().teams[0].name).toBe("Legacy Reavers");
+  });
+
+  it("does NOT re-list on a plain re-render with the same reloadVersion", async () => {
+    const store = new InMemoryTeamStore([makeTeam("1")]);
+    const listSpy = vi.spyOn(store, "list");
+    const { rerender } = renderProvider(store);
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(1));
+
+    rerender(0); // same reloadVersion as the initial render
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(1));
   });
 });
 
