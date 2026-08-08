@@ -78,3 +78,43 @@ test("create league → card shows → assign team → member listed → expel",
   await page.getByRole("button", { name: "Expulsar" }).first().click();
   await expect(page.getByText("Middenheim Marauders")).not.toBeVisible();
 });
+
+test("deleting an assigned team surfaces the 409 archive guard instead of removing it", async ({
+  page,
+}) => {
+  const email = uniqueEmail();
+  const password = "password-123";
+  await signup(page, email, password);
+
+  await createTeam(page);
+  const leagueName = `Liga E2E Guard ${Date.now()}`;
+  await createLeague(page, leagueName);
+
+  // Assign the team so it becomes a league member.
+  await page.getByRole("link", { name: "Ver", exact: true }).click();
+  await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
+  await page.getByLabel("Equipos").selectOption({ label: "Middenheim Marauders" });
+  await page.getByRole("button", { name: "Asignar" }).click();
+  await expect(page.getByText("Middenheim Marauders")).toBeVisible();
+
+  // Go home and attempt to delete the member team.
+  await page.goto("/");
+  await expect(page.getByText("Middenheim Marauders")).toBeVisible();
+  await page.getByRole("button", { name: "Delete Middenheim Marauders" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+
+  // Confirm the delete → the API returns 409 and the guard message appears.
+  await page.getByRole("button", { name: "Eliminar" }).click();
+  await expect(page.getByText(leagueName)).toBeVisible();
+  await expect(
+    page.getByText(
+      `No se puede borrar este equipo — pertenece a la liga ${leagueName}. Para poder borrarlo, primero expulsalo de la liga.`,
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Entendido" })).toBeVisible();
+
+  // Entendido closes the dialog; the team remains in the list (not removed).
+  await page.getByRole("button", { name: "Entendido" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByText("Middenheim Marauders")).toBeVisible();
+});
