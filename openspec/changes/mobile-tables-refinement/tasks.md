@@ -42,10 +42,10 @@ Chain strategy: pending
 
 ## Phase 4: PlayerAvailabilityTable Mobile Rows (RED → GREEN)
 
-- [ ] 4.1 RED (`matchMedia` false): row asserts name + subtitle `({race.name}, {rol})` + cost, counter `{n}/{max}`, "+ Add" always visible `aria-label="Add {name}"`
-- [ ] 4.2 RED: row hidden at max; "+ Add" disabled over budget; stats chips + labeled rows present
-- [ ] 4.3 GREEN `PlayerAvailabilityTable.tsx`: shared rowData; desktop table vs mobile stacked rows
-- [ ] 4.4 Run desktop suite: existing `PlayerAvailabilityTable.test.tsx` green unchanged
+- [x] 4.1 RED (`matchMedia` false): row asserts name + subtitle `({race.name}, {rol})` + cost, counter `{n}/{max}`, "+ Add" always visible `aria-label="Add {name}"`
+- [x] 4.2 RED: row hidden at max; "+ Add" disabled over budget; stats chips + labeled rows present
+- [x] 4.3 GREEN `PlayerAvailabilityTable.tsx`: shared rowData; desktop table vs mobile stacked rows
+- [x] 4.4 Run desktop suite: existing `PlayerAvailabilityTable.test.tsx` green unchanged
 
 ## Phase 5: Select Wrappers (RED → GREEN)
 
