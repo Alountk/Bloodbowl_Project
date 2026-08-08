@@ -20,7 +20,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-bloodbowl}:${POSTGRES_PASSWORD:-bloodbowl}@host.docker.internal:5432/${POSTGRES_DB:-bloodbowl}?schema=public
+      # Reached via host.docker.internal on the published port (POSTGRES_PORT).
+      # Each environment must use a DIFFERENT published port to avoid clashes
+      # with other Postgres instances on the same host.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bloodbowl}:${POSTGRES_PASSWORD:-bloodbowl}@host.docker.internal:${POSTGRES_PORT:-5433}/${POSTGRES_DB:-bloodbowl}?schema=public
       # Required for Auth.js on a LAN/HTTP host. Override in production with the
       # real session secret; do NOT commit a production value.
       AUTH_SECRET: ${AUTH_SECRET:-}
@@ -38,7 +41,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bloodbowl}
       POSTGRES_DB: ${POSTGRES_DB:-bloodbowl}
     ports:
-      - "5432:5432"
+      # Published port is configurable; the default 5433 avoids the common 5432
+      # clash with other Postgres instances on the same host.
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - bloodbowl_postgres_data:/var/lib/postgresql/data
     healthcheck:
