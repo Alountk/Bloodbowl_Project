@@ -135,4 +135,27 @@ describe("PlayerAvailabilityTable", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Blitzer" }));
     expect(onAdd).toHaveBeenCalledWith("blitzer");
   });
+
+  describe("horizontal scroll on mobile", () => {
+    it("nests an overflow-x-auto wrapper and min-width panel below the outer scroll container", () => {
+      render(
+        <PlayerAvailabilityTable
+          race={mockRace}
+          players={[]}
+          totalCost={0}
+          onAdd={vi.fn()}
+          maxPlayers={16}
+        />,
+      );
+      // Table -> panel -> overflow-x-auto wrapper -> outer max-h container.
+      const panel = screen.getByRole("table").parentElement;
+      expect(panel?.className).toContain("min-w-[640px]");
+      expect(panel?.className).toContain("md:min-w-0");
+      const wrapper = panel?.parentElement;
+      expect(wrapper?.className).toContain("overflow-x-auto");
+      const outer = wrapper?.parentElement;
+      expect(outer?.className).toContain("max-h-[55vh]");
+      expect(outer?.className).toContain("overflow-auto");
+    });
+  });
 });

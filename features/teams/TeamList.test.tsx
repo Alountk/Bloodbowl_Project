@@ -256,4 +256,18 @@ describe("TeamList home heading CTA", () => {
     expect(cta).toBeTruthy();
     expect(cta.getAttribute("href")).toBe("/teams/create");
   });
+
+  it("wraps the heading row and keeps a ≥40px CTA tap target on mobile", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    // The heading row wraps so the CTA falls below the h2 at narrow widths.
+    const headingRow = screen.getByRole("heading", { name: "Teams" }).parentElement;
+    expect(headingRow?.className).toContain("flex-wrap");
+    expect(headingRow?.className).toContain("items-center");
+
+    // The CTA maintains a vertical tap target of at least 40px (py-2.5 = 10px top/bottom).
+    const cta = screen.getByRole("link", { name: /create new team/i });
+    expect(cta.className).toContain("py-2.5");
+  });
 });
