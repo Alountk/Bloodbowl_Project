@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
+import { useTeamMigration } from "@/features/migration/useTeamMigration";
 
 /**
  * Session-aware application gate.
@@ -21,6 +22,11 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
   // Stable ApiTeamStore instance across re-renders.
   const [apiStore] = useState(() => new ApiTeamStore());
 
+  const authenticated = status === "authenticated";
+  // One-time per-browser legacy localStorage migration, run on first auth.
+  // Non-blocking and idempotent (see useTeamMigration); never interrupts login.
+  useTeamMigration(authenticated);
+
   if (status === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
@@ -30,8 +36,6 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
-  const authenticated = status === "authenticated";
 
   return (
     <AppShell
