@@ -1,0 +1,10 @@
+# Blood Bowl Web — runs the latest published image from GHCR.
+# Usage: docker compose up -d
+# `pull_policy: always` ensures every up pulls the newest `latest` image.
+services:
+  web:
+    image: ghcr.io/alountk/bloodbowl_project:latest
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "3444:3444"
