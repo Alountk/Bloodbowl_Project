@@ -52,16 +52,16 @@ Chain strategy: pending
 
 ## Phase 3: Integration, Guard Surface, E2E + Spec Sync (PR 3)
 
-- [ ] 3.1 RED `TeamDeleteModal.test.tsx` + `TeamList.test.tsx`: confirm on member team surfaces "expel from league first"
-- [ ] 3.2 GREEN `TeamDeleteModal.tsx` + `TeamList.tsx`: catch `ArchiveGuardError`(409) from `removeTeam`, render message, keep modal/list
-- [ ] 3.3 Sweep remaining `leagueType` fixtures: `features/migration/*`, `e2e/{mobile,migration,delete-team}.spec.ts`, store/roster tests (100+ matches → `rg "leagueType|LEAGUE_LABELS"`)
-- [ ] 3.4 Add e2e `e2e/leagues.spec.ts`: create league → assign team → detail listing; guard 409 in delete-team
+- [x] 3.1 RED `TeamDeleteModal.test.tsx` + `TeamList.test.tsx`: confirm on member team surfaces "expel from league first"
+- [x] 3.2 GREEN `TeamDeleteModal.tsx` + `TeamList.tsx`: catch `ArchiveGuardError`(409) from `removeTeam`, render message, keep modal/list
+- [x] 3.3 Sweep remaining `leagueType` fixtures: `features/migration/*`, `e2e/{mobile,migration,delete-team}.spec.ts`, store/roster tests (100+ matches → `rg "leagueType|LEAGUE_LABELS"`)
+- [x] 3.4 Add e2e `e2e/leagues.spec.ts`: create league → assign team → detail listing; guard 409 in delete-team
 - [ ] 3.5 Verify unit + e2e suites green; regenerate reports; `sdd-archive` merges all five delta specs into main specs
-- [ ] 3.6 Update main-spec `team-list`/fixtures if any league-less card assertions break
+- [x] 3.6 Update main-spec `team-list`/fixtures if any league-less card assertions break
 
 ## Phase 4: Cleanup — Docs + Dead Code (PR 3 tail)
 
-- [ ] 4.1 Remove `LEAGUE_LABELS`, `leagueType` ephemeral/test helpers dead code
+- [x] 4.1 Remove `LEAGUE_LABELS`, `leagueType` ephemeral/test helpers dead code
 - [ ] 4.2 Update `openspec/specs/*` Test Coverage tables (app-shell, create-team, team-detail-view, team-persistence) to reflect no-league-type assertions
 
 ## Must-Not-Miss Headlines
