@@ -9,7 +9,7 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuClick }: TopbarProps) {
-  const { searchQuery, setSearchQuery } = useApp();
+  const { searchQuery, setSearchQuery, authenticated, logout } = useApp();
   const pathname = usePathname();
   const showSearch = pathname === "/";
 
@@ -26,18 +26,29 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         </button>
         <h1 className="truncate text-[18px] font-extrabold text-[#12225a]">Bloodbowl Teams</h1>
       </div>
-      {showSearch ? (
-        <form role="search" className="flex items-center gap-2">
-          <input
-            type="search"
-            aria-label="Search teams"
-            placeholder="Search teams…"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="w-full max-w-[140px] rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#12225a] sm:max-w-none sm:px-3"
-          />
-        </form>
-      ) : null}
+      <div className="flex items-center gap-2">
+        {showSearch ? (
+          <form role="search" className="flex items-center gap-2">
+            <input
+              type="search"
+              aria-label="Search teams"
+              placeholder="Search teams…"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              className="w-full max-w-[140px] rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#12225a] sm:max-w-none sm:px-3"
+            />
+          </form>
+        ) : null}
+        {authenticated ? (
+          <button
+            type="button"
+            onClick={logout}
+            className="shrink-0 rounded border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-[#12225a] hover:border-slate-400"
+          >
+            Log out
+          </button>
+        ) : null}
+      </div>
     </header>
   );
 }

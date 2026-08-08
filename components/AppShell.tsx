@@ -3,12 +3,24 @@
 import { useState, type ReactNode } from "react";
 import { AppProvider } from "@/app/providers/AppProvider";
 import { LocalStorageTeamStore } from "@/features/teams/store/LocalStorageTeamStore";
+import type { TeamStore } from "@/features/teams/store/TeamStore";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 
-export function AppShell({ children }: { children: ReactNode }) {
+interface AppShellProps {
+  children: ReactNode;
+  /** Store passed from an authenticated parent (e.g. ApiTeamStore), else LocalStorage. */
+  store?: TeamStore;
+  /** True when the shell is backed by an authenticated session; shows logout. */
+  authenticated?: boolean;
+  /** Invoked by the logout control. No-op when absent. */
+  onLogout?: () => void;
+}
+
+export function AppShell({ children, store: providedStore, authenticated = false, onLogout }: AppShellProps) {
   // Stable store instance across re-renders; created only on the client.
-  const [store] = useState(() => new LocalStorageTeamStore());
+  const [localStore] = useState(() => new LocalStorageTeamStore());
+  const store = providedStore ?? localStore;
   // The mobile drawer mounts only while open, so it never duplicates the
   // always-mounted desktop Sidebar aria landmark.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -17,7 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const closeMenu = () => setMobileNavOpen(false);
 
   return (
-    <AppProvider store={store}>
+    <AppProvider store={store} authenticated={authenticated} onLogout={onLogout}>
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="flex flex-1 flex-col">
