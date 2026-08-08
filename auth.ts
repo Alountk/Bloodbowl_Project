@@ -1,0 +1,42 @@
+import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
+import { compare } from "bcryptjs";
+import { prisma } from "@/lib/prisma";
+import { authConfig } from "@/auth.config";
+
+/**
+ * Node-runtime Auth.js configuration.
+ *
+ * The Credentials `authorize` callback requires the database (Prisma) and
+ * bcryptjs, both of which run only in the Node runtime. Edge-safe config
+ * (`authConfig`) is reused for everything else.
+ *
+ * `AUTH_SECRET` and `AUTH_TRUST_HOST` are read automatically by Auth.js from
+ * the process environment.
+ */
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
+  providers: [
+    Credentials({
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = credentials?.email;
+        const password = credentials?.password;
+        if (typeof email !== "string" || typeof password !== "string") {
+          return null;
+        }
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) return null;
+
+        const passwordMatches = await compare(password, user.passwordHash);
+        if (!passwordMatches) return null;
+
+        return { id: user.id, email: user.email, name: user.name };
+      },
+    }),
+  ],
+});

@@ -20,11 +20,11 @@
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "next": "16.3.0",
+    "next-auth": "5.0.0-beta.32",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "prisma": "^6.19.3",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/react": "^16.3.2",
@@ -35,6 +35,7 @@
     "eslint-config-next": "16.3.0",
     "husky": "^9.1.7",
     "jsdom": "^27.0.1",
+    "prisma": "^6.19.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
