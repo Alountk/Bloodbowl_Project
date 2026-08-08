@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { AppShell } from "@/components/AppShell";
+import { SessionProvider } from "@/components/SessionProvider";
+import { SessionAppProvider } from "@/app/providers/SessionAppProvider";
 
 export const metadata: Metadata = {
   title: "Bloodbowl Teams",
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-[#f8fafc] text-slate-900 antialiased">
-        <AppShell>{children}</AppShell>
+        <SessionProvider>
+          <SessionAppProvider>{children}</SessionAppProvider>
+        </SessionProvider>
       </body>
     </html>
   );
