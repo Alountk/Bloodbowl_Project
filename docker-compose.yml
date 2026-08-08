@@ -8,3 +8,32 @@ services:
     restart: unless-stopped
     ports:
       - "3444:3444"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bloodbowl}:${POSTGRES_PASSWORD:-bloodbowl}@postgres:5432/${POSTGRES_DB:-bloodbowl}?schema=public
+      # Required for Auth.js on a LAN/HTTP host. Override in production with the
+      # real session secret; do NOT commit a production value.
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_TRUST_HOST: "true"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bloodbowl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bloodbowl}
+      POSTGRES_DB: ${POSTGRES_DB:-bloodbowl}
+    ports:
+      - "5432:5432"
+    volumes:
+      - bloodbowl_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bloodbowl} -d ${POSTGRES_DB:-bloodbowl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bloodbowl_postgres_data:
