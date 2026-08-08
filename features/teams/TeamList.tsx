@@ -3,14 +3,26 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useApp } from "@/app/providers/AppProvider";
+import { getLeagueDetail } from "@/features/leagues/api";
+import { ArchiveGuardError } from "./store/ApiTeamStore";
 import { getRaceById, RACES } from "./data/races";
 import { summarizeRosterFromEntries } from "./roster";
 import { TeamDeleteModal } from "./TeamDeleteModal";
 import type { Team } from "./types";
 
+/**
+ * Rulebook-styled Spanish copy shown in the delete modal when archiving a team
+ * that still belongs to a league is blocked with a 409. `{leagueName}` is the
+ * resolved display name of the team's league.
+ */
+function guardMessageFor(leagueName: string): string {
+  return `No se puede borrar este equipo — pertenece a la liga ${leagueName}. Para poder borrarlo, primero expulsalo de la liga.`;
+}
+
 export function TeamList() {
   const { teams, isHydrated, searchQuery, removeTeam } = useApp();
   const [pendingTeam, setPendingTeam] = useState<Team | null>(null);
+  const [guardMessage, setGuardMessage] = useState<string | null>(null);
   const query = searchQuery.trim().toLowerCase();
   const filtered = query
     ? teams.filter((team) => {
@@ -21,6 +33,43 @@ export function TeamList() {
         );
       })
     : teams;
+
+  const openDelete = (team: Team) => {
+    setGuardMessage(null);
+    setPendingTeam(team);
+  };
+
+  const handleConfirm = async (id: string) => {
+    // Reset any prior guard state and attempt the archive. On a 409 the store
+    // rejects with an ArchiveGuardError: we surface the message and keep the
+    // list state (the team is NOT removed) instead of closing the modal.
+    try {
+      await removeTeam(id);
+      setPendingTeam(null);
+      setGuardMessage(null);
+    } catch (err) {
+      if (err instanceof ArchiveGuardError) {
+        const team = teams.find((t) => t.id === id) ?? pendingTeam;
+        let name = "";
+        if (team?.leagueId) {
+          try {
+            const league = await getLeagueDetail(team.leagueId);
+            name = league.name;
+          } catch {
+            // League resolution failure: fall back to the league id so the
+            // block is still surfaced without crashing the home page.
+            name = team.leagueId;
+          }
+        }
+        setGuardMessage(guardMessageFor(name));
+        // Keep pendingTeam set so the modal stays open with the guard message.
+      } else {
+        // Any other error: close the dialog; the team stays in the list.
+        setPendingTeam(null);
+        setGuardMessage(null);
+      }
+    }
+  };
 
   return (
     <section aria-labelledby="teams-heading">
@@ -75,7 +124,7 @@ export function TeamList() {
                   <button
                     type="button"
                     aria-label={`Delete ${team.name}`}
-                    onClick={() => setPendingTeam(team)}
+                    onClick={() => openDelete(team)}
                     className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
                   >
                     Delete
@@ -88,11 +137,14 @@ export function TeamList() {
       )}
       <TeamDeleteModal
         team={pendingTeam}
-        onCancel={() => setPendingTeam(null)}
-        onConfirm={(id) => {
-          void removeTeam(id);
+        onCancel={() => {
           setPendingTeam(null);
+          setGuardMessage(null);
         }}
+        onConfirm={(id) => {
+          void handleConfirm(id);
+        }}
+        guardMessage={guardMessage}
       />
     </section>
   );

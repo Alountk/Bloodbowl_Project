@@ -2,12 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
+import { ArchiveGuardError } from "@/features/teams/store/ApiTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { TeamList } from "./TeamList";
 import type { Team } from "./types";
 import { DEFAULT_COACHING } from "./types";
+
+vi.mock("@/features/leagues/api", () => ({
+  getLeagueDetail: vi.fn(),
+}));
+
+import { getLeagueDetail } from "@/features/leagues/api";
+const getLeagueDetailMock = getLeagueDetail as ReturnType<typeof vi.fn>;
 
 // The shell renders a route-aware Topbar/Sidebar. `usePathnameMock` is a mutable
 // holder accessed through the vi.mock factory; each test sets the current route.
@@ -253,6 +261,138 @@ describe("TeamList", () => {
     await waitFor(() => expect(screen.queryByText("Reikland Reavers")).toBeNull());
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("Da Krumpaz")).toBeTruthy();
+  });
+});
+
+describe("TeamList — archive-guard (409) surface", () => {
+  /** A member team: belongs to a league so DELETE is expected to 409. */
+  const memberTeams: Team[] = [
+    {
+      id: "team-m1",
+      name: "League Marauders",
+      raceId: "human",
+      coaching: { ...DEFAULT_COACHING },
+      leagueId: "league-42",
+      roster: Array.from({ length: 11 }, (_, i) => ({
+        id: `m${i}`,
+        name: `Player ${i + 1}`,
+        positionalKey: "lineman",
+      })),
+    },
+    {
+      id: "team-m2",
+      name: "Orphan Orcs",
+      raceId: "orc",
+      coaching: { ...DEFAULT_COACHING },
+      leagueId: null,
+      roster: Array.from({ length: 11 }, (_, i) => ({
+        id: `o${i}`,
+        name: `Player ${i + 1}`,
+        positionalKey: "blitzer",
+      })),
+    },
+  ];
+
+  beforeEach(() => {
+    getLeagueDetailMock.mockReset();
+  });
+
+  /** Store whose remove() rejects with ArchiveGuardError for league members. */
+  class GuardedStore implements TeamStore {
+    list(): Promise<Team[]> {
+      return Promise.resolve([...memberTeams]);
+    }
+    save(_team: Team): Promise<Team> {
+      void _team;
+      throw new Error("not needed in this test");
+    }
+    remove(id: string): Promise<void> {
+      const team = memberTeams.find((t) => t.id === id);
+      if (team?.leagueId) {
+        return Promise.reject(new ArchiveGuardError("This team still belongs to a league. Expel it first."));
+      }
+      return Promise.resolve();
+    }
+  }
+
+  function renderGuarded() {
+    render(
+      <AppProvider store={new GuardedStore()}>
+        <TeamList />
+      </AppProvider>,
+    );
+  }
+
+  it("shows the guard message and keeps the team when delete is blocked with a 409", async () => {
+    getLeagueDetailMock.mockResolvedValue({
+      id: "league-42",
+      name: "Liga de Verano",
+      description: null,
+      ownerId: "u1",
+      createdAt: new Date().toISOString(),
+    });
+
+    renderGuarded();
+    await waitFor(() => expect(screen.getByText("League Marauders")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete League Marauders" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+
+    // The guard message (with the resolved league name) appears in the dialog.
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "No se puede borrar este equipo — pertenece a la liga Liga de Verano. Para poder borrarlo, primero expulsalo de la liga.",
+        ),
+      ).toBeTruthy(),
+    );
+    // A single acknowledgement button, not the destructive/confirm pair.
+    expect(screen.getByRole("button", { name: "Entendido" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Eliminar" })).toBeNull();
+
+    // The team is NOT removed — the card (and dialog title) still render it.
+    const teamLinks = screen.getAllByRole("link", { name: /league marauders/i });
+    expect(teamLinks.length).toBeGreaterThanOrEqual(1);
+    expect(getLeagueDetailMock).toHaveBeenCalledWith("league-42");
+
+    // Entendido closes the dialog and the team stays in the list.
+    fireEvent.click(screen.getByRole("button", { name: "Entendido" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getAllByRole("link", { name: /league marauders/i }).length).toBe(1);
+  });
+
+  it("falls back to the league id in the guard message when the league name cannot be resolved", async () => {
+    getLeagueDetailMock.mockRejectedValue(new Error("network down"));
+
+    renderGuarded();
+    await waitFor(() => expect(screen.getByText("League Marauders")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete League Marauders" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "No se puede borrar este equipo — pertenece a la liga league-42. Para poder borrarlo, primero expulsalo de la liga.",
+        ),
+      ).toBeTruthy(),
+    );
+    // Still blocked: the team is not removed and Entendido is available.
+    expect(screen.getByRole("button", { name: "Entendido" })).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: /league marauders/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("still removes an unassigned team normally when the API allows delete", async () => {
+    renderGuarded();
+    await waitFor(() => expect(screen.getByText("Orphan Orcs")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Orphan Orcs" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+
+    // Unassigned team delete succeeds and closes the dialog without a guard.
+    await waitFor(() => expect(screen.queryByText("Orphan Orcs")).toBeNull());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(getLeagueDetailMock).not.toHaveBeenCalled();
   });
 });
 
