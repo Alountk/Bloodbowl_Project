@@ -2,11 +2,15 @@ node_modules
 .next
 .git
 .gitignore
+.env
+.env*.local
 openspec
 e2e
 playwright-report
 test-results
 playwright.config.ts
 external-assets
+.atl
+.codegraph
 *.log
 .DS_Store
