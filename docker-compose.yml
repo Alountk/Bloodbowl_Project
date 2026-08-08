@@ -2,9 +2,11 @@
 # Usage: docker compose up -d
 # `pull_policy: always` ensures every up pulls the newest `latest` image.
 #
-# The web and postgres services share the `arcane_net` bridge network so the
-# `postgres` hostname resolves from the web container (fixes Prisma P1001 in
-# orchestrators that isolate per-service networks, e.g. Arcane).
+# Connectivity: the web reaches postgres via `host.docker.internal:5432`
+# (resolved to the host gateway). This works even when the orchestrator
+# isolates per-service networks and `postgres` as a DNS name is not available.
+# If your orchestrator DOES share a network (plain docker compose), you can
+# switch DATABASE_URL back to `@postgres:5432` and drop the extra_hosts.
 services:
   web:
     image: ghcr.io/alountk/bloodbowl_project:latest
@@ -12,11 +14,13 @@ services:
     restart: unless-stopped
     ports:
       - "3444:3444"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-bloodbowl}:${POSTGRES_PASSWORD:-bloodbowl}@postgres:5432/${POSTGRES_DB:-bloodbowl}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bloodbowl}:${POSTGRES_PASSWORD:-bloodbowl}@host.docker.internal:5432/${POSTGRES_DB:-bloodbowl}?schema=public
       # Required for Auth.js on a LAN/HTTP host. Override in production with the
       # real session secret; do NOT commit a production value.
       AUTH_SECRET: ${AUTH_SECRET:-}
@@ -48,6 +52,7 @@ services:
 networks:
   # Shared bridge so web can reach postgres by hostname. If the orchestrator
   # already manages a network with this name, switch to `external: true`.
+  # NOTE: even if this network is ignored, host.docker.internal keeps working.
   arcane_net:
     driver: bridge
 
