@@ -63,12 +63,3 @@ jobs:
             ${{ steps.meta.outputs.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Notify Arcane webhook
-        if: github.event_name == 'push' && env.ARCANE_WEBHOOK_URL != ''
-        env:
-          ARCANE_WEBHOOK_URL: ${{ secrets.ARCANE_WEBHOOK_URL }}
-        run: |
-          curl -fsS -X POST "$ARCANE_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"image\":\"${{ steps.meta.outputs.image }}:latest\"}"
