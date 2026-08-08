@@ -32,14 +32,3 @@ export const authConfig = {
     },
   },
 } satisfies NextAuthConfig;
-
-/**
- * Proxy matcher: gate every route except the Auth.js API, Next.js internals,
- * static assets, and any URL containing a file (e.g. favicon.ico).
- *
- * `/login` and `/signup` are intentionally matched so the gate can redirect
- * authenticated users away from them, per the route-protection spec.
- */
-export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|.*\\..*).*)"],
-};
