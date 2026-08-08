@@ -8,20 +8,33 @@ Per-user persistent team storage in PostgreSQL via Prisma (User + Team models), 
 
 ### Requirement: Persistent Schema
 
-The system MUST persist teams via Prisma against PostgreSQL. The User model MUST have id, email (unique), passwordHash, optional name, and createdAt. The Team model MUST have id, userId (FK to User), name, raceId, leagueType, roster (Json), coaching (Json), a nullable `archivedAt DateTime?`, and createdAt. Deleting a User MUST cascade-delete their Teams. Existing rows and writes gain an `archivedAt: null` default; no gameplay column is lost.
-(Previously: Team had no `archivedAt` column and was hard-deleted via `prisma.team.delete`.)
+The system MUST persist teams via Prisma against PostgreSQL. The User model MUST have id, email (unique), passwordHash, optional name, and createdAt. The Team model MUST have id, userId (FK to User), name, raceId, roster (Json), coaching (Json), a nullable `archivedAt DateTime?`, a nullable `leagueId String?` (FK to League, onDelete SetNull), and createdAt. The `leagueType` column MUST NOT exist. Deleting a User MUST cascade-delete their Teams. Deleting a League MUST set its member teams' `leagueId` to null (SetNull). Existing rows and writes gain `archivedAt: null`; no gameplay column is lost.
+(Previously: the Team model carried a `leagueType` string column and no `leagueId`; there was no League relation.)
 
 #### Scenario: Team persisted to DB
 
 - GIVEN an authenticated user
 - WHEN a team is created
-- THEN a Team row with the user's userId, full roster/coaching JSON, and `archivedAt: null` is stored
+- THEN a Team row with the user's userId, full roster/coaching JSON, `archivedAt: null`, and `leagueId: null` is stored
+- AND no `leagueType` column is written
 
 #### Scenario: Archived team still persisted
 
 - GIVEN a team that has been archived
 - WHEN its row is read from the DB
 - THEN the row still exists with its original data intact
+
+#### Scenario: Existing team starts unassigned
+
+- GIVEN a team created before the leagues change
+- WHEN the migration runs
+- THEN its `leagueType` column is dropped and `leagueId` starts null (no value mapping)
+
+#### Scenario: League delete nulls membership
+
+- GIVEN a team assigned to a league
+- WHEN that league is deleted
+- THEN the team's `leagueId` is set to null and data survives
 
 ### Requirement: User-Scoped Team API
 
@@ -51,6 +64,12 @@ The system MUST expose `/api/teams` (GET list, POST create) and `/api/teams/[id]
 - GIVEN a team owned by the session user
 - WHEN the user DELETEs it by id
 - THEN the row is updated with `archivedAt = now()` (not deleted) and 204 is returned
+
+#### Scenario: Deletion blocked for league member
+
+- GIVEN a team owned by the session user with `leagueId != null`
+- WHEN the user DELETEs it by id
+- THEN it returns 409 "expel from league first" and the row's `archivedAt` stays null
 
 #### Scenario: Archived detail is not found
 
@@ -125,9 +144,3 @@ The Team model MUST persist a nullable `archivedAt DateTime?` column that is `nu
 - GIVEN a Team row
 - WHEN it is archived via the API
 - THEN the row keeps its data and `archivedAt` is set to the archive time
-
-## Future Invariant (deferred, leagues)
-
-### Requirement: League-Active Teams Not Archivable
-
-Once leagues exist, a team assigned to an active league MUST NOT be archivable; it MUST be expelled from the league first and only archived after the league ends. This guard is NOT implemented in this change (no league code exists) and is recorded so enforcement lands with the league feature.
