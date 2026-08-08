@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { normalizeEmail } from "@/lib/email";
 
 const PASSWORD_SALT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 8;
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const email = body.email?.trim().toLowerCase() ?? "";
+  const email = normalizeEmail(body.email);
   const password = body.password ?? "";
 
   if (!isValidEmail(email) || password.length < MIN_PASSWORD_LENGTH) {
