@@ -37,11 +37,14 @@ export function AppProvider({
   store = new LocalStorageTeamStore(),
   authenticated = false,
   onLogout = noopLogout,
+  reloadVersion = 0,
 }: {
   children: ReactNode;
   store?: TeamStore;
   authenticated?: boolean;
   onLogout?: () => void;
+  /** Increment to force a re-list (e.g. after the legacy localStorage migration POSTs teams). */
+  reloadVersion?: number;
 }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -52,7 +55,7 @@ export function AppProvider({
       setTeams(loaded);
       setIsHydrated(true);
     });
-  }, [store]);
+  }, [store, reloadVersion]);
 
   const addTeam = useCallback(
     async (values: CreateTeamValues) => {

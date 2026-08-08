@@ -15,9 +15,17 @@ interface AppShellProps {
   authenticated?: boolean;
   /** Invoked by the logout control. No-op when absent. */
   onLogout?: () => void;
+  /** Increment to force AppProvider to re-hydrate (e.g. after localStorage migration). */
+  reloadVersion?: number;
 }
 
-export function AppShell({ children, store: providedStore, authenticated = false, onLogout }: AppShellProps) {
+export function AppShell({
+  children,
+  store: providedStore,
+  authenticated = false,
+  onLogout,
+  reloadVersion,
+}: AppShellProps) {
   // Stable store instance across re-renders; created only on the client.
   const [localStore] = useState(() => new LocalStorageTeamStore());
   const store = providedStore ?? localStore;
@@ -29,7 +37,7 @@ export function AppShell({ children, store: providedStore, authenticated = false
   const closeMenu = () => setMobileNavOpen(false);
 
   return (
-    <AppProvider store={store} authenticated={authenticated} onLogout={onLogout}>
+    <AppProvider store={store} authenticated={authenticated} onLogout={onLogout} reloadVersion={reloadVersion}>
       <div className="flex min-h-screen">
         <Sidebar />
         <div className="flex flex-1 flex-col">
