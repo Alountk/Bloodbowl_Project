@@ -204,6 +204,56 @@ describe("TeamList", () => {
     expect(screen.getByRole("link", { name: /reikland reavers/i })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /da krumpaz/i })).toBeNull();
   });
+
+  it("renders a delete button on each team card with an accessible label", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    expect(screen.getByRole("button", { name: "Delete Reikland Reavers" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete Da Krumpaz" })).toBeTruthy();
+  });
+
+  it("opens the confirmation dialog when a delete button is activated without navigating", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    const deleteBtn = screen.getByRole("button", { name: "Delete Reikland Reavers" });
+    fireEvent.click(deleteBtn);
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(
+      screen.getByText(
+        "Esta acción no se puede deshacer. El equipo se archivará y se eliminará de tu lista.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancelar" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Eliminar" })).toBeTruthy();
+  });
+
+  it("Cancelar closes the dialog and keeps the team in the list", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Reikland Reavers" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Reikland Reavers")).toBeTruthy();
+  });
+
+  it("Eliminar removes the team from the list after confirm", async () => {
+    renderWithStore();
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Reikland Reavers" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
+
+    await waitFor(() => expect(screen.queryByText("Reikland Reavers")).toBeNull());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Da Krumpaz")).toBeTruthy();
+  });
 });
 
 describe("Sidebar navigation", () => {

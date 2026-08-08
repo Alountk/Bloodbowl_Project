@@ -4,7 +4,7 @@ const authMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
   team: {
     findFirst: vi.fn(),
-    delete: vi.fn(),
+    update: vi.fn(),
   },
 }));
 
@@ -31,19 +31,29 @@ describe("DELETE /api/teams/[id]", () => {
     authMock.mockResolvedValue(null);
     const res = await deleteRequest("t1");
     expect(res.status).toBe(401);
-    expect(prismaMock.team.delete).not.toHaveBeenCalled();
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
   });
 
-  it("deletes a team the user owns and returns 204", async () => {
+  it("archives (soft-deletes) a team the user owns and returns 204", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.team.findFirst.mockResolvedValue({ id: "t1", userId: "user-1" });
 
     const res = await deleteRequest("t1");
     expect(res.status).toBe(204);
-    // Delete is scoped to both the id and the session user.
-    expect(prismaMock.team.delete).toHaveBeenCalledWith({
+    // Archive is scoped to the id and records an archivedAt timestamp.
+    expect(prismaMock.team.update).toHaveBeenCalledWith({
       where: { id: "t1" },
+      data: { archivedAt: expect.any(Date) },
     });
+  });
+
+  it("does not hard-delete the row when archiving", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.team.findFirst.mockResolvedValue({ id: "t1", userId: "user-1" });
+    const res = await deleteRequest("t1");
+    expect(res.status).toBe(204);
+    // The row must be retained (soft delete) — only an update is issued.
+    expect(prismaMock.team.update).toHaveBeenCalled();
   });
 
   it("returns 404 when the team belongs to another user", async () => {
@@ -52,6 +62,6 @@ describe("DELETE /api/teams/[id]", () => {
 
     const res = await deleteRequest("foreign-team");
     expect(res.status).toBe(404);
-    expect(prismaMock.team.delete).not.toHaveBeenCalled();
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
   });
 });

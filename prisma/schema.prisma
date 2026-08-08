@@ -32,6 +32,8 @@ model Team {
   roster     Json
   coaching   Json
   createdAt  DateTime @default(now())
+  /// When set, the team is archived (soft-deleted) and hidden from listings.
+  archivedAt DateTime?
 
   @@index([userId])
 }

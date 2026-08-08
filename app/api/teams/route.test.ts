@@ -42,10 +42,24 @@ describe("GET /api/teams", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual(teams);
-    // Query is scoped to the session user id.
+    // Query is scoped to the session user id and excludes archived teams.
     expect(prismaMock.team.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: "user-1" } }),
+      expect.objectContaining({ where: { userId: "user-1", archivedAt: null } }),
     );
+  });
+
+  it("excludes archived teams from the returned list", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    // The route must pass an archivedAt: null filter so archived rows never leak.
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "t1", name: "Reavers", userId: "user-1" },
+    ]);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].id).toBe("t1");
   });
 });
 
