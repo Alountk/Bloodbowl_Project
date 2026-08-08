@@ -36,7 +36,7 @@ Below the `md` breakpoint (`useIsDesktop` false) RosterTable MUST render stacked
 
 ### Requirement: Scrollable Roster Table
 
-The RosterTable container MUST cap its height with internal scrolling and a sticky header so the rest of the form (budget bar, availability section, coaching, submit) remains visible as the roster grows. The outer container MUST keep `max-h-[55vh] overflow-auto`. On the DESKTOP branch (at or above `md`), a nested `overflow-x-auto` wrapper MUST sit inside it with the inner table panel using `min-w-[640px] md:min-w-0` and sticky `top-0 z-10` headers. Below `md`, the MOBILE branch MUST render stacked row-cards (see "Mobile Stacked Row-Cards") and MUST NOT render the book table or its horizontal-scroll wrapper.
+The RosterTable container MUST cap its height with internal scrolling and a sticky header so the rest of the form (budget bar, availability section, coaching, submit) remains visible as the roster grows. The outer container MUST keep `max-h-[55vh] overflow-auto`. On the DESKTOP branch (at or above `md`), a nested `overflow-x-auto` wrapper MUST sit inside it with the inner table panel using `min-w-[640px]` and sticky `top-0 z-10` headers. Below `md`, the MOBILE branch MUST render stacked row-cards (see "Mobile Stacked Row-Cards") and MUST NOT render the book table, its horizontal-scroll wrapper, or any `min-w-[640px]` panel.
 (Previously: the horizontal-scroll wrapper applied on mobile; mobile now renders stacked row-cards instead.)
 
 #### Scenario: Height cap and sticky header
@@ -50,7 +50,7 @@ The RosterTable container MUST cap its height with internal scrolling and a stic
 
 - GIVEN a desktop viewport (at or above `md`)
 - WHEN the book table renders
-- THEN the nested `overflow-x-auto` wrapper and `min-w-[640px] md:min-w-0` panel are present
+- THEN the nested `overflow-x-auto` wrapper and `min-w-[640px]` panel are present
 
 #### Scenario: Mobile uses stacked cards, no scroll wrapper
 

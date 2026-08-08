@@ -64,11 +64,10 @@ export function PlayerAvailabilityTable({
     // A row disappears entirely once its positional reaches its max.
     .filter((row) => row.missingCount > 0);
 
-  return (
+  return isDesktop ? (
     <div className="max-h-[55vh] overflow-auto">
-      {isDesktop ? (
-        <div className="overflow-x-auto">
-          <div className="min-w-[640px] md:min-w-0 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
+      <div className="overflow-x-auto">
+        <div className="min-w-[640px] bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
           <table className="w-full text-sm">
             <thead>
               <tr>
@@ -146,10 +145,12 @@ export function PlayerAvailabilityTable({
               ))}
             </tbody>
           </table>
-          </div>
         </div>
-      ) : (
-        <div className="space-y-3">
+      </div>
+    </div>
+  ) : (
+    <div className="mx-auto max-w-[900px]">
+      <div className="space-y-3">
           {rows.map(({ positional, count, disabled }) => {
             const stats: Array<[string, string]> = [
               ["MV", positional.ma.toString()],
@@ -227,8 +228,7 @@ export function PlayerAvailabilityTable({
               </div>
             );
           })}
+          </div>
         </div>
-      )}
-    </div>
-  );
-}
+      );
+  }
