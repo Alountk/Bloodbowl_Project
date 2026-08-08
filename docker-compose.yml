@@ -17,6 +17,8 @@ services:
       # real session secret; do NOT commit a production value.
       AUTH_SECRET: ${AUTH_SECRET:-}
       AUTH_TRUST_HOST: "true"
+      # `auth` enforces login + Postgres persistence. Production MUST stay `auth`.
+      AUTH_MODE: ${AUTH_MODE:-auth}
 
   postgres:
     image: postgres:16-alpine
