@@ -1,6 +1,10 @@
 # Blood Bowl Web — runs the latest published image from GHCR.
 # Usage: docker compose up -d
 # `pull_policy: always` ensures every up pulls the newest `latest` image.
+#
+# The web and postgres services share the `arcane_net` bridge network so the
+# `postgres` hostname resolves from the web container (fixes Prisma P1001 in
+# orchestrators that isolate per-service networks, e.g. Arcane).
 services:
   web:
     image: ghcr.io/alountk/bloodbowl_project:latest
@@ -19,6 +23,8 @@ services:
       AUTH_TRUST_HOST: "true"
       # `auth` enforces login + Postgres persistence. Production MUST stay `auth`.
       AUTH_MODE: ${AUTH_MODE:-auth}
+    networks:
+      - arcane_net
 
   postgres:
     image: postgres:16-alpine
@@ -36,6 +42,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - arcane_net
+
+networks:
+  # Shared bridge so web can reach postgres by hostname. If the orchestrator
+  # already manages a network with this name, switch to `external: true`.
+  arcane_net:
+    driver: bridge
 
 volumes:
   bloodbowl_postgres_data:
