@@ -39,16 +39,16 @@ Chain strategy: pending
 
 ## Phase 2: Core UI — Leagues Pages, Sidebar, Wizard, Detail (PR 2)
 
-- [ ] 2.1 RED `components/Sidebar.tsx`: `NAV_ITEMS` gains `{ href: "/leagues", label: "Ligas" }`; `AppShell.test.tsx` asserts Teams + Ligas only
-- [ ] 2.2 RED `features/teams/create` tests: no `aria-label="League type"` / league-type select; drop `leagueType` from form state
-- [ ] 2.3 GREEN `CreateTeamForm.tsx` + `useCreateTeamForm.ts`: remove league-type select + state
-- [ ] 2.4 RED `TeamDetailView.test.tsx`: meta line shows league name or "Sin liga"; `LEAGUE_LABELS` removed
-- [ ] 2.5 GREEN `TeamDetailView.tsx`: resolve league name from store, "Sin liga" fallback
-- [ ] 2.6 RED `features/leagues/LeagueList.test.tsx` + `app/leagues/page.test.tsx`: list own leagues, empty state, "Create League" CTA
-- [ ] 2.7 RED `features/leagues/CreateLeagueForm.test.tsx`: name required, dup-name 409 surfaced
-- [ ] 2.8 RED `features/leagues/LeagueDetail.test.tsx`: members list, assign own unassigned, expel, delete league confirm
-- [ ] 2.9 GREEN create `app/leagues/*` + `features/leagues/*` (rulebook-styled: list page, create form, detail w/ assign/expel)
-- [ ] 2.10 Run component sweep (`features/leagues`, `app/teams`) + `tsc --noEmit`
+- [x] 2.1 RED `components/Sidebar.tsx`: `NAV_ITEMS` gains `{ href: "/leagues", label: "Ligas" }`; `AppShell.test.tsx` asserts Teams + Ligas only
+- [x] 2.2 RED `features/teams/create` tests: no `aria-label="League type"` / league-type select; drop `leagueType` from form state
+- [x] 2.3 GREEN `CreateTeamForm.tsx` + `useCreateTeamForm.ts`: remove league-type select + state
+- [x] 2.4 RED `TeamDetailView.test.tsx`: meta line shows league name or "Sin liga"; `LEAGUE_LABELS` removed
+- [x] 2.5 GREEN `TeamDetailView.tsx`: resolve league name from store, "Sin liga" fallback
+- [x] 2.6 RED `features/leagues/LeagueList.test.tsx` + `app/leagues/page.test.tsx`: list own leagues, empty state, "Create League" CTA
+- [x] 2.7 RED `features/leagues/CreateLeagueForm.test.tsx`: name required, dup-name 409 surfaced
+- [x] 2.8 RED `features/leagues/LeagueDetail.test.tsx`: members list, assign own unassigned, expel, delete league confirm
+- [x] 2.9 GREEN create `app/leagues/*` + `features/leagues/*` (rulebook-styled: list page, create form, detail w/ assign/expel)
+- [x] 2.10 Run component sweep (`features/leagues`, `app/teams`) + `tsc --noEmit`
 
 ## Phase 3: Integration, Guard Surface, E2E + Spec Sync (PR 3)
 
