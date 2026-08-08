@@ -57,10 +57,11 @@ describe("SessionAppProvider", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
-    expect(signOutMock).toHaveBeenCalledWith({ redirect: false });
+    await waitFor(() => expect(signOutMock).toHaveBeenCalledWith({ redirect: false }));
     // The client-side redirect uses a relative path resolved against the
-    // browser host (fixes 0.0.0.0:3444/login from the server-side redirectTo).
-    expect(assignSpy).toHaveBeenCalledWith("/login");
+    // browser host (fixes 0.0.0.0:3444/login from the server-side redirectTo),
+    // and only after the sign-out POST completes (session cookie cleared).
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith("/login"));
   });
 });
 
