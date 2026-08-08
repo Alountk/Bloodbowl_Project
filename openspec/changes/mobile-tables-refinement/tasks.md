@@ -49,9 +49,9 @@ Chain strategy: pending
 
 ## Phase 5: Select Wrappers (RED → GREEN)
 
-- [ ] 5.1 RED `CreateTeamForm.test.tsx`: Race select wrapper div + chevron child (`pointer-events:none`); select `font-size:16px`
-- [ ] 5.2 RED: League type select wrapper + chevron present; `aria-label="League type"` and change handler intact
-- [ ] 5.3 GREEN `CreateTeamForm.tsx`: wrap both selects in `relative` div, chevron span `pointer-events:none`, `text-[16px]`
+- [x] 5.1 RED `CreateTeamForm.test.tsx`: Race select wrapper div + chevron child (`pointer-events:none`); select `font-size:16px`
+- [x] 5.2 RED: League type select wrapper + chevron present; `aria-label="League type"` and change handler intact
+- [x] 5.3 GREEN `CreateTeamForm.tsx`: wrap both selects in `relative` div, chevron span `pointer-events:none`, `text-[16px]`
 
 ## Phase 6: Verification
 
