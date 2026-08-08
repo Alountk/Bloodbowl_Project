@@ -41,8 +41,9 @@ export default defineConfig({
     timeout: 60_000,
     env: {
       AUTH_MODE: "auth",
+      // Published port matches docker-compose POSTGRES_PORT (default 5433).
       DATABASE_URL:
-        "postgresql://bloodbowl:bloodbowl@localhost:5432/bloodbowl?schema=public",
+        `postgresql://bloodbowl:bloodbowl@localhost:${process.env.POSTGRES_PORT ?? "5433"}/bloodbowl?schema=public`,
       // AUTH_SECRET falls back to .env when present; a dev default keeps CI green.
       AUTH_SECRET: process.env.AUTH_SECRET ?? "e2e-auth-secret-for-tests-only",
       AUTH_TRUST_HOST: "true",

@@ -54,7 +54,10 @@ test("create league → card shows → assign team → member listed → expel",
 
   await createTeam(page);
 
-  const leagueName = "Costa Norte";
+  // Unique league name per run so the auth suite is idempotent (the name is
+  // globally unique; a fixed name would collide with rows persisted by a
+  // previous run and surface the correct-but-failing 409).
+  const leagueName = `Liga E2E ${Date.now()}`;
   await createLeague(page, leagueName);
 
   // Open the detail via the card's "Ver" link.
