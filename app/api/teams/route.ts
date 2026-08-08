@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       userId,
       name: body.name,
       raceId: body.raceId,
-      leagueType: body.leagueType ?? "open",
+      leagueId: null,
       roster: (body.roster ?? []) as object,
       coaching: (body.coaching ?? {}) as object,
     },

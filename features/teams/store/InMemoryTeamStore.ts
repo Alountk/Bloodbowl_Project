@@ -1,5 +1,5 @@
 import type { Team } from "../types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE, isCoachingStaff } from "../types";
+import { DEFAULT_COACHING, isCoachingStaff } from "../types";
 import type { TeamStore } from "./TeamStore";
 
 /**
@@ -11,13 +11,13 @@ export class InMemoryTeamStore implements TeamStore {
   private readonly ids: string[] = [];
   private readonly map = new Map<string, Team>();
 
-  /** Backfills coaching/leagueType defaults and guarantees normalized fields on read. */
+  /** Backfills coaching defaults and guarantees normalized fields on read. */
   private normalize(team: Team): Team {
     const coaching = isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING;
     return {
       ...team,
+      leagueId: team.leagueId ?? null,
       coaching: { ...DEFAULT_COACHING, ...coaching },
-      leagueType: team.leagueType ?? DEFAULT_LEAGUE_TYPE,
     };
   }
 

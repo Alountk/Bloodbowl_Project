@@ -204,33 +204,17 @@ describe("CreateTeamForm", () => {
     expect(screen.getByRole("region", { name: "Coaching Staff" })).toBeTruthy();
   });
 
-  it("renders the Coaching Staff inputs and league select", async () => {
+  it("renders the Coaching Staff inputs with no league-type select", async () => {
     await goToStep2();
     expect(screen.getByLabelText("Rerolls")).toBeTruthy();
     expect(screen.getByLabelText("Dedicated Fans")).toBeTruthy();
     expect(screen.getByLabelText("Assistant Coaches")).toBeTruthy();
     expect(screen.getByLabelText("Cheerleaders")).toBeTruthy();
     expect(screen.getByLabelText("Apothecary")).toBeTruthy();
-    const leagueSelect = screen.getByLabelText("League type");
-    expect(leagueSelect.tagName).toBe("SELECT");
-    const options = screen.getAllByRole("option") as HTMLOptionElement[];
-    const leagueValues = options.map((option) => option.value);
-    expect(leagueValues).toEqual(expect.arrayContaining(["exhibition", "open"]));
-  });
-
-  it("wraps the League type select in a relative div with a chevron and preserves its aria-label", async () => {
-    await goToStep2();
-    const leagueSelect = screen.getByLabelText("League type") as HTMLSelectElement;
-    const wrapper = leagueSelect.parentElement as HTMLElement;
-    expect(wrapper.className).toContain("relative");
-    const chevron = wrapper.querySelector("span[aria-hidden]");
-    expect(chevron).not.toBeNull();
-    expect(chevron?.className).toContain("pointer-events-none");
-    // text-[16px] prevents iOS auto-zoom; class is the stable jsdom assertion.
-    expect(leagueSelect.className).toContain("text-[16px]");
-    // Change handler intact: open league updates the select value.
-    fireEvent.change(leagueSelect, { target: { value: "exhibition" } });
-    expect((screen.getByLabelText("League type") as HTMLSelectElement).value).toBe("exhibition");
+    // The league-type select is removed: no "League type" label or select exists.
+    expect(screen.queryByLabelText("League type")).toBeNull();
+    expect(screen.queryByRole("option", { name: "open" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "exhibition" })).toBeNull();
   });
 
   it("shows unit costs next to each coaching field and consumes the budget", async () => {

@@ -1,4 +1,4 @@
-import type { Race, Team, TeamLeagueType } from "../types";
+import type { Race, Team } from "../types";
 import { RosterTable } from "../roster-table/RosterTable";
 import { useIsDesktop } from "../hooks/useIsDesktop";
 import {
@@ -9,12 +9,6 @@ import {
   STARTING_TREASURY,
 } from "../roster";
 import { formatRulebookCost } from "../format";
-
-/** Spanish display labels for the league-type enum (raw tokens never render). */
-const LEAGUE_LABELS: Record<TeamLeagueType, string> = {
-  open: "Liga Abierta",
-  exhibition: "Exhibición",
-};
 
 const COACHING_LABELS: Record<string, string> = {
   rerolls: "Segundas oportunidades",
@@ -33,14 +27,20 @@ export interface TeamDetailViewProps {
    * displayed as the race name (spec requirement: Race-not-in-catalog Fallback).
    */
   race: Race;
+  /**
+   * Display name of the team's league, when the team is assigned. When absent,
+   * the meta line shows "Sin liga". PR2 resolves this from a league store.
+   */
+  leagueName?: string;
 }
 
-export function TeamDetailView({ team, race }: TeamDetailViewProps) {
+export function TeamDetailView({ team, race, leagueName }: TeamDetailViewProps) {
   const isDesktop = useIsDesktop();
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
   const coachingCost = computeCoachingCost(race, team.coaching);
   const treasury = STARTING_TREASURY - rosterCost - coachingCost;
   const coachingItems = computeCoachingCostItems(race, team.coaching);
+  const leagueLabel = team.leagueId ? (leagueName ?? "Sin liga") : "Sin liga";
 
   return (
     <div className="mx-auto max-w-[860px] bg-white text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
@@ -48,7 +48,7 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
       <header className="bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
         <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{team.name}</h1>
         <p className="mt-2 text-[13px] text-[#cbd5e1]">
-          <b className="text-white">{race.name}</b> · {LEAGUE_LABELS[team.leagueType] ?? team.leagueType}
+          <b className="text-white">{race.name}</b> · {leagueLabel}
         </p>
         <div className="mt-3">
           <span className="mr-[6px] inline-block rounded-full border border-white/25 bg-white/10 px-[10px] py-[3px] text-[12px] font-bold text-white">

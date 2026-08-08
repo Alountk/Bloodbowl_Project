@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { LocalStorageTeamStore } from "./LocalStorageTeamStore";
 import type { Team } from "../types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "../types";
+import { DEFAULT_COACHING } from "../types";
 
 const STORAGE_KEY = "bb_teams_v1";
 
@@ -11,7 +11,7 @@ const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   raceId: "human",
   roster: [],
   coaching: { ...DEFAULT_COACHING },
-  leagueType: DEFAULT_LEAGUE_TYPE,
+  leagueId: null,
 });
 
 /** Returns a minimal localStorage stub without touching real jsdom localStorage. */
@@ -43,7 +43,7 @@ describe("LocalStorageTeamStore", () => {
     expect(await store.list()).toEqual(teams);
   });
 
-  it("list() backfills defaults for legacy teams missing coaching/leagueType", async () => {
+  it("list() backfills defaults for legacy teams missing coaching/leagueId", async () => {
     const legacy = [{ id: "legacy-1", name: "Legacy Team", raceId: "human", roster: [] }];
     const stub = makeStorageStub(JSON.stringify(legacy));
     const store = new LocalStorageTeamStore(stub as unknown as Storage);
@@ -52,7 +52,7 @@ describe("LocalStorageTeamStore", () => {
       {
         ...legacy[0],
         coaching: { ...DEFAULT_COACHING },
-        leagueType: DEFAULT_LEAGUE_TYPE,
+        leagueId: null,
       },
     ]);
   });
@@ -66,7 +66,7 @@ describe("LocalStorageTeamStore", () => {
     expect(parsed).toHaveLength(1);
     expect(parsed[0].name).toBe("Updated");
     expect(parsed[0].coaching).toEqual(DEFAULT_COACHING);
-    expect(parsed[0].leagueType).toBe(DEFAULT_LEAGUE_TYPE);
+    expect(parsed[0].leagueId).toBeNull();
   });
 
   it("list() returns [] and does NOT throw on corrupt JSON", async () => {

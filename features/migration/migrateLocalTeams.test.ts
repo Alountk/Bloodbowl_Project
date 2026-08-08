@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { runTeamMigration } from "./migrateLocalTeams";
 import type { Team } from "@/features/teams/types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "@/features/teams/types";
+import { DEFAULT_COACHING } from "@/features/teams/types";
 
 const STORAGE_KEY = "bb_teams_v1";
 const FLAG_KEY = "bb_teams_migrated_v1";
@@ -12,7 +12,7 @@ const makeLegacyTeam = (id: string, name: string): Team => ({
   raceId: "human",
   roster: [],
   coaching: { ...DEFAULT_COACHING },
-  leagueType: DEFAULT_LEAGUE_TYPE,
+  leagueId: null,
 });
 
 /** In-memory Storage that records the exact sequence of writes (for flag assertions). */

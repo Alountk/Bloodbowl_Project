@@ -67,10 +67,6 @@ export const DEFAULT_COACHING: CoachingStaff = {
   apothecary: false,
 };
 
-export type TeamLeagueType = "exhibition" | "open";
-export const LEAGUE_TYPES: TeamLeagueType[] = ["exhibition", "open"];
-export const DEFAULT_LEAGUE_TYPE: TeamLeagueType = "open";
-
 export function isCoachingStaff(value: unknown): value is CoachingStaff {
   if (typeof value !== "object" || value === null) return false;
   const staff = value as Record<string, unknown>;
@@ -89,5 +85,15 @@ export interface Team {
   raceId: string;
   roster: PlayerEntry[];
   coaching: CoachingStaff;
-  leagueType: TeamLeagueType;
+  /** The league this team belongs to, or null when unassigned. */
+  leagueId: string | null;
+}
+
+/** A user-owned group of teams, scoped via `ownerId`. */
+export interface League {
+  id: string;
+  name: string;
+  description: string | null;
+  ownerId: string;
+  createdAt: string;
 }
