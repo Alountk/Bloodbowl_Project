@@ -90,7 +90,7 @@ describe("POST /api/teams", () => {
     const payload = {
       name: "Reavers",
       raceId: "human",
-      roster: [{ id: "p1", name: "Player 1", positionalKey: "lineman" }],
+      roster: Array.from({ length: 11 }, (_, i) => ({ id: `p${i + 1}`, name: `Player ${i + 1}`, positionalKey: "lineman" })),
       coaching: { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
     };
     const res = await POST(
@@ -127,6 +127,40 @@ describe("POST /api/teams", () => {
       new Request("http://localhost:3000/api/teams", {
         method: "POST",
         body: JSON.stringify({ raceId: "human" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(prismaMock.team.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a roster below the 11-player minimum with 400", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const res = await POST(
+      new Request("http://localhost:3000/api/teams", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Half Squad",
+          raceId: "human",
+          roster: Array.from({ length: 2 }, (_, i) => ({ id: `p${i + 1}`, name: `Player ${i + 1}`, positionalKey: "lineman" })),
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(prismaMock.team.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a roster above the 16-player cap with 400", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const res = await POST(
+      new Request("http://localhost:3000/api/teams", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Oversized",
+          raceId: "human",
+          roster: Array.from({ length: 17 }, (_, i) => ({ id: `p${i + 1}`, name: `Player ${i + 1}`, positionalKey: "lineman" })),
+        }),
         headers: { "content-type": "application/json" },
       }),
     );
