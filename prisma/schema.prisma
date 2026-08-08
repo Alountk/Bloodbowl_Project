@@ -11,7 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Authenticated user account. Teams are cascade-deleted when a user is removed.
+/// Authenticated user account. Teams and leagues are cascade-deleted when a user is removed.
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -19,6 +19,20 @@ model User {
   name         String?
   createdAt    DateTime @default(now())
   teams        Team[]
+  leagues      League[]
+}
+
+/// A user-owned group of teams.
+model League {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  teams       Team[]   @relation("LeagueMembers")
+
+  @@index([ownerId])
 }
 
 /// A team owned by a single user, scoped via `userId`.
@@ -28,12 +42,15 @@ model Team {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name       String
   raceId     String
-  leagueType String
   roster     Json
   coaching   Json
   createdAt  DateTime @default(now())
   /// When set, the team is archived (soft-deleted) and hidden from listings.
   archivedAt DateTime?
+  /// The league this team belongs to, if any. Set to null when expeled or the league is deleted.
+  leagueId   String?
+  league     League?  @relation("LeagueMembers", fields: [leagueId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([leagueId])
 }

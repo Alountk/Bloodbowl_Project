@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { InMemoryTeamStore } from "./InMemoryTeamStore";
 import type { Team } from "../types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "../types";
+import { DEFAULT_COACHING } from "../types";
 
 const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   id,
@@ -9,7 +9,7 @@ const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   raceId: "human",
   roster: [],
   coaching: { ...DEFAULT_COACHING },
-  leagueType: DEFAULT_LEAGUE_TYPE,
+  leagueId: null,
 });
 
 describe("InMemoryTeamStore", () => {
@@ -36,7 +36,7 @@ describe("InMemoryTeamStore", () => {
     expect(await store.list()).toEqual([team]);
   });
 
-  it("normalizes a team saved without coaching/leagueType", async () => {
+  it("normalizes a team saved without coaching/leagueId", async () => {
     const team = (
       {
         id: "legacy-1",
@@ -47,16 +47,16 @@ describe("InMemoryTeamStore", () => {
     ) as Team;
     const saved = await store.save(team);
     expect(saved.coaching).toEqual(DEFAULT_COACHING);
-    expect(saved.leagueType).toBe(DEFAULT_LEAGUE_TYPE);
+    expect(saved.leagueId).toBeNull();
     const listed = await store.list();
-    expect(listed).toEqual([{ ...team, coaching: DEFAULT_COACHING, leagueType: DEFAULT_LEAGUE_TYPE }]);
+    expect(listed).toEqual([{ ...team, coaching: DEFAULT_COACHING, leagueId: null }]);
   });
 
   it("normalizes legacy seeded teams on construction", async () => {
     const legacy = ({ id: "seed-1", name: "Seed", raceId: "orc", roster: [] } as Partial<Team>) as Team;
     store = new InMemoryTeamStore([legacy]);
     const listed = await store.list();
-    expect(listed).toEqual([{ ...legacy, coaching: { ...DEFAULT_COACHING }, leagueType: DEFAULT_LEAGUE_TYPE }]);
+    expect(listed).toEqual([{ ...legacy, coaching: { ...DEFAULT_COACHING }, leagueId: null }]);
   });
 
   it("save() upserts an existing team by id", async () => {

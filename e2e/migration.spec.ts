@@ -18,7 +18,7 @@ function legacyTeam(id: string, name: string) {
     id,
     name,
     raceId: "human",
-    leagueType: "open",
+    leagueId: null,
     roster: [
       { id: `${id}-p1`, name: "Player 1", positionalKey: "lineman" },
       { id: `${id}-p2`, name: "Player 2", positionalKey: "blitzer" },

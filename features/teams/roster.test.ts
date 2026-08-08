@@ -22,7 +22,7 @@ import {
   summarizeRosterFromEntries,
 } from "./roster";
 import type { PlayerEntry, Team } from "./types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "./types";
+import { DEFAULT_COACHING } from "./types";
 
 describe("roster helpers", () => {
   it("exposes the BB2025 budget and roster limits", () => {
@@ -70,7 +70,7 @@ describe("roster helpers", () => {
         name: "Reikland Reavers",
         raceId: "human",
         coaching: { ...DEFAULT_COACHING },
-        leagueType: DEFAULT_LEAGUE_TYPE,
+        leagueId: null,
         roster: [
           { id: "a", name: "Player 1", positionalKey: "lineman" },
           { id: "b", name: "Player 2", positionalKey: "lineman" },
@@ -101,7 +101,7 @@ describe("roster helpers", () => {
         name: "Orc Crushers",
         raceId: "orc",
         coaching: { ...DEFAULT_COACHING },
-        leagueType: DEFAULT_LEAGUE_TYPE,
+        leagueId: null,
         roster: players,
       };
       expect(summarizeRosterFromEntries(team, [getRaceById("orc")!])).toBe(
@@ -163,7 +163,7 @@ describe("roster helpers", () => {
         name: "T",
         raceId: "human",
         coaching: { ...DEFAULT_COACHING },
-        leagueType: DEFAULT_LEAGUE_TYPE,
+        leagueId: null,
         roster: players,
       };
       expect(summarizeRosterFromEntries(team, [human])).toBe(
@@ -178,7 +178,7 @@ describe("roster helpers", () => {
         name: "T",
         raceId: "human",
         coaching: { ...DEFAULT_COACHING },
-        leagueType: DEFAULT_LEAGUE_TYPE,
+        leagueId: null,
         roster: [],
       };
       expect(summarizeRosterFromEntries(team, [human])).toBe("0 players");

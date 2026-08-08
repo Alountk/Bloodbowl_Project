@@ -12,7 +12,7 @@ function renderWithSuspense(ui: React.ReactElement) {
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
 import type { Team } from "@/features/teams/types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "@/features/teams/types";
+import { DEFAULT_COACHING } from "@/features/teams/types";
 import TeamDetailPage from "./page";
 
 vi.mock("next/navigation", () => ({
@@ -25,7 +25,7 @@ const fixtureTeam: Team = {
   id: "team-abc",
   name: "Test Team",
   raceId: "human",
-  leagueType: DEFAULT_LEAGUE_TYPE,
+  leagueId: null,
   coaching: { ...DEFAULT_COACHING },
   roster: [],
 };
