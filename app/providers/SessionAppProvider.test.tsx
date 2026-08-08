@@ -47,11 +47,20 @@ describe("SessionAppProvider", () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify([])));
     useSessionMock.mockReturnValue({ status: "authenticated" });
 
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, assign: assignSpy },
+      configurable: true,
+    });
+
     render(<SessionAppProvider>content</SessionAppProvider>);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
-    expect(signOutMock).toHaveBeenCalledWith({ redirectTo: "/login" });
+    expect(signOutMock).toHaveBeenCalledWith({ redirect: false });
+    // The client-side redirect uses a relative path resolved against the
+    // browser host (fixes 0.0.0.0:3444/login from the server-side redirectTo).
+    expect(assignSpy).toHaveBeenCalledWith("/login");
   });
 });
 
