@@ -37,17 +37,17 @@ Chain strategy: pending
 
 ## Phase 2: PR 2 — Auth + Persistence
 
-- [ ] 2.1 RED: proxy matcher excludes login/signup/api-auth, redirects others to `/login`.
-- [ ] 2.2 Create `auth.config.ts` (edge-safe, JWT) + `auth.ts` (bcryptjs) + `app/api/auth/[...nextauth]/route.ts`.
-- [ ] 2.3 Root `proxy.ts` = `export { auth as proxy }`; loggedInRedirect `/`.
-- [ ] 2.4 RED: `/api/teams` 401 unauth, userId-scoped, foreign id → 404.
-- [ ] 2.5 Create `app/api/teams/route.ts` (GET/POST) + `app/api/teams/[id]/route.ts` (DELETE).
-- [ ] 2.6 RED: ApiTeamStore list/save/remove, mocked fetch (401/404/5xx).
-- [ ] 2.7 Create `features/teams/store/ApiTeamStore.ts` (fetch wrapper, idempotent remove).
-- [ ] 2.8 Create `app/login` + `app/signup` (rulebook-light, open reg, duplicate-email error).
-- [ ] 2.9 RED: AppProvider session swap (Api vs Local), interface preserved.
-- [ ] 2.10 Modify `AppProvider`/`AppShell` (SessionProvider, unauth redirect) + `Topbar` logout.
-- [ ] 2.11 Wire `CreateTeamForm` submit via ApiTeamStore; API failure keeps form.
+- [x] 2.1 RED: proxy matcher excludes login/signup/api-auth, redirects others to `/login`.
+- [x] 2.2 Create `auth.config.ts` (edge-safe, JWT) + `auth.ts` (bcryptjs) + `app/api/auth/[...nextauth]/route.ts`.
+- [x] 2.3 Root `proxy.ts` = `export { auth as proxy }`; loggedInRedirect `/`.
+- [x] 2.4 RED: `/api/teams` 401 unauth, userId-scoped, foreign id → 404.
+- [x] 2.5 Create `app/api/teams/route.ts` (GET/POST) + `app/api/teams/[id]/route.ts` (DELETE).
+- [x] 2.6 RED: ApiTeamStore list/save/remove, mocked fetch (401/404/5xx).
+- [x] 2.7 Create `features/teams/store/ApiTeamStore.ts` (fetch wrapper, idempotent remove).
+- [x] 2.8 Create `app/login` + `app/signup` (rulebook-light, open reg, duplicate-email error).
+- [x] 2.9 RED: AppProvider session swap (Api vs Local), interface preserved.
+- [x] 2.10 Modify `AppProvider`/`AppShell` (SessionProvider, unauth redirect) + `Topbar` logout.
+- [x] 2.11 Wire `CreateTeamForm` submit via ApiTeamStore; API failure keeps form.
 
 ## Phase 3: PR 3 — Migration + E2E + Ops
 
