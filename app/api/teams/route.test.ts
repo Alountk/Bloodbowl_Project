@@ -71,7 +71,7 @@ describe("POST /api/teams", () => {
     const res = await POST(
       new Request("http://localhost:3000/api/teams", {
         method: "POST",
-        body: JSON.stringify({ name: "Reavers", raceId: "human", leagueType: "open", roster: [], coaching: {} }),
+        body: JSON.stringify({ name: "Reavers", raceId: "human", roster: [], coaching: {} }),
         headers: { "content-type": "application/json" },
       }),
     );
@@ -90,7 +90,6 @@ describe("POST /api/teams", () => {
     const payload = {
       name: "Reavers",
       raceId: "human",
-      leagueType: "open",
       roster: [{ id: "p1", name: "Player 1", positionalKey: "lineman" }],
       coaching: { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
     };
@@ -112,6 +111,14 @@ describe("POST /api/teams", () => {
         data: expect.objectContaining({ userId: "user-1", name: "Reavers" }),
       }),
     );
+    // New teams start unassigned: leagueId null and no leagueType is written.
+    expect(prismaMock.team.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ leagueId: null }),
+      }),
+    );
+    const createData = prismaMock.team.create.mock.calls[0][0].data;
+    expect(createData).not.toHaveProperty("leagueType");
   });
 
   it("rejects a payload missing a team name with 400", async () => {

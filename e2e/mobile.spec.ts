@@ -10,7 +10,7 @@ test.describe("Mobile", () => {
     id: "mobile-e2e-team",
     name: "Mobile Reavers",
     raceId: "human",
-    leagueType: "open",
+    leagueId: null,
     roster: [
       { id: "m1", name: "Player 1", positionalKey: "lineman" },
       { id: "m2", name: "Player 2", positionalKey: "blitzer" },

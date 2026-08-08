@@ -12,7 +12,7 @@ const TEAM = {
   id: "e2e-delete-team",
   name: "Doomed Reavers",
   raceId: "human",
-  leagueType: "open",
+  leagueId: null,
   roster: [
     { id: "d1", name: "Player 1", positionalKey: "lineman" },
     { id: "d2", name: "Player 2", positionalKey: "lineman" },

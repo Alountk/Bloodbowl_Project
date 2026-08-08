@@ -1,5 +1,5 @@
 import type { Team } from "../types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE, isCoachingStaff } from "../types";
+import { DEFAULT_COACHING, isCoachingStaff } from "../types";
 import type { TeamStore } from "./TeamStore";
 
 const STORAGE_KEY = "bb_teams_v1";
@@ -27,13 +27,13 @@ export class LocalStorageTeamStore implements TeamStore {
     return this._storage ?? window.localStorage;
   }
 
-  /** Backfills coaching/leagueType defaults for legacy persisted teams. */
+  /** Backfills coaching defaults for legacy persisted teams. */
   private normalize(team: Team): Team {
     const coaching = isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING;
     return {
       ...team,
+      leagueId: team.leagueId ?? null,
       coaching: { ...DEFAULT_COACHING, ...coaching },
-      leagueType: team.leagueType ?? DEFAULT_LEAGUE_TYPE,
     };
   }
 

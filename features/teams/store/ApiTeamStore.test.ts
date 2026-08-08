@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { ApiTeamStore } from "./ApiTeamStore";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "@/features/teams/types";
+import { ApiTeamStore, ArchiveGuardError } from "./ApiTeamStore";
+import { DEFAULT_COACHING } from "@/features/teams/types";
 import type { Team } from "@/features/teams/types";
 
 const makeApiTeam = (id: string, name: string) => ({
@@ -8,7 +8,7 @@ const makeApiTeam = (id: string, name: string) => ({
   userId: "u1",
   name,
   raceId: "human",
-  leagueType: "open",
+  leagueId: null,
   roster: [],
   coaching: { ...DEFAULT_COACHING },
   createdAt: new Date().toISOString(),
@@ -40,7 +40,7 @@ describe("ApiTeamStore", () => {
       id: "team-1",
       name: "Reavers",
       raceId: "human",
-      leagueType: DEFAULT_LEAGUE_TYPE,
+      leagueId: null,
       roster: [],
       coaching: { ...DEFAULT_COACHING },
     };
@@ -50,6 +50,7 @@ describe("ApiTeamStore", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/teams", expect.objectContaining({ method: "POST" }));
     expect(saved.name).toBe("Reavers");
     expect(saved.id).toBe("team-1");
+    expect(saved.leagueId).toBeNull();
   });
 
   it("remove is a no-op when the API returns 404 for a missing team", async () => {
@@ -70,11 +71,19 @@ describe("ApiTeamStore", () => {
         id: "team-1",
         name: "Reavers",
         raceId: "human",
-        leagueType: DEFAULT_LEAGUE_TYPE,
+        leagueId: null,
         roster: [],
         coaching: { ...DEFAULT_COACHING },
       }),
     ).rejects.toThrow();
+  });
+
+  it("remove surfaces an ArchiveGuardError when the API blocks a league member (409)", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: "still in league" }), { status: 409 }));
+    const error = await store.remove("t1").catch((e) => e);
+    expect(error).toBeInstanceOf(ArchiveGuardError);
+    expect((error as ArchiveGuardError).message).toMatch(/league/i);
+    expect(fetchMock).toHaveBeenCalledWith("/api/teams/t1", expect.objectContaining({ method: "DELETE" }));
   });
 
   it("list throws when the network request fails", async () => {
