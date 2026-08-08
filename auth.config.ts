@@ -15,6 +15,27 @@ export const authConfig = {
   // Credentials `authorize` is added in auth.ts (Node runtime).
   providers: [],
   callbacks: {
+    /**
+     * Persist the database user id into the JWT at sign-in so the session
+     * carries the id the user-scoped /api/teams routes depend on. NextAuth's
+     * default JWT only maps the first sign-in `user`, and DROPS `user.id`
+     * unless copied here — without this the scoped API would always see
+     * `session.user.id == null` and return 401.
+     */
+    jwt({ token, user }) {
+      if (user?.id) {
+        token.id = user.id;
+        // Keep `sub` stable (the AuthorizationId) alongside the app id.
+        token.sub = user.id;
+      }
+      return token;
+    },
+    session({ session, token }) {
+      if (token.id) {
+        session.user = { ...session.user, id: token.id as string };
+      }
+      return session;
+    },
     authorized({ auth, request }) {
       const action = resolveAuthGate({
         auth,
