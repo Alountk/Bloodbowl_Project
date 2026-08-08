@@ -51,8 +51,8 @@ Chain strategy: pending
 
 ## Phase 3: PR 3 — Migration + E2E + Ops
 
-- [ ] 3.1 RED: migration reads `bb_teams_v1`, POSTs each, sets flag, keeps it, idempotent.
-- [ ] 3.2 Migration hook in AppProvider on first auth (non-blocking failure).
+- [x] 3.1 RED: migration reads `bb_teams_v1`, POSTs each, sets flag, keeps it, idempotent.
+- [x] 3.2 Migration hook in AppProvider on first auth (non-blocking failure).
 - [ ] 3.3 `e2e/auth.spec.ts`: signup→create→reload→logout→login.
 - [ ] 3.4 `e2e/migration.spec.ts`: seeded localStorage → account, once.
 - [ ] 3.5 Two-user isolation + foreign 404 e2e.
