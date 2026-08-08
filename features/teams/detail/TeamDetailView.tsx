@@ -1,5 +1,6 @@
 import type { Race, Team, TeamLeagueType } from "../types";
 import { RosterTable } from "../roster-table/RosterTable";
+import { useIsDesktop } from "../hooks/useIsDesktop";
 import {
   computeRosterCostFromPlayers,
   computeCoachingCostItems,
@@ -35,6 +36,7 @@ export interface TeamDetailViewProps {
 }
 
 export function TeamDetailView({ team, race }: TeamDetailViewProps) {
+  const isDesktop = useIsDesktop();
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
   const coachingCost = computeCoachingCost(race, team.coaching);
   const treasury = STARTING_TREASURY - rosterCost - coachingCost;
@@ -80,8 +82,9 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
           >
             Cuerpo técnico
           </h2>
-          <div className="overflow-x-auto">
-            <div className="min-w-[640px] md:min-w-0">
+          {isDesktop ? (
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
               <table className="w-full text-[13px]">
             <thead>
               <tr className="bg-[#12225a] text-white">
@@ -134,9 +137,47 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
                 </td>
               </tr>
             </tbody>
-            </table>
+              </table>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="divide-y divide-[#e2e8f0] rounded border border-[#e2e8f0] bg-white">
+              {coachingItems.map((item) => (
+                <div key={item.key} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium text-[#1a1a1a]">
+                      {COACHING_LABELS[item.key] ?? item.key}
+                    </p>
+                    <p className="text-[11px] text-[#64748b]">
+                      {item.quantity} × {formatRulebookCost(item.unitCost)}
+                    </p>
+                  </div>
+                  <p className="text-[13px] font-bold tabular-nums text-[#12225a]">
+                    {formatRulebookCost(item.total)}
+                  </p>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-[#1a1a1a]">Apotecario</p>
+                  <p className="text-[11px] text-[#64748b]">50 000</p>
+                </div>
+                <p
+                  className={`text-[13px] font-bold tabular-nums ${
+                    team.coaching.apothecary ? "text-green-600" : "text-[#1a1a1a]"
+                  }`}
+                >
+                  {team.coaching.apothecary ? "SÍ" : "NO"}
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-3 bg-[#e2e8f0] px-3 py-2">
+                <p className="text-[13px] font-bold text-[#1a1a1a]">Total cuerpo técnico</p>
+                <p className="text-[13px] font-bold tabular-nums text-[#12225a]">
+                  {formatRulebookCost(coachingCost)}
+                </p>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Tesorería */}

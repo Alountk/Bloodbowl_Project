@@ -140,11 +140,10 @@ export function RosterTable({
 
   const playersData = buildPlayerData(players, race);
 
-  return (
+  return isDesktop ? (
     <div className="max-h-[55vh] overflow-auto">
-      {isDesktop ? (
-        <div className="overflow-x-auto">
-          <div className="min-w-[640px] md:min-w-0 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
+      <div className="overflow-x-auto">
+        <div className="min-w-[640px] bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
           {showBanner ? (
             <div className="border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[28px] text-[#12225a]">
               {bannerText}
@@ -275,10 +274,12 @@ export function RosterTable({
               </tfoot>
             ) : null}
           </table>
-          </div>
         </div>
-      ) : (
-        <div className="space-y-3">
+      </div>
+    </div>
+  ) : (
+    <div className="mx-auto max-w-[900px]">
+      <div className="space-y-3">
           {showBanner ? (
             <div className="border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[20px] text-[#12225a]">
               {bannerText}
@@ -354,8 +355,7 @@ export function RosterTable({
               <span className="ml-2">{`Apotecario: ${apothecary ? "SÍ" : "NO"}`}</span>
             </div>
           ) : null}
+          </div>
         </div>
-      )}
-    </div>
-  );
-}
+      );
+  }

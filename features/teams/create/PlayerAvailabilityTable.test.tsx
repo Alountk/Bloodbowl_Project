@@ -151,7 +151,6 @@ describe("PlayerAvailabilityTable", () => {
       // Table -> panel -> overflow-x-auto wrapper -> outer max-h container.
       const panel = screen.getByRole("table").parentElement;
       expect(panel?.className).toContain("min-w-[640px]");
-      expect(panel?.className).toContain("md:min-w-0");
       const wrapper = panel?.parentElement;
       expect(wrapper?.className).toContain("overflow-x-auto");
       const outer = wrapper?.parentElement;

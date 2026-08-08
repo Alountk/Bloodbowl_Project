@@ -88,7 +88,6 @@ describe("RosterTable", () => {
       const panel = screen.getByRole("table").parentElement;
       // Panel carries the mobile min-width contract.
       expect(panel?.className).toContain("min-w-[640px]");
-      expect(panel?.className).toContain("md:min-w-0");
       // The nested scroll wrapper sits between the outer container and the panel.
       const wrapper = panel?.parentElement;
       expect(wrapper?.className).toContain("overflow-x-auto");

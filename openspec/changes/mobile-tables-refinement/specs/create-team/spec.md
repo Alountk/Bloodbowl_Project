@@ -52,7 +52,7 @@ Below `md` the "Jugadores disponibles" table MUST render stacked rows instead of
 
 ### Requirement: Jugadores Disponibles Availability Table
 
-When a race is selected, Step 2 MUST render a "Jugadores disponibles" rulebook-style table with columns POSICIÓN | COSTE | MV | FU | AG | PS | AR | HABILIDADES Y RASGOS | DISP. On the DESKTOP branch each row shows a positional's name with "(Raza, RolEs)" subtext, `formatRulebookCost` cost, stats, Spanish skills (fallback to English, "Ninguna" if empty), and a DISP. cell with a `{n}/{max}` counter plus a button `aria-label="Add {positional.name}"` labeled "+ Add". The desktop container keeps an outer scroll wrapper and a nested `overflow-x-auto` wrapper with an inner panel `min-w-[640px] md:min-w-0`; sticky headers MUST be preserved. Below `md`, the MOBILE branch MUST render stacked rows per the "Mobile Availability Stacked Rows" requirement.
+When a race is selected, Step 2 MUST render a "Jugadores disponibles" rulebook-style table with columns POSICIÓN | COSTE | MV | FU | AG | PS | AR | HABILIDADES Y RASGOS | DISP. On the DESKTOP branch each row shows a positional's name with "(Raza, RolEs)" subtext, `formatRulebookCost` cost, stats, Spanish skills (fallback to English, "Ninguna" if empty), and a DISP. cell with a `{n}/{max}` counter plus a button `aria-label="Add {positional.name}"` labeled "+ Add". The desktop container keeps an outer scroll wrapper and a nested `overflow-x-auto` wrapper with an inner panel `min-w-[640px]`; sticky headers MUST be preserved. Below `md`, the MOBILE branch MUST render stacked rows per the "Mobile Availability Stacked Rows" requirement.
 (Previously: the horizontal-scroll wrapper applied on mobile; mobile now renders stacked rows instead.)
 
 #### Scenario: Desktop book table preserved
@@ -60,7 +60,7 @@ When a race is selected, Step 2 MUST render a "Jugadores disponibles" rulebook-s
 - GIVEN a race selected on step 2 at or above `md`
 - WHEN the availability table renders
 - THEN the nine rulebook headers appear and each row shows "{positional.name} · ({race.name}, {roleEs})"
-- AND the `overflow-x-auto` wrapper and `min-w-[640px] md:min-w-0` panel are present
+- AND the `overflow-x-auto` wrapper and `min-w-[640px]` panel are present
 
 #### Scenario: Disappearing row at max
 
