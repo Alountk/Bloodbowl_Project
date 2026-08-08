@@ -14,15 +14,22 @@ The system MUST render each team card as a navigation link (`<Link>`) pointing t
 - WHEN a team card is rendered
 - THEN it is wrapped in an accessible `<a href="/teams/${id}">` element
 - AND keyboard navigation correctly focuses the link
-
 ### Requirement: Preserved List Behavior
-The system MUST preserve existing behaviors such as search filtering and roster summaries on the team cards.
+
+The system MUST preserve existing behaviors such as search filtering and roster summaries on the team cards. The list is fed by the store, and under an authenticated session the store is the user-scoped `ApiTeamStore`; therefore the list MUST display only the signed-in user's teams. The rendering behaviors (search, cards, navigation) MUST remain unchanged.
+(Previously: the list presented all locally stored teams; there was no authentication and no user scope.)
 
 #### Scenario: Preserved search filtering
+
 - GIVEN a list of teams with links
 - WHEN the user types in the search filter
 - THEN the list filters correctly as before
 
+#### Scenario: Only own teams listed
+
+- GIVEN a signed-in user owns teams
+- WHEN the home page renders
+- THEN only that user's teams appear in the list
 ### Requirement: Home Heading with Create Action
 The home section MUST render a heading row: h2 "Teams" in navy `#12225a` with a red `#d11938` underline (book section style) and, on the right, a navy "Create New Team" link pointing to `/teams/create`. Below `md` the heading row MUST wrap (`flex-wrap`) so the h2 and CTA stack instead of overflowing at 375px, and the CTA MUST have a tap target of at least 40px (e.g. `py-2.5`). The card grid remains single-column by default.
 
