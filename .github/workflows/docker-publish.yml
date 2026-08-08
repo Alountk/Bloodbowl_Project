@@ -65,7 +65,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Notify Arcane webhook
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && env.ARCANE_WEBHOOK_URL != ''
         env:
           ARCANE_WEBHOOK_URL: ${{ secrets.ARCANE_WEBHOOK_URL }}
         run: |
