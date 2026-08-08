@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useApp } from "@/app/providers/AppProvider";
 import { getRaceById, RACES } from "./data/races";
 import { summarizeRosterFromEntries } from "./roster";
+import { TeamDeleteModal } from "./TeamDeleteModal";
+import type { Team } from "./types";
 
 export function TeamList() {
-  const { teams, isHydrated, searchQuery } = useApp();
+  const { teams, isHydrated, searchQuery, removeTeam } = useApp();
+  const [pendingTeam, setPendingTeam] = useState<Team | null>(null);
   const query = searchQuery.trim().toLowerCase();
   const filtered = query
     ? teams.filter((team) => {
@@ -57,7 +61,7 @@ export function TeamList() {
             return (
               <li
                 key={team.id}
-                className="overflow-hidden rounded-none border border-slate-200 bg-white"
+                className="flex flex-col overflow-hidden rounded-none border border-slate-200 bg-white"
               >
                 <div className="h-[6px] border-b-2 border-[#d11938] bg-[#12225a]" />
                 <Link href={`/teams/${team.id}`} className="block p-4">
@@ -67,11 +71,29 @@ export function TeamList() {
                     {summarizeRosterFromEntries(team, RACES)}
                   </p>
                 </Link>
+                <div className="mt-auto flex justify-end px-3 pb-3">
+                  <button
+                    type="button"
+                    aria-label={`Delete ${team.name}`}
+                    onClick={() => setPendingTeam(team)}
+                    className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+                  >
+                    Delete
+                  </button>
+                </div>
               </li>
             );
           })}
         </ul>
       )}
+      <TeamDeleteModal
+        team={pendingTeam}
+        onCancel={() => setPendingTeam(null)}
+        onConfirm={(id) => {
+          void removeTeam(id);
+          setPendingTeam(null);
+        }}
+      />
     </section>
   );
 }
