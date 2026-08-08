@@ -118,3 +118,76 @@ test("deleting an assigned team surfaces the 409 archive guard instead of removi
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
 });
+
+// --- Regression: archived teams must not be assignable to a league ---
+const archiveGuardPassword = "password-123";
+
+async function archiveGuardSignup(page: import("@playwright/test").Page) {
+  const email = `guard-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
+  await page.goto("/signup");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(archiveGuardPassword);
+  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await expect(page).toHaveURL("/");
+}
+
+async function archiveGuardCreateTeam(page: import("@playwright/test").Page, name: string) {
+  await page.goto("/teams/create");
+  await page.getByLabel("Team name").fill(name);
+  await page.getByLabel("Race").selectOption("human");
+  await page.getByRole("button", { name: /siguiente/i }).click();
+  const add = page.getByRole("button", { name: "Add Lineman" }).first();
+  for (let i = 0; i < 11; i++) await add.click();
+  await page.getByRole("button", { name: /create team/i }).click();
+  await expect(page).toHaveURL("/");
+}
+
+async function archiveGuardCreateLeague(page: import("@playwright/test").Page, name: string) {
+  await page.goto("/leagues");
+  await page.getByRole("button", { name: "+ Nueva liga" }).first().click();
+  await page.getByLabel("Nombre").fill(name);
+  await page.getByRole("button", { name: "Crear" }).click();
+  await expect(page.getByText(name)).toBeVisible();
+}
+
+async function archiveGuardArchive(page: import("@playwright/test").Page, name: string) {
+  await page.goto("/");
+  await page.getByRole("button", { name: `Delete ${name}` }).click();
+  await page.getByRole("button", { name: "Eliminar" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByRole("link", { name: new RegExp(name) })).not.toBeVisible();
+}
+
+test("archived team must not appear in the league assign select", async ({ page }) => {
+  await archiveGuardSignup(page);
+  await archiveGuardCreateTeam(page, "Archivable Reavers");
+  await archiveGuardCreateLeague(page, `Guard Liga ${Date.now()}`);
+  await archiveGuardArchive(page, "Archivable Reavers");
+
+  await page.goto("/leagues");
+  await page.getByRole("link", { name: "Ver" }).first().click();
+  const options = page.locator("#league-team-select option");
+  const texts: string[] = [];
+  const count = await options.count();
+  for (let i = 0; i < count; i++) texts.push(await options.nth(i).textContent());
+  expect(texts.some((t) => t.includes("Archivable Reavers"))).toBe(false);
+});
+
+test("direct API assign of an archived team returns 409", async ({ page }) => {
+  await archiveGuardSignup(page);
+  await archiveGuardCreateTeam(page, "API Archivable");
+  await archiveGuardCreateLeague(page, `API Guard Liga ${Date.now()}`);
+
+  const teams = await page.request.get("/api/teams");
+  const leagues = await page.request.get("/api/leagues");
+  const teamId = (await teams.json())[0].id;
+  const leagueId = (await leagues.json())[0].id;
+
+  await archiveGuardArchive(page, "API Archivable");
+
+  const assign = await page.request.post(`/api/leagues/${leagueId}/teams`, {
+    data: { teamId },
+  });
+  expect(assign.status()).toBe(409);
+});
+
