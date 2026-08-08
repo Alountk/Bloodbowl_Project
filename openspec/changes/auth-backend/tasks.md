@@ -60,5 +60,5 @@ Chain strategy: pending
 
 ## Phase 4: Verification
 
-- [ ] 4.1 `pnpm test` + `pnpm run test:e2e` green.
-- [ ] 4.2 Rollback: each PR revertible; localStorage copy kept.
+- [x] 4.1 `pnpm test` + `pnpm run test:e2e` green.
+- [x] 4.2 Rollback: each PR revertible; localStorage copy kept.
