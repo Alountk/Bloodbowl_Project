@@ -12,7 +12,12 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["**/auth.spec.ts", "**/migration.spec.ts", "**/isolation.spec.ts"],
+  testMatch: [
+    "**/auth.spec.ts",
+    "**/migration.spec.ts",
+    "**/isolation.spec.ts",
+    "**/leagues.spec.ts",
+  ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
