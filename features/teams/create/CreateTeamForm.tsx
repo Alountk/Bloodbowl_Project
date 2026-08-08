@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
@@ -66,9 +66,18 @@ const COACHING_LABELS: Record<string, string> = {
 export function CreateTeamForm() {
   const { addTeam } = useApp();
   const router = useRouter();
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const form = useCreateTeamForm(async (values) => {
-    await addTeam(values);
-    router.push("/");
+    try {
+      await addTeam(values);
+      setSaveError(null);
+      router.push("/");
+    } catch {
+      // Persistence failed (e.g. API down / 401): stay on the form so the user
+      // can retry instead of silently losing the team.
+      setSaveError("Could not save the team. Please check your connection and try again.");
+    }
   });
 
   const race = RACES.find((candidate) => candidate.id === form.raceId);
@@ -251,6 +260,11 @@ export function CreateTeamForm() {
           {form.errors.budget ? (
             <p role="alert" className="text-sm text-red-600">
               {form.errors.budget}
+            </p>
+          ) : null}
+          {saveError ? (
+            <p role="alert" className="text-sm text-red-600">
+              {saveError}
             </p>
           ) : null}
 

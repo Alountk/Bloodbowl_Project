@@ -22,16 +22,26 @@ interface AppContextValue {
   removeTeam: (id: string) => Promise<void>;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  /** True when the shell is backed by an authenticated (API) session. */
+  authenticated: boolean;
+  /** Signs the user out; a no-op when no logout handler is wired. */
+  logout: () => void;
 }
+
+const noopLogout = () => {};
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({
   children,
   store = new LocalStorageTeamStore(),
+  authenticated = false,
+  onLogout = noopLogout,
 }: {
   children: ReactNode;
   store?: TeamStore;
+  authenticated?: boolean;
+  onLogout?: () => void;
 }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -62,8 +72,17 @@ export function AppProvider({
   );
 
   const value = useMemo(
-    () => ({ teams, isHydrated, addTeam, removeTeam, searchQuery, setSearchQuery }),
-    [teams, isHydrated, addTeam, removeTeam, searchQuery],
+    () => ({
+      teams,
+      isHydrated,
+      addTeam,
+      removeTeam,
+      searchQuery,
+      setSearchQuery,
+      authenticated,
+      logout: onLogout,
+    }),
+    [teams, isHydrated, addTeam, removeTeam, searchQuery, authenticated, onLogout],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
