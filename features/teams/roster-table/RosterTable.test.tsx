@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { PlayerEntry, Race } from "../types";
 import { mockMatchMedia } from "../test/matchMedia";
 import { RosterTable } from "./RosterTable";
