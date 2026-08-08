@@ -20,7 +20,7 @@ describe("Login page", () => {
 
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "coach@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SuperSecret123!" } });
-    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /log in/i }).at(-1)!);
 
     await waitFor(() => {
       expect(signInMock).toHaveBeenCalledWith("credentials", {
@@ -40,7 +40,7 @@ describe("Login page", () => {
 
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "coach@example.com" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "wrong-password" } });
-    fireEvent.click(screen.getByRole("button", { name: /log in/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /log in/i }).at(-1)!);
 
     await waitFor(() =>
       expect(screen.getByText("Invalid email or password")).toBeTruthy(),
