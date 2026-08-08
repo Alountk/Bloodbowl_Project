@@ -33,21 +33,26 @@ The system MUST look up the team by ID (`teams.find(t => t.id === teamId)`) once
 - THEN the system triggers the `notFound()` function
 
 ### Requirement: Identity Display
-The system MUST display the team identity in a navy (`#12225a`) hero: team name as primary heading (white, 26px, weight 900), meta line `<b>{race name}</b> · {Spanish league label}`, and two tags — plain "Equipo listo" and gold (`#d11938`) "Tesorería: {formatRulebookCost(treasury)}". The `leagueType` (`open`/`exhibition`) MUST map to a Spanish display label; the raw enum token MUST NOT render. Below `md` the hero heading MUST use responsive text tokens (e.g. `text-2xl md:text-[28px]`) and the hero padding MUST tighten so the name and tags stay legible at 375px.
-
-(Previously: an unstyled header with name, race name, and raw league type — later a fixed `text-[26px]` hero heading token with fixed `px-6` padding at all widths.)
+The system MUST display the team identity in a navy (`#12225a`) hero: team name as primary heading (white, 26px, weight 900), meta line `<b>{race name}</b> · {league name or "Sin liga"}`. The league label MUST be the team's resolved league name when the team is assigned to a league, or the literal Spanish "Sin liga" when `leagueId` is null; the raw `leagueType` enum and its `LEAGUE_LABELS` map MUST no longer exist or render. Below `md` the hero heading MUST use responsive text tokens (e.g. `text-2xl md:text-[28px]`) and the hero padding MUST tighten so the name and tags stay legible at 375px.
+(Previously: the meta line showed "{race name} · {Spanish league label}" derived from a `LEAGUE_LABELS` map of the `leagueType` enum — `leagueType` did not exist as a relation.)
 
 #### Scenario: Displaying a valid team
 - GIVEN a valid team is found
 - WHEN the detail view renders
-- THEN the hero shows the team name, bold race, and Spanish league label
+- THEN the hero shows the team name, bold race, plus the league name or "Sin liga"
 - AND tags "Equipo listo" and "Tesorería: 750 000" appear
 
-#### Scenario: League type display labels
-- GIVEN a team with `leagueType` "open" or "exhibition"
+#### Scenario: Unassigned team shows Sin liga
+- GIVEN a team with `leagueId: null`
 - WHEN the hero renders
-- THEN a Spanish display label appears
-- AND raw "open"/"exhibition" never shows
+- THEN the meta line shows "Sin liga"
+- AND no raw token or legacy league-type label appears
+
+#### Scenario: Superhero league name
+- GIVEN a team assigned to a league
+- WHEN the hero renders
+- THEN the meta line shows the league's display name
+- AND "Sin liga" does not appear
 
 #### Scenario: Hero heading responsive
 - GIVEN a viewport below `md`
