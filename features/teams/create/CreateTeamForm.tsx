@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
@@ -32,6 +33,28 @@ function parseCount(value: string): number {
 
 const fieldClassName =
   "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500";
+
+/** Native select styling: keeps the browser chevron (appearance-auto) and a 16px font so iOS does not auto-zoom. */
+const selectClassName = `${fieldClassName} appearance-auto text-[16px]`;
+
+/**
+ * Wraps a native select in a relative container with a separate chevron element
+ * (`pointer-events: none`) so the chevron renders on Samsung Android, where
+ * default select background-image chevrons are hidden.
+ */
+function SelectWithChevron({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative">
+      {children}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
+      >
+        ▾
+      </span>
+    </div>
+  );
+}
 
 const COACHING_LABELS: Record<string, string> = {
   rerolls: "Rerolls",
@@ -156,19 +179,21 @@ export function CreateTeamForm() {
               <label htmlFor="team-race" className="mb-1 block text-sm font-medium text-slate-700">
                 Race
               </label>
-              <select
-                id="team-race"
-                value={form.raceId}
-                onChange={(event) => form.changeRace(event.target.value)}
-                className={fieldClassName}
-              >
-                <option value="">Select a race</option>
-                {RACES.map((raceOption) => (
-                  <option key={raceOption.id} value={raceOption.id}>
-                    {raceOption.name}
-                  </option>
-                ))}
-              </select>
+              <SelectWithChevron>
+                <select
+                  id="team-race"
+                  value={form.raceId}
+                  onChange={(event) => form.changeRace(event.target.value)}
+                  className={selectClassName}
+                >
+                  <option value="">Select a race</option>
+                  {RACES.map((raceOption) => (
+                    <option key={raceOption.id} value={raceOption.id}>
+                      {raceOption.name}
+                    </option>
+                  ))}
+                </select>
+              </SelectWithChevron>
               {form.errors.race ? (
                 <p role="alert" className="mt-1 text-sm text-red-600">
                   {form.errors.race}
@@ -334,19 +359,21 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
           >
             League type
           </label>
-          <select
-            id="team-league-type"
-            aria-label="League type"
-            value={form.leagueType}
-            onChange={(event) => form.setLeagueType(event.target.value as TeamLeagueType)}
-            className={fieldClassName}
-          >
-            {LEAGUE_TYPES.map((leagueType) => (
-              <option key={leagueType} value={leagueType}>
-                {leagueType}
-              </option>
-            ))}
-          </select>
+          <SelectWithChevron>
+            <select
+              id="team-league-type"
+              aria-label="League type"
+              value={form.leagueType}
+              onChange={(event) => form.setLeagueType(event.target.value as TeamLeagueType)}
+              className={selectClassName}
+            >
+              {LEAGUE_TYPES.map((leagueType) => (
+                <option key={leagueType} value={leagueType}>
+                  {leagueType}
+                </option>
+              ))}
+            </select>
+          </SelectWithChevron>
         </div>
       </div>
     </section>

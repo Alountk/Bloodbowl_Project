@@ -65,6 +65,25 @@ describe("CreateTeamForm", () => {
     });
   });
 
+  it("wraps the Race select in a relative div with a pointer-events-none chevron and 16px font", async () => {
+    await renderForm();
+    const raceSelect = screen.getByLabelText(/race/i) as HTMLSelectElement;
+    const wrapper = raceSelect.parentElement as HTMLElement;
+    expect(wrapper.className).toContain("relative");
+    const chevron = wrapper.querySelector("span[aria-hidden]");
+    expect(chevron).not.toBeNull();
+    expect(chevron?.className).toContain("pointer-events-none");
+    // text-[16px] prevents iOS auto-zoom; jsdom cannot compute Tailwind so the
+    // class name is the only stable assertion for that CSS contract.
+    expect(raceSelect.className).toContain("text-[16px]");
+    // Still calls changeRace: pick Orc then advance to step 2 -> hero shows Orc.
+    fireEvent.change(screen.getByLabelText(/team name/i), { target: { value: "Reikland Reavers" } });
+    fireEvent.change(raceSelect, { target: { value: "orc" } });
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    expect(screen.getByRole("heading", { name: /reikland reavers/i })).toBeTruthy();
+    expect(screen.getByText(/orc.*paso 2/i)).toBeTruthy();
+  });
+
   it("clicking Siguiente without a name stays on step 1 and shows a validation error", async () => {
     await renderForm();
     fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
@@ -197,6 +216,21 @@ describe("CreateTeamForm", () => {
     const options = screen.getAllByRole("option") as HTMLOptionElement[];
     const leagueValues = options.map((option) => option.value);
     expect(leagueValues).toEqual(expect.arrayContaining(["exhibition", "open"]));
+  });
+
+  it("wraps the League type select in a relative div with a chevron and preserves its aria-label", async () => {
+    await goToStep2();
+    const leagueSelect = screen.getByLabelText("League type") as HTMLSelectElement;
+    const wrapper = leagueSelect.parentElement as HTMLElement;
+    expect(wrapper.className).toContain("relative");
+    const chevron = wrapper.querySelector("span[aria-hidden]");
+    expect(chevron).not.toBeNull();
+    expect(chevron?.className).toContain("pointer-events-none");
+    // text-[16px] prevents iOS auto-zoom; class is the stable jsdom assertion.
+    expect(leagueSelect.className).toContain("text-[16px]");
+    // Change handler intact: open league updates the select value.
+    fireEvent.change(leagueSelect, { target: { value: "exhibition" } });
+    expect((screen.getByLabelText("League type") as HTMLSelectElement).value).toBe("exhibition");
   });
 
   it("shows unit costs next to each coaching field and consumes the budget", async () => {
