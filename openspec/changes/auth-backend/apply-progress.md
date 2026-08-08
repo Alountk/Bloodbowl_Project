@@ -1,9 +1,9 @@
-# Apply Progress: auth-backend — PR1 (DB Foundation) + PR2 (Auth + Persistence)
+# Apply Progress: auth-backend — PR1 (DB) + PR2 (Auth + Persistence) + PR3 (Migration + E2E + Ops)
 
 - **Date**: 2026-08-08
-- **Phase**: sdd-apply — PR1 merged progress with PR2 (chained stacked-to-main)
+- **Phase**: sdd-apply — PR1 + PR2 + PR3 merged progress (chained stacked-to-main)
 - **Mode**: Strict TDD (test runner: `pnpm test` / `vitest run`)
-- **Delivery**: stacked PRs → base = `main`; PR1 branch = `feat/auth-backend-pr1`; PR2 branch = `feat/auth-backend-pr2` (branch created FROM PR1 so the PR2 diff = auth/persistence only)
+- **Delivery**: stacked PRs → base = `main`; PR1 = `feat/auth-backend-pr1`, PR2 = `feat/auth-backend-pr2` (FROM PR1), PR3 = `feat/auth-backend-pr3` (FROM PR2)
 
 ---
 
@@ -165,5 +165,142 @@ Notes:
 
 ## Remaining Tasks (after PR2)
 
-- [ ] 3.1–3.6 (PR3 migration + auth e2e + ops)
-- [ ] 4.1–4.2 (final verification across all PRs)
+- [x] 3.1–3.6 (PR3 migration + auth e2e + ops) — completed in this batch below.
+- [ ] 4.1–4.2 (final verification across all PRs) — sdd-verify.
+
+---
+
+# PR 3 — Migration + E2E + Ops (this apply batch)
+
+- **Date**: 2026-08-08
+- **Phase**: sdd-apply — PR3 (final stacked slice), base = `feat/auth-backend-pr2`
+- **Mode**: Strict TDD (test runner: `pnpm test` / `vitest run`)
+- **Delivery**: stacked-to-main; PR3 branch = `feat/auth-backend-pr3` (created FROM `feat/auth-backend-pr2` so the PR3 diff = migration + e2e + ops only).
+- **Artifacts**: `openspec/changes/auth-backend/apply-progress.md` (this file, MERGED across PR1+PR2+PR3), `tasks.md` marked `[x]` for Phases 1–3.
+
+## Scope Delivered (PR3)
+
+Exactly the PR3 slice: the per-browser legacy `bb_teams_v1` → account migration
+hook, the real-DB auth/migration/isolation Playwright suites + `test:e2e:auth`
+script/config, and ops documentation. Two latent PR2 auth bugs surfaced and
+fixed (below), required for the migration + e2e to work at all.
+
+### Migration hook
+1. `features/migration/migrateLocalTeams.ts` — pure, flag-gated migration. Reads
+   `bb_teams_v1`, POSTs each into `/api/teams`, sets `bb_teams_migrated_v1`,
+   NEVER clears `bb_teams_v1`, idempotent, partial-failure returns `failed` and
+   leaves the flag unset (retry next login). 5 unit tests.
+2. `features/migration/useTeamMigration.ts` — client hook that runs it when the
+   session becomes authenticated; non-blocking (logs/warns), calls `onMigrated`
+   after posting ≥1 team. 6 unit tests.
+3. `app/providers/SessionAppProvider.tsx` — wires `useTeamMigration(authenticated,
+   { onMigrated })`; bumps `reloadVersion` so AppProvider re-hydrates and the
+   migrated teams appear without a manual reload.
+4. `app/providers/AppProvider.tsx` + `components/AppShell.tsx` — optional
+   `reloadVersion` prop re-runs the store `list()` effect (re-hydration). Tests.
+
+### Real-DB auth e2e (AUTH_MODE=auth + Postgres)
+5. `e2e/auth.spec.ts` — signup → create team → reload → logout → login; team
+   persists from the DB. **Passes.**
+6. `e2e/migration.spec.ts` — seed `bb_teams_v1` before login → teams appear in
+   the account + flag set + legacy copy retained; a later login does **not**
+   duplicate. **Passes.**
+7. `e2e/isolation.spec.ts` — two users isolated (B cannot list/delete A's team;
+   foreign id → 404; A's team intact). **Passes.**
+8. `playwright.config.auth.ts` + `scripts/test-e2e-auth.sh` + `test:e2e:auth`
+   — boots compose Postgres, applies `prisma migrate deploy`, runs the suites in
+   `AUTH_MODE=auth`. The default `test:e2e` stays anonymous/local and ignores
+   these specs (19 local e2e remain green).
+
+### Ops
+9. `docs/auth.md` — AUTH_MODE (local vs auth; production MUST be auth), `.env`
+   (DATABASE_URL, AUTH_SECRET, AUTH_TRUST_HOST), starting Postgres, `prisma
+   migrate deploy`, the legacy migration, `test:e2e:auth`, Arcane deploy notes.
+   Linked from README. `.env.example` now documents `AUTH_MODE`.
+
+## PR3 TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 migration pure fn | `features/migration/migrateLocalTeams.test.ts` | Unit | ✅ 490/490 | ✅ Written | ✅ Passed | ✅ 5 cases | ✅ Clean |
+| 3.2 hook + re-hydrate | `useTeamMigration.test.tsx`, `AppProvider.test.tsx`, `SessionAppProvider.test.tsx` | Unit/Integration | ✅ 509/509 | ✅ Written | ✅ Passed | ✅ 3 + 2 + 2 cases | ✅ Clean |
+| JWT user id propagation | `auth.config.test.ts` | Unit | ✅ 501/501 | ✅ Written | ✅ Passed | ✅ 3 cases | ✅ Clean |
+| normalizeEmail | `lib/email.test.ts` | Unit | ✅ 509/509 | ✅ Written | ✅ Passed | ✅ 3 cases | ✅ Clean |
+| 3.3 auth e2e | `e2e/auth.spec.ts` | E2E | ✅ 19/19 local | ✅ Spec first | ✅ 3/3 auth suite | ✅ full journey | ✅ Clean |
+| 3.4 migration e2e | `e2e/migration.spec.ts` | E2E | ✅ 19/19 local | ✅ Spec first | ✅ 1/1 | ✅ idempotent re-login | ✅ Clean |
+| 3.5 isolation e2e | `e2e/isolation.spec.ts` | E2E | ✅ 19/19 local | ✅ Spec first | ✅ 1/1 | ✅ foreign 404 | ✅ Clean |
+| 3.6 ops docs | `docs/auth.md`, `.env.example`, README | Docs | ✅ 512/512 | N/A (docs) | — | — | — |
+
+### PR3 Work Unit Evidence
+
+#### Unit: Migration hook + re-hydration (tasks 3.1, 3.2)
+| Evidence | Required value |
+|---|---|
+| Focused test command | `pnpm vitest run features/migration/migrateLocalTeams.test.ts features/migration/useTeamMigration.test.tsx app/providers/SessionAppProvider.test.tsx app/providers/AppProvider.test.tsx` → 20 passed |
+| Runtime harness | `pnpm run test:e2e:auth` → `e2e/migration.spec.ts` passes: seeded `bb_teams_v1` teams appear after login, flag `bb_teams_migrated_v1` set, no duplicates on re-login |
+| Rollback boundary | Revert `features/migration/*`, SessionAppProvider/AppProvider/AppShell `reloadVersion` wiring; the API/local stores and existing e2e unaffected |
+
+#### Unit: Auth wiring fixes (surfaced by real-DB e2e)
+| Evidence | Required value |
+|---|---|
+| Focused test command | `pnpm vitest run auth.config.test.ts lib/email.test.ts` → 11 passed |
+| Runtime harness | `pnpm run test:e2e:auth` → all 3 suites pass: session carries `user.id`, `/api/teams` returns 200 lists / 201 creates, mixed-case email login matches the lowercased stored user |
+| Rollback boundary | Revert `auth.config.ts` jwt/session callbacks + `auth.ts`/`signup` normalizeEmail + `lib/email.*`; session would lack user id (scoped API breaks) — keep so the PR3 e2e passes |
+
+#### Unit: Real-DB auth e2e (tasks 3.3–3.5)
+| Evidence | Required value |
+|---|---|
+| Focused test command | `pnpm run test:e2e:auth` → **3 passed** (auth, migration, isolation) |
+| Runtime harness | Playwright drives `next dev` in `AUTH_MODE=auth` against compose Postgres; signup/login/create/logout + localStorage migration + two-user isolation exercised end-to-end |
+| Rollback boundary | Revert `e2e/auth|migration|isolation.spec.ts`, `playwright.config.auth.ts`, `scripts/test-e2e-auth.sh`, `test:e2e:auth`; default `test:e2e` + unit suite intact |
+
+#### Unit: Ops docs (task 3.6)
+| Evidence | Required value |
+|---|---|
+| Focused test command | `pnpm lint`, `npx tsc --noEmit`, `pnpm test` (512) all green after docs |
+| Runtime harness | `pnpm run test:e2e:auth` (documented) — verified working; `docker compose up -d postgres` documented |
+| Rollback boundary | Revert `docs/auth.md`, README link, `.env.example` AUTH_MODE |
+
+## PR3 Verification Results (on `feat/auth-backend-pr3`)
+
+- `pnpm test` → **35 files, 512 tests passed** (490 baseline + 22 new).
+- `pnpm lint` → clean (0 errors, 0 warnings).
+- `npx tsc --noEmit` → 0 errors.
+- `pnpm next build` → compile + types + static pages + `ƒ Proxy (Middleware)` pass.
+- `pnpm run test:e2e:auth` (real Postgres, AUTH_MODE=auth) → **3 passed**.
+- `pnpm run test:e2e` (AUTH_MODE=local) → **19/19 passed** (auth/migration/isolation correctly excluded from the default config).
+
+## Deviations from Design (PR3)
+
+1. **Migration hook lives in `SessionAppProvider`, not `AppProvider`.** PR2 moved
+   session-driven concerns into `SessionAppProvider` (AppProvider became
+   store-agnostic). The migration must run where the session becomes
+   `authenticated`, so it is wired there, with `onMigrated` → `reloadVersion`
+   re-hydrating AppProvider's list. This honors the design's intent ("run on
+   first auth, non-blocking") at the correct architectural seam.
+2. **`session.user.id` was missing (PR2 latent bug), fixed in PR3.** NextAuth v5
+   JWT mode drops `user.id` unless a `jwt`/`session` callback copies it; the
+   scoped `/api/teams` always saw `session.user.id == null` → 401. Added the
+   callbacks. The original PR2 unit tests mocked `auth()` with `user.id`, hiding
+   this — the real-DB e2e surfaced it. This is a required auth-wiring correction,
+   not scope creep.
+3. **Mixed-case email login failed (PR2 latent bug), fixed in PR3.** Signup
+   lowercased emails but authorize compared the raw case, so a capital-letter
+   signup (e.g. isolation's `userA-...`) could sign up but never log in. Added
+   `lib/email normalizeEmail` used by both signup and authorize.
+4. **Playwright auth config is a separate `playwright.config.auth.ts`**, selected
+   by the new `test:e2e:auth` script, rather than folding auth suites into the
+   default config. This keeps the default `test:e2e` anonymous (`local`) and the
+   19 existing e2e green, per the PR3 task.
+
+## Issues Found (PR3)
+
+- The two authentication bugs above (missing user id; email-case mismatch) were
+  latent and only surfaced once the app was driven for real in `AUTH_MODE=auth`
+  against Postgres. Both are fixed and unit + e2e covered.
+- `playwright-report-auth/` is a generated artifact; added to `.gitignore`.
+
+## Remaining Tasks (after PR3)
+
+- [ ] 4.1 `pnpm test` + `pnpm run test:e2e` green across all PRs (verify phase).
+- [ ] 4.2 Rollback: each PR revertible; localStorage copy kept.
