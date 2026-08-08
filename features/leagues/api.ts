@@ -85,3 +85,21 @@ export async function expelTeam(
   );
   return readJson<Team>(res);
 }
+
+/** A team as returned by the user-scoped `/api/teams` route. */
+export interface ApiTeamForAssign {
+  id: string;
+  name: string;
+  raceId: string;
+  leagueId: string | null;
+}
+
+/**
+ * Fetches the session user's teams for the league-detail assign select and
+ * filters to those currently unassigned (a team can belong to only one league).
+ */
+export async function listUnassignedTeams(): Promise<ApiTeamForAssign[]> {
+  const res = await fetch("/api/teams");
+  const teams = await readJson<ApiTeamForAssign[]>(res);
+  return teams.filter((t) => t.leagueId === null);
+}
