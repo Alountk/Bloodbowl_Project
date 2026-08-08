@@ -16,7 +16,7 @@ async function submitForm(email: string, password: string) {
   render(<SignupPage />);
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: password } });
-  fireEvent.click(screen.getByRole("button", { name: /sign up/i }));
+  fireEvent.click(screen.getAllByRole("button", { name: /sign up/i }).at(-1)!);
 }
 
 describe("Signup page", () => {
