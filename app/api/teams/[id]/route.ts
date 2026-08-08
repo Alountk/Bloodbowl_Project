@@ -21,7 +21,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const team = await prisma.team.findFirst({ where: { id, userId } });
+  const team = await prisma.team.findFirst({ where: { id, userId, archivedAt: null } });
   if (!team) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
