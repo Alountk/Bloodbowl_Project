@@ -72,13 +72,25 @@ describe("RosterTable", () => {
   });
 
   describe("scroll container", () => {
-    it("caps the table height with internal scroll and a sticky header so the rest of the form stays visible", () => {
+    it("caps the table height with internal scroll and preserves the sticky header", () => {
       render(<RosterTable players={mockPlayers} race={mockRace} />);
-      const container = screen.getByRole("table").parentElement?.parentElement;
-      expect(container?.className).toContain("max-h-[55vh]");
-      expect(container?.className).toContain("overflow-auto");
+      // Table -> panel -> overflow-x-auto wrapper -> outer max-h container.
+      const outer = screen.getByRole("table").parentElement?.parentElement?.parentElement;
+      expect(outer?.className).toContain("max-h-[55vh]");
+      expect(outer?.className).toContain("overflow-auto");
       const headers = screen.getAllByRole("columnheader");
       expect(headers.every((h) => h.className.includes("sticky top-0 z-10"))).toBe(true);
+    });
+
+    it("nests an overflow-x-auto wrapper and min-width panel between the outer container and the table", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} />);
+      const panel = screen.getByRole("table").parentElement;
+      // Panel carries the mobile min-width contract.
+      expect(panel?.className).toContain("min-w-[640px]");
+      expect(panel?.className).toContain("md:min-w-0");
+      // The nested scroll wrapper sits between the outer container and the panel.
+      const wrapper = panel?.parentElement;
+      expect(wrapper?.className).toContain("overflow-x-auto");
     });
   });
 

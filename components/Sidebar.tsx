@@ -5,11 +5,22 @@ import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [{ href: "/", label: "Teams" }];
 
-export function Sidebar() {
+interface SidebarProps {
+  /** Every instance shares the same nav markup; the wrapper decides placement. */
+  variant?: "desktop" | "drawer";
+  /** Closes the mobile drawer when a nav link is activated. */
+  onNavigate?: () => void;
+}
+
+/**
+ * Shared nav partial rendered by both the desktop sidebar and the mobile drawer,
+ * so the nav links and active state stay single-sourced.
+ */
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <aside aria-label="Sidebar" className="w-60 shrink-0 border-r border-slate-200 bg-white p-4">
+    <>
       <p className="mb-6 flex items-center gap-2">
         <span className="text-[18px] font-black tracking-tight text-[#12225a]">BLOODBOWL</span>
         <span className="text-[10px] font-bold uppercase tracking-wide text-[#d11938]">Teams</span>
@@ -21,6 +32,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               className={`rounded-md px-3 py-2 text-sm transition-colors ${
                 isActive
                   ? "bg-[#12225a] text-white"
@@ -32,6 +44,25 @@ export function Sidebar() {
           );
         })}
       </nav>
+    </>
+  );
+}
+
+export function Sidebar({ variant = "desktop", onNavigate }: SidebarProps) {
+  if (variant === "drawer") {
+    return (
+      <aside
+        aria-label="Mobile navigation"
+        className="fixed left-0 top-0 bottom-0 z-50 flex w-60 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-xl"
+      >
+        <SidebarContent onNavigate={onNavigate} />
+      </aside>
+    );
+  }
+
+  return (
+    <aside aria-label="Sidebar" className="hidden md:flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
+      <SidebarContent onNavigate={onNavigate} />
     </aside>
   );
 }

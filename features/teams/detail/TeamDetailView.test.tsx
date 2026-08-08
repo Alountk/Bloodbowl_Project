@@ -45,6 +45,14 @@ function treasuryCard(label: string): HTMLElement {
   return labelEl.closest("div") as HTMLElement;
 }
 
+/** Locates the coaching table DOM tree to assert its scroll wrapper. */
+function coachingTableElement(): HTMLElement {
+  const heading = screen.getByRole("heading", { name: "Cuerpo técnico" });
+  const table = heading.parentElement?.querySelector("table");
+  expect(table).not.toBeNull();
+  return table as HTMLElement;
+}
+
 describe("TeamDetailView", () => {
   it("renders the Style A hero: team name, bold race, league label, and tags", () => {
     render(<TeamDetailView team={baseTeam} race={humanRace} />);
@@ -244,5 +252,17 @@ describe("TeamDetailView", () => {
 
     const restante = treasuryCard("Tesorería restante");
     expect(within(restante).getByText("700 000")).toBeTruthy();
+  });
+
+  describe("coaching table horizontal scroll", () => {
+    it("wraps the coaching table in an overflow-x-auto wrapper and min-width panel", () => {
+      render(<TeamDetailView team={baseTeam} race={humanRace} />);
+      // Table -> panel (min-w) -> overflow-x-auto wrapper.
+      const panel = coachingTableElement().parentElement;
+      expect(panel?.className).toContain("min-w-[640px]");
+      expect(panel?.className).toContain("md:min-w-0");
+      const wrapper = panel?.parentElement;
+      expect(wrapper?.className).toContain("overflow-x-auto");
+    });
   });
 });

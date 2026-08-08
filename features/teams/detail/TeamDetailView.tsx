@@ -43,8 +43,8 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
   return (
     <div className="mx-auto max-w-[860px] bg-white text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
       {/* Hero */}
-      <header className="bg-[#12225a] px-6 py-[22px] text-white">
-        <h1 className="text-[26px] font-black tracking-[0.02em]">{team.name}</h1>
+      <header className="bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
+        <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{team.name}</h1>
         <p className="mt-2 text-[13px] text-[#cbd5e1]">
           <b className="text-white">{race.name}</b> · {LEAGUE_LABELS[team.leagueType] ?? team.leagueType}
         </p>
@@ -80,7 +80,9 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
           >
             Cuerpo técnico
           </h2>
-          <table className="w-full text-[13px]">
+          <div className="overflow-x-auto">
+            <div className="min-w-[640px] md:min-w-0">
+              <table className="w-full text-[13px]">
             <thead>
               <tr className="bg-[#12225a] text-white">
                 <th scope="col" className="px-[10px] py-[7px] text-left text-[12px] font-bold uppercase">
@@ -132,7 +134,9 @@ export function TeamDetailView({ team, race }: TeamDetailViewProps) {
                 </td>
               </tr>
             </tbody>
-          </table>
+            </table>
+            </div>
+          </div>
         </section>
 
         {/* Tesorería */}
