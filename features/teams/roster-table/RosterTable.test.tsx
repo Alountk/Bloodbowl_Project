@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { PlayerEntry, Race } from "../types";
+import { mockMatchMedia } from "../test/matchMedia";
 import { RosterTable } from "./RosterTable";
 
 const mockRace: Race = {
@@ -336,6 +337,103 @@ describe("RosterTable", () => {
     it("renders an empty state message when players list is empty", () => {
       render(<RosterTable players={[]} race={mockRace} />);
       expect(screen.getByText(/no players in roster yet/i)).toBeTruthy();
+    });
+  });
+
+  describe("mobile stacked row-cards (matchMedia false)", () => {
+    afterEach(() => {
+      // Remove the matchMedia stub so sibling desktop tests keep jsdom defaults.
+      // @ts-expect-error cleanup restores the pristine jsdom window.
+      delete window.matchMedia;
+    });
+
+    function renderMobile(ui: Parameters<typeof render>[0]) {
+      mockMatchMedia(false);
+      return render(ui);
+    }
+
+    it("renders each player as a stacked card (no book table) on mobile", () => {
+      renderMobile(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      // No table element exists below md.
+      expect(screen.queryByRole("table")).toBeNull();
+      // Both players appear as static name lines.
+      expect(screen.getByText("Grak")).toBeTruthy();
+      expect(screen.getByText("Smash")).toBeTruthy();
+    });
+
+    it("shows the positional subtitle {name} · (Race, Rol) in readOnly cards", () => {
+      renderMobile(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.getByText("Lineman · (Human, Línea)")).toBeTruthy();
+      expect(screen.getByText("Blitzer · (Human, Blitzer)")).toBeTruthy();
+    });
+
+    it("shows stats chips MV FU AG PS AR, cost line and labeled sections in readOnly cards", () => {
+      renderMobile(<RosterTable players={[{ id: "p1", name: "Grak", positionalKey: "lineman" }]} race={mockRace} readOnly />);
+      // Stats chips labels + values.
+      expect(screen.getByText("MV")).toBeTruthy();
+      expect(screen.getByText("FU")).toBeTruthy();
+      expect(screen.getByText("AG")).toBeTruthy();
+      expect(screen.getByText("PS")).toBeTruthy();
+      expect(screen.getByText("AR")).toBeTruthy();
+      // Lineman: ma 6 st 3 ag 3+ pa 4+ av 8+, cost 50 000.
+      expect(screen.getByText("50 000")).toBeTruthy();
+      // Labeled sections.
+      expect(screen.getByText("SKILLS")).toBeTruthy();
+      expect(screen.getByText("PRIMARIAS")).toBeTruthy();
+      expect(screen.getByText("SECUNDARIAS")).toBeTruthy();
+    });
+
+    it("shows stats chip values from the positional in readOnly cards", () => {
+      renderMobile(<RosterTable players={[{ id: "p1", name: "Grak", positionalKey: "lineman" }]} race={mockRace} readOnly />);
+      expect(screen.getByText("6")).toBeTruthy(); // MV
+      expect(screen.getByText("3+")).toBeTruthy(); // AG
+      expect(screen.getByText("4+")).toBeTruthy(); // PS
+      expect(screen.getByText("8+")).toBeTruthy(); // AR
+    });
+
+    it("renders SKILLS 'Ninguna' fallback for a positional with no starting skills", () => {
+      renderMobile(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.getByText("Ninguna")).toBeTruthy();
+    });
+
+    it("renders Spanish skill and PRIMARIAS/SECUNDARIAS letters in editable cards", () => {
+      renderMobile(<RosterTable players={[{ id: "p2", name: "Smash", positionalKey: "blitzer" }]} race={mockRace} />);
+      // blitzer has skills ["block"] (no es -> English "Block") and accessPrimary G F.
+      expect(screen.getByText("Block")).toBeTruthy();
+      expect(screen.getByText("G F")).toBeTruthy();
+      expect(screen.getByText("A")).toBeTruthy();
+    });
+
+    it("keeps editable name input and remove button working on mobile", () => {
+      const onRename = vi.fn();
+      const onRemove = vi.fn();
+      renderMobile(
+        <RosterTable players={mockPlayers} race={mockRace} onRename={onRename} onRemove={onRemove} />,
+      );
+      const nameInput = screen.getByLabelText("Player name for Grak") as HTMLInputElement;
+      fireEvent.change(nameInput, { target: { value: "Crusher" } });
+      expect(onRename).toHaveBeenCalledWith("p1", "Crusher");
+      fireEvent.click(screen.getByRole("button", { name: "Remove Smash" }));
+      expect(onRemove).toHaveBeenCalledWith("p2");
+    });
+
+    it("does not render textbox inputs in readOnly mobile cards", () => {
+      renderMobile(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+    });
+
+    it("preserves the banner and totals/budget footer info on editable mobile cards", () => {
+      renderMobile(
+        <RosterTable players={mockPlayers} race={mockRace} bannerText="Reikland Reavers" remainingBudget={690_000} />,
+      );
+      expect(screen.getByText("Reikland Reavers")).toBeTruthy();
+      expect(screen.getByText("690k left")).toBeTruthy();
+    });
+
+    it("renders the apothecary footer info on readOnly mobile cards when apothecary is provided", () => {
+      renderMobile(<RosterTable players={mockPlayers} race={mockRace} readOnly apothecary />);
+      expect(screen.getByText(/Segundas oportunidades/i)).toBeTruthy();
+      expect(screen.getByText("Apotecario: SÍ")).toBeTruthy();
     });
   });
 });
