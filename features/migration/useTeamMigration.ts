@@ -4,6 +4,11 @@ import { useEffect } from "react";
 import { runTeamMigration, LEGACY_TEAMS_KEY } from "./migrateLocalTeams";
 import type { Team } from "@/features/teams/types";
 
+interface UseTeamMigrationOptions {
+  /** Called once after a successful migration that posted at least one team. */
+  onMigrated?: () => void;
+}
+
 /**
  * Client hook that runs the one-time legacy `bb_teams_v1` → account migration
  * the first time the session becomes authenticated for this browser.
@@ -13,7 +18,10 @@ import type { Team } from "@/features/teams/types";
  * and swallowed so a failed migration never blocks login. The flag is left unset
  * on failure so a later login retries.
  */
-export function useTeamMigration(authenticated: boolean) {
+export function useTeamMigration(
+  authenticated: boolean,
+  { onMigrated }: UseTeamMigrationOptions = {},
+) {
   useEffect(() => {
     if (!authenticated) return;
 
@@ -38,6 +46,10 @@ export function useTeamMigration(authenticated: boolean) {
           console.warn(
             `[migration] localStorage ${LEGACY_TEAMS_KEY} migration partially failed; will retry on next login.`,
           );
+        } else if (result.migrated > 0 && !cancelled) {
+          // Newly migrated teams exist in the DB but the already-hydrated team
+          // list does not show them; signal the shell to re-hydrate.
+          onMigrated?.();
         }
       } catch (error) {
         // Unexpected fatal path: still non-blocking, retained data, retry later.
@@ -54,5 +66,6 @@ export function useTeamMigration(authenticated: boolean) {
       cancelled = true;
     };
     // `authenticated` is the only dependency; runTeamMigration is module-stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onMigrated is a stable prop callback.
   }, [authenticated]);
 }

@@ -110,4 +110,29 @@ describe("SessionAppProvider — legacy localStorage migration", () => {
     expect(window.localStorage.getItem("bb_teams_migrated_v1")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("re-hydrates the team list after the migration posts legacy teams", async () => {
+    window.localStorage.setItem(
+      "bb_teams_v1",
+      JSON.stringify([
+        { id: "t1", name: "Reavers", raceId: "human", roster: [], coaching: { rerolls: 0 }, leagueType: "open" },
+      ]),
+    );
+    useSessionMock.mockReturnValue({ status: "authenticated" });
+    fetchMock.mockClear();
+
+    const gets = () =>
+      fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method !== "POST");
+    const posts = () =>
+      fetchMock.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === "POST");
+
+    render(<SessionAppProvider>content</SessionAppProvider>);
+
+    // The migration POSTs the legacy team, then the list must be re-fetched so
+    // the migrated team appears without a manual reload.
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    await waitFor(() => expect(window.localStorage.getItem("bb_teams_migrated_v1")).toBe("1"));
+    // After migration, at least 2 GETs happen: the initial hydration + the re-hydration.
+    await waitFor(() => expect(gets().length).toBeGreaterThanOrEqual(2));
+  });
 });

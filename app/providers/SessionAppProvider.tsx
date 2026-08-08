@@ -21,11 +21,17 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
   const { status } = useSession();
   // Stable ApiTeamStore instance across re-renders.
   const [apiStore] = useState(() => new ApiTeamStore());
+  // Bumped after a migration so AppProvider re-hydrates and shows migrated teams.
+  const [migrationReload, setMigrationReload] = useState(0);
 
   const authenticated = status === "authenticated";
   // One-time per-browser legacy localStorage migration, run on first auth.
   // Non-blocking and idempotent (see useTeamMigration); never interrupts login.
-  useTeamMigration(authenticated);
+  // On success it bumps migrationReload so the already-hydrated list re-fetches
+  // and shows the migrated teams without a manual reload.
+  useTeamMigration(authenticated, {
+    onMigrated: () => setMigrationReload((v) => v + 1),
+  });
 
   if (status === "loading") {
     return (
@@ -42,6 +48,7 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
       store={authenticated ? apiStore : undefined}
       authenticated={authenticated}
       onLogout={() => signOut({ redirectTo: "/login" })}
+      reloadVersion={migrationReload}
     >
       {children}
     </AppShell>

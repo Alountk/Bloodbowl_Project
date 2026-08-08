@@ -94,4 +94,23 @@ describe("useTeamMigration", () => {
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+
+  it("calls onMigrated after a successful migration so the UI can re-hydrate", async () => {
+    window.localStorage.setItem(LEGACY_TEAMS_KEY, JSON.stringify([legacyTeam("t1", "Reavers")]));
+    const onMigrated = vi.fn();
+
+    renderHook(() => useTeamMigration(true, { onMigrated }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await waitFor(() => expect(window.localStorage.getItem("bb_teams_migrated_v1")).toBe("1"));
+    expect(onMigrated).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT call onMigrated when there is nothing to migrate", async () => {
+    const onMigrated = vi.fn();
+    // No legacy teams → a no-op migration, nothing to re-hydrate.
+    renderHook(() => useTeamMigration(true, { onMigrated }));
+    await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
+    expect(onMigrated).not.toHaveBeenCalled();
+  });
 });
