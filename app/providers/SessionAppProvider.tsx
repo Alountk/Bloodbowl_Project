@@ -47,13 +47,15 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
     <AppShell
       store={authenticated ? apiStore : undefined}
       authenticated={authenticated}
-      onLogout={() => {
+      onLogout={async () => {
         // Redirect client-side with a relative path so the browser resolves
         // it against the host the user is actually on. Passing redirectTo to
         // signOut makes Auth.js build the URL from the server's own host
         // (HOSTNAME=0.0.0.0 in the container), which produced
-        // "0.0.0.0:3444/login" in production.
-        void signOut({ redirect: false });
+        // "0.0.0.0:3444/login" in production. We AWAIT the sign-out POST so
+        // the session cookie is cleared before navigating — otherwise the
+        // proxy still sees an authenticated user and bounces /login back to /.
+        await signOut({ redirect: false });
         window.location.assign("/login");
       }}
       reloadVersion={migrationReload}
