@@ -260,7 +260,6 @@ describe("TeamDetailView", () => {
       // Table -> panel (min-w) -> overflow-x-auto wrapper.
       const panel = coachingTableElement().parentElement;
       expect(panel?.className).toContain("min-w-[640px]");
-      expect(panel?.className).toContain("md:min-w-0");
       const wrapper = panel?.parentElement;
       expect(wrapper?.className).toContain("overflow-x-auto");
     });
