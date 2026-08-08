@@ -35,10 +35,10 @@ Chain strategy: pending
 
 ## Phase 3: RosterTable Mobile Cards (RED → GREEN)
 
-- [ ] 3.1 RED (`matchMedia` false): readOnly card asserts name line, subtitle `{name} · (Race, Rol)`, cost line, stats chips, SKILLS "Ninguna", PRIMARIAS/SECUNDARIAS rows
-- [ ] 3.2 RED: editable card — rename input `aria-label="Player name for {name}"` + remove btn `aria-label="Remove {name}"` still work; SKILLS fallback "Ninguna"; desktop branch has no stacked nodes
-- [ ] 3.3 GREEN `RosterTable.tsx`: extract shared cellData; `isDesktop ? book table : mobile cards`
-- [ ] 3.4 Run desktop suite: existing `RosterTable.test.tsx` green unchanged (jsdom → `isDesktop` true)
+- [x] 3.1 RED (`matchMedia` false): readOnly card asserts name line, subtitle `{name} · (Race, Rol)`, cost line, stats chips, SKILLS "Ninguna", PRIMARIAS/SECUNDARIAS rows
+- [x] 3.2 RED: editable card — rename input `aria-label="Player name for {name}"` + remove btn `aria-label="Remove {name}"` still work; SKILLS fallback "Ninguna"; desktop branch has no stacked nodes
+- [x] 3.3 GREEN `RosterTable.tsx`: extract shared cellData; `isDesktop ? book table : mobile cards`
+- [x] 3.4 Run desktop suite: existing `RosterTable.test.tsx` green unchanged (jsdom → `isDesktop` true)
 
 ## Phase 4: PlayerAvailabilityTable Mobile Rows (RED → GREEN)
 
