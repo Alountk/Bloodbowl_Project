@@ -70,3 +70,40 @@ describe("auth config route gate", () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe("auth config session user id propagation", () => {
+  // Cast to a concrete callable shape so the JWT/session callbacks can be
+  // invoked directly in tests without the framework's strict param typing.
+  const callbacks = authConfig.callbacks as unknown as {
+    jwt: (params: never) => unknown;
+    session: (params: never) => unknown;
+  };
+
+  it("persists the authorize user id into the JWT token at sign-in", () => {
+    const token = callbacks.jwt({
+      token: { sub: "cls-user-1", name: null, email: "a@test.local" },
+      user: { id: "cls-user-1", name: null, email: "a@test.local" },
+    } as never) as Record<string, unknown>;
+    expect(token.id).toBe("cls-user-1");
+    expect(token.sub).toBe("cls-user-1");
+  });
+
+  it("keeps an existing token id across refreshes (no user object)", () => {
+    const token = callbacks.jwt({
+      token: { sub: "cls-user-9", id: "cls-user-9", name: null, email: "b@test.local" },
+    } as never) as Record<string, unknown>;
+    expect(token.id).toBe("cls-user-9");
+  });
+
+  it("exposes the token id as session.user.id", () => {
+    const result = callbacks.session({
+      session: {
+        user: { name: null, email: "a@test.local" },
+        expires: new Date("2026-09-07"),
+      },
+      token: { id: "cls-user-1" },
+    } as never) as { user: { id?: string } };
+    // The scoped /api/teams routes rely on session.user.id; without it they 401.
+    expect(result.user?.id).toBe("cls-user-1");
+  });
+});
