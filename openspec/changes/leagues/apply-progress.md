@@ -169,3 +169,95 @@ The leagues flow is API-backed (Postgres) and every endpoint requires a session 
 - 3.1/3.2: surface the 409 archive-guard message in `TeamDeleteModal`/`TeamList` (PR3).
 - 3.3/3.6: sweep remaining leagueType fixtures (mostly historical) and sync delta specs via `sdd-archive`.
 - Do NOT open the PR until the orchestrator runs `sdd-verify`.
+
+---
+
+# Apply Progress: Leagues (PR 3 — 409 Guard Surface + Final Sweep)
+
+**Change**: leagues
+**Branch**: `feat/leagues-pr3` (stacked off `feat/leagues-pr2`, target `feat/leagues-pr2`)
+**Mode**: Strict TDD (`pnpm test`, vitest + Playwright)
+**Batch**: PR3 — 409 guard surface in delete modal + final sweep + e2e guard
+**Status**: Complete — PR3 tasks done, ready for verify
+
+## TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 modal guard RED | `features/teams/TeamDeleteModal.test.tsx` | Unit | ✅ 22/22 | ✅ Added 2 tests (guard message + Entendido) that fail until `guardMessage` prop exists | ✅ Modal renders guard + Entendido only | ✅ 2 cases (message shown + Entendido acks via onCancel) | ✅ Helpers/role=alert |
+| 3.2 modal+list GREEN | `TeamDeleteModal.tsx`, `features/teams/TeamList.tsx` | Unit/Integration | ✅ 22/22 | ✅ GuardedStore.remove() throws `ArchiveGuardError` | ✅ TeamList catches error, resolves league name, keeps modal open | ✅ 3 cases (blocked member team, unassigned deletes normally, league-name fetch fallback) | ✅ `guardMessageFor` pure fn extracted |
+| 3.3 sweep | `rg leagueType/LEAGUE_TYPES/DEFAULT_LEAGUE_TYPE/Liga Abierta/Exhibición` (excl. migrations+docs) | Structural | ✅ 564/564 | N/A (verification) | ✅ Only live refs are intentional: 2 absence-assertions in `app/api/teams/route.test.ts` + 2 historical migrations | ✅ Full-repo rg across features/e2e/app/components | ✅ No `LEAGUE_LABELS`/dead code remains |
+| 3.4 e2e guard | `e2e/leagues.spec.ts` | E2E (auth suite) | ✅ 21 local | N/A (new scenario) | ✅ Added: delete assigned team → guard message + Entendido; 5/5 auth e2e pass | ✅ Original create→assign→expel retained + new guard scenario | ✅ Reused signup/createTeam/createLeague helpers |
+| 3.5/4.2 spec sync | read-only delta checks; main-spec coverage flags | — | N/A | N/A | N/A | ✅ 5 delta specs consistent with impl (see Spec Sync Prep) | ✅ Flagged 2 main specs for `sdd-archive` |
+
+## Test Summary
+
+- **Total tests written (PR3)**: 5 new (2 modal + 3 TeamList wiring/fallback) + 1 e2e guard scenario.
+- **Total tests passing**: 569 unit (baseline 564 → 569) + 21 local e2e + 5 auth e2e.
+- **Layers used**: Unit (modal + TeamList component tests), E2E (Playwright, local + auth real-DB).
+- **Approval tests** (refactoring): None — behavior change is new (guard surface).
+- **Pure functions created**: 1 (`guardMessageFor`).
+
+## Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/teams/TeamDeleteModal.test.tsx features/teams/TeamList.test.tsx` → 2 files, 27 passed (6 modal + 21 list); full `pnpm test` → 569 passed |
+| Runtime harness command/scenario and exact result | `AUTH_MODE=local pnpm exec playwright test` → 21 passed (delete-team 2/2 green); `pnpm exec playwright test --config playwright.config.auth.ts` → 5 passed incl. new **409-guard** scenario against real Postgres (delete assigned team → guard message → Entendido → team kept) |
+| Rollback boundary | Revert `features/teams/TeamDeleteModal.tsx` guard branch + `TeamList.tsx` `handleConfirm`/`guardMessage` + the 5 unit tests + `e2e/leagues.spec.ts` guard test; team delete reverts to previous no-error behavior; unrelated UI/API unchanged |
+
+## Commit List (PR3)
+
+| Commit | Message |
+|--------|---------|
+| `14dbf8f` | `feat(teams): surface 409 archive guard in delete modal and team list` |
+| (commit 2) | `feat(leagues): add e2e 409-guard scenario and record PR3 apply progress` |
+
+## Test Results
+
+- `pnpm test` → **569 passed** (45 files), PR2/PR3 baseline 564
+- `AUTH_MODE=local pnpm exec playwright test` → **21 passed** (chromium + mobile)
+- `pnpm exec playwright test --config playwright.config.auth.ts` → **5 passed** (auth, migration, isolation, + **leagues create→assign→expel** + **leagues 409 guard**)
+- `pnpm lint` → clean
+- `npx tsc --noEmit` → clean
+
+## Sweep / Consistency
+
+- Live source + test references to `leagueType|LEAGUE_TYPES|DEFAULT_LEAGUE_TYPE|Liga Abierta|Exhibición` are **zero** (verified `rg` across `features e2e app components`, excluding docs).
+- Only intentional matches remain:
+  - `prisma/migrations/20260808132125_init/migration.sql` + `20260808230000_add_leagues_drop_league_type/migration.sql` (historical, must never be edited).
+  - `app/api/teams/route.test.ts:114,121` — absence-assertions verifying `leagueType` is NOT written.
+- No `LEAGUE_LABELS`/`TeamLeagueType`/dead ephemeral helpers remain (task 4.1).
+- e2e fixtures: `e2e/leagues.spec.ts` updated with the 409-guard scenario; `delete-team.spec.ts` remains green under `AUTH_MODE=local` (LocalStorage store, no API).
+
+## Spec Sync Prep (read-only — archive phase merges)
+
+All five delta specs are consistent with the implementation:
+- `leagues` — League model, user-scoped API, assign guards, 409 delete guard → verified green via route tests + auth e2e.
+- `team-persistence` — Team.leagueId nullable, no leagueType column, archive guard 409 → verified.
+- `team-detail-view` — league name / "Sin liga" hero meta → verified PR2.
+- `create-team` — no league-type select, POST writes leagueId null → verified PR1/2.
+- `app-shell` — shared NAV_ITEMS with Teams + Ligas → verified PR2.
+
+**Flags for archive/verify (do NOT edit in apply)**:
+- Main specs `openspec/specs/team-detail-view.md` and `openspec/specs/team-persistence/spec.md` still describe the OLD `leagueType` column/labels (task 4.2). The `sdd-archive` phase must merge the delta specs into these. No behavior broke (`openspec/specs/team-list.md` needs no change — no league-less card assertion broke).
+
+## Deviations from Design
+
+- None functional. The guard copy uses the exact approved template with the resolved league name: `"No se puede borrar este equipo — pertenece a la liga {leagueName}. Para poder borrarlo, primero expulsalo de la liga."` When the league name cannot be resolved (e.g. API unreachable), the modal falls back to showing the league id so the block is still surfaced without crashing the home page.
+- The e2e 409-guard scenario lives in the auth-run `e2e/leagues.spec.ts` (real Postgres) rather than the local `delete-team.spec.ts`, because the 409 is only reachable through `ApiTeamStore` (authenticated); the local LocalStorage store cannot produce a 409.
+
+## Issues Found
+
+- Pre-existing `act(...)` warning noise in vitest component tests (AppProvider state updates during shallow renders) — present since before PR3, non-failing; left untouched to avoid scope creep.
+- The guard message renders both the card heading and the dialog title with "League Marauders" when open; the TeamList test asserts the team STAYS via `getAllByRole("link", ...)` rather than a single-element `getByText` (which would throw on duplicates).
+
+## Tasks Complete (PR3)
+
+- [x] 3.1, 3.2, 3.3, 3.4, 3.6, 4.1 (see tasks.md). Phase 1 (PR1) + Phase 2 (PR2) already complete.
+- [ ] 3.5 (report regen + `sdd-archive` merge) and [ ] 4.2 (main-spec coverage tables) are verified-phase / archive-phase responsibilities and stay open.
+
+## Next Steps (out of scope for this batch)
+
+- Orchestrator: run `sdd-verify`, then create the PR-3 stacked branch `feat/leagues-pr3` (target `feat/leagues-pr2` per stacked-to-main).
+- `sdd-archive` must merge the five delta specs into the main specs (incl. task 4.2's `team-detail-view` + `team-persistence` coverage tables).
