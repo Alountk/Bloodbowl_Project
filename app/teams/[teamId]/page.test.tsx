@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { AppProvider, useApp } from "@/app/providers/AppProvider";
 
@@ -67,7 +67,42 @@ async function waitForHydration() {
   });
 }
 
+const assignedTeam: Team = { ...fixtureTeam, id: "team-league", leagueId: "league-1" };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("Team detail page", () => {
+  it("passes the resolved league name to TeamDetailView when the team has a league", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({ id: "league-1", name: "North Reikland League", description: null }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = new InMemoryTeamStore([assignedTeam]);
+    await act(async () => {
+      render(
+        <AppProvider store={store}>
+          <HydrationProbe />
+          {renderWithSuspense(
+            <TeamDetailPage params={Promise.resolve({ teamId: "team-league" })} />,
+          )}
+        </AppProvider>,
+      );
+    });
+
+    await waitForHydration();
+    await waitFor(() => {
+      // The league badge resolves from /api/leagues/league-1 and is shown in the hero.
+      expect(screen.getByText(/North Reikland League/)).toBeTruthy();
+      expect(screen.queryByText(/Sin liga/)).toBeNull();
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues/league-1");
+  });
+
   it("renders skeleton while store is hydrating", async () => {
     const store = new ControlledStore();
     await act(async () => {

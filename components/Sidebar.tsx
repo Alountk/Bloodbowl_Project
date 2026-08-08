@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const NAV_ITEMS = [{ href: "/", label: "Teams" }];
+const NAV_ITEMS = [
+  { href: "/", label: "Teams" },
+  { href: "/leagues", label: "Ligas" },
+];
 
 interface SidebarProps {
   /** Every instance shares the same nav markup; the wrapper decides placement. */

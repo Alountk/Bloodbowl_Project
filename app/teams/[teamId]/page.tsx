@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { getRaceById } from "@/features/teams/data/races";
 import { TeamDetailView } from "@/features/teams/detail/TeamDetailView";
+import { useLeagueName } from "@/features/leagues/useLeagueName";
 import type { Race } from "@/features/teams/types";
 
 interface TeamDetailPageProps {
@@ -14,6 +15,10 @@ interface TeamDetailPageProps {
 export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   const { teamId } = use(params);
   const { teams, isHydrated } = useApp();
+  // Resolve the team unconditionally so the league-name hook can run at the top
+  // level (Rules of Hooks); notFound() still waits for hydration below.
+  const team = teams.find((t) => t.id === teamId);
+  const leagueName = useLeagueName(team?.leagueId);
 
   if (!isHydrated) {
     return (
@@ -25,7 +30,6 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
     );
   }
 
-  const team = teams.find((t) => t.id === teamId);
   if (!team) {
     notFound();
     // notFound() throws; this return is unreachable but satisfies TypeScript
@@ -41,5 +45,5 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
     positionals: [],
   };
 
-  return <TeamDetailView team={team} race={resolvedRace} />;
+  return <TeamDetailView team={team} race={resolvedRace} leagueName={leagueName} />;
 }
