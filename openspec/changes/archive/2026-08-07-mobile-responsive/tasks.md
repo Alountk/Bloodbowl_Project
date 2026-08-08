@@ -49,4 +49,4 @@ Chain strategy: size-exception
 ## Phase 6: Verification
 - [x] 6.1 Run full unit suite: `npx vitest run` — all preserved contracts (sidebar aria, RosterTable outer container, headers, totals)
 - [x] 6.2 Run e2e: `npx playwright test` — all 14 `create-team.spec.ts` pass unchanged (Desktop Chrome 1280×720)
-- [ ] 6.3 Manual: verify 375px/390px drawer open/close, 4 table scrolls, hero/home readability
+- [x] 6.3 Manual: verify 375px/390px drawer open/close, 4 table scrolls, hero/home readability — reconciled at archive per orchestrator instruction (manual real-browser item; user reviewed and approved first iteration — see archive-report follow-up note)
