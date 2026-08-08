@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * DELETE /api/teams/[id]
- * Deletes a team owned by the session user. A foreign team id (owned by another
- * user) is treated as 404 so the existence of other users' teams is not leaked.
+ * Archives (soft-deletes) a team owned by the session user by setting
+ * `archivedAt`. A foreign team id (owned by another user) is treated as 404 so
+ * the existence of other users' teams is not leaked.
  */
 export async function DELETE(
   _req: Request,
@@ -23,6 +24,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await prisma.team.delete({ where: { id } });
+  await prisma.team.update({
+    where: { id },
+    data: { archivedAt: new Date() },
+  });
   return new NextResponse(null, { status: 204 });
 }
