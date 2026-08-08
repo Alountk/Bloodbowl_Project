@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import type { Race, Team } from "../types";
-import { DEFAULT_COACHING, DEFAULT_LEAGUE_TYPE } from "../types";
+import { DEFAULT_COACHING } from "../types";
 import { getRaceById } from "../data/races";
 import { TeamDetailView } from "./TeamDetailView";
 
@@ -11,7 +11,7 @@ const baseTeam: Team = {
   id: "t1",
   name: "Reikland Reavers",
   raceId: "human",
-  leagueType: DEFAULT_LEAGUE_TYPE,
+  leagueId: null,
   coaching: { ...DEFAULT_COACHING },
   roster: [],
 };
@@ -54,14 +54,14 @@ function coachingTableElement(): HTMLElement {
 }
 
 describe("TeamDetailView", () => {
-  it("renders the Style A hero: team name, bold race, league label, and tags", () => {
+  it("renders the Style A hero: team name, bold race, Sin liga, and tags", () => {
     render(<TeamDetailView team={baseTeam} race={humanRace} />);
 
     // Team name is the primary heading.
     expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("Reikland Reavers");
 
-    // Meta line: bold race name + Spanish league label ("Liga Abierta" for "open").
-    const meta = screen.getByText(/Liga Abierta/);
+    // Meta line: bold race name + "Sin liga" for an unassigned team.
+    const meta = screen.getByText(/Sin liga/);
     expect(meta).toBeTruthy();
     // Race name is the bold element inside the meta line.
     expect(meta.querySelector("b")?.textContent).toBe("Human");
@@ -72,13 +72,13 @@ describe("TeamDetailView", () => {
     expect(screen.getAllByText("Tesorería: 1 000 000").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("maps exhibition league to its Spanish label and never shows raw tokens", () => {
-    const exhibitionTeam: Team = { ...baseTeam, leagueType: "exhibition" };
-    render(<TeamDetailView team={exhibitionTeam} race={humanRace} />);
+  it("shows the resolved league name for an assigned team and never raw tokens", () => {
+    const assignedTeam: Team = { ...baseTeam, leagueId: "league-1" };
+    render(<TeamDetailView team={assignedTeam} race={humanRace} leagueName="North Reikland League" />);
 
-    expect(screen.getByText(/Exhibición/)).toBeTruthy();
-    expect(screen.queryByText(/exhibition/)).toBeNull();
-    expect(screen.queryByText(/open/)).toBeNull();
+    expect(screen.getByText(/North Reikland League/)).toBeTruthy();
+    expect(screen.queryByText(/Sin liga/)).toBeNull();
+    expect(screen.queryByText(/league-1/)).toBeNull();
   });
 
   it("renders the three Spanish book section headings", () => {

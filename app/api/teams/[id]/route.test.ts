@@ -64,4 +64,32 @@ describe("DELETE /api/teams/[id]", () => {
     expect(res.status).toBe(404);
     expect(prismaMock.team.update).not.toHaveBeenCalled();
   });
+
+  it("returns 409 and does not archive a team that still belongs to a league", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.team.findFirst.mockResolvedValue({ id: "t1", userId: "user-1", leagueId: "league-1", archivedAt: null });
+
+    const res = await deleteRequest("t1");
+    expect(res.status).toBe(409);
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+  });
+
+  it("archives a team whose leagueId is null", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.team.findFirst.mockResolvedValue({ id: "t1", userId: "user-1", leagueId: null, archivedAt: null });
+
+    const res = await deleteRequest("t1");
+    expect(res.status).toBe(204);
+    expect(prismaMock.team.update).toHaveBeenCalled();
+  });
+
+  it("returns 404 when re-deleting an already archived team", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    // An archived team is not found by the archivedAt: null predicate.
+    prismaMock.team.findFirst.mockResolvedValue(null);
+
+    const res = await deleteRequest("t1");
+    expect(res.status).toBe(404);
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+  });
 });

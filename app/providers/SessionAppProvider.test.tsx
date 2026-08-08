@@ -72,7 +72,7 @@ describe("SessionAppProvider — legacy localStorage migration", () => {
       raceId: "human",
       roster: [],
       coaching: { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
-      leagueType: "open",
+      leagueId: null,
     };
     window.localStorage.setItem("bb_teams_v1", JSON.stringify([legacyTeam]));
     useSessionMock.mockReturnValue({ status: "authenticated" });
@@ -100,7 +100,7 @@ describe("SessionAppProvider — legacy localStorage migration", () => {
   it("does not run the migration when unauthenticated", () => {
     window.localStorage.setItem(
       "bb_teams_v1",
-      JSON.stringify([{ id: "t1", name: "Reavers", raceId: "human", roster: [], coaching: {}, leagueType: "open" }]),
+      JSON.stringify([{ id: "t1", name: "Reavers", raceId: "human", roster: [], coaching: {}, leagueId: null }]),
     );
     useSessionMock.mockReturnValue({ status: "unauthenticated" });
     fetchMock.mockClear();
@@ -115,7 +115,7 @@ describe("SessionAppProvider — legacy localStorage migration", () => {
     window.localStorage.setItem(
       "bb_teams_v1",
       JSON.stringify([
-        { id: "t1", name: "Reavers", raceId: "human", roster: [], coaching: { rerolls: 0 }, leagueType: "open" },
+        { id: "t1", name: "Reavers", raceId: "human", roster: [], coaching: { rerolls: 0 }, leagueId: null },
       ]),
     );
     useSessionMock.mockReturnValue({ status: "authenticated" });

@@ -16,7 +16,6 @@ import {
   computeCoachingCostItems,
 } from "../roster";
 import { RosterTable } from "../roster-table/RosterTable";
-import { LEAGUE_TYPES, type TeamLeagueType } from "../types";
 import { useCreateTeamForm } from "./useCreateTeamForm";
 import { PlayerAvailabilityTable } from "./PlayerAvailabilityTable";
 
@@ -365,30 +364,6 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
             </span>
           </span>
         </label>
-
-        <div>
-          <label
-            htmlFor="team-league-type"
-            className="mb-1 block text-sm font-medium text-slate-700"
-          >
-            League type
-          </label>
-          <SelectWithChevron>
-            <select
-              id="team-league-type"
-              aria-label="League type"
-              value={form.leagueType}
-              onChange={(event) => form.setLeagueType(event.target.value as TeamLeagueType)}
-              className={selectClassName}
-            >
-              {LEAGUE_TYPES.map((leagueType) => (
-                <option key={leagueType} value={leagueType}>
-                  {leagueType}
-                </option>
-              ))}
-            </select>
-          </SelectWithChevron>
-        </div>
       </div>
     </section>
   );
