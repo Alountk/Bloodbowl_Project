@@ -4,8 +4,8 @@ evidence_revision: sha256:a60d3d286f08535d402f2b3773e656ab5177e8c3e8a720572c0aa1
 verdict: pass
 blockers: 0
 critical_findings: 0
-requirements: 11/11
-scenarios: 29/29
+requirements: 8/8
+scenarios: 22/22
 test_command: pnpm test
 test_exit_code: 0
 test_output_hash: sha256:a60d3d286f08535d402f2b3773e656ab5177e8c3e8a720572c0aa1aa7198bb3a
@@ -95,7 +95,7 @@ Mobile: home/detail/create-step2 no horizontal overflow · drawer open+scrim clo
 | Listener Cleanup | Listener removed on unmount | `useIsDesktop.test.tsx > removes its change listener when the hook unmounts` (+ change up/down) | ✅ COMPLIANT |
 | Single-Branch Consumer Usage | Exactly one branch renders | RosterTable/PlayerAvailability mobile `queryByRole("table")` null AND desktop suite asserts table present; mobile e2e (375px, stacked) + chromium e2e (1280, table) | ✅ COMPLIANT |
 
-**Compliance summary**: 29/29 scenarios compliant — fully mapped to passing runtime tests (unit + desktop & mobile e2e); 0 UNTESTED, 0 FAILING.
+**Compliance summary**: 22/22 scenarios compliant (8 delta requirements) — fully mapped to passing runtime tests (unit + desktop & mobile e2e); 0 UNTESTED, 0 FAILING.
 
 ## Correctness (Static Evidence)
 | Requirement | Status | Notes |
@@ -174,4 +174,4 @@ Coverage analysis skipped — no coverage tool detected (`@vitest/coverage-v8` a
 No pre-existing failures encountered (all safety nets green). Pre-existing `act(...)` warnings in `AppShell.test.tsx`/`TeamList.test.tsx` are unrelated (files not touched) and non-failing.
 
 ## Verdict
-**PASS** — 29/29 spec scenarios compliant with passing runtime evidence (446 unit + 19 e2e including 5 new mobile at 375px), tsc + lint clean, horizontal-overflow bugfix confirmed in source (no `md:min-w-0`, scroll wrappers desktop-only, coaching mobile stacked), single-branch render on both viewport paths, 0 blockers, 0 critical findings.
+**PASS** — 22/22 spec scenarios compliant (8 delta requirements; use-is-desktop main spec is separate) with passing runtime evidence (446 unit + 19 e2e including 5 new mobile at 375px), tsc + lint clean, horizontal-overflow bugfix confirmed in source (no `md:min-w-0`, scroll wrappers desktop-only, coaching mobile stacked), single-branch render on both viewport paths, 0 blockers, 0 critical findings.
