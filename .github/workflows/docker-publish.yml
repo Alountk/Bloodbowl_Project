@@ -24,6 +24,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # PrismaClient is generated into node_modules/.prisma — required before
+      # the unit tests (lib/prisma.test.ts) and the build can run.
+      - run: pnpm db:generate
       - run: pnpm test
       - run: pnpm lint
 
