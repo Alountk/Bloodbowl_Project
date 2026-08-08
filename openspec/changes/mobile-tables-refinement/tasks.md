@@ -55,6 +55,6 @@ Chain strategy: pending
 
 ## Phase 6: Verification
 
-- [ ] 6.1 Run `npx vitest run` — full unit suite green (new mobile + existing desktop)
-- [ ] 6.2 Run `npm run test:e2e` — Desktop 1280 e2e untouched and green
-- [ ] 6.3 Confirm spec scenarios covered: mobile cards/rows, single-branch, select chevron, a11y labels
+- [x] 6.1 Run `npx vitest run` — full unit suite green (new mobile + existing desktop)
+- [x] 6.2 Run `npm run test:e2e` — Desktop 1280 e2e untouched and green
+- [x] 6.3 Confirm spec scenarios covered: mobile cards/rows, single-branch, select chevron, a11y labels
