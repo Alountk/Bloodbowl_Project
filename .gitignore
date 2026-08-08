@@ -6,6 +6,7 @@
 
 # playwright
 /playwright-report/
+/playwright-report-auth/
 /test-results/
 
 # next.js
