@@ -25,7 +25,7 @@ test.describe("User isolation E2E (real Postgres)", () => {
     await pageA.goto("/signup");
     await pageA.getByLabel("Email").fill(uniqueEmail("userA"));
     await pageA.getByLabel("Password").fill(password);
-    await pageA.getByRole("button", { name: "Sign up" }).click();
+    await pageA.getByRole("button", { name: "Sign up" }).last().click();
     await expect(pageA).toHaveURL("/");
 
     await pageA.goto("/teams/create");
@@ -50,7 +50,7 @@ test.describe("User isolation E2E (real Postgres)", () => {
     await pageB.goto("/signup");
     await pageB.getByLabel("Email").fill(uniqueEmail("userB"));
     await pageB.getByLabel("Password").fill(password);
-    await pageB.getByRole("button", { name: "Sign up" }).click();
+    await pageB.getByRole("button", { name: "Sign up" }).last().click();
     await expect(pageB).toHaveURL("/");
 
     // B's list does NOT include A's team (isolation).
