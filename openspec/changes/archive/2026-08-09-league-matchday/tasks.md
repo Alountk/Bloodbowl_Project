@@ -64,4 +64,4 @@ Chain strategy: pending
 
 ## Chain Strategy
 
-- [ ] 4.1 Ask user: stacked-to-main vs feature-branch-chain before sdd-apply (`ask-on-risk`)
+- [x] 4.1 Ask user: stacked-to-main vs feature-branch-chain before sdd-apply (`ask-on-risk`) — [reconciled at archive: decided stacked-to-main; evidenced by merged PR1 #39 → PR2 #42 → PR3 #43]

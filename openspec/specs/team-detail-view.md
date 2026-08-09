@@ -7,13 +7,23 @@ A read-only detail view for a stored team, accessible by ID, displaying roster a
 ## Requirements
 
 ### Requirement: Route Resolution
-The system MUST resolve the team ID from the route parameters by unwrapping the `params` Promise via `use(params)`.
+The system MUST resolve the team ID from the route parameters by unwrapping the `params` Promise via `use(params)`. For a team the caller does not own (`team.userId != session.user.id`), the page MUST fetch the team via `GET /api/teams/[id]` (server-backed scouting) and render the read-only view only when the scouting gate succeeds; a 404 from the scouting call MUST trigger the not-found UI.
 
 #### Scenario: Navigating to detail page
 - GIVEN the user navigates to `/teams/[teamId]`
 - WHEN the page renders
 - THEN the system resolves the `teamId` correctly
 - AND the detail UI is shown for that team
+
+#### Scenario: Foreign team loads via scouting
+- GIVEN the session user navigates to a team they do not own but may scout (own league)
+- WHEN the page resolves the route
+- THEN it fetches `GET /api/teams/[id]` and renders the read-only roster on success
+
+#### Scenario: Unauthorized rival triggers not-found
+- GIVEN the session user navigates to a foreign team they cannot scout (outsider)
+- WHEN the scouting fetch returns 404
+- THEN the page renders the not-found UI and leaks no roster data
 
 ### Requirement: Hydration Gating
 The system MUST render a loading skeleton until the application state is hydrated (`isHydrated === true`) before checking for team existence.
@@ -25,12 +35,26 @@ The system MUST render a loading skeleton until the application state is hydrate
 - AND does not attempt to find the team or render the `notFound` UI
 
 ### Requirement: Team Lookup
-The system MUST look up the team by ID (`teams.find(t => t.id === teamId)`) once hydrated, and if not found, trigger the not found UI.
+The system MUST look up the team by ID (`teams.find(t => t.id === teamId)`) once hydrated, and if not found, trigger the not found UI. When the store does not contain the team, the page MUST attempt the server scouting fetch before deciding ownership/access: if the team is found server-side and the caller may view it, render read-only; otherwise `notFound()`.
 
 #### Scenario: Unknown team ID
 - GIVEN the store is hydrated
 - WHEN the provided `teamId` is not found in the `teams` array
-- THEN the system triggers the `notFound()` function
+- THEN the system triggers the `notFound()` function (or renders not-found when scouting also fails)
+
+### Requirement: Read-Only Scouting Detail
+
+When the team is rendered via the rival scouting path (caller is not the owner), the detail view MUST be strictly read-only: roster via `RosterTable` without `bannerText`/`apothecary`, no rename inputs, no remove buttons, no archive/delete affordance. Owner-path editing affordances MUST remain available ONLY on the owner's own team.
+
+#### Scenario: Rival roster read-only
+- GIVEN a foreign team rendered via scouting
+- WHEN the detail view renders
+- THEN the roster shows the 10 Spanish read-only columns with no rename/remove/archive controls
+
+#### Scenario: Owner path keeps editing
+- GIVEN the session user's own team rendered from the store
+- WHEN the detail view renders
+- THEN the owner's usual affordances (if any) behave as before; scouting path is not used
 
 ### Requirement: Identity Display
 The system MUST display the team identity in a navy (`#12225a`) hero: team name as primary heading (white, 26px, weight 900), meta line `<b>{race name}</b> · {league name or "Sin liga"}`. The league label MUST be the team's resolved league name when the team is assigned to a league, or the literal Spanish "Sin liga" when `leagueId` is null; the raw `leagueType` enum and its `LEAGUE_LABELS` map MUST no longer exist or render. Below `md` the hero heading MUST use responsive text tokens (e.g. `text-2xl md:text-[28px]`) and the hero padding MUST tighten so the name and tags stay legible at 375px.
