@@ -47,3 +47,13 @@ Ver [README.md](./README.md) y [docs/auth.md](./docs/auth.md).
 ## Reportar bugs / pedir features
 
 Usá las plantillas de issues (bug report / feature request). Incluí: pasos para reproducir, comportamiento esperado vs actual, y si afecta solo a producción (LAN/Arcane) o también a local — **si solo es producción, verificá que el contenedor tenga la imagen `latest`** (muchos bugs "persistentes" son imagen vieja).
+
+## Trabajo con agentes de IA
+
+Este repo está preparado para que los agentes (OpenCode, Cursor, Codex, etc.) trabajen con las mismas convenciones:
+
+- **`AGENTS.md`** (raíz): reglas no negociables (commits, tests, reglas de negocio server-side, SDD, diseño, idiomas). Los agentes lo leen automáticamente.
+- **`.opencode/skills/`**: skills del flujo versionados en el repo (SDD, branch-pr, chained-pr, work-unit-commits, etc.) — cualquier dev que clone el repo tiene el mismo comportamiento. Si actualizás un skill global, considerá sincronizarlo al repo.
+- **`ROADMAP.md`** / **`README.md`** / **`docs/auth.md`**: contexto para los agentes.
+
+Regla práctica para los agentes: **antes de asumir que un bug persiste, verificá si es imagen vieja en producción** (ver CONTRIBUTING).
