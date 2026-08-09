@@ -75,9 +75,10 @@ test("create league → card shows → assign team → member listed → expel",
     page.locator("header").getByText("Liga de verano"),
   ).toBeVisible();
 
-  // Assign the unassigned team.
-  await page.getByLabel("Equipos").selectOption({ label: "Middenheim Marauders" });
-  await page.getByRole("button", { name: "Asignar" }).click();
+  // Assign the unassigned team (the owner joins with their own team via the
+  // public "Unirse" select; the label is now "Tu equipo").
+  await page.getByLabel("Tu equipo").selectOption({ label: "Middenheim Marauders" });
+  await page.getByRole("button", { name: "Apuntarse" }).click();
 
   // The team becomes a member of the league (name + race visible).
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
@@ -107,8 +108,8 @@ test("deleting an assigned team surfaces the 409 archive guard instead of removi
     .click();
   await expect(page).toHaveURL(/\/leagues\/.+$/);
   await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
-  await page.getByLabel("Equipos").selectOption({ label: "Middenheim Marauders" });
-  await page.getByRole("button", { name: "Asignar" }).click();
+  await page.getByLabel("Tu equipo").selectOption({ label: "Middenheim Marauders" });
+  await page.getByRole("button", { name: "Apuntarse" }).click();
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
 
   // Go home and attempt to delete the member team.
