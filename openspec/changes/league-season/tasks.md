@@ -41,15 +41,15 @@ Chain strategy: pending
 
 ## Phase 2: PR 2 — UI
 
-- [ ] 2.1 RED `features/leagues/api.ts` types test: status/seasonLength/startedAt/ownerName/memberCount; `startLeague`/`selfLeave`
-- [ ] 2.2 GREEN `api.ts` + `useLeagues.ts`: consume server `memberCount` (drop N+1), expose start/selfLeave/refresh
-- [ ] 2.3 RED `LeagueList.test.tsx`: "Mis Ligas" + "Ligas abiertas", public/own/started badges
-- [ ] 2.4 GREEN `LeagueList.tsx`: dual sections, badges, open join CTA
-- [ ] 2.5 RED `LeagueDetail.test.tsx`: role+status join/leave/expel/start; started hides assign/expel, shows jornadas
-- [ ] 2.6 GREEN `LeagueDetail.tsx`: owner→start/expel, member→leave, open→join; started hides assign/expel
-- [ ] 2.7 RED `StartLeagueModal.test.tsx`: seasonLength input 1..teams−1, invalid blocked
-- [ ] 2.8 GREEN `StartLeagueModal.tsx`: seasonLength bound to teams−1, calls `startLeague`, refreshes
-- [ ] 2.9 GREEN jornadas: render FixtureDraft[] grouped by round as home vs away
+- [x] 2.1 RED `features/leagues/api.ts` types test: status/seasonLength/startedAt/ownerName/memberCount; `startLeague`/`selfLeave`
+- [x] 2.2 GREEN `api.ts` + `useLeagues.ts`: consume server `memberCount` (drop N+1), expose start/selfLeave/refresh
+- [x] 2.3 RED `LeagueList.test.tsx`: "Mis Ligas" + "Ligas abiertas", public/own/started badges
+- [x] 2.4 GREEN `LeagueList.tsx`: dual sections, badges, open join CTA
+- [x] 2.5 RED `LeagueDetail.test.tsx`: role+status join/leave/expel/start; started hides assign/expel, shows jornadas
+- [x] 2.6 GREEN `LeagueDetail.tsx`: owner→start/expel, member→leave, open→join; started hides assign/expel
+- [x] 2.7 RED `StartLeagueModal.test.tsx`: seasonLength input 1..teams−1, invalid blocked
+- [x] 2.8 GREEN `StartLeagueModal.tsx`: seasonLength bound to teams−1, calls `startLeague`, refreshes
+- [x] 2.9 GREEN jornadas: render FixtureDraft[] grouped by round as home vs away
 
 ## Phase 3: PR 3 — e2e + Polish
 
