@@ -4,9 +4,14 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/leagues/[id]
- * Returns a league owned by the session user together with its non-archived
- * member teams. Each member has `raceId`, which the client resolves to a race
- * name from the local catalog. A foreign league id returns 404 (no existence leak).
+ * Returns a league together with its non-archived member teams, the owner's
+ * name, and (when started) the season fixtures grouped by round (each fixture
+ * carries its jornada `round` with labeled home/away teams).
+ *
+ * Visibility: an OPEN league is readable by any authenticated user; a STARTED
+ * league is readable only by its owner or a current member. A foreign non-
+ * member requesting a started league gets 404 (no existence/status leak), and
+ * a nonexistent id returns 404.
  */
 export async function GET(
   _req: Request,
@@ -14,14 +19,15 @@ export async function GET(
 ) {
   const { id } = await params;
   const session = await auth();
-  const ownerId = session?.user?.id;
-  if (!ownerId) {
+  const userId = session?.user?.id;
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const league = await prisma.league.findFirst({
-    where: { id, ownerId },
+    where: { id },
     include: {
+      owner: { select: { id: true, email: true, name: true } },
       teams: {
         where: { archivedAt: null },
         orderBy: { createdAt: "asc" },
@@ -31,14 +37,38 @@ export async function GET(
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  return NextResponse.json(league);
+
+  // Started league: owner-only or member-only to shield fixture data.
+  if (league.status === "started") {
+    const isMember = league.teams.some((team) => team.userId === userId);
+    if (league.ownerId !== userId && !isMember) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  }
+
+  const fixtures =
+    league.status === "started"
+      ? await prisma.fixture.findMany({
+          where: { leagueId: id },
+          orderBy: [{ round: "asc" }, { createdAt: "asc" }],
+        })
+      : [];
+
+  const { owner, ...rest } = league;
+  return NextResponse.json({
+    ...rest,
+    status: rest.status,
+    ownerName: owner?.name ?? owner?.email ?? null,
+    fixtures,
+  });
 }
 
 /**
  * DELETE /api/leagues/[id]
- * Deletes a league owned by the session user. Member teams have their `leagueId`
- * set to null (expelled) BEFORE the league row is removed, so the teams survive.
- * A foreign league id returns 404 and performs no mutation (owner-only).
+ * Deletes an OPEN league owned by the session user, clearing each member
+ * team's `leagueId` (SetNull) BEFORE the league row is removed so teams
+ * survive. A STARTED league is immutable: DELETE returns 409 and performs no
+ * mutation (teams and fixtures remain). A foreign league id returns 404.
  */
 export async function DELETE(
   _req: Request,
@@ -54,6 +84,12 @@ export async function DELETE(
   const league = await prisma.league.findFirst({ where: { id, ownerId } });
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (league.status === "started") {
+    return NextResponse.json(
+      { error: "A started league cannot be deleted" },
+      { status: 409 },
+    );
   }
 
   // Clear membership before deleting the league so member teams survive.

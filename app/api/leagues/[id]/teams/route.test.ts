@@ -32,6 +32,10 @@ function assignRequest(leagueId: string, teamId: string) {
   );
 }
 
+function makeLeague(overrides: Partial<{ status: string }> = {}) {
+  return { id: "l1", ownerId: "user-1", status: "open", ...overrides };
+}
+
 describe("POST /api/leagues/[id]/teams", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -42,12 +46,12 @@ describe("POST /api/leagues/[id]/teams", () => {
     expect(prismaMock.team.update).not.toHaveBeenCalled();
   });
 
-  it("assigns an owned, unassigned, non-archived team to the league", async () => {
-    authMock.mockResolvedValue({ user: { id: "user-1" } });
-    prismaMock.league.findFirst.mockResolvedValue({ id: "l1", ownerId: "user-1" });
+  it("joins an OPEN league owned by ANOTHER user (public join)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-2" } });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague({ status: "open" }));
     prismaMock.team.findFirst.mockResolvedValue({
       id: "t1",
-      userId: "user-1",
+      userId: "user-2",
       leagueId: null,
       archivedAt: null,
     });
@@ -55,25 +59,38 @@ describe("POST /api/leagues/[id]/teams", () => {
 
     const res = await assignRequest("l1", "t1");
     expect(res.status).toBe(200);
-    // The team's leagueId is set to the target league.
+    // League lookup is not scoped to the session user — any user joins an open league.
+    expect(prismaMock.league.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "l1" } }),
+    );
     expect(prismaMock.team.update).toHaveBeenCalledWith({
       where: { id: "t1" },
       data: { leagueId: "l1" },
     });
   });
 
-  it("returns 404 when the target league is foreign to the session user", async () => {
+  it("returns 404 when the target league does not exist", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
-    prismaMock.league.findFirst.mockResolvedValue(null); // league owned by someone else
+    prismaMock.league.findFirst.mockResolvedValue(null);
 
-    const res = await assignRequest("foreign-league", "t1");
+    const res = await assignRequest("missing-league", "t1");
     expect(res.status).toBe(404);
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when the league is STARTED (immutable)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague({ status: "started" }));
+
+    const res = await assignRequest("l1", "t1");
+    expect(res.status).toBe(409);
+    expect(prismaMock.team.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.team.update).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the team is owned by another user", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
-    prismaMock.league.findFirst.mockResolvedValue({ id: "l1", ownerId: "user-1" });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague());
     prismaMock.team.findFirst.mockResolvedValue(null); // team owned by someone else
 
     const res = await assignRequest("l1", "foreign-team");
@@ -83,7 +100,7 @@ describe("POST /api/leagues/[id]/teams", () => {
 
   it("returns 409 when the team is already in a league (one-team-per-league)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
-    prismaMock.league.findFirst.mockResolvedValue({ id: "l1", ownerId: "user-1" });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague());
     prismaMock.team.findFirst.mockResolvedValue({
       id: "t1",
       userId: "user-1",
@@ -98,7 +115,7 @@ describe("POST /api/leagues/[id]/teams", () => {
 
   it("returns 409 when the team is archived", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
-    prismaMock.league.findFirst.mockResolvedValue({ id: "l1", ownerId: "user-1" });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague());
     prismaMock.team.findFirst.mockResolvedValue({
       id: "t1",
       userId: "user-1",

@@ -60,11 +60,20 @@ test("create league → card shows → assign team → member listed → expel",
   const leagueName = `Liga E2E ${Date.now()}`;
   await createLeague(page, leagueName);
 
-  // Open the detail via the card's "Ver" link.
-  await page.getByRole("link", { name: "Ver", exact: true }).click();
+  // Open the detail via the just-created league's card "Ver" link (the list is
+  // now public: foreign OPEN leagues from prior runs may precede ours).
+  await page
+    .locator("li")
+    .filter({ hasText: leagueName })
+    .getByRole("link", { name: "Ver", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/leagues\/.+$/);
   await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
-  // Description shown in the hero.
-  await expect(page.getByText("Liga de verano")).toBeVisible();
+  // Description shown in the detail hero (scoped to the header so the public
+  // list repetition of "Liga de verano" never causes a strict-mode clash).
+  await expect(
+    page.locator("header").getByText("Liga de verano"),
+  ).toBeVisible();
 
   // Assign the unassigned team.
   await page.getByLabel("Equipos").selectOption({ label: "Middenheim Marauders" });
@@ -91,7 +100,12 @@ test("deleting an assigned team surfaces the 409 archive guard instead of removi
   await createLeague(page, leagueName);
 
   // Assign the team so it becomes a league member.
-  await page.getByRole("link", { name: "Ver", exact: true }).click();
+  await page
+    .locator("li")
+    .filter({ hasText: leagueName })
+    .getByRole("link", { name: "Ver", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/leagues\/.+$/);
   await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
   await page.getByLabel("Equipos").selectOption({ label: "Middenheim Marauders" });
   await page.getByRole("button", { name: "Asignar" }).click();
@@ -148,6 +162,19 @@ async function archiveGuardCreateLeague(page: import("@playwright/test").Page, n
   await page.getByLabel("Nombre").fill(name);
   await page.getByRole("button", { name: "Crear" }).click();
   await expect(page.getByText(name)).toBeVisible();
+  return name;
+}
+
+/** Clicks the "Ver" link of the card whose heading matches `name`, then waits
+ * for the detail URL (Next App Router soft navigation is not awaited by
+ * click). */
+async function openLeagueCard(page: import("@playwright/test").Page, name: string) {
+  await page
+    .locator("li")
+    .filter({ hasText: name })
+    .getByRole("link", { name: "Ver", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/leagues\/.+$/);
 }
 
 async function archiveGuardArchive(page: import("@playwright/test").Page, name: string) {
@@ -161,27 +188,39 @@ async function archiveGuardArchive(page: import("@playwright/test").Page, name: 
 test("archived team must not appear in the league assign select", async ({ page }) => {
   await archiveGuardSignup(page);
   await archiveGuardCreateTeam(page, "Archivable Reavers");
-  await archiveGuardCreateLeague(page, `Guard Liga ${Date.now()}`);
+  const leagueName = await archiveGuardCreateLeague(
+    page,
+    `Guard Liga ${Date.now()}`,
+  );
   await archiveGuardArchive(page, "Archivable Reavers");
 
   await page.goto("/leagues");
-  await page.getByRole("link", { name: "Ver" }).first().click();
+  await openLeagueCard(page, leagueName);
   const options = page.locator("#league-team-select option");
   const texts: string[] = [];
   const count = await options.count();
-  for (let i = 0; i < count; i++) texts.push(await options.nth(i).textContent());
+  for (let i = 0; i < count; i++)
+    texts.push((await options.nth(i).textContent()) ?? "");
   expect(texts.some((t) => t.includes("Archivable Reavers"))).toBe(false);
 });
 
 test("direct API assign of an archived team returns 409", async ({ page }) => {
   await archiveGuardSignup(page);
   await archiveGuardCreateTeam(page, "API Archivable");
-  await archiveGuardCreateLeague(page, `API Guard Liga ${Date.now()}`);
+  const leagueName = await archiveGuardCreateLeague(
+    page,
+    `API Guard Liga ${Date.now()}`,
+  );
 
   const teams = await page.request.get("/api/teams");
   const leagues = await page.request.get("/api/leagues");
   const teamId = (await teams.json())[0].id;
-  const leagueId = (await leagues.json())[0].id;
+  // Find OUR league by name — the list is now public, so [0] may be a foreign
+  // OPEN league from a previous run.
+  const leagueId = (await leagues.json()).find(
+    (l: { name: string }) => l.name === leagueName,
+  )?.id;
+  expect(leagueId).toBeDefined();
 
   await archiveGuardArchive(page, "API Archivable");
 

@@ -4,7 +4,11 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/leagues
- * Lists the leagues owned by the session user, or 401 unauthenticated.
+ * Returns ALL open leagues (any user) PLUS the session user's own leagues in
+ * any status (foreign started leagues are hidden), each enriched with the
+ * owner's name (falls back to the email) and a server-computed member count
+ * (non-archived member teams) — the count comes from the query, not a per-item
+ * detail fetch (kills the N+1). 401 unauthenticated.
  */
 export async function GET() {
   const session = await auth();
@@ -13,10 +17,26 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const leagues = await prisma.league.findMany({
-    where: { ownerId },
+    where: {
+      // Open leagues are public to all authenticated users; each user's own
+      // leagues (including started) always appear.
+      OR: [{ status: "open" }, { ownerId }],
+    },
     orderBy: { createdAt: "asc" },
+    include: {
+      owner: { select: { id: true, email: true, name: true } },
+      _count: {
+        select: { teams: { where: { archivedAt: null } } },
+      },
+    },
   });
-  return NextResponse.json(leagues);
+  return NextResponse.json(
+    leagues.map(({ owner, _count, ...league }) => ({
+      ...league,
+      ownerName: owner?.name ?? owner?.email ?? null,
+      memberCount: _count.teams,
+    })),
+  );
 }
 
 /**

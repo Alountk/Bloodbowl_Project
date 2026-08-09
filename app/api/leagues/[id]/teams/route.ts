@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * POST /api/leagues/[id]/teams
- * Assigns an owned team to a league (one team per league).
+ * Joins a team to a league (one team per league). ANY authenticated user can
+ * join an OPEN league (public join), not only the owner.
  *
- * Guards (spec): the team must be owned by the session user and currently
- * unassigned (`leagueId: null`) and non-archived. A foreign league or foreign
- * team returns 404; an already-member or archived team returns 409. No mutation
+ * Guards (spec): the league must be OPEN (a started league is immutable → 409);
+ * the team must be owned by the session user, currently unassigned
+ * (`leagueId: null`) and non-archived. A nonexistent league or a foreign team
+ * returns 404; an already-member or archived team returns 409. No mutation
  * occurs on any rejected path.
  */
 export async function POST(
@@ -33,10 +35,16 @@ export async function POST(
     return NextResponse.json({ error: "teamId is required" }, { status: 400 });
   }
 
-  // The target league must belong to the session user.
-  const league = await prisma.league.findFirst({ where: { id, ownerId } });
+  // The league is public while open — look it up by id, not by owner.
+  const league = await prisma.league.findFirst({ where: { id } });
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (league.status === "started") {
+    return NextResponse.json(
+      { error: "A started league does not accept new teams" },
+      { status: 409 },
+    );
   }
 
   // The team must be owned by the session user (foreign → 404).

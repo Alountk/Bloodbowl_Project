@@ -1,12 +1,32 @@
 import type { Team } from "@/features/teams/types";
 
-/** A League as returned by the user-scoped `/api/leagues` routes (Prisma shape). */
+/** Lifecycle state of a league: joinable/open or locked after a season starts. */
+export type LeagueStatus = "open" | "started";
+
+/** A single scheduled pairing within a round (jornada), from the server. */
+export interface FixtureDraft {
+  id: string;
+  leagueId: string;
+  round: number;
+  homeTeamId: string;
+  awayTeamId: string;
+  createdAt: string;
+}
+
+/** A League as returned by the `/api/leagues` list routes. */
 export interface League {
   id: string;
   name: string;
   description: string | null;
   ownerId: string;
   createdAt: string;
+  status: LeagueStatus;
+  seasonLength: number | null;
+  startedAt: string | null;
+  /** Resolved owner display name (falls back to the owner's email). */
+  ownerName: string | null;
+  /** Number of non-archived member teams, computed server-side (no N+1). */
+  memberCount: number;
 }
 
 /** A member team as returned inside the league detail (Prisma Team shape). */
@@ -19,9 +39,11 @@ export interface LeagueMemberTeam {
   coaching: unknown;
 }
 
-/** A league detail response: the league plus its non-archived member teams. */
+/** A league detail response: the league plus its member teams and fixtures. */
 export interface LeagueDetail extends League {
   teams: LeagueMemberTeam[];
+  /** Round-robin fixtures when started; [] while open. */
+  fixtures: FixtureDraft[];
 }
 
 async function readJson<T>(res: Response): Promise<T> {
