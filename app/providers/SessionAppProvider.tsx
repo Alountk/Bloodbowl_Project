@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
@@ -19,6 +20,7 @@ import { useTeamMigration } from "@/features/migration/useTeamMigration";
  */
 export function SessionAppProvider({ children }: { children: ReactNode }) {
   const { status } = useSession();
+  const router = useRouter();
   // Stable ApiTeamStore instance across re-renders.
   const [apiStore] = useState(() => new ApiTeamStore());
   // Bumped after a migration so AppProvider re-hydrates and shows migrated teams.
@@ -48,15 +50,14 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
       store={authenticated ? apiStore : undefined}
       authenticated={authenticated}
       onLogout={async () => {
-        // Redirect client-side with a relative path so the browser resolves
-        // it against the host the user is actually on. Passing redirectTo to
-        // signOut makes Auth.js build the URL from the server's own host
-        // (HOSTNAME=0.0.0.0 in the container), which produced
+        // Use router.push (the lint-approved navigation for event handlers).
+        // Passing redirectTo to signOut makes Auth.js build the URL from the
+        // server's own host (HOSTNAME=0.0.0.0 in the container), which produced
         // "0.0.0.0:3444/login" in production. We AWAIT the sign-out POST so
         // the session cookie is cleared before navigating — otherwise the
         // proxy still sees an authenticated user and bounces /login back to /.
         await signOut({ redirect: false });
-        window.location.assign("/login");
+        router.push("/login");
       }}
       reloadVersion={migrationReload}
     >

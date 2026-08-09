@@ -51,11 +51,10 @@ export function AuthCard({ initialMode }: AuthCardProps) {
     }
 
     // Establish the session via the Credentials provider, then land on the
-    // teams page with a FULL navigation. A client-side router.push("/") can
-    // mount the home before useSession propagates "authenticated", so the
-    // store falls back to localStorage and teams/leagues appear empty until a
-    // manual reload. A hard navigation guarantees the session cookie is used
-    // from the very first render.
+    // teams page. We PUSH (event-handler navigation, the lint-approved path)
+    // and then REFRESH so the server component re-renders with the session
+    // cookie present — this guarantees the ApiTeamStore is used from the very
+    // first render (no empty teams/leagues until a manual reload).
     const result = await signIn("credentials", { email, password, redirect: false });
     setIsSubmitting(false);
     if (result?.error) {
@@ -66,7 +65,8 @@ export function AuthCard({ initialMode }: AuthCardProps) {
       );
       return;
     }
-    window.location.assign("/");
+    router.push("/");
+    router.refresh();
   }
 
   function switchMode(next: AuthMode) {

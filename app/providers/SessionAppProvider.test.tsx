@@ -6,6 +6,13 @@ import { __resetMigrationGuardForTests } from "@/features/migration/useTeamMigra
 const useSessionMock = vi.hoisted(() => vi.fn());
 const signOutMock = vi.hoisted(() => vi.fn());
 
+const pushMock = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+  usePathname: () => "/",
+}));
+
 vi.mock("next-auth/react", () => ({
   useSession: () => useSessionMock(),
   signOut: signOutMock,
@@ -48,21 +55,14 @@ describe("SessionAppProvider", () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify([])));
     useSessionMock.mockReturnValue({ status: "authenticated" });
 
-    const assignSpy = vi.fn();
-    Object.defineProperty(window, "location", {
-      value: { ...window.location, assign: assignSpy },
-      configurable: true,
-    });
-
     render(<SessionAppProvider>content</SessionAppProvider>);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
     await waitFor(() => expect(signOutMock).toHaveBeenCalledWith({ redirect: false }));
-    // The client-side redirect uses a relative path resolved against the
-    // browser host (fixes 0.0.0.0:3444/login from the server-side redirectTo),
-    // and only after the sign-out POST completes (session cookie cleared).
-    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith("/login"));
+    // Event-handler router.push (lint-approved) to /login, and only after the
+    // sign-out POST completes (session cookie cleared).
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/login"));
   });
 });
 
