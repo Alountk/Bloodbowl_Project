@@ -12,15 +12,19 @@ export function matchStatusLabel(
   return "Pendiente";
 }
 
-/** Pure: formats an ISO timestamp as DD/MM/YYYY in the user's local zone. */
+/** Pure: formats an agreed ISO timestamp as DD/MM/YYYY HH:MM in the local zone.
+ * The negotiation agrees a date AND a time, so the scheduled footer exposes the
+ * exact slot (not just the day). */
 export function formatMatchDate(iso: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("es-ES", {
+  return date.toLocaleString("es-ES", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
