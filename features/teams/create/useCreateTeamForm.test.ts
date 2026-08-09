@@ -84,9 +84,7 @@ describe("useCreateTeamForm", () => {
     const { result } = setup(onSubmit);
     act(() => result.current.setName("Reikland Reavers"));
     act(() => result.current.changeRace("human"));
-    act(() => result.current.addPlayer("lineman"));
-    act(() => result.current.addPlayer("lineman"));
-    act(() => result.current.addPlayer("blitzer"));
+    for (let i = 0; i < 11; i++) act(() => result.current.addPlayer("lineman"));
     act(() => result.current.setCoaching({ rerolls: 3, apothecary: true }));
 
     await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
@@ -290,7 +288,7 @@ describe("useCreateTeamForm", () => {
     await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
 
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(result.current.errors.players).toMatch(/at least 3/i);
+    expect(result.current.errors.players).toMatch(/at least 11/i);
   });
 
   it("reports an error when the name is empty", async () => {
@@ -312,9 +310,7 @@ describe("useCreateTeamForm", () => {
     const { result } = setup(onSubmit);
     act(() => result.current.setName("Reikland Reavers"));
     act(() => result.current.changeRace("human"));
-    act(() => result.current.addPlayer("lineman"));
-    act(() => result.current.addPlayer("lineman"));
-    act(() => result.current.addPlayer("blitzer"));
+    for (let i = 0; i < 11; i++) act(() => result.current.addPlayer("lineman"));
 
     await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
 
@@ -322,9 +318,9 @@ describe("useCreateTeamForm", () => {
     const values = onSubmit.mock.calls[0][0] as CreateTeamValues;
     expect(values.name).toBe("Reikland Reavers");
     expect(values.raceId).toBe("human");
-    expect(values.roster).toHaveLength(3);
+    expect(values.roster).toHaveLength(11);
     expect(values.roster[0].positionalKey).toBe("lineman");
-    expect(values.roster[2].positionalKey).toBe("blitzer");
+    expect(values.roster[10].positionalKey).toBe("lineman");
 
     expect(result.current.name).toBe("");
     expect(result.current.raceId).toBe("");

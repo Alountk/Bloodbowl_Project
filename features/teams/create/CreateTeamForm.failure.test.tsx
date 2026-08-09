@@ -34,8 +34,8 @@ async function fillAndSubmit(stored: TeamStore) {
   fireEvent.change(screen.getByLabelText(/race/i), { target: { value: "human" } });
   fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Add Lineman" })).toBeTruthy());
-  // step 2
-  for (let i = 0; i < 3; i += 1) {
+  // step 2 — 11 Linemen (BB2025 minimum) so the form is valid except for storage.
+  for (let i = 0; i < 11; i += 1) {
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
   }
   fireEvent.click(screen.getByRole("button", { name: /create team/i }));

@@ -109,15 +109,13 @@ test.describe("Create Team — E2E", () => {
 
     await goToStep2(page, "Reikland Reavers", "human");
 
-    // Add 3 Linemen and a Blitzer from the availability table.
-    await page.getByRole("button", { name: "Add Lineman" }).click();
-    await page.getByRole("button", { name: "Add Lineman" }).click();
-    await page.getByRole("button", { name: "Add Lineman" }).click();
-    await page.getByRole("button", { name: "Add Blitzer" }).click();
+    // Add 11 Linemen (BB2025 minimum roster) from the availability table.
+    const addLineman = page.getByRole("button", { name: "Add Lineman" });
+    for (let i = 0; i < 11; i++) await addLineman.click();
 
     // Plantilla table reflects the players with default names.
-    await expect(page.getByLabel("Player name for Player 1")).toHaveValue("Player 1");
-    await expect(page.getByLabel("Player name for Player 4")).toHaveValue("Player 4");
+    await expect(page.getByLabel("Player name for Player 1", { exact: true })).toHaveValue("Player 1");
+    await expect(page.getByLabel("Player name for Player 11", { exact: true })).toHaveValue("Player 11");
 
     // Submit the team.
     await page.getByRole("button", { name: /create team/i }).click();

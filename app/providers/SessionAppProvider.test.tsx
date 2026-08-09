@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { SessionAppProvider } from "./SessionAppProvider";
+import { __resetMigrationGuardForTests } from "@/features/migration/useTeamMigration";
 
 const useSessionMock = vi.hoisted(() => vi.fn());
 const signOutMock = vi.hoisted(() => vi.fn());
@@ -67,6 +68,7 @@ describe("SessionAppProvider", () => {
 
 describe("SessionAppProvider — legacy localStorage migration", () => {
   beforeEach(() => {
+    __resetMigrationGuardForTests();
     window.localStorage.clear();
     // Each fetch call gets a FRESH Response so `res.json()` is never called on
     // an already-consumed body (which would look like a spurious failure).

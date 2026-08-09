@@ -27,7 +27,7 @@ import { DEFAULT_COACHING } from "./types";
 describe("roster helpers", () => {
   it("exposes the BB2025 budget and roster limits", () => {
     expect(STARTING_TREASURY).toBe(1_000_000);
-    expect(MIN_PLAYERS).toBe(3);
+    expect(MIN_PLAYERS).toBe(11);
     expect(MAX_PLAYERS).toBe(16);
   });
 

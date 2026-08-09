@@ -12,6 +12,8 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+const assignSpy = vi.hoisted(() => vi.fn());
+
 async function submitForm(email: string, password: string) {
   render(<SignupPage />);
   fireEvent.change(screen.getByLabelText("Email"), { target: { value: email } });

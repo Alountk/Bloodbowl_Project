@@ -4,6 +4,20 @@ import { useEffect } from "react";
 import { runTeamMigration, LEGACY_TEAMS_KEY } from "./migrateLocalTeams";
 import type { Team } from "@/features/teams/types";
 
+/**
+ * Module-level guard: React StrictMode (dev) double-mounts components and each
+ * simulated mount gets FRESH refs, so a useRef guard would let the migration
+ * run twice and duplicate teams. A module flag survives those remounts within
+ * the same document load and resets on a full navigation (new document), which
+ * is exactly when a retry should be allowed.
+ */
+let migrationRanThisLoad = false;
+
+/** Test-only reset so a fresh hook test can re-run the migration. */
+export function __resetMigrationGuardForTests() {
+  migrationRanThisLoad = false;
+}
+
 interface UseTeamMigrationOptions {
   /** Called once after a successful migration that posted at least one team. */
   onMigrated?: () => void;
@@ -24,12 +38,28 @@ export function useTeamMigration(
 ) {
   useEffect(() => {
     if (!authenticated) return;
+    if (migrationRanThisLoad) return;
+    migrationRanThisLoad = true;
 
     let cancelled = false;
     (async () => {
       try {
+        // Fetch the account's current teams so a legacy team whose name already
+        // exists is skipped (idempotency even under StrictMode double-runs).
+        let existingTeamNames: Set<string> | undefined;
+        try {
+          const res = await fetch("/api/teams");
+          if (res.ok) {
+            const existing = (await res.json()) as Array<{ name: string }>;
+            existingTeamNames = new Set(existing.map((t) => t.name));
+          }
+        } catch {
+          existingTeamNames = undefined;
+        }
+
         const result = await runTeamMigration({
           storage: window.localStorage,
+          existingTeamNames,
           postTeam: async (team: Team) => {
             const res = await fetch("/api/teams", {
               method: "POST",
