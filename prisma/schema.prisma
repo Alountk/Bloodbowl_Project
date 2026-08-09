@@ -13,13 +13,14 @@ datasource db {
 
 /// Authenticated user account. Teams and leagues are cascade-deleted when a user is removed.
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String?
-  createdAt    DateTime @default(now())
-  teams        Team[]
-  leagues      League[]
+  id                String             @id @default(cuid())
+  email             String             @unique
+  passwordHash      String
+  name              String?
+  createdAt         DateTime           @default(now())
+  teams             Team[]
+  leagues           League[]
+  scheduleProposals ScheduleProposal[]
 }
 
 /// A user-owned group of teams. A league starts "open" and locks when the
@@ -48,18 +49,43 @@ enum LeagueStatus {
 
 /// A scheduled round-robin pairing within a started league (one jornada round).
 model Fixture {
-  id         String   @id @default(cuid())
-  leagueId   String
-  league     League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  round      Int
-  homeTeamId String
-  awayTeamId String
-  createdAt  DateTime @default(now())
+  id          String    @id @default(cuid())
+  leagueId    String
+  league      League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  round       Int
+  homeTeamId  String
+  awayTeamId  String
+  createdAt   DateTime  @default(now())
+  /// When participants agree a date, the match is `scheduled` (null until then).
+  scheduledAt DateTime?
+  /// Set by the league owner's forfeit (walkover); derives the `played` status.
+  winnerId    String?
 
-  homeTeam Team @relation("FixtureHomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
-  awayTeam Team @relation("FixtureAwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  homeTeam Team  @relation("FixtureHomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayTeam Team  @relation("FixtureAwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  winner   Team? @relation("FixtureWinner", fields: [winnerId], references: [id], onDelete: Restrict)
+
+  proposals ScheduleProposal[]
 
   @@index([leagueId, round])
+}
+
+/// A proposed match date for a fixture, created by one of the two participants.
+/// At most one proposal is active per fixture: `acceptedAt` and `closedAt` null.
+model ScheduleProposal {
+  id         String    @id @default(cuid())
+  fixtureId  String
+  fixture    Fixture   @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date       DateTime
+  createdAt  DateTime  @default(now())
+  /// Set when the other participant accepts this proposal (then scheduledAt = date).
+  acceptedAt DateTime?
+  /// Set when the proposal is closed by a counter-propose or a forfeit.
+  closedAt   DateTime?
+
+  @@index([fixtureId, createdAt])
 }
 
 /// A team owned by a single user, scoped via `userId`.
@@ -79,6 +105,7 @@ model Team {
   league       League?   @relation("LeagueMembers", fields: [leagueId], references: [id], onDelete: SetNull)
   homeFixtures Fixture[] @relation("FixtureHomeTeam")
   awayFixtures Fixture[] @relation("FixtureAwayTeam")
+  wonFixtures  Fixture[] @relation("FixtureWinner")
 
   @@index([userId])
   @@index([leagueId])

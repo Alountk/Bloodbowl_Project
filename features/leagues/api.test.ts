@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  acceptFixtureProposal,
   assignTeam,
+  forfeitFixture,
+  getFixtureProposals,
+  getScoutedTeam,
   listUnassignedTeams,
+  proposeFixtureDate,
   selfLeave,
   startLeague,
   type League,
@@ -66,12 +71,64 @@ describe("League lifecycle types", () => {
           homeTeamId: "t1",
           awayTeamId: "t2",
           createdAt: "2026-02-01",
+          scheduledAt: null,
+          winnerId: null,
+          status: "pending",
+          homeOwner: null,
+          awayOwner: null,
+          proposals: [],
         },
       ],
     };
     expect(detail.teams[0].userId).toBe("u1");
     expect(detail.fixtures).toHaveLength(1);
     expect(detail.fixtures[0].round).toBe(1);
+    expect(detail.fixtures[0].status).toBe("pending");
+  });
+
+  it("FixtureDraft derives status from scheduledAt/winnerId", () => {
+    const draft: LeagueDetail = {
+      id: "l1",
+      name: "Liga",
+      description: null,
+      ownerId: "u1",
+      createdAt: "2026-01-01",
+      status: "started",
+      seasonLength: 2,
+      startedAt: "2026-02-01",
+      ownerName: "Coach",
+      memberCount: 2,
+      teams: [],
+      fixtures: [
+        {
+          id: "f1",
+          leagueId: "l1",
+          round: 1,
+          homeTeamId: "t1",
+          awayTeamId: "t2",
+          createdAt: "2026-02-01",
+          scheduledAt: "2026-03-01",
+          winnerId: null,
+          status: "scheduled",
+          homeOwner: { id: "u1", name: "Coach" },
+          awayOwner: null,
+          proposals: [
+            {
+              id: "p1",
+              fixtureId: "f1",
+              userId: "u1",
+              date: "2026-03-01",
+              createdAt: "2026-02-02",
+              acceptedAt: "2026-02-03",
+              closedAt: null,
+            },
+          ],
+        },
+      ],
+    };
+    expect(draft.fixtures[0].status).toBe("scheduled");
+    expect(draft.fixtures[0].scheduledAt).toBe("2026-03-01");
+    expect(draft.fixtures[0].proposals[0].acceptedAt).toBe("2026-02-03");
   });
 });
 
@@ -131,5 +188,126 @@ describe("assign/expel/listUnassignedTeams keep working", () => {
 
     const teams = await listUnassignedTeams();
     expect(teams.map((t) => t.id)).toEqual(["t1"]);
+  });
+});
+
+describe("matchday negotiation helpers", () => {
+  it("proposeFixtureDate POSTs {date} to the fixture propose route", async () => {
+    const proposal = {
+      id: "p1",
+      fixtureId: "f1",
+      userId: "u1",
+      date: "2026-03-01",
+      createdAt: "2026-02-02",
+      acceptedAt: null,
+      closedAt: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okJson(proposal));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await proposeFixtureDate("l1", "f1", "2026-03-01");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/l1/fixtures/f1/propose",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: "2026-03-01" }),
+      },
+    );
+    expect(result.date).toBe("2026-03-01");
+  });
+
+  it("acceptFixtureProposal POSTs {proposalId} to the fixture accept route", async () => {
+    const fixture = {
+      id: "f1",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: "2026-02-01",
+      scheduledAt: "2026-03-01",
+      winnerId: null,
+      status: "scheduled",
+      homeOwner: null,
+      awayOwner: null,
+      proposals: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okJson(fixture));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await acceptFixtureProposal("l1", "f1", "p1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/l1/fixtures/f1/accept",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ proposalId: "p1" }),
+      },
+    );
+    expect(result.status).toBe("scheduled");
+  });
+
+  it("forfeitFixture POSTs {winnerTeamId} to the fixture forfeit route", async () => {
+    const fixture = {
+      id: "f1",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: "2026-02-01",
+      scheduledAt: null,
+      winnerId: "t1",
+      status: "played",
+      homeOwner: null,
+      awayOwner: null,
+      proposals: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okJson(fixture));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await forfeitFixture("l1", "f1", "t1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/l1/fixtures/f1/forfeit",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ winnerTeamId: "t1" }),
+      },
+    );
+    expect(result.status).toBe("played");
+  });
+
+  it("getFixtureProposals GETs the fixture proposals route and returns history", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okJson([{ id: "p1", fixtureId: "f1" }]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const history = await getFixtureProposals("l1", "f1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l1/fixtures/f1/proposals");
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe("p1");
+  });
+
+  it("getScoutedTeam GETs /api/teams/[id] and returns read-only detail", async () => {
+    const team = {
+      id: "t1",
+      name: "Reavers",
+      raceId: "human",
+      roster: [],
+      coaching: {},
+      leagueId: "l1",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okJson(team));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const scouted = await getScoutedTeam("t1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/teams/t1");
+    expect(scouted.leagueId).toBe("l1");
   });
 });
