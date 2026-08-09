@@ -107,8 +107,8 @@ describe("buildRoundRobin", () => {
 
 describe("generateRoundRobin (circle method, unshuffled)", () => {
   it("is deterministic for a fixed input order", () => {
-    const a = generateRoundRobin(["1", "2", "3", "4"]);
-    const b = generateRoundRobin(["1", "2", "3", "4"]);
+    const a = generateRoundRobin(["1", "2", "3", "4"], 3);
+    const b = generateRoundRobin(["1", "2", "3", "4"], 3);
     expect(a).toEqual(b);
   });
 
