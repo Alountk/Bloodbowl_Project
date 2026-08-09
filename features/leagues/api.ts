@@ -3,6 +3,20 @@ import type { Team } from "@/features/teams/types";
 /** Lifecycle state of a league: joinable/open or locked after a season starts. */
 export type LeagueStatus = "open" | "started";
 
+/** Derived matchday lifecycle of a fixture: pending → scheduled → played. */
+export type FixtureStatus = "pending" | "scheduled" | "played";
+
+/** A proposed match date for a fixture (negotiation history/active row). */
+export interface ScheduleProposal {
+  id: string;
+  fixtureId: string;
+  userId: string;
+  date: string;
+  createdAt: string;
+  acceptedAt: string | null;
+  closedAt: string | null;
+}
+
 /** A single scheduled pairing within a round (jornada), from the server. */
 export interface FixtureDraft {
   id: string;
@@ -11,6 +25,18 @@ export interface FixtureDraft {
   homeTeamId: string;
   awayTeamId: string;
   createdAt: string;
+  /** "scheduled" when participants agreed a date, "played" when forfeited. */
+  scheduledAt: string | null;
+  /** Set by the league owner's forfeit; derives `played`. */
+  winnerId: string | null;
+  /** Derived lifecycle: pending | scheduled | played. */
+  status: FixtureStatus;
+  /** Home team owner (id + name), null when unresolvable. */
+  homeOwner: { id: string; name: string } | null;
+  /** Away team owner (id + name), null when unresolvable. */
+  awayOwner: { id: string; name: string } | null;
+  /** Negotiation history (active + closed) for this fixture. */
+  proposals: ScheduleProposal[];
 }
 
 /** A League as returned by the `/api/leagues` list routes. */
@@ -155,4 +181,107 @@ export async function listUnassignedTeams(): Promise<ApiTeamForAssign[]> {
   const res = await fetch("/api/teams");
   const teams = await readJson<ApiTeamForAssign[]>(res);
   return teams.filter((t) => t.leagueId === null);
+}
+
+/**
+ * Proposes a match date for a fixture's negotiation. Only the owner of the
+ * home or away team may propose (server 401/404). POST `{ date }` returns the
+ * new active proposal; the prior active proposal is closed in the same tx.
+ */
+export async function proposeFixtureDate(
+  leagueId: string,
+  fixtureId: string,
+  date: string,
+): Promise<ScheduleProposal> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/propose`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ date }),
+    },
+  );
+  return readJson<ScheduleProposal>(res);
+}
+
+/**
+ * Accepts another participant's active proposal, scheduling the fixture. Only
+ * the OTHER participant may accept (creator self-accept → 409).
+ */
+export async function acceptFixtureProposal(
+  leagueId: string,
+  fixtureId: string,
+  proposalId: string,
+): Promise<FixtureDraft> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/accept`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ proposalId }),
+    },
+  );
+  return readJson<FixtureDraft>(res);
+}
+
+/**
+ * Awards a walkover defeat (admin-only) to the opponent of `winnerTeamId`,
+ * setting the fixture's winner and deriving `played`. Closes open proposals.
+ */
+export async function forfeitFixture(
+  leagueId: string,
+  fixtureId: string,
+  winnerTeamId: string,
+): Promise<FixtureDraft> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/forfeit`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ winnerTeamId }),
+    },
+  );
+  return readJson<FixtureDraft>(res);
+}
+
+/**
+ * Fetches the full negotiation history for a fixture (participants/admin only;
+ * 404 otherwise). Ordered newest-first.
+ */
+export async function getFixtureProposals(
+  leagueId: string,
+  fixtureId: string,
+): Promise<ScheduleProposal[]> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/proposals`,
+  );
+  return readJson<ScheduleProposal[]>(res);
+}
+
+/** Read-only scouting data for a foreign team (owner/league-owner/member only). */
+export interface ScoutedTeamDetail {
+  id: string;
+  name: string;
+  raceId: string;
+  roster: unknown;
+  coaching: unknown;
+  leagueId: string | null;
+}
+
+/** A round (jornada) with its fixtures and whether every match is played. */
+export interface FixtureRound {
+  round: number;
+  /** The fixtures in this round. */
+  fixtures: FixtureDraft[];
+  /** True when every fixture in the round derives `played`. */
+  complete: boolean;
+}
+
+/**
+ * Fetches a team's read-only scouting detail (`GET /api/teams/[id]`). Returns
+ * 404 for outsiders/archived teams so rivals cannot be scouted without access.
+ */
+export async function getScoutedTeam(teamId: string): Promise<ScoutedTeamDetail> {
+  const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}`);
+  return readJson<ScoutedTeamDetail>(res);
 }
