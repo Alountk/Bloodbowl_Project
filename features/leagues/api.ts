@@ -72,6 +72,8 @@ export interface LeagueDetail extends League {
   teams: LeagueMemberTeam[];
   /** Round-robin fixtures when started; [] while open. */
   fixtures: FixtureDraft[];
+  /** Per-round completion flags (a round is complete when every fixture is played). */
+  rounds: FixtureRound[];
 }
 
 async function readJson<T>(res: Response): Promise<T> {
