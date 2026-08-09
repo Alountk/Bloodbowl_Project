@@ -20,6 +20,7 @@ export default defineConfig({
         "**/migration.spec.ts",
         "**/isolation.spec.ts",
         "**/leagues.spec.ts",
+        "**/league-season.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
