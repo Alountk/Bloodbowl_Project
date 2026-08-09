@@ -1,20 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createLeague, getLeagueDetail, listLeagues, type League } from "./api";
-
-/** A league together with its resolved member-team count for the list cards. */
-export interface LeagueWithCount extends League {
-  memberCount: number;
-}
+import { createLeague, listLeagues, type League } from "./api";
 
 /**
- * Loads the session user's leagues plus each league's member count (the list
- * endpoint returns league rows, the detail endpoint includes `teams`), and
- * exposes `create` so the "+ Nueva liga" modal can POST and refresh the list.
+ * Loads the session user's leagues (open + own, any status) from the public
+ * list endpoint. The server computes each league's `memberCount` and
+ * `ownerName` in the query, so this hook performs a single fetch (no N+1
+ * per-league detail calls) and exposes `create` plus `refresh` so the
+ * "+ Nueva liga" modal and actions can reload the list.
  */
 export function useLeagues() {
-  const [leagues, setLeagues] = useState<LeagueWithCount[]>([]);
+  const [leagues, setLeagues] = useState<League[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,17 +20,8 @@ export function useLeagues() {
   useEffect(() => {
     let cancelled = false;
     listLeagues()
-      .then(async (list) => {
-        const withCounts = await Promise.all(
-          list.map(async (league) => {
-            const detail = await getLeagueDetail(league.id);
-            return { ...league, memberCount: detail.teams.length };
-          }),
-        );
-        return withCounts;
-      })
-      .then((withCounts) => {
-        if (!cancelled) setLeagues(withCounts);
+      .then((list) => {
+        if (!cancelled) setLeagues(list);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Could not load leagues");
@@ -49,13 +37,7 @@ export function useLeagues() {
   const refresh = useCallback(async () => {
     try {
       const list = await listLeagues();
-      const withCounts = await Promise.all(
-        list.map(async (league) => {
-          const detail = await getLeagueDetail(league.id);
-          return { ...league, memberCount: detail.teams.length };
-        }),
-      );
-      setLeagues(withCounts);
+      setLeagues(list);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load leagues");
