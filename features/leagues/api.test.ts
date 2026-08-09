@@ -63,6 +63,7 @@ describe("League lifecycle types", () => {
       teams: [
         { id: "t1", name: "Reavers", raceId: "human", leagueId: "l1", userId: "u1", roster: [], coaching: {} },
       ],
+      rounds: [],
       fixtures: [
         {
           id: "f1",
@@ -99,6 +100,7 @@ describe("League lifecycle types", () => {
       ownerName: "Coach",
       memberCount: 2,
       teams: [],
+      rounds: [],
       fixtures: [
         {
           id: "f1",
