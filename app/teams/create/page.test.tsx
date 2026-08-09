@@ -93,7 +93,7 @@ describe("Team creation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
 
-    expect(screen.getByText(/at least 3 players/i)).toBeTruthy();
+    expect(screen.getByText(/at least 11 players/i)).toBeTruthy();
     // The team must NOT have been added to the list.
     expect(screen.queryByRole("link", { name: /Half Squad/i })).toBeNull();
   });
@@ -138,15 +138,14 @@ describe("Team creation", () => {
     renderWithStoreAndList();
     await goToStep2("Reikland Reavers", "human");
 
-    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add Blitzer" }));
+    for (let i = 0; i < 11; i++) {
+      fireEvent.click(screen.getByRole("button", { name: "Add Lineman" }));
+    }
     fireEvent.click(screen.getByRole("button", { name: "Create Team" }));
 
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
     const teamCard = screen.getByText("Reikland Reavers").closest("li")!;
     expect(within(teamCard).getByText("Human")).toBeTruthy();
-    expect(within(teamCard).getByText("4 players · 3x Lineman · 1x Blitzer")).toBeTruthy();
+    expect(within(teamCard).getByText("11 players · 11x Lineman")).toBeTruthy();
   });
 });

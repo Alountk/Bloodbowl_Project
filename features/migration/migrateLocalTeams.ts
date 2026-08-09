@@ -15,6 +15,12 @@ interface RunTeamMigrationParams {
   storage: Pick<Storage, "getItem" | "setItem">;
   /** Persists a single legacy team into the signed-in user's account (POST /api/teams). */
   postTeam: (team: Team) => Promise<unknown>;
+  /**
+   * Names of teams the account ALREADY has. A legacy team whose name is in this
+   * set is skipped — this makes the migration idempotent even when two
+   * concurrent runs (React StrictMode double-effect) both see the flag unset.
+   */
+  existingTeamNames?: ReadonlySet<string>;
 }
 
 /**
@@ -33,6 +39,7 @@ interface RunTeamMigrationParams {
 export async function runTeamMigration({
   storage,
   postTeam,
+  existingTeamNames,
 }: RunTeamMigrationParams): Promise<MigrationResult> {
   if (storage.getItem(MIGRATED_FLAG_KEY) != null) {
     return { migrated: 0, failed: false };
@@ -54,6 +61,7 @@ export async function runTeamMigration({
   let migrated = 0;
   try {
     for (const team of teams) {
+      if (existingTeamNames?.has(team.name)) continue;
       await postTeam(team);
       migrated += 1;
     }

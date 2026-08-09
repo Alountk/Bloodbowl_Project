@@ -13,8 +13,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("Login page", () => {
-  it("calls signIn with credentials and navigates to / on success", async () => {
+  it("calls signIn with credentials and fully navigates to / on success", async () => {
     signInMock.mockResolvedValue({ error: null, ok: true });
+
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, assign: assignSpy },
+      configurable: true,
+    });
 
     render(<SignInPage />);
 
@@ -31,6 +37,9 @@ describe("Login page", () => {
     });
 
     await waitFor(() => expect(signInMock).toHaveBeenCalledTimes(1));
+    // Full navigation so the session cookie is used from the first render
+    // (fixes empty teams/leagues until a manual reload).
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith("/"));
   });
 
   it("shows an invalid-credentials error when signIn reports CredentialsSignin", async () => {

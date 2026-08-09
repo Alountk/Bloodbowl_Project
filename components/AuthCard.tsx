@@ -50,7 +50,12 @@ export function AuthCard({ initialMode }: AuthCardProps) {
       }
     }
 
-    // Establish the session via the Credentials provider, then land on the teams page.
+    // Establish the session via the Credentials provider, then land on the
+    // teams page with a FULL navigation. A client-side router.push("/") can
+    // mount the home before useSession propagates "authenticated", so the
+    // store falls back to localStorage and teams/leagues appear empty until a
+    // manual reload. A hard navigation guarantees the session cookie is used
+    // from the very first render.
     const result = await signIn("credentials", { email, password, redirect: false });
     setIsSubmitting(false);
     if (result?.error) {
@@ -61,7 +66,7 @@ export function AuthCard({ initialMode }: AuthCardProps) {
       );
       return;
     }
-    router.push("/");
+    window.location.assign("/");
   }
 
   function switchMode(next: AuthMode) {

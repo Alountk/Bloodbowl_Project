@@ -31,10 +31,9 @@ async function createTeam(page: Page, name: string) {
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption("human");
   await page.getByRole("button", { name: /siguiente/i }).click();
-  // A couple of players so the team is valid (3+ players required).
-  await page.getByRole("button", { name: "Add Lineman" }).first().click();
-  await page.getByRole("button", { name: "Add Lineman" }).first().click();
-  await page.getByRole("button", { name: "Add Blitzer" }).first().click();
+  // 11 Linemen so the team meets the BB2025 minimum roster size.
+  const addLineman = page.getByRole("button", { name: "Add Lineman" }).first();
+  for (let i = 0; i < 11; i++) await addLineman.click();
   await page.getByRole("button", { name: /create team/i }).click();
   // Redirect home and show the saved team.
   await expect(page).toHaveURL("/");

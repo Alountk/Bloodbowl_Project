@@ -1,7 +1,7 @@
 import type { CoachingStaff, PlayerEntry, Race, Team } from "./types";
 
 export const STARTING_TREASURY = 1_000_000;
-export const MIN_PLAYERS = 3;
+export const MIN_PLAYERS = 11;
 export const MAX_PLAYERS = 16;
 
 // Standard Blood Bowl 2025 coaching staff costs and limits (gold coins).

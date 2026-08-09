@@ -28,8 +28,8 @@ async function createTeam(page: Page) {
   await page.getByLabel("Race").selectOption("human");
   await page.getByRole("button", { name: /siguiente/i }).click();
   // Three players so the team is valid.
-  await page.getByRole("button", { name: "Add Lineman" }).first().click();
-  await page.getByRole("button", { name: "Add Lineman" }).first().click();
+  const addLineman = page.getByRole("button", { name: "Add Lineman" }).first();
+  for (let i = 0; i < 11; i++) await addLineman.click();
   await page.getByRole("button", { name: "Add Blitzer" }).first().click();
   await page.getByRole("button", { name: /create team/i }).click();
   await expect(page).toHaveURL("/");
