@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MatchCard, type MatchCardProps, matchStatusLabel } from "./MatchCard";
+import { MatchCard, type MatchCardProps, matchStatusLabel, formatMatchDate } from "./MatchCard";
 import type { FixtureDraft } from "./api";
 
 /**
@@ -65,6 +65,25 @@ describe("matchStatusLabel", () => {
   });
 });
 
+describe("formatMatchDate", () => {
+  it("returns empty for null and invalid input", () => {
+    expect(formatMatchDate(null)).toBe("");
+    expect(formatMatchDate("not-a-date")).toBe("");
+  });
+  it("includes the agreed time for two distinct proposed slots", () => {
+    const fmt = (iso: string) =>
+      new Intl.DateTimeFormat("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(iso));
+    expect(formatMatchDate("2026-03-01T10:00:00.000Z")).toBe(fmt("2026-03-01T10:00:00.000Z"));
+    expect(formatMatchDate("2026-03-15T20:30:00.000Z")).toBe(fmt("2026-03-15T20:30:00.000Z"));
+  });
+});
+
 describe("MatchCard", () => {
   it("renders the header 'Partido <n> · <status>' from the fixture", () => {
     renderCard();
@@ -96,6 +115,17 @@ describe("MatchCard", () => {
     const labels = screen.getAllByText(/Programado/);
     expect(labels.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/01\/03\/2026/)).toBeTruthy();
+  });
+
+  it("shows the agreed time alongside the date in the scheduled footer", () => {
+    // The negotiation agrees a date AND a time; the card footer must expose the
+    // time so a participant sees the exact slot agreed, not just the day.
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+    });
+    expect(
+      screen.getByText(/Programado: \d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}/),
+    ).toBeTruthy();
   });
 
   it("shows a Jugado badge with the winner when played", () => {
