@@ -330,9 +330,9 @@ function Jornadas({
     <div className="space-y-5">
       {rounds.map(([round, matchups]) => (
         <section key={round} aria-label={`Jornada ${round}`} className="rounded-md border border-[#e2e8f0] bg-white">
-          <header className="border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+          <h3 className="border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-2 text-sm font-bold uppercase tracking-wide text-slate-500">
             Jornada {round}
-          </header>
+          </h3>
           <ul className="divide-y divide-[#e2e8f0]">
             {matchups.map((fixture) => (
               <li
