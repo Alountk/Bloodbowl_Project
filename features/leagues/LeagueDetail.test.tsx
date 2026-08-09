@@ -214,6 +214,10 @@ describe("LeagueDetail — STARTED league", () => {
     // Two rounds; each matchup renders its home and away teams.
     expect(screen.getByText("Jornada 1")).toBeTruthy();
     expect(screen.getByText("Jornada 2")).toBeTruthy();
+    // Each jornada label is a semantic heading so screen readers / SR users can
+    // navigate the schedule by round.
+    expect(screen.getByRole("heading", { name: "Jornada 1" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Jornada 2" })).toBeTruthy();
     // Reavers (round 1 home / round 2 away) and Orcs (round 1 away) both appear.
     expect(screen.getAllByText("Reavers").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Orcs").length).toBeGreaterThan(0);
