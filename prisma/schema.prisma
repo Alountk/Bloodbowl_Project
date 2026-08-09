@@ -22,34 +22,63 @@ model User {
   leagues      League[]
 }
 
-/// A user-owned group of teams.
+/// A user-owned group of teams. A league starts "open" and locks when the
+/// owner starts the round-robin season ("started").
 model League {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  ownerId     String
-  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  teams       Team[]   @relation("LeagueMembers")
+  id           String       @id @default(cuid())
+  name         String       @unique
+  description  String?
+  ownerId      String
+  owner        User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  status       LeagueStatus @default(open)
+  seasonLength Int?
+  startedAt    DateTime?
+  teams        Team[]       @relation("LeagueMembers")
+  fixtures     Fixture[]
 
   @@index([ownerId])
 }
 
+/// Lifecycle state of a league: joinable/open or locked after a season starts.
+enum LeagueStatus {
+  open
+  started
+}
+
+/// A scheduled round-robin pairing within a started league (one jornada round).
+model Fixture {
+  id         String   @id @default(cuid())
+  leagueId   String
+  league     League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  round      Int
+  homeTeamId String
+  awayTeamId String
+  createdAt  DateTime @default(now())
+
+  homeTeam Team @relation("FixtureHomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayTeam Team @relation("FixtureAwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+
+  @@index([leagueId, round])
+}
+
 /// A team owned by a single user, scoped via `userId`.
 model Team {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
-  raceId     String
-  roster     Json
-  coaching   Json
-  createdAt  DateTime @default(now())
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  raceId       String
+  roster       Json
+  coaching     Json
+  createdAt    DateTime  @default(now())
   /// When set, the team is archived (soft-deleted) and hidden from listings.
-  archivedAt DateTime?
+  archivedAt   DateTime?
   /// The league this team belongs to, if any. Set to null when expeled or the league is deleted.
-  leagueId   String?
-  league     League?  @relation("LeagueMembers", fields: [leagueId], references: [id], onDelete: SetNull)
+  leagueId     String?
+  league       League?   @relation("LeagueMembers", fields: [leagueId], references: [id], onDelete: SetNull)
+  homeFixtures Fixture[] @relation("FixtureHomeTeam")
+  awayFixtures Fixture[] @relation("FixtureAwayTeam")
 
   @@index([userId])
   @@index([leagueId])
