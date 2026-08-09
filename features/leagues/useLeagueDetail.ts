@@ -6,14 +6,18 @@ import {
   expelTeam,
   getLeagueDetail,
   listUnassignedTeams,
+  selfLeave,
+  startLeague,
   type ApiTeamForAssign,
   type LeagueDetail,
 } from "./api";
 
 /**
- * Loads a league's detail (with member teams) plus the user's unassigned teams
- * for the assign select, and exposes assign/expel actions that refresh the
- * detail. When `notFound` is true the league is foreign or missing (404).
+ * Loads a league's detail (with member teams and fixtures) plus the user's
+ * unassigned teams for the join select, and exposes role-aware actions:
+ * `assign` (public join / owner adds own team), `expel` (owner), `leave`
+ * (self-leave a league the user's own team is in), and `start` (owner starts
+ * the season). When `notFound` is true the league is foreign or missing (404).
  */
 export function useLeagueDetail(leagueId: string) {
   const [league, setLeague] = useState<LeagueDetail | null>(null);
@@ -84,5 +88,21 @@ export function useLeagueDetail(leagueId: string) {
     [leagueId, refresh],
   );
 
-  return { league, unassigned, loading, error, notFound, refresh, assign, expel };
+  const leave = useCallback(
+    async (teamId: string) => {
+      await selfLeave(leagueId, teamId);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
+  const start = useCallback(
+    async (seasonLength: number) => {
+      await startLeague(leagueId, seasonLength);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
+  return { league, unassigned, loading, error, notFound, refresh, assign, expel, leave, start };
 }

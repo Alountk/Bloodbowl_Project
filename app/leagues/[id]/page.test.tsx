@@ -3,13 +3,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import LeagueDetailPage from "./page";
 
+const sessionMock = vi.hoisted(() =>
+  vi.fn(() => ({ data: { user: { id: "u1" } }, status: "authenticated" })),
+);
+vi.mock("next-auth/react", () => ({
+  useSession: () => sessionMock(),
+}));
+
 const leagueDetail = {
   id: "l1",
   name: "North Reikland",
   description: null,
   ownerId: "u1",
   createdAt: "2026-01-01",
+  status: "open",
+  seasonLength: null,
+  startedAt: null,
+  ownerName: "Coach A",
+  memberCount: 0,
   teams: [],
+  fixtures: [],
 };
 
 afterEach(() => {
