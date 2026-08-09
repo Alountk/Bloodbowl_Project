@@ -30,6 +30,12 @@ yarn-error.log*
 .env
 .env.development
 .env.production
+.env.test*
+.pnpm-debug.log*
+
+# editor / IDE local config
+.vscode/
+.idea/
 
 # vercel
 .vercel
