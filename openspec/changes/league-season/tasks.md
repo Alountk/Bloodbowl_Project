@@ -9,11 +9,11 @@
 | Chained PRs recommended | Yes |
 | Suggested split | PR1 DB+API+algorithm → PR2 UI → PR3 e2e+polish |
 | Delivery strategy | ask-on-risk |
-| Chain strategy | pending |
+| Chain strategy | stacked-to-main (resolved: PR1 → PR2 → PR3) |
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: stacked-to-main (PR1 → PR2 → PR3)
 400-line budget risk: High
 
 ### Suggested Work Units
@@ -53,7 +53,7 @@ Chain strategy: pending
 
 ## Phase 3: PR 3 — e2e + Polish
 
-- [ ] 3.1 `e2e/leagues.spec.ts`: B lists A's open league, joins with own team
-- [ ] 3.2 e2e: A starts (2 teams) → 2 jornadas, unique pairings
-- [ ] 3.3 e2e: post-start join/leave/expel → 409; started detail to foreign → 404
-- [ ] 3.4 `pnpm run test:e2e:auth` + full `pnpm test` green; update docs refs
+- [x] 3.1 `e2e/leagues.spec.ts`: B lists A's open league, joins with own team
+- [x] 3.2 e2e: A starts (2 teams) → 1 jornada (teams−1 = 1), unique pairings
+- [x] 3.3 e2e: post-start join/leave/expel → 409; started detail to foreign → 404
+- [x] 3.4 `pnpm run test:e2e:auth` + full `pnpm test` green; update docs refs
