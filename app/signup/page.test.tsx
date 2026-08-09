@@ -9,10 +9,9 @@ vi.mock("next-auth/react", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
-const assignSpy = vi.hoisted(() => vi.fn());
 
 async function submitForm(email: string, password: string) {
   render(<SignupPage />);
