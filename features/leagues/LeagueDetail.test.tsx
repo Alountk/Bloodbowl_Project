@@ -81,9 +81,47 @@ const startedLeague = {
     { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: me, roster: [{}, {}] },
     { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u8", roster: [{}, {}] },
   ],
+  rounds: [
+    {
+      round: 1,
+      fixtures: ["f1"],
+      complete: false,
+    },
+    {
+      round: 2,
+      fixtures: ["f2"],
+      complete: true,
+    },
+  ],
   fixtures: [
-    { id: "f1", leagueId: "l3", round: 1, homeTeamId: "t1", awayTeamId: "t2", createdAt: "2026-02-01" },
-    { id: "f2", leagueId: "l3", round: 2, homeTeamId: "t2", awayTeamId: "t1", createdAt: "2026-02-01" },
+    {
+      id: "f1",
+      leagueId: "l3",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: "2026-02-01",
+      scheduledAt: null,
+      winnerId: null,
+      status: "pending",
+      homeOwner: { id: me, name: "Coach Me" },
+      awayOwner: { id: "u8", name: "Coach B" },
+      proposals: [],
+    },
+    {
+      id: "f2",
+      leagueId: "l3",
+      round: 2,
+      homeTeamId: "t2",
+      awayTeamId: "t1",
+      createdAt: "2026-02-01",
+      scheduledAt: "2026-03-01",
+      winnerId: "t1",
+      status: "played",
+      homeOwner: { id: "u8", name: "Coach B" },
+      awayOwner: { id: me, name: "Coach Me" },
+      proposals: [],
+    },
   ],
 };
 
@@ -94,6 +132,11 @@ function makeFetch(detail: unknown, ownTeams: unknown[] = []) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(ownTeams) });
     }
     if (url === `/api/leagues/${(detail as { id: string }).id}`) {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(detail) });
+    }
+    // Fixture mutation routes (propose/accept/forfeit) succeed so the refresh
+    // chain that follows the action resolves cleanly.
+    if (/\/api\/leagues\/.+\/fixtures\/.+\/(propose|accept|forfeit)$/.test(url)) {
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(detail) });
     }
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
@@ -204,28 +247,23 @@ describe("LeagueDetail — foreign non-member of an open league (public join)", 
 });
 
 describe("LeagueDetail — STARTED league", () => {
-  it("renders jornadas grouped by round as Home vs Away with the Iniciada badge", async () => {
+  it("renders round tabs with the first round selected and its match card", async () => {
     makeFetch(startedLeague);
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Started Cup" })).toBeTruthy());
 
     expect(screen.getByText("Iniciada")).toBeTruthy();
-    // Two rounds; each matchup renders its home and away teams.
-    expect(screen.getByText("Jornada 1")).toBeTruthy();
-    expect(screen.getByText("Jornada 2")).toBeTruthy();
-    // Each jornada label is a semantic heading so screen readers / SR users can
-    // navigate the schedule by round.
-    expect(screen.getByRole("heading", { name: "Jornada 1" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Jornada 2" })).toBeTruthy();
-    // Reavers (round 1 home / round 2 away) and Orcs (round 1 away) both appear.
-    expect(screen.getAllByText("Reavers").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Orcs").length).toBeGreaterThan(0);
-    // A matchup separator marks each home-vs-away pairing.
-    expect(screen.getAllByText("vs")).toHaveLength(startedLeague.fixtures.length);
+    // Round tabs for every jornada; the first (round 1) is selected by default.
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(2);
+    expect(screen.getByRole("tab", { name: "Jornada 1" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("false");
 
-    // Round 1 pairs Reavers (home) vs Orcs (away) as independent slots.
+    // The active round renders as a region labelled "Jornada 1".
     const round1 = screen.getByRole("region", { name: "Jornada 1" });
+    // Its single match card centers a VS between the two teams.
+    expect(within(round1).getByText("VS")).toBeTruthy();
     expect(within(round1).getByText("Reavers")).toBeTruthy();
     expect(within(round1).getByText("Orcs")).toBeTruthy();
 
@@ -233,6 +271,86 @@ describe("LeagueDetail — STARTED league", () => {
     expect(screen.queryByRole("button", { name: "Expulsar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Desapuntarse" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Unirse" })).toBeNull();
+  });
+
+  it("switches rounds via the tabs and shows the completion badge on a complete round", async () => {
+    makeFetch(startedLeague);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Jornada 2" })).toBeTruthy());
+
+    // Round 1 has a pending fixture → no completion badge.
+    expect(screen.queryByText("Jornada completa")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Jornada 2" }));
+    expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("true");
+    // Round 2 is complete (its only fixture is played) → badge shows.
+    expect(screen.getByText("Jornada completa")).toBeTruthy();
+    // The played fixture shows a Jugado header (and footer).
+    const jugado = within(screen.getByRole("region", { name: "Jornada 2" })).getAllByText(/Jugado/);
+    expect(jugado.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("links a match card team to its scouting page /teams/[id]", async () => {
+    makeFetch(startedLeague);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    const round1 = screen.getByRole("region", { name: "Jornada 1" });
+    expect(within(round1).getByRole("link", { name: /Reavers/ }).getAttribute("href")).toBe("/teams/t1");
+    expect(within(round1).getByRole("link", { name: /Orcs/ }).getAttribute("href")).toBe("/teams/t2");
+  });
+
+  it("opens the participant negotiation panel when a participant clicks a card", async () => {
+    makeFetch(startedLeague);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByText("VS"));
+
+    // The participant (me owns t1, home of f1) gets propose controls.
+    expect(screen.getByRole("dialog", { name: /Acordar fecha/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Proponer" })).toBeTruthy();
+    expect(screen.getByLabelText(/Fecha propuesta/)).toBeTruthy();
+  });
+
+  it("lets the admin open the forfeit modal and award a winner", async () => {
+    const adminStarted = {
+      ...startedLeague,
+      ownerId: me,
+      ownerName: "Coach Me",
+      teams: [
+        { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: "u8", roster: [{}, {}] },
+        { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u9", roster: [{}, {}] },
+      ],
+      rounds: [{ round: 1, fixtures: ["f1"], complete: false }],
+      fixtures: [
+        {
+          ...startedLeague.fixtures[0],
+          homeOwner: { id: "u8", name: "Coach B" },
+          awayOwner: { id: "u9", name: "Coach C" },
+        },
+      ],
+    };
+    const fetchMock = makeFetch(adminStarted);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Otorgar victoria" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Otorgar victoria" }));
+
+    expect(screen.getByRole("dialog", { name: /Otorgar victoria/ })).toBeTruthy();
+    // Admin picks the home team and confirms → the forfeit POST fires.
+    fireEvent.click(screen.getByRole("button", { name: /^Reavers$/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Otorgar victoria a Reavers" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l3/fixtures/f1/forfeit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ winnerTeamId: "t1" }),
+      });
+    });
   });
 
   it("renders the not-found page for a foreign non-member started league (404)", async () => {

@@ -6,7 +6,10 @@ import { useMemo, useState } from "react";
 import { getRaceById } from "@/features/teams/data/races";
 import { StartLeagueModal } from "./StartLeagueModal";
 import { useLeagueDetail } from "./useLeagueDetail";
-import type { FixtureDraft } from "./api";
+import { MatchCard } from "./MatchCard";
+import { NegotiationPanel } from "./NegotiationPanel";
+import { ForfeitModal } from "./ForfeitModal";
+import type { FixtureDraft, FixtureRound } from "./api";
 
 interface LeagueDetailProps {
   leagueId: string;
@@ -28,8 +31,20 @@ interface LeagueDetailProps {
  *   the not-found page.
  */
 export function LeagueDetail({ leagueId }: LeagueDetailProps) {
-  const { league, unassigned, loading, error, notFound, refresh, assign, expel, leave } =
-    useLeagueDetail(leagueId);
+  const {
+    league,
+    unassigned,
+    loading,
+    error,
+    notFound,
+    refresh,
+    assign,
+    expel,
+    leave,
+    propose,
+    accept,
+    forfeit,
+  } = useLeagueDetail(leagueId);
   const { data: session } = useSession();
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -165,7 +180,16 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
       ) : null}
 
       {started ? (
-        <Jornadas fixtures={league.fixtures} teams={league.teams} />
+        <Jornadas
+          fixtures={league.fixtures}
+          rounds={league.rounds}
+          teams={league.teams}
+          currentUserId={userId ?? ""}
+          isLeagueOwner={isOwner}
+          onPropose={propose}
+          onAccept={accept}
+          onForfeit={forfeit}
+        />
       ) : (
         <div className="space-y-6">
           {/* Anyone who is not yet a member can join with one of their own
@@ -296,29 +320,50 @@ function MemberList({
   );
 }
 
-/** Jornadas: fixtures grouped by round, rendered as home vs away matchups. */
+/**
+ * Jornadas (Pattern B): round tabs with the first/current round selected by
+ * default. Each round renders its fixtures as MatchCards (centered VS with the
+ * owner below each team, team→scouting link, status badge) and a round
+ * completion badge once every fixture is played. Clicking a card opens the
+ * participant-only NegotiationPanel; the league owner gets an admin-only
+ * ForfeitModal per card.
+ */
 function Jornadas({
   fixtures,
+  rounds,
   teams,
+  currentUserId,
+  isLeagueOwner,
+  onPropose,
+  onAccept,
+  onForfeit,
 }: {
   fixtures: FixtureDraft[];
+  rounds: FixtureRound[];
   teams: { id: string; name: string }[];
+  currentUserId: string;
+  isLeagueOwner: boolean;
+  onPropose: (fixtureId: string, date: string) => void;
+  onAccept: (fixtureId: string, proposalId: string) => void;
+  onForfeit: (fixtureId: string, winnerTeamId: string) => void;
 }) {
   const teamNameById = useMemo(
     () => new Map(teams.map((team) => [team.id, team.name])),
     [teams],
   );
-  const rounds = useMemo(() => {
-    const grouped = new Map<number, FixtureDraft[]>();
-    for (const fixture of fixtures) {
-      const list = grouped.get(fixture.round) ?? [];
-      list.push(fixture);
-      grouped.set(fixture.round, list);
-    }
-    return Array.from(grouped.entries()).sort((a, b) => a[0] - b[0]);
-  }, [fixtures]);
+  const roundNumbers = useMemo(
+    () => Array.from(new Set(fixtures.map((f) => f.round))).sort((a, b) => a - b),
+    [fixtures],
+  );
+  // Default to the first round (Pattern B). Jornadas only mounts once the league
+  // (and thus fixtures/rounds) have loaded, so the initializer is authoritative.
+  const firstRound = roundNumbers[0] ?? null;
+  const [selectedRound, setSelectedRound] = useState<number | null>(firstRound);
 
-  if (rounds.length === 0) {
+  const [negotiateFixture, setNegotiateFixture] = useState<FixtureDraft | null>(null);
+  const [forfeitFixture, setForfeitFixture] = useState<FixtureDraft | null>(null);
+
+  if (roundNumbers.length === 0) {
     return (
       <div className="border border-slate-200 bg-white p-8 text-center">
         <p className="text-sm text-slate-600">La liga se inició sin jornadas.</p>
@@ -326,31 +371,94 @@ function Jornadas({
     );
   }
 
+  const activeRound = selectedRound ?? firstRound ?? roundNumbers[0];
+  const roundFixtures = fixtures.filter((f) => f.round === activeRound);
+  const roundComplete = rounds.find((r) => r.round === activeRound)?.complete ?? false;
+
   return (
-    <div className="space-y-5">
-      {rounds.map(([round, matchups]) => (
-        <section key={round} aria-label={`Jornada ${round}`} className="rounded-md border border-[#e2e8f0] bg-white">
-          <h3 className="border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+    <div>
+      {/* Round tabs — Pattern B defaults to the first round. */}
+      <div role="tablist" aria-label="Jornadas" className="flex gap-1 overflow-x-auto border-b border-[#e2e8f0]">
+        {roundNumbers.map((round) => (
+          <button
+            key={round}
+            type="button"
+            role="tab"
+            aria-selected={round === activeRound}
+            aria-label={`Jornada ${round}`}
+            onClick={() => setSelectedRound(round)}
+            className={`whitespace-nowrap px-4 py-2 text-[13px] font-bold ${
+              round === activeRound
+                ? "border-b-[3px] border-[#d11938] text-[#12225a]"
+                : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
             Jornada {round}
-          </h3>
-          <ul className="divide-y divide-[#e2e8f0]">
-            {matchups.map((fixture) => (
-              <li
-                key={fixture.id}
-                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
-              >
-                <span className="font-semibold text-[#12225a]">
-                  {teamNameById.get(fixture.homeTeamId) ?? "Equipo"}
-                </span>
-                <span className="text-xs text-slate-400">vs</span>
-                <span className="font-semibold text-[#12225a]">
-                  {teamNameById.get(fixture.awayTeamId) ?? "Equipo"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+          </button>
+        ))}
+      </div>
+
+      {/* Round completion badge */}
+      <div className="mt-3 flex items-center justify-between px-1">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">
+          Jornada {activeRound}
+        </h3>
+        {roundComplete ? (
+          <span className="rounded-full bg-green-600 px-2.5 py-0.5 text-[11px] font-bold text-white">
+            Jornada completa
+          </span>
+        ) : null}
+      </div>
+
+      {/* Match cards for the active round */}
+      <div role="region" aria-label={`Jornada ${activeRound}`} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+        {roundFixtures.map((fixture) => (
+          <MatchCard
+            key={fixture.id}
+            fixture={fixture}
+            teamNameById={teamNameById}
+            currentUserId={currentUserId}
+            isLeagueOwner={isLeagueOwner}
+            onNegotiate={setNegotiateFixture}
+            onForfeit={setForfeitFixture}
+          />
+        ))}
+      </div>
+
+      {negotiateFixture ? (
+        <NegotiationPanel
+          fixture={negotiateFixture}
+          teamNameById={teamNameById}
+          currentUserId={currentUserId}
+          isParticipant={
+            negotiateFixture.homeOwner?.id === currentUserId ||
+            negotiateFixture.awayOwner?.id === currentUserId
+          }
+          isLeagueOwner={isLeagueOwner}
+          onPropose={(date) => {
+            void onPropose(negotiateFixture.id, date);
+            setNegotiateFixture(null);
+          }}
+          onAccept={(proposalId) => {
+            void onAccept(negotiateFixture.id, proposalId);
+            setNegotiateFixture(null);
+          }}
+          onClose={() => setNegotiateFixture(null)}
+        />
+      ) : null}
+
+      {forfeitFixture ? (
+        <ForfeitModal
+          open
+          fixture={forfeitFixture}
+          teamNameById={teamNameById}
+          onAward={(winnerTeamId) => {
+            void onForfeit(forfeitFixture.id, winnerTeamId);
+            setForfeitFixture(null);
+          }}
+          onClose={() => setForfeitFixture(null)}
+        />
+      ) : null}
     </div>
   );
 }
