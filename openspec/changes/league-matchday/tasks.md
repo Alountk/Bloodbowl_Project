@@ -58,9 +58,9 @@ Chain strategy: pending
 
 ## PR 3 - e2e + Polish
 
-- [ ] 3.1 e2e: propose -> counter -> accept sets scheduledAt; `scheduled` badge
-- [ ] 3.2 e2e: outsider team 404; non-admin forfeit 403; admin forfeit -> `played`, round complete
-- [ ] 3.3 e2e: rival scouting link opens read-only roster; 3.4 polish (empty states, errors, skeletons, Spanish copy)
+- [x] 3.1 e2e: propose -> counter -> accept sets scheduledAt; `scheduled` badge
+- [x] 3.2 e2e: outsider team 404; non-admin forfeit 403; admin forfeit -> `played`, round complete
+- [x] 3.3 e2e: rival scouting link opens read-only roster; 3.4 polish (empty states, errors, skeletons, Spanish copy)
 
 ## Chain Strategy
 
