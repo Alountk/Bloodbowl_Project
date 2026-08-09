@@ -43,18 +43,18 @@ Chain strategy: pending
 
 ## PR 2 - UI (Pattern B)
 
-- [ ] 2.1 RED `LeagueDetail.test.tsx`: round tabs render; default round selected
-- [ ] 2.2 GREEN tabs + `MatchCard` (centered VS, owner label below each team, rival team link)
-- [ ] 2.3 RED MatchCard test: click rival team navigates to `/teams/[id]` (scouting)
-- [ ] 2.4 GREEN rival link wiring in `LeagueDetail`
-- [ ] 2.5 RED `NegotiationPanel.test.tsx`: participant sees propose/accept; non-participant/admin none
-- [ ] 2.6 GREEN NegotiationPanel: propose date, accept other proposal, history; participant-only buttons
-- [ ] 2.7 RED forfeit test: admin sees `ForfeitModal`; non-admin does not
-- [ ] 2.8 GREEN `ForfeitModal`: admin picks home/away winner -> `forfeit`; refreshes
-- [ ] 2.9 RED completion test: round complete only when all fixtures `played`
-- [ ] 2.10 GREEN completion badge in round header
-- [ ] 2.11 RED team-detail test: foreign-team fetch fallback; outsider 404 -> notFound
-- [ ] 2.12 GREEN `app/teams/[teamId]/page.tsx` scoping fetch fallback + read-only render
+- [x] 2.1 RED `LeagueDetail.test.tsx`: round tabs render; default round selected
+- [x] 2.2 GREEN tabs + `MatchCard` (centered VS, owner label below each team, rival team link)
+- [x] 2.3 RED MatchCard test: click rival team navigates to `/teams/[id]` (scouting)
+- [x] 2.4 GREEN rival link wiring in `LeagueDetail`
+- [x] 2.5 RED `NegotiationPanel.test.tsx`: participant sees propose/accept; non-participant/admin none
+- [x] 2.6 GREEN NegotiationPanel: propose date, accept other proposal, history; participant-only buttons
+- [x] 2.7 RED forfeit test: admin sees `ForfeitModal`; non-admin does not
+- [x] 2.8 GREEN `ForfeitModal`: admin picks home/away winner -> `forfeit`; refreshes
+- [x] 2.9 RED completion test: round complete only when all fixtures `played`
+- [x] 2.10 GREEN completion badge in round header
+- [x] 2.11 RED team-detail test: foreign-team fetch fallback; outsider 404 -> notFound
+- [x] 2.12 GREEN `app/teams/[teamId]/page.tsx` scoping fetch fallback + read-only render
 
 ## PR 3 - e2e + Polish
 
