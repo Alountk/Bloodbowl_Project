@@ -28,20 +28,62 @@ describe("GET /api/leagues", () => {
     expect(prismaMock.league.findMany).not.toHaveBeenCalled();
   });
 
-  it("lists only the session user's leagues", async () => {
+  it("lists open leagues of any user plus the session user's own leagues, with ownerName and memberCount", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     const leagues = [
-      { id: "l1", name: "North League", ownerId: "user-1", createdAt: new Date().toISOString() },
-      { id: "l2", name: "South League", ownerId: "user-1", createdAt: new Date().toISOString() },
+      {
+        id: "open-foreign",
+        name: "Public League",
+        ownerId: "user-2",
+        owner: { id: "user-2", email: "other@test.local", name: "Other Coach" },
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        createdAt: new Date().toISOString(),
+        _count: { teams: 3 },
+      },
+      {
+        id: "own-started",
+        name: "My Started League",
+        ownerId: "user-1",
+        owner: { id: "user-1", email: "me@test.local", name: null },
+        status: "started",
+        seasonLength: 2,
+        startedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        _count: { teams: 2 },
+      },
     ];
     prismaMock.league.findMany.mockResolvedValue(leagues);
 
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual(leagues);
+    expect(body).toHaveLength(2);
+    // Each item carries the resolved owner name and the server-computed count.
+    expect(body[0].ownerName).toBe("Other Coach");
+    expect(body[0].memberCount).toBe(3);
+    expect(body[1].ownerName).toBe("me@test.local"); // falls back to email when name is null
+    expect(body[1].memberCount).toBe(2);
+
+    // Query is the union: all open + own (any status), with owner + _count
+    // memberCount computed in the query (no per-league N+1 detail fetch).
     expect(prismaMock.league.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { ownerId: "user-1" } }),
+      expect.objectContaining({
+        where: { OR: [{ status: "open" }, { ownerId: "user-1" }] },
+        include: expect.objectContaining({
+          owner: expect.objectContaining({
+            select: expect.objectContaining({ email: true }),
+          }),
+          _count: expect.objectContaining({
+            select: expect.objectContaining({
+              teams: expect.objectContaining({
+                where: { archivedAt: null },
+              }),
+            }),
+          }),
+        }),
+      }),
     );
   });
 });
