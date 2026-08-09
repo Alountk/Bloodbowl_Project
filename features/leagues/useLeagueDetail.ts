@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  acceptFixtureProposal,
   assignTeam,
   expelTeam,
+  forfeitFixture,
   getLeagueDetail,
   listUnassignedTeams,
+  proposeFixtureDate,
   selfLeave,
   startLeague,
   type ApiTeamForAssign,
@@ -104,5 +107,43 @@ export function useLeagueDetail(leagueId: string) {
     [leagueId, refresh],
   );
 
-  return { league, unassigned, loading, error, notFound, refresh, assign, expel, leave, start };
+  const propose = useCallback(
+    async (fixtureId: string, date: string) => {
+      await proposeFixtureDate(leagueId, fixtureId, date);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
+  const accept = useCallback(
+    async (fixtureId: string, proposalId: string) => {
+      await acceptFixtureProposal(leagueId, fixtureId, proposalId);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
+  const forfeit = useCallback(
+    async (fixtureId: string, winnerTeamId: string) => {
+      await forfeitFixture(leagueId, fixtureId, winnerTeamId);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
+  return {
+    league,
+    unassigned,
+    loading,
+    error,
+    notFound,
+    refresh,
+    assign,
+    expel,
+    leave,
+    start,
+    propose,
+    accept,
+    forfeit,
+  };
 }
