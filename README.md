@@ -1,42 +1,109 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bloodbowl Teams
 
-## Getting Started
+Gestor de equipos, ligas y campeonatos de **Blood Bowl 2025** — con el diseño inspirado en el reglamento oficial (temática "libro": paneles claros, cabeceras navy/rojo, tablas estilo reglamento).
 
-First, run the development server:
+Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailwind v4 · **Prisma + PostgreSQL** · **Auth.js v5** (email + contraseña) · Vitest + Playwright · Docker/GHCR.
+
+---
+
+## Features
+
+### Equipos (BB2025)
+- Catálogo completo de **30 razas / 144 posicionales** con stats (MV/FU/AG/PS/AR), skills en español, acceso de skills (G/A/P/S/M/F), costos y rangos según el reglamento.
+- **Creación en 2 pasos**: nombre + raza → plantilla (mínimo **11 jugadores**, presupuesto 1 000 000 gc) → coaching staff → guardar.
+- **Detalle de equipo** estilo libro: plantilla, cuerpo técnico, tesorería.
+- **Archivo (soft delete)** con modal de confirmación; un equipo en una liga **no se puede archivar** (expulsar primero).
+
+### Autenticación y persistencia
+- **Auth.js v5** (Credentials + JWT, bcryptjs): registro abierto, login, logout, rutas protegidas (`AUTH_MODE=auth`).
+- **PostgreSQL + Prisma**: equipos y ligas por usuario; migraciones automáticas en el deploy.
+- **Migración de localStorage**: los equipos antiguos del navegador se migran a la cuenta (idempotente, sin borrar el origen).
+
+### Ligas y campeonatos
+- **Ligas abiertas públicas**: cualquier usuario logueado crea ligas (admin = creador) y se une con sus equipos (uno por equipo).
+- **Campeonatos**: el admin elige el número de **jornadas** (1..equipos-1) y los **emparejamientos son automáticos** (round-robin con shuffle, sin repetir rivales; con equipos impares uno descansa).
+- **Matchday**:
+  - **Negociación de fecha** (toma y daca): solo los dos rivales proponen/aceptan hasta acordar (✓ Acordado).
+  - **Forfeit**: el admin puede otorgar victoria (walkover) cuando alguien no puede jugar, para avanzar de jornada.
+  - **Scouting**: click en un rival → ver su roster (solo lectura).
+  - **Completitud de jornada**: una jornada se completa cuando todos sus partidos tienen resultado.
+
+### UI / UX
+- Diseño **rulebook light** coherente (shell, sidebar, cards, tablas, modales).
+- **Responsive / mobile**: drawer hamburger, tablas apiladas en mobile, combos nativos 16px, sin scroll horizontal.
+
+---
+
+## Getting started
+
+### Requisitos
+- Node.js 22+ · pnpm 8.6.6 · Docker (para Postgres y e2e)
+
+### 1. Entorno local
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.development.local   # y completá DATABASE_URL / AUTH_SECRET / AUTH_MODE
+docker compose up -d postgres            # Postgres (puerto publicado: POSTGRES_PORT, default 5433)
+pnpm db:generate && pnpm db:migrate      # Prisma client + migraciones
+pnpm dev                                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> `.env.development.local` (gitignored): `DATABASE_URL`, `AUTH_SECRET` (generar con `openssl rand -base64 32`), `AUTH_TRUST_HOST=true`, `AUTH_MODE=auth|local`.
+> `AUTH_MODE=local` = anónimo (sin login); `AUTH_MODE=auth` = login + persistencia real.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+pnpm test                # Unit + integration (Vitest)
+pnpm run test:e2e        # E2E local (AUTH_MODE=local) — requiere AUTH_MODE=local en el entorno
+pnpm run test:e2e:auth   # E2E real-DB (auth, ligas, matchday) — levanta Postgres + app en AUTH_MODE=auth
+pnpm lint                # ESLint
+pnpm db:generate         # Prisma client
+pnpm db:migrate          # Aplicar migraciones
+pnpm docker:build        # Construir imagen local
+```
 
-## Documentation
+### 3. Deploy (Docker / Arcane)
 
-- [Authentication, PostgreSQL & ops](./docs/auth.md) — `AUTH_MODE`, `.env`,
-  starting Postgres, Prisma migrations, the legacy localStorage migration, the
-  real-DB auth e2e suite, and deployment on Arcane.
+Ver [docs/auth.md](./docs/auth.md) para el detalle completo. Resumen:
 
-## Learn More
+- La imagen se construye y publica en **GHCR** desde GitHub Actions (push a `main`).
+- `docker-compose.yml`: servicio `web` (imagen `ghcr.io/<org>/bloodbowl_project:latest`) + `postgres` en red compartida.
+- El entrypoint del contenedor aplica `prisma migrate deploy` antes de arrancar.
+- Variables de entorno: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `AUTH_MODE=auth`, `POSTGRES_PORT` (default 5433).
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+docker compose pull web
+docker compose up -d --force-recreate web
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Estructura
 
-## Deploy on Vercel
+```
+app/                  # Rutas (App Router): equipos, ligas, login/signup, API routes
+components/           # Shell (Sidebar/Topbar), AuthCard
+features/
+  teams/              # Catálogo (razas, skills), stores (Local/Api), roster, wizard, detalle
+  leagues/            # Ligas, campeonatos, matchday (negociación, forfeit, scouting)
+  migration/          # Migración localStorage → cuenta
+lib/                  # Prisma client, roundRobin, email
+prisma/               # Schema + migraciones
+e2e/                  # Playwright: desktop, mobile, auth, ligas, matchday
+openspec/             # SDD: specs, cambios archivados
+docs/                 # auth.md (ops/deploy)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Documentación
+
+- [docs/auth.md](./docs/auth.md) — Auth, PostgreSQL, migraciones, e2e auth, deploy en Arcane.
+- [ROADMAP.md](./ROADMAP.md) — Historico de features/bugs y roadmap pendiente.
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — Cómo contribuir (branches, commits, PRs, tests).
+
+## Licencia
+
+MIT (ver [LICENSE](./LICENSE)).
