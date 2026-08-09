@@ -1,10 +1,77 @@
-# Apply Progress: Matchday — PR1 + PR2 (DB+API + UI Pattern B)
+# Apply Progress: Matchday — PR1 + PR2 + PR3 (DB+API + UI + e2e/Polish)
 
 **Change**: `league-matchday`
-**PR**: PR1 (DB + API) → PR2 (UI Pattern B) — slices of the stacked-to-main chain
-**Branch**: `feat/league-matchday-pr1` (base `main`) → `feat/league-matchday-pr2` (from PR1)
+**PR**: PR1 (DB + API) → PR2 (UI Pattern B) → PR3 (e2e journeys + polish) — stacked-to-main chain
+**Branch**: `feat/league-matchday-pr1` (base `main`) → `feat/league-matchday-pr2` (from PR1) → `feat/league-matchday-pr3` (from PR2)
 **Mode**: Strict TDD (runner `pnpm test`)
-**Status**: PR1 tasks 1.1–1.14 complete + verified; PR2 tasks 2.1–2.12 complete. Ready for `sdd-verify`.
+**Status**: PR1 1.1–1.14 ✅, PR2 2.1–2.12 ✅, PR3 3.1–3.4 ✅ (all tasks complete). Ready for `sdd-verify`.
+
+---
+
+## PR3 — e2e Journeys + Polish
+
+**Branch**: `feat/league-matchday-pr3` (created FROM `feat/league-matchday-pr2`, stacked-to-main — the final slice)
+**Scope**: Real-DB multi-user e2e journeys for negotiation, forfeit/completion, and rival scouting (the PR2-verify deferred items), plus a polish fix surfaced while writing them. This closes the PR chain.
+
+### Work Units Delivered (PR3)
+
+| # | Unit | Commit | Scope | Focused test | Runtime harness | Rollback |
+|---|------|--------|-------|--------------|-----------------|----------|
+| 1 | Matchday e2e journeys | ``ea10ea2`` | New `e2e/league-matchday.spec.ts` (3 real-DB journeys) + register in `playwright.config.auth.ts` testMatch + ignore in local `playwright.config.ts` | auth config run `--grep matchday` → **3 passed** (negotiation / forfeit / scouting) | full `playwright.config.auth.ts` → **12 passed** (9 legacy + 3 new) against real Postgres | revert `e2e/league-matchday.spec.ts` + both playwright configs only |
+| 2 | Polish: scheduled footer shows agreed time | ``3e99650`` | MatchCard scheduled footer now shows date AND time (was date-only), so the agreed slot a participant negotiated is fully visible | `pnpm vitest run features/leagues/MatchCard.test.tsx` → **13 pass** (RED→GREEN: new time-on-footer test failed before the change) | covered by the negotiation e2e (asserts the agreed date+time on the Programado card) | revert `features/leagues/MatchCard.tsx` + `.test.tsx` only |
+
+### TDD Cycle Evidence (PR3)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1–3.3 journeys (negotiation/forfeit/scouting) | `e2e/league-matchday.spec.ts` | E2E (real Postgres) | ✅ 21 local + 9 auth green before changes; not touched | ✅ Journey written first against existing PR1/PR2 behavior | ✅ Negotiation 1 pass, forfeit 1 pass, scouting 1 pass | ✅ 3 distinct journeys with different data (2/3-user setups, distinct slots) | ✅ Pair-discovery refactor (`adminAsBye` retry + async-commit polling) |
+| 3.4 polish (scheduled footer time) | `features/leagues/MatchCard.test.tsx` | Unit + Integration | ✅ 10/10 pre-existing MatchCard tests green | ✅ Written first — `Programado: DD/MM/YYYY HH:MM` fails against date-only footer | ✅ Passed (13) after `formatMatchDate` adds time | ✅ 2 slots (10:00, 20:30) + null/invalid edge | ✅ Clean (`formatMatchDate` pure, es-ES 24h) |
+
+### Work Unit Evidence (PR3)
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `pnpm exec playwright test --config playwright.config.auth.ts --grep matchday` → **3 passed** (17.7s / 15.3s / 16.5s individually; rerun-safe, idempotent unique names/emails per run) |
+| Runtime harness command/scenario and exact result | Full `AUTH_MODE=local pnpm exec playwright test` → **21 passed**; full `playwright.config.auth.ts` → **12 passed**; real-DB Postgres journey (negotiate + forfeit + scouting) exercised each mutation end-to-end |
+| Rollback boundary | Commit A revert removes only the e2e spec + config wiring; commit B revert removes only the MatchCard polish + tests. No route/schema/other UI changes were touched in PR3 |
+
+### Verification Results (PR3)
+
+| Command | Result |
+|---------|--------|
+| `pnpm test` | **56 files / 692 tests** passed (baseline 689 → +3 polish) |
+| `AUTH_MODE=local pnpm exec playwright test` | **21 passed** |
+| `pnpm exec playwright test --config playwright.config.auth.ts` | **12 passed** (9 legacy + 3 new matchday journeys) |
+| `pnpm lint` | clean (0 errors, 0 warnings) |
+| `npx tsc --noEmit` | clean |
+
+### Files Changed (PR3)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `e2e/league-matchday.spec.ts` | Created | 3 real-DB journeys: (1) negotiation — participants propose/counter/accept → Programado + agreed time, member-non-participant sees read-only history; (2) forfeit — admin walkover → Jugado + winner + Jornada completa, non-admin API 403; (3) scouting — member views rival read-only roster, outsider → Team not found boundary |
+| `playwright.config.auth.ts` | Modified | Added `**/league-matchday.spec.ts` to the auth-suite `testMatch` |
+| `playwright.config.ts` | Modified | Added `**/league-matchday.spec.ts` to the local project `testIgnore` (auth-only spec) |
+| `features/leagues/MatchCard.tsx` | Modified | `formatMatchDate` now renders DD/MM/YYYY HH:MM (es-ES 24h) so the agreed slot shows its time |
+| `features/leagues/MatchCard.test.tsx` | Modified | New time-on-scheduled-footer test (RED→GREEN) + `formatMatchDate` describe (null/invalid + two distinct slots) |
+| `openspec/changes/league-matchday/tasks.md` | Updated | PR3 tasks 3.1–3.4 marked `[x]` |
+
+### Deviations from Design (PR3)
+1. **Spec/journey conflict surfaced**: the `matchday-negotiation` spec forbids the league OWNER from negotiating ("The league owner ... MUST NOT negotiate"), even when the owner's own team is a fixture participant. The orchestrator's literal journey described "A proposes → A accepts" with A the admin — which the spec (and PR1/PR2 behavior) disallows. The negotiation journey therefore partners the two NON-ADMIN members as the negotiators (`adminAsBye` retry ensures the admin lands as the round's non-participant) and asserts the admin's team sees the history read-only, exactly per spec. This is a test-scenario resolution, not a production change.
+2. **Deterministic pairing via retry**: the start route shuffles team ids (nondeterministic), and with an odd team count the round-1 fixture + bye are random. The negotiation journey retries a fresh league (bounded, unique data) until the admin is the round-1 bye, guaranteeing the fixture pairs two non-admin members. Bounded 8 attempts (~2/3 success per attempt → ~feasible within test timeout).
+3. **Cross-user commit visibility**: each member page holds a snapshot of the league detail, so a proposal made by one user is not visible to another until that page reloads. The journey reloads each page before opening the negotiation panel and polls the proposals API until the mutation commits (the propose/accept POSTs are dispatched async after the form submit). Deterministic across users.
+4. The "Jornada completa" completion badge lives in the round header, not inside the cards' `region` — the forfeit journey asserts it at page scope and documented the DOM.
+
+### Issues Found (PR3)
+- **Initial run failures were test-design bugs, not product defects**: (a) members B/C were not navigated to the STARTED jornada before negotiating (fixed by reloading after start); (b) the round-robin shuffle made the "which two members negotiate" nondeterministic (fixed via `adminAsBye` retry); (c) cross-page proposal visibility needed a reload + commit poll. All resolved; final runs green.
+- The custom `app/teams/[teamId]/not-found.tsx` renders "Team not found" (not the Next default), which the scouting journey asserts.
+
+### Workload / PR Boundary (PR3)
+- Mode: **chained stacked-to-main slice** (PR3 of 3 — final)
+- Current work unit: matchday e2e journeys + scheduled-time polish
+- Boundary: starts from `feat/league-matchday-pr2`, ends at the completed multi-user e2e journeys + polish. Finishes the chain.
+- Review budget impact: ~380 authored +/− lines (spec + configs + polish) across 2 work-unit commits + docs; well under the 400-line chained guard.
+- PR creation: deferred to the orchestrator after `sdd-verify` (do NOT create the PR).
 
 ---
 
