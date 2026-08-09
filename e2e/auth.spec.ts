@@ -65,3 +65,51 @@ test.describe("Auth E2E (real Postgres)", () => {
     await expect(page.getByText(teamName)).toBeVisible();
   });
 });
+
+/**
+ * Regression: the login → teams → logout → login flow must work WITHOUT a
+ * manual reload. This mirrors the production host (LAN IP, not localhost) —
+ * the reported bug ("no access until refresh") reproduced only against old
+ * images/deploys, so this pins the exact production-shaped journey.
+ */
+test.describe("Auth flow regression (LAN host)", () => {
+  test("login lands on teams with data, no refresh needed", async ({ page }) => {
+    const email = uniqueEmail();
+    const password = "password-123";
+    // LAN base URL so the cookie/redirect path matches production (not localhost).
+    const base = "http://111.111.111.100:3000";
+
+    await page.goto(`${base}/signup`);
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Sign up" }).last().click();
+    await expect(page).toHaveURL(`${base}/`);
+
+    // Create a team (11 Linemen).
+    await page.goto(`${base}/teams/create`);
+    await page.getByLabel("Team name").fill("LAN Reavers");
+    await page.getByLabel("Race").selectOption("human");
+    await page.getByRole("button", { name: /siguiente/i }).click();
+    const add = page.getByRole("button", { name: "Add Lineman" }).first();
+    for (let i = 0; i < 11; i++) await add.click();
+    await page.getByRole("button", { name: /create team/i }).click();
+    await expect(page).toHaveURL(`${base}/`);
+    await expect(page.getByText("LAN Reavers")).toBeVisible();
+
+    // Logout → /login.
+    await page.getByRole("button", { name: "Log out" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+
+    // Login — WITHOUT any reload, teams must be visible and other sections reachable.
+    await page.goto(`${base}/login`);
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Log in" }).last().click();
+    await expect(page).toHaveURL(`${base}/`);
+    await expect(page.getByText("LAN Reavers")).toBeVisible();
+
+    // No refresh: navigating to another protected section must work.
+    await page.goto(`${base}/teams/create`);
+    await expect(page.getByLabel("Team name")).toBeVisible();
+  });
+});
