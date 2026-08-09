@@ -1,18 +1,88 @@
 "use client";
 
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useCallback, useState } from "react";
 import { CreateLeagueModal } from "./CreateLeagueModal";
 import { useLeagues } from "./useLeagues";
+import type { League } from "./api";
 
-/** Pattern-2 leagues list: hero + a grid of navy/red cards. */
+/** Status badge copy + palette, keyed off the server-supplied league status. */
+function StatusBadge({ status }: { status: League["status"] }) {
+  if (status === "started") {
+    return (
+      <span className="rounded-full bg-[#12225a] px-2.5 py-0.5 text-[11px] font-bold text-white">
+        Iniciada
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full bg-green-700 px-2.5 py-0.5 text-[11px] font-bold text-white">
+      Abierta
+    </span>
+  );
+}
+
+/**
+ * Rulebook card for a single league: name, description, status badge ("Abierta"
+ * green / "Iniciada" navy), owner name, member count (server-computed, no N+1)
+ * and a "Ver" link into the detail page.
+ */
+function LeagueCard({ league }: { league: League }) {
+  return (
+    <li className="flex flex-col overflow-hidden rounded-none border border-slate-200 bg-white">
+      <div className="h-[6px] border-b-2 border-[#d11938] bg-[#12225a]" />
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-[15px] font-extrabold text-[#12225a]">{league.name}</h3>
+          <StatusBadge status={league.status} />
+        </div>
+        {league.description ? (
+          <p className="mt-1 line-clamp-2 text-xs text-slate-500">{league.description}</p>
+        ) : (
+          <p className="mt-1 text-xs text-slate-400">Sin descripción</p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
+          <span>{league.ownerName ?? "Sin propietario"}</span>
+          <span aria-hidden="true">·</span>
+          <span>
+            {league.memberCount} {league.memberCount === 1 ? "equipo" : "equipos"}
+          </span>
+        </div>
+        <div className="mt-auto flex justify-end pt-3">
+          <Link
+            href={`/leagues/${league.id}`}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#12225a] hover:text-[#12225a]"
+          >
+            Ver
+          </Link>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Public leagues list: "Mis Ligas" (the session user's own leagues, any status)
+ * plus "Ligas abiertas" (every foreign OPEN league a user can join). Both sets
+ * come from the single public list endpoint — the server supplies owner name
+ * and member count, so there are no per-card detail fetches. The create modal
+ * lets the admin create their own league.
+ */
 export function LeagueList() {
   const { leagues, loading, error, refresh } = useLeagues();
+  const { data: session } = useSession();
   const [modalOpen, setModalOpen] = useState(false);
 
   const handleRefresh = useCallback(async () => {
     await refresh();
   }, [refresh]);
+
+  const userId = session?.user?.id;
+  const myLeagues = leagues.filter((league) => league.ownerId === userId);
+  const openLeagues = leagues.filter(
+    (league) => league.status === "open" && league.ownerId !== userId,
+  );
 
   return (
     <section aria-labelledby="leagues-heading">
@@ -25,7 +95,7 @@ export function LeagueList() {
           >
             Mis Ligas
           </h1>
-          <p className="mt-1 text-[13px] text-[#cbd5e1]">Agrupa tus equipos en ligas.</p>
+          <p className="mt-1 text-[13px] text-[#cbd5e1]">Agrupa tus equipos y únete a ligas abiertas.</p>
         </div>
         <button
           type="button"
@@ -52,36 +122,47 @@ export function LeagueList() {
           </button>
         </div>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {leagues.map((league) => (
-            <li
-              key={league.id}
-              className="flex flex-col overflow-hidden rounded-none border border-slate-200 bg-white"
+        <>
+          <section aria-labelledby="my-leagues-heading" className="mb-8">
+            <h2
+              id="my-leagues-heading"
+              className="mb-3 border-b border-slate-200 pb-1 text-sm font-bold uppercase tracking-wide text-slate-500"
             >
-              {/* Navy top band with red border */}
-              <div className="h-[6px] border-b-2 border-[#d11938] bg-[#12225a]" />
-              <div className="flex flex-1 flex-col p-4">
-                <h3 className="text-[15px] font-extrabold text-[#12225a]">{league.name}</h3>
-                {league.description ? (
-                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">{league.description}</p>
-                ) : (
-                  <p className="mt-1 text-xs text-slate-400">Sin descripción</p>
-                )}
-                <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
-                  {league.memberCount} {league.memberCount === 1 ? "equipo" : "equipos"}
-                </p>
-                <div className="mt-auto flex justify-end pt-3">
-                  <Link
-                    href={`/leagues/${league.id}`}
-                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#12225a] hover:text-[#12225a]"
-                  >
-                    Ver
-                  </Link>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+              Mis Ligas
+            </h2>
+            {myLeagues.length === 0 ? (
+              <p className="border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">
+                Aún no tienes ligas. Crea la primera.
+              </p>
+            ) : (
+              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {myLeagues.map((league) => (
+                  <LeagueCard key={league.id} league={league} />
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section aria-labelledby="open-leagues-heading">
+            <h2
+              id="open-leagues-heading"
+              className="mb-3 border-b border-slate-200 pb-1 text-sm font-bold uppercase tracking-wide text-slate-500"
+            >
+              Ligas abiertas
+            </h2>
+            {openLeagues.length === 0 ? (
+              <p className="border border-slate-200 bg-white p-6 text-center text-sm text-slate-600">
+                No hay ligas abiertas a las que unirte.
+              </p>
+            ) : (
+              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {openLeagues.map((league) => (
+                  <LeagueCard key={league.id} league={league} />
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
       )}
 
       <CreateLeagueModal
