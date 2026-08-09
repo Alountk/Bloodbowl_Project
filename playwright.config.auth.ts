@@ -17,6 +17,7 @@ export default defineConfig({
     "**/migration.spec.ts",
     "**/isolation.spec.ts",
     "**/leagues.spec.ts",
+    "**/league-season.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
