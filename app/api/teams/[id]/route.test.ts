@@ -16,13 +16,138 @@ vi.mock("@/lib/prisma", () => ({
   prisma: prismaMock,
 }));
 
-import { DELETE } from "./route";
+import { DELETE, GET, canViewScoutedTeam } from "./route";
 
 function deleteRequest(id: string) {
   return DELETE(new Request(`http://localhost:3000/api/teams/${id}`, { method: "DELETE" }), {
     params: Promise.resolve({ id }),
   } as never);
 }
+
+function getRequest(id: string) {
+  return GET(new Request(`http://localhost:3000/api/teams/${id}`), {
+    params: Promise.resolve({ id }),
+  } as never);
+}
+
+/** A team row as returned by the GET scouting query (league nested member teams). */
+function scoutedTeam(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "t1",
+    userId: "user-owner",
+    name: "Reavers",
+    raceId: "human",
+    leagueId: "l1",
+    roster: [],
+    coaching: {},
+    league: {
+      id: "l1",
+      ownerId: "user-league-owner",
+      teams: [], // no member team owned by the caller unless set
+    },
+    ...overrides,
+  };
+}
+
+describe("canViewScoutedTeam (pure gate)", () => {
+  it("grants the team owner", () => {
+    expect(
+      canViewScoutedTeam({ userId: "user-owner", teamUserId: "user-owner", teamLeagueId: "l1", leagueOwnerId: "user-league-owner", leagueHasMemberUserId: false }),
+    ).toBe(true);
+  });
+
+  it("denies an outsider with no league membership", () => {
+    expect(
+      canViewScoutedTeam({ userId: "user-9", teamUserId: "user-owner", teamLeagueId: "l1", leagueOwnerId: "user-league-owner", leagueHasMemberUserId: false }),
+    ).toBe(false);
+  });
+
+  it("grants the league owner", () => {
+    expect(
+      canViewScoutedTeam({ userId: "user-league-owner", teamUserId: "user-owner", teamLeagueId: "l1", leagueOwnerId: "user-league-owner", leagueHasMemberUserId: false }),
+    ).toBe(true);
+  });
+
+  it("grants a current member of the league", () => {
+    expect(
+      canViewScoutedTeam({ userId: "user-member", teamUserId: "user-owner", teamLeagueId: "l1", leagueOwnerId: "user-league-owner", leagueHasMemberUserId: true }),
+    ).toBe(true);
+  });
+
+  it("denies everyone except the owner when the team has no league", () => {
+    expect(
+      canViewScoutedTeam({ userId: "user-league-owner", teamUserId: "user-owner", teamLeagueId: null, leagueOwnerId: null, leagueHasMemberUserId: false }),
+    ).toBe(false);
+    expect(
+      canViewScoutedTeam({ userId: "user-owner", teamUserId: "user-owner", teamLeagueId: null, leagueOwnerId: null, leagueHasMemberUserId: false }),
+    ).toBe(true);
+  });
+});
+
+describe("GET /api/teams/[id] scouting", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns 401 when unauthenticated", async () => {
+    authMock.mockResolvedValue(null);
+    const res = await getRequest("t1");
+    expect(res.status).toBe(401);
+    expect(prismaMock.team.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 with read-only data to the team owner", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.team.findFirst.mockResolvedValue(scoutedTeam({ league: { id: "l1", ownerId: "user-league-owner", teams: [] } }));
+
+    const res = await getRequest("t1");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe("t1");
+    expect(body.name).toBe("Reavers");
+    expect(body.raceId).toBe("human");
+    // The user and league relations must not leak into the response.
+    expect(body.league).toBeUndefined();
+    expect(body.user).toBeUndefined();
+  });
+
+  it("returns 200 to the league owner", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-league-owner" } });
+    prismaMock.team.findFirst.mockResolvedValue(scoutedTeam());
+    const res = await getRequest("t1");
+    expect(res.status).toBe(200);
+    expect((await res.json()).name).toBe("Reavers");
+  });
+
+  it("returns 200 to a current league member", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-member" } });
+    prismaMock.team.findFirst.mockResolvedValue(
+      scoutedTeam({ league: { id: "l1", ownerId: "user-league-owner", teams: [{ id: "t-other" }] } }),
+    );
+    const res = await getRequest("t1");
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 for an outsider (no existence leak)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-9" } });
+    prismaMock.team.findFirst.mockResolvedValue(scoutedTeam()); // exists but not viewable
+    const res = await getRequest("t1");
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("Reavers");
+  });
+
+  it("returns 404 for an archived team", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.team.findFirst.mockResolvedValue(null); // archivedAt filter excludes it
+    const res = await getRequest("t1");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for an unassigned team when requested by a non-owner", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-9" } });
+    prismaMock.team.findFirst.mockResolvedValue(scoutedTeam({ leagueId: null, league: null }));
+    const res = await getRequest("t1");
+    expect(res.status).toBe(404);
+  });
+});
 
 describe("DELETE /api/teams/[id]", () => {
   beforeEach(() => vi.clearAllMocks());
