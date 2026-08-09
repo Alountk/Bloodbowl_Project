@@ -23,7 +23,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: prismaMock,
 }));
 
-import { GET, DELETE } from "./route";
+import { GET, DELETE, deriveFixtureStatus, enrichFixture, buildRoundsWithCompletion } from "./route";
 
 describe("GET /api/leagues/[id]", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -160,6 +160,143 @@ describe("GET /api/leagues/[id]", () => {
       params: Promise.resolve({ id: "nope" }),
     } as never);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("matchday fixture enrichment (pure functions)", () => {
+  it("derives pending/scheduled/played status from scheduledAt/winnerId", () => {
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: null })).toBe("pending");
+    expect(deriveFixtureStatus({ scheduledAt: new Date(), winnerId: null })).toBe("scheduled");
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: "t1" })).toBe("played");
+    // winnerId overrides scheduledAt (a forfeited scheduled match is played).
+    expect(deriveFixtureStatus({ scheduledAt: new Date(), winnerId: "t1" })).toBe("played");
+  });
+
+  it("enriches a fixture with status, owners and proposals", () => {
+    const fixture = {
+      id: "f1",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: new Date("2026-02-01"),
+      scheduledAt: new Date("2026-03-01"),
+      winnerId: null,
+      homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x" } },
+      awayTeam: { user: { id: "user-2", name: null, email: "b@x" } },
+      proposals: [{ id: "p1" }],
+    };
+    const enriched = enrichFixture(fixture);
+    expect(enriched.status).toBe("scheduled");
+    expect(enriched.scheduledAt).toEqual(new Date("2026-03-01"));
+    expect(enriched.homeOwner).toEqual({ id: "user-1", name: "Coach A" });
+    // Owner name falls back to email when no display name.
+    expect(enriched.awayOwner).toEqual({ id: "user-2", name: "b@x" });
+    expect(enriched.proposals).toHaveLength(1);
+    expect(enriched.winnerId).toBeNull();
+  });
+
+  it("builds per-round complete flags: all played when every fixture in the round is played", () => {
+    const rounds = buildRoundsWithCompletion([
+      { id: "f1", round: 1, winnerId: "t1" },
+      { id: "f2", round: 1, winnerId: "t2" },
+      { id: "f3", round: 2, winnerId: null },
+      { id: "f4", round: 2, winnerId: "t1" },
+    ]);
+    expect(rounds).toEqual([
+      { round: 1, fixtures: ["f1", "f2"], complete: true },
+      { round: 2, fixtures: ["f3", "f4"], complete: false },
+    ]);
+  });
+});
+
+describe("GET /api/leagues/[id] matchday enrichment", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("exposes status/scheduledAt/winnerId/owners/proposals per fixture and round completion", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } }); // league owner
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Started League",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: null },
+      status: "started",
+      seasonLength: 2,
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      teams: [],
+    });
+    const playedFixture = {
+      id: "f1",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: new Date("2026-02-01"),
+      scheduledAt: new Date("2026-03-01"),
+      winnerId: "t1",
+      homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x" } },
+      awayTeam: { user: { id: "user-2", name: "Coach B", email: "b@x" } },
+      proposals: [{ id: "p1", acceptedAt: new Date() }],
+    };
+    const pendingFixture = {
+      id: "f2",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t2",
+      awayTeamId: "t1",
+      createdAt: new Date("2026-02-01"),
+      scheduledAt: null,
+      winnerId: null,
+      homeTeam: { user: { id: "user-2", name: "Coach B", email: "b@x" } },
+      awayTeam: { user: { id: "user-1", name: "Coach A", email: "a@x" } },
+      proposals: [],
+    };
+    prismaMock.fixture.findMany.mockResolvedValue([playedFixture, pendingFixture]);
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.fixtures[0].status).toBe("played");
+    expect(body.fixtures[0].winnerId).toBe("t1");
+    expect(body.fixtures[1].status).toBe("pending");
+    expect(body.fixtures[1].scheduledAt).toBeNull();
+    expect(body.fixtures[0].homeOwner.name).toBe("Coach A");
+    expect(body.fixtures[0].proposals).toHaveLength(1);
+    // Round with a pending fixture is NOT complete.
+    expect(body.rounds).toEqual([
+      { round: 1, fixtures: ["f1", "f2"], complete: false },
+    ]);
+  });
+
+  it("marks a round complete only when every fixture in it is played", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Started League",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: null },
+      status: "started",
+      seasonLength: 2,
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      teams: [],
+    });
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { id: "f1", round: 1, homeTeamId: "t1", awayTeamId: "t2", winnerId: "t1", scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
+      { id: "f2", round: 1, homeTeamId: "t2", awayTeamId: "t1", winnerId: "t2", scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
+    ]);
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+    const body = await res.json();
+    expect(body.rounds[0].complete).toBe(true);
   });
 });
 

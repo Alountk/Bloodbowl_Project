@@ -1,6 +1,96 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import type { FixtureStatus } from "@/features/leagues/api";
+
+/**
+ * Pure: derives a fixture's lifecycle status from its scheduling fields.
+ * `winnerId` overrides `scheduledAt` (a forfeited scheduled match is played).
+ */
+export function deriveFixtureStatus(fixture: {
+  scheduledAt?: Date | string | null;
+  winnerId?: string | null;
+}): FixtureStatus {
+  if (fixture.winnerId) return "played";
+  if (fixture.scheduledAt) return "scheduled";
+  return "pending";
+}
+
+/** Pure: owner display name falls back to the email when no name is set. */
+function ownerNameOf(user?: {
+  name?: string | null;
+  email?: string | null;
+} | null): string | null {
+  if (!user) return null;
+  return user?.name ?? user?.email ?? null;
+}
+
+/** A raw Prisma fixture with the nested data the detail GET needs to enrich. */
+interface FixtureWithMatchday {
+  id: string;
+  leagueId: string;
+  round: number;
+  homeTeamId: string;
+  awayTeamId: string;
+  createdAt: Date | string;
+  scheduledAt: Date | string | null;
+  winnerId: string | null;
+  homeTeam?: { user?: { id: string; name: string | null; email: string | null } | null } | null;
+  awayTeam?: { user?: { id: string; name: string | null; email: string | null } | null } | null;
+  proposals?: unknown[];
+  [key: string]: unknown;
+}
+
+/** Owner shape embedded on an enriched fixture. */
+export interface FixtureOwnerRef {
+  id: string;
+  name: string | null;
+}
+
+/**
+ * Pure: enriches a raw Prisma fixture (with nested homeTeam/awayTeam user and
+ * proposals) into the shape the client expects — derived status, resolved
+ * owner names, and its proposal history. Defensive: anything missing becomes
+ * null/empty so plain fixture rows (no nested data) still enrich cleanly.
+ */
+export function enrichFixture(fixture: FixtureWithMatchday): FixtureWithMatchday & {
+  status: FixtureStatus;
+  homeOwner: FixtureOwnerRef | null;
+  awayOwner: FixtureOwnerRef | null;
+  proposals: unknown[];
+} {
+  const homeUser = fixture.homeTeam?.user ?? null;
+  const awayUser = fixture.awayTeam?.user ?? null;
+  return {
+    ...fixture,
+    status: deriveFixtureStatus(fixture),
+    homeOwner: homeUser ? { id: homeUser.id, name: ownerNameOf(homeUser) } : null,
+    awayOwner: awayUser ? { id: awayUser.id, name: ownerNameOf(awayUser) } : null,
+    proposals: Array.isArray(fixture.proposals) ? fixture.proposals : [],
+  };
+}
+
+/**
+ * Pure: groups rich fixtures by round and computes each round's `complete`
+ * flag (true only when EVERY fixture in the round derives `played`).
+ */
+export function buildRoundsWithCompletion(
+  fixtures: { id: string; round: number; winnerId?: string | null }[],
+): { round: number; fixtures: string[]; complete: boolean }[] {
+  const grouped = new Map<number, { id: string; winnerId?: string | null }[]>();
+  for (const fixture of fixtures) {
+    const list = grouped.get(fixture.round) ?? [];
+    list.push({ id: fixture.id, winnerId: fixture.winnerId });
+    grouped.set(fixture.round, list);
+  }
+  return Array.from(grouped.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, list]) => ({
+      round,
+      fixtures: list.map((f) => f.id),
+      complete: list.every((f) => Boolean(f.winnerId)),
+    }));
+}
 
 /**
  * GET /api/leagues/[id]
@@ -51,6 +141,11 @@ export async function GET(
       ? await prisma.fixture.findMany({
           where: { leagueId: id },
           orderBy: [{ round: "asc" }, { createdAt: "asc" }],
+          include: {
+            homeTeam: { select: { id: true, user: { select: { id: true, name: true, email: true } } } },
+            awayTeam: { select: { id: true, user: { select: { id: true, name: true, email: true } } } },
+            proposals: { orderBy: { createdAt: "desc" } },
+          },
         })
       : [];
 
@@ -59,7 +154,8 @@ export async function GET(
     ...rest,
     status: rest.status,
     ownerName: owner?.name ?? owner?.email ?? null,
-    fixtures,
+    fixtures: fixtures.map((fixture) => enrichFixture(fixture as FixtureWithMatchday)),
+    rounds: buildRoundsWithCompletion(fixtures as never),
   });
 }
 
