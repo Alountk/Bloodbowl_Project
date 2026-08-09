@@ -21,6 +21,7 @@ export default defineConfig({
         "**/isolation.spec.ts",
         "**/leagues.spec.ts",
         "**/league-season.spec.ts",
+        "**/league-matchday.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
