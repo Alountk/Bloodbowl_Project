@@ -35,6 +35,8 @@ export interface LeagueMemberTeam {
   name: string;
   raceId: string;
   leagueId: string | null;
+  /** The owner of this member team (used to detect the session user's membership). */
+  userId: string;
   roster: unknown;
   coaching: unknown;
 }
@@ -98,6 +100,35 @@ export async function assignTeam(
 }
 
 export async function expelTeam(
+  leagueId: string,
+  teamId: string,
+): Promise<Team> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/members/${encodeURIComponent(teamId)}`,
+    { method: "DELETE" },
+  );
+  return readJson<Team>(res);
+}
+
+/**
+ * Starts a round-robin season for the owner's OPEN league. The server validates
+ * seasonLength in `1..teams-1` (default `teams-1`) inside a transaction and
+ * returns the started league with its fixtures.
+ */
+export async function startLeague(
+  leagueId: string,
+  seasonLength: number,
+): Promise<LeagueDetail> {
+  const res = await fetch(`/api/leagues/${encodeURIComponent(leagueId)}/start`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ seasonLength }),
+  });
+  return readJson<LeagueDetail>(res);
+}
+
+/** Removes the session user's own team from its league (self-leave) while OPEN. */
+export async function selfLeave(
   leagueId: string,
   teamId: string,
 ): Promise<Team> {
