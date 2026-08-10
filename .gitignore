@@ -16,6 +16,9 @@
 # production
 /build
 
+# user-uploaded avatars (local storage driver)
+/public/uploads/
+
 # misc
 .DS_Store
 *.pem

@@ -30,6 +30,12 @@ services:
       AUTH_TRUST_HOST: "true"
       # `auth` enforces login + Postgres persistence. Production MUST stay `auth`.
       AUTH_MODE: ${AUTH_MODE:-auth}
+    # Persist locally-stored avatars across container recreation. The local
+    # driver writes under `public/uploads`; a named volume keeps those files out
+    # of the ephemeral container layer (and survives the image being replaced).
+    # The S3 driver is the durable path for real deployments.
+    volumes:
+      - web_uploads:/app/public/uploads
     networks:
       - arcane_net
 
@@ -63,3 +69,6 @@ networks:
 
 volumes:
   bloodbowl_postgres_data:
+  # Persistent store for locally-stored avatars (mounted at
+  # /app/public/uploads on the web service).
+  web_uploads:
