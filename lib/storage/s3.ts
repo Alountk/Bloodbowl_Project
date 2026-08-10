@@ -1,6 +1,8 @@
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
+  type GetObjectCommandOutput,
 } from "@aws-sdk/client-s3";
 import type { StorageAdapter } from "./adapter";
 
@@ -44,6 +46,33 @@ export function createS3Adapter(options: S3AdapterOptions): StorageAdapter {
         new PutObjectCommand({ Bucket: bucket, Key: key, Body: buffer }),
       );
       return `${publicUrl}/${key}`;
+    },
+
+    async read(key) {
+      try {
+        const out = (await client.send(
+          new GetObjectCommand({ Bucket: bucket, Key: key }),
+        )) as GetObjectCommandOutput;
+        const body = out.Body;
+        if (!body) return null;
+        // Node streams (Readable) and browser streams/Blobs expose
+        // `transformToByteArray`; plain `Uint8Array`/`string` payloads do not.
+        const streamBody = body as { transformToByteArray?: () => Promise<Uint8Array> };
+        if (typeof streamBody.transformToByteArray === "function") {
+          return Buffer.from(await streamBody.transformToByteArray());
+        }
+        if (body instanceof Uint8Array) {
+          return Buffer.from(body);
+        }
+        if (typeof body === "string") {
+          return Buffer.from(body);
+        }
+        return null;
+      } catch (err) {
+        // A missing object is a no-op — serve 404 the same as local.
+        if (err instanceof Error && err.name === "NoSuchKey") return null;
+        throw err;
+      }
     },
 
     async delete(key) {
