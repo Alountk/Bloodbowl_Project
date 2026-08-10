@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   { href: "/", label: "Teams" },
   { href: "/leagues", label: "Ligas" },
+  { href: "/profile", label: "My Profile" },
 ];
 
 interface SidebarProps {
