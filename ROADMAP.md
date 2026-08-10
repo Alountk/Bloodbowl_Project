@@ -20,6 +20,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Auth.js v5 (email+contraseña, JWT), login/signup/logout, rutas protegidas | #22, #23, #25, #26 |
 | PostgreSQL + Prisma, migraciones automáticas en deploy | #22 |
 | Migración de localStorage → cuenta (idempotente) | #26, fixes directos |
+| Avatares de usuario + página "My Profile" (avatar 256×256 WebP, /profile, nav, owner avatar en MatchCard) | #44, #45, #46, #47 |
 
 ### Ligas y campeonatos
 | Feature | PR / Cambio |
@@ -47,7 +48,6 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 |---|---|
 | **Partido en vivo** (interacción entre dos clientes) | La feature más grande: sincronización en tiempo real, marcador, turnos. Requiere WebSockets/SSE o similar. |
 | **Resultados y tabla de posiciones** | Hoy el único resultado es el forfeit; falta cargar marcadores y calcular standings por jornada. |
-| **Avatares de usuario + página "My Profile"** | Campo avatar en User, página /profile para modificar datos. El espacio ya está reservado en la UI de enfrentamientos. |
 | **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
 
 ### Mejoras técnicas
