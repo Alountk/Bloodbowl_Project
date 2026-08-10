@@ -35,16 +35,19 @@ interface FixtureWithMatchday {
   createdAt: Date | string;
   scheduledAt: Date | string | null;
   winnerId: string | null;
-  homeTeam?: { user?: { id: string; name: string | null; email: string | null } | null } | null;
-  awayTeam?: { user?: { id: string; name: string | null; email: string | null } | null } | null;
+  homeTeam?: { user?: { id: string; name: string | null; email: string | null; avatar?: string | null } | null } | null;
+  awayTeam?: { user?: { id: string; name: string | null; email: string | null; avatar?: string | null } | null } | null;
   proposals?: unknown[];
   [key: string]: unknown;
 }
 
-/** Owner shape embedded on an enriched fixture. */
+/** Owner shape embedded on an enriched fixture. `avatar` is optional so a
+ * user row without one (or an unresolvable nested user) enriches cleanly to an
+ * owner with no avatar — MatchCard then shows nothing beside the name. */
 export interface FixtureOwnerRef {
   id: string;
   name: string | null;
+  avatar?: string | null;
 }
 
 /**
@@ -64,8 +67,12 @@ export function enrichFixture(fixture: FixtureWithMatchday): FixtureWithMatchday
   return {
     ...fixture,
     status: deriveFixtureStatus(fixture),
-    homeOwner: homeUser ? { id: homeUser.id, name: ownerNameOf(homeUser) } : null,
-    awayOwner: awayUser ? { id: awayUser.id, name: ownerNameOf(awayUser) } : null,
+    homeOwner: homeUser
+      ? { id: homeUser.id, name: ownerNameOf(homeUser), avatar: homeUser.avatar ?? null }
+      : null,
+    awayOwner: awayUser
+      ? { id: awayUser.id, name: ownerNameOf(awayUser), avatar: awayUser.avatar ?? null }
+      : null,
     proposals: Array.isArray(fixture.proposals) ? fixture.proposals : [],
   };
 }
@@ -142,8 +149,8 @@ export async function GET(
           where: { leagueId: id },
           orderBy: [{ round: "asc" }, { createdAt: "asc" }],
           include: {
-            homeTeam: { select: { id: true, user: { select: { id: true, name: true, email: true } } } },
-            awayTeam: { select: { id: true, user: { select: { id: true, name: true, email: true } } } },
+            homeTeam: { select: { id: true, user: { select: { id: true, name: true, email: true, avatar: true } } } },
+            awayTeam: { select: { id: true, user: { select: { id: true, name: true, email: true, avatar: true } } } },
             proposals: { orderBy: { createdAt: "desc" } },
           },
         })
