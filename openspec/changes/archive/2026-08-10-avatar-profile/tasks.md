@@ -48,5 +48,7 @@ Total est. ~620–780 lines, High risk glob, per-slice Medium. Design split "DB+
 - [x] 4.4 `e2e/avatar.spec.ts`: upload→render→reload→clear (/profile + MatchCard); add to `playwright.config.auth.ts` testMatch, exclude in `playwright.config.ts`
 
 ## Final Gates
-- [ ] 5.1 `pnpm test`, `pnpm lint`, `tsc --noEmit` green
-- [ ] 5.2 `AUTH_MODE=local pnpm exec playwright test`; `AUTH_MODE=auth pnpm exec playwright test avatar`
+- [x] 5.1 `pnpm test`, `pnpm lint`, `tsc --noEmit` green
+- [x] 5.2 `AUTH_MODE=local pnpm exec playwright test`; `AUTH_MODE=auth pnpm exec playwright test avatar`
+
+> **Archive reconciliation (gates 5.1–5.2)**: These verification gates were `[ ]` in the intermediate tasks snapshot but executed green in the terminal verify of PR4 (verify-report §PR4: full unit 65/756 green, lint clean, tsc clean, AUTH_MODE=local playwright 21 passed, AUTH_MODE=auth avatar e2e 2/2 passed on real Postgres). Per the Final-State Authority hierarchy, the verify-report terminal receipt and the orchestrator's final-state handoff outrank the earlier tasks snapshot; the gates' deliverable (a green final verification) is proven complete. `sdd-archive` does not own task completion; this is the exceptional mechanical reconciliation of gate checkboxes backed by terminal verify evidence. No implementation task remains unchecked.
