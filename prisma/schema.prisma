@@ -17,6 +17,9 @@ model User {
   email             String             @unique
   passwordHash      String
   name              String?
+  /// Adapter-issued avatar value (a `/uploads/...` path or a public S3 URL),
+  /// or null when the user has no avatar. Never a client-supplied URL.
+  avatar            String?
   createdAt         DateTime           @default(now())
   teams             Team[]
   leagues           League[]
