@@ -107,6 +107,50 @@ describe("MatchCard", () => {
     expect(screen.getByText("Reavers")).toBeTruthy();
   });
 
+  it("renders the owner avatar beside the name when the owner has one", () => {
+    renderCard({
+      fixture: fixture({
+        homeOwner: { id: "u1", name: "raul", avatar: "/uploads/avatars/u-1.webp" },
+        awayOwner: { id: "u2", name: "maria", avatar: "/uploads/avatars/u-2.webp" },
+      }),
+    });
+    const imgs = screen.getAllByRole("img");
+    expect(imgs).toHaveLength(2);
+    expect(imgs[0].getAttribute("src")).toBe("/uploads/avatars/u-1.webp");
+    expect(imgs[1].getAttribute("src")).toBe("/uploads/avatars/u-2.webp");
+    // The name fallback stays rendered beside the avatar.
+    expect(screen.getByText("raul")).toBeTruthy();
+    expect(screen.getByText("maria")).toBeTruthy();
+  });
+
+  it("renders no avatar image for an owner without one, keeping the name fallback", () => {
+    const { container } = render(
+      <MatchCard
+        fixture={fixture({ homeOwner: { id: "u1", name: "raul", avatar: null }, awayOwner: { id: "u2", name: "maria" } })}
+        teamNameById={teamNameById}
+        currentUserId="u3"
+        isLeagueOwner={false}
+        onNegotiate={vi.fn()}
+        onForfeit={vi.fn()}
+      />,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("raul")).toBeTruthy();
+    expect(screen.getByText("maria")).toBeTruthy();
+  });
+
+  it("renders nothing (no img) when the home owner avatar is absent but the away has one", () => {
+    renderCard({
+      fixture: fixture({
+        homeOwner: { id: "u1", name: "raul" },
+        awayOwner: { id: "u2", name: "maria", avatar: "/uploads/avatars/u-2.webp" },
+      }),
+    });
+    const imgs = screen.getAllByRole("img");
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0].getAttribute("src")).toBe("/uploads/avatars/u-2.webp");
+  });
+
   it("shows a Programado badge with the scheduled date", () => {
     renderCard({
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),

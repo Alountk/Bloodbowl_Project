@@ -42,10 +42,10 @@ Total est. ~620–780 lines, High risk glob, per-slice Medium. Design split "DB+
 - [x] 3.5 (app-shell) Sidebar `NAV_ITEMS` += `{href:"/profile", label:"My Profile"}`; update `AppShell.test.tsx` (delta: Teams+Ligas+My Profile only)
 
 ## Phase 4: MatchCard + E2E
-- [ ] 4.1 (R6) colindante route.test.ts:~190 add `avatar: null` to `homeOwner` `toEqual` (design-note intentional assertion change)
-- [ ] 4.2 (R6) route.ts select pl145-146 += `avatar: true`; `enrichFixture`+`FixtureOwnerRef`+`FixtureDraft.homeOwner/awayOwner` optional `avatar`
-- [ ] 4.3 (R6) `MatchCard.tsx` TeamSide renders `UserAvatar` beside owner name (nothing when absent, fallback kept); update `MatchCard.test.tsx`
-- [ ] 4.4 `e2e/avatar.spec.ts`: upload→render→reload→clear (/profile + MatchCard); add to `playwright.config.auth.ts` testMatch, exclude in `playwright.config.ts`
+- [x] 4.1 (R6) colindante route.test.ts:~190 add `avatar: null` to `homeOwner` `toEqual` (design-note intentional assertion change)
+- [x] 4.2 (R6) route.ts select pl145-146 += `avatar: true`; `enrichFixture`+`FixtureOwnerRef`+`FixtureDraft.homeOwner/awayOwner` optional `avatar`
+- [x] 4.3 (R6) `MatchCard.tsx` TeamSide renders `UserAvatar` beside owner name (nothing when absent, fallback kept); update `MatchCard.test.tsx`
+- [x] 4.4 `e2e/avatar.spec.ts`: upload→render→reload→clear (/profile + MatchCard); add to `playwright.config.auth.ts` testMatch, exclude in `playwright.config.ts`
 
 ## Final Gates
 - [ ] 5.1 `pnpm test`, `pnpm lint`, `tsc --noEmit` green
