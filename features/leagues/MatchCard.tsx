@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UserAvatar } from "@/components/UserAvatar";
 import type { FixtureDraft, FixtureStatus } from "./api";
 
 /** Pure: resolves the Spanish status label shown on a match card. */
@@ -97,12 +98,14 @@ export function MatchCard({
         <TeamSide
           name={homeName}
           ownerName={fixture.homeOwner?.name ?? null}
+          ownerAvatar={fixture.homeOwner?.avatar ?? null}
           href={`/teams/${fixture.homeTeamId}`}
         />
         <span className="text-[13px] font-black tracking-[0.05em] text-[#d11938]">VS</span>
         <TeamSide
           name={awayName}
           ownerName={fixture.awayOwner?.name ?? null}
+          ownerAvatar={fixture.awayOwner?.avatar ?? null}
           href={`/teams/${fixture.awayTeamId}`}
         />
       </div>
@@ -124,10 +127,12 @@ export function MatchCard({
 function TeamSide({
   name,
   ownerName,
+  ownerAvatar,
   href,
 }: {
   name: string;
   ownerName: string | null;
+  ownerAvatar: string | null;
   href: string;
 }) {
   return (
@@ -139,7 +144,12 @@ function TeamSide({
       >
         {name}
       </Link>
-      {ownerName ? <span className="mt-0.5 block text-[11px] text-slate-400">{ownerName}</span> : null}
+      {ownerName ? (
+        <span className="mt-0.5 flex items-center justify-center gap-1 text-[11px] text-slate-400">
+          <UserAvatar src={ownerAvatar} />
+          {ownerName}
+        </span>
+      ) : null}
     </div>
   );
 }
