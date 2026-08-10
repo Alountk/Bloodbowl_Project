@@ -27,12 +27,12 @@ Total est. ~620–780 lines, High risk glob, per-slice Medium. Design split "DB+
 - [x] 1.4 GREEN `pnpm vitest run lib/storage`; `.gitignore` += `public/uploads/`; add `@aws-sdk/client-s3`; Dockerfile mkdir/chown uploads + volume
 
 ## Phase 2: Profile API
-- [ ] 2.1 (R3) `pnpm add sharp` (direct dep); import in route
-- [ ] 2.2 (R3) magic-byte sniff (JPEG `FFD8FF`/PNG/WebP `RIFF..WEBP`), MIME never trusted; RED rejects SVG/`data:` → 400
-- [ ] 2.3 (R3) RED >2MB via `Content-Length`/`file.size` → 400, nothing stored
-- [ ] 2.4 (R1/R5) RED `app/api/me/route.test.ts`: GET 401 + id/name/email/avatar; PATCH allowlist only `name` or `avatar` null/current DB value — `data:`/external/http→400
-- [ ] 2.5 (R3/R6) `POST /api/me/avatar`: 401 → sniff → sharp `resize(256,256,cover).webp()` → `adapter.put("avatars/<uid>-<uuid>.webp")` → DB update (keep old) → `delete` old → 200 value
-- [ ] 2.6 (R3) `avatar/route.test.ts` (mock auth+prisma): 401/400/200, replace deletes old, clear null. GREEN both
+- [x] 2.1 (R3) `pnpm add sharp` (direct dep); import in route
+- [x] 2.2 (R3) magic-byte sniff (JPEG `FFD8FF`/PNG/WebP `RIFF..WEBP`), MIME never trusted; RED rejects SVG/`data:` → 400
+- [x] 2.3 (R3) RED >2MB via `Content-Length`/`file.size` → 400, nothing stored
+- [x] 2.4 (R1/R5) RED `app/api/me/route.test.ts`: GET 401 + id/name/email/avatar; PATCH allowlist only `name` or `avatar` null/current DB value — `data:`/external/http→400
+- [x] 2.5 (R3/R6) `POST /api/me/avatar`: 401 → sniff → sharp `resize(256,256,cover).webp()` → `adapter.put("avatars/<uid>-<uuid>.webp")` → DB update (keep old) → `delete` old → 200 value
+- [x] 2.6 (R3) `avatar/route.test.ts` (mock auth+prisma): 401/400/200, replace deletes old, clear null. GREEN both
 
 ## Phase 3: Profile + Nav
 - [ ] 3.1 (R2) `pnpm add react-easy-crop`; client crop→canvas `toBlob()` export capped ≤1024px
