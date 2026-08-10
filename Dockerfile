@@ -33,6 +33,10 @@ EXPOSE 3444
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
+# Ensure the local-storage uploads dir exists and is owned by the runtime user
+# BEFORE switching to `USER node`, so the named volume inherits node ownership
+# (avoids a root-owned `public/uploads` that the app cannot write).
+RUN mkdir -p /app/public/uploads && chown -R node:node /app/public/uploads
 # Prisma schema + migrations so `prisma migrate deploy` works at startup.
 COPY --from=build /app/prisma ./prisma
 # Prisma client runtime + CLI that the standalone trace does NOT bundle,
