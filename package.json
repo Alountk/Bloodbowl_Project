@@ -25,6 +25,7 @@
     "next-auth": "5.0.0-beta.32",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-easy-crop": "^6.2.3",
     "sharp": "^0.35.3"
   },
   "devDependencies": {
