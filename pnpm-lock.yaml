@@ -26,6 +26,9 @@ dependencies:
   react-dom:
     specifier: 19.2.8
     version: 19.2.8(react@19.2.8)
+  sharp:
+    specifier: ^0.35.3
+    version: 0.35.3(@types/node@20.19.43)
 
 devDependencies:
   '@playwright/test':
@@ -923,7 +926,6 @@ packages:
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
     engines: {node: '>=18'}
     dev: false
-    optional: true
 
   /@img/sharp-darwin-arm64@0.35.3:
     resolution: {integrity: sha512-RMnFX7YQsMoh7lWfcM4NEHHymBX/rLuKNPVM84XE9ONPcaSCDgE7CHIHpSgPcO2xcRthgBy1HfNO319mwhIAkg==}
@@ -4879,7 +4881,6 @@ packages:
       '@img/sharp-win32-ia32': 0.35.3
       '@img/sharp-win32-x64': 0.35.3
     dev: false
-    optional: true
 
   /shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
