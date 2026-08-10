@@ -31,10 +31,10 @@ export interface FixtureDraft {
   winnerId: string | null;
   /** Derived lifecycle: pending | scheduled | played. */
   status: FixtureStatus;
-  /** Home team owner (id + name), null when unresolvable. */
-  homeOwner: { id: string; name: string } | null;
-  /** Away team owner (id + name), null when unresolvable. */
-  awayOwner: { id: string; name: string } | null;
+  /** Home team owner (id + name, plus optional avatar), null when unresolvable. */
+  homeOwner: { id: string; name: string; avatar?: string | null } | null;
+  /** Away team owner (id + name, plus optional avatar), null when unresolvable. */
+  awayOwner: { id: string; name: string; avatar?: string | null } | null;
   /** Negotiation history (active + closed) for this fixture. */
   proposals: ScheduleProposal[];
 }

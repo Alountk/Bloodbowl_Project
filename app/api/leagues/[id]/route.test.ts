@@ -189,11 +189,37 @@ describe("matchday fixture enrichment (pure functions)", () => {
     const enriched = enrichFixture(fixture);
     expect(enriched.status).toBe("scheduled");
     expect(enriched.scheduledAt).toEqual(new Date("2026-03-01"));
-    expect(enriched.homeOwner).toEqual({ id: "user-1", name: "Coach A" });
+    // Design-note intentional change: the owner ref now carries the optional
+    // `avatar` (adapter-issued value, null when absent so MatchCard shows
+    // nothing beside the name fallback).
+    expect(enriched.homeOwner).toEqual({ id: "user-1", name: "Coach A", avatar: null });
     // Owner name falls back to email when no display name.
-    expect(enriched.awayOwner).toEqual({ id: "user-2", name: "b@x" });
+    expect(enriched.awayOwner).toEqual({ id: "user-2", name: "b@x", avatar: null });
     expect(enriched.proposals).toHaveLength(1);
     expect(enriched.winnerId).toBeNull();
+  });
+
+  it("surfaces an owner's avatar value on a fixture where the owner has one", () => {
+    const fixture = {
+      id: "f1",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: new Date("2026-02-01"),
+      scheduledAt: null,
+      winnerId: null,
+      homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x", avatar: "/uploads/avatars/u-1.webp" } },
+      awayTeam: { user: { id: "user-2", name: null, email: "b@x" } },
+      proposals: [],
+    };
+    const enriched = enrichFixture(fixture);
+    expect(enriched.homeOwner).toEqual({
+      id: "user-1",
+      name: "Coach A",
+      avatar: "/uploads/avatars/u-1.webp",
+    });
+    expect(enriched.awayOwner).toEqual({ id: "user-2", name: "b@x", avatar: null });
   });
 
   it("builds per-round complete flags: all played when every fixture in the round is played", () => {
@@ -236,7 +262,7 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
       createdAt: new Date("2026-02-01"),
       scheduledAt: new Date("2026-03-01"),
       winnerId: "t1",
-      homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x" } },
+      homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x", avatar: "/uploads/avatars/u-1.webp" } },
       awayTeam: { user: { id: "user-2", name: "Coach B", email: "b@x" } },
       proposals: [{ id: "p1", acceptedAt: new Date() }],
     };
@@ -266,11 +292,25 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
     expect(body.fixtures[1].status).toBe("pending");
     expect(body.fixtures[1].scheduledAt).toBeNull();
     expect(body.fixtures[0].homeOwner.name).toBe("Coach A");
+    expect(body.fixtures[0].homeOwner.avatar).toBe("/uploads/avatars/u-1.webp");
     expect(body.fixtures[0].proposals).toHaveLength(1);
     // Round with a pending fixture is NOT complete.
     expect(body.rounds).toEqual([
       { round: 1, fixtures: ["f1", "f2"], complete: false },
     ]);
+    // The nested user select now carries `avatar` so MatchCard can render it.
+    expect(prismaMock.fixture.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          homeTeam: {
+            select: {
+              id: true,
+              user: { select: { id: true, name: true, email: true, avatar: true } },
+            },
+          },
+        }),
+      }),
+    );
   });
 
   it("marks a round complete only when every fixture in it is played", async () => {
