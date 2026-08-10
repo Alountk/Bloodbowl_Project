@@ -72,6 +72,17 @@ describe("createLocalAdapter", () => {
     await local.delete("shields/t-xyz.webp");
     await local.delete("avatars/u-abc.webp");
   });
+
+  it("read returns the stored blob as a Buffer", async () => {
+    await local.put("avatars/u-abc.webp", Buffer.from("webp-bytes"));
+    const data = await local.read("avatars/u-abc.webp");
+    expect(data).toBeInstanceOf(Buffer);
+    expect(data?.toString()).toBe("webp-bytes");
+  });
+
+  it("read of a missing key resolves null", async () => {
+    await expect(local.read("avatars/no-such.webp")).resolves.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -142,6 +153,54 @@ describe("createS3Adapter", () => {
       publicUrl: "https://cdn.example.com",
     });
     await expect(adapter.delete("avatars/none.webp")).resolves.toBeUndefined();
+  });
+
+  it("read sends a GetObject and returns the streamed body as a Buffer", async () => {
+    const { client, sendMock } = fakeS3Client();
+    sendMock.mockResolvedValue({
+      Body: { transformToByteArray: async () => new TextEncoder().encode("webp-bytes") },
+    });
+    const adapter: S3StorageAdapter = createS3Adapter({
+      client,
+      bucket: "bloodbowl",
+      publicUrl: "https://cdn.example.com",
+    });
+
+    const data = await adapter.read("avatars/u-abc.webp");
+    expect(data).toBeInstanceOf(Buffer);
+    expect(data?.toString()).toBe("webp-bytes");
+
+    const getCommand = sendMock.mock.calls[0]?.[0];
+    expect(getCommand).toBeDefined();
+    expect((getCommand.constructor as { name: string }).name).toBe("GetObjectCommand");
+    expect(getCommand.input).toMatchObject({ Key: "avatars/u-abc.webp" });
+  });
+
+  it("read returns bytes from a raw Uint8Array body", async () => {
+    const { client, sendMock } = fakeS3Client();
+    sendMock.mockResolvedValue({ Body: new Uint8Array([0x77, 0x65]) });
+    const adapter: S3StorageAdapter = createS3Adapter({
+      client,
+      bucket: "bloodbowl",
+      publicUrl: "https://cdn.example.com",
+    });
+
+    const data = await adapter.read("avatars/u-abc.webp");
+    expect(data?.toString()).toBe("we");
+  });
+
+  it("read of a missing object resolves null (NoSuchKey)", async () => {
+    const { client, sendMock } = fakeS3Client();
+    sendMock.mockRejectedValue(
+      Object.assign(new Error("no such key"), { name: "NoSuchKey" }),
+    );
+    const adapter: S3StorageAdapter = createS3Adapter({
+      client,
+      bucket: "bloodbowl",
+      publicUrl: "https://cdn.example.com",
+    });
+
+    await expect(adapter.read("avatars/none.webp")).resolves.toBeNull();
   });
 });
 
