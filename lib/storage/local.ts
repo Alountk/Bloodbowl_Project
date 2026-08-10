@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 import type { StorageAdapter } from "./adapter";
 
@@ -40,6 +40,12 @@ export function createLocalAdapter(options: LocalAdapterOptions): StorageAdapter
       mkdirSync(dirname(filePath), { recursive: true });
       writeFileSync(filePath, buffer);
       return `${publicBase}/${key}`;
+    },
+
+    async read(key) {
+      const filePath = resolvePath(key);
+      if (!existsSync(filePath)) return null;
+      return readFileSync(filePath);
     },
 
     async delete(key) {
