@@ -57,8 +57,8 @@ Below the `md` breakpoint the shell MUST offer a drawer navigation: a hamburger 
 
 ### Requirement: Sidebar Structure
 
-The Sidebar MUST be a white `<aside aria-label="Sidebar">` with right border `border-slate-200`. It MUST show the wordmark "BLOODBOWL" in navy `#12225a` beside a small tag in red `#d11938`, and a nav containing a "Teams" link to `/` and a "Ligas" link to `/leagues`; these two items MUST be declared in a shared `NAV_ITEMS` array used by both the desktop and drawer instances. The active item MUST use navy `#12225a` background with white text; hover MUST use `bg-slate-100`. The desktop Sidebar MUST render with `hidden md:flex` so it stays in the DOM (protecting landmark queries) and only becomes visible at `md+`; the desktop and drawer Sidebars MUST share one markup definition (`SidebarContent` partial) so nav state stays identical.
-(Previously: the Sidebar nav contained ONLY a "Teams" link to `/` and no "Ligas" item.)
+The Sidebar MUST be a white `<aside aria-label="Sidebar">` with right border `border-slate-200`. It MUST show the wordmark "BLOODBOWL" in navy `#12225a` beside a small tag in red `#d11938`, and a nav containing a "Teams" link to `/`, a "Ligas" link to `/leagues`, and a "My Profile" link to `/profile`; these items MUST be declared in a shared `NAV_ITEMS` array used by both the desktop and drawer instances. The active item MUST use navy `#12225a` background with white text; hover MUST use `bg-slate-100`. The desktop Sidebar MUST render with `hidden md:flex` so it stays in the DOM (protecting landmark queries) and only becomes visible at `md+`; the desktop and drawer Sidebars MUST share one markup definition (`SidebarContent` partial) so nav state stays identical.
+(Previously: the Sidebar nav contained ONLY "Teams" and "Ligas"; no "My Profile" item.)
 
 #### Scenario: Sidebar landmark and wordmark
 
@@ -67,11 +67,11 @@ The Sidebar MUST be a white `<aside aria-label="Sidebar">` with right border `bo
 - THEN it exposes `aria-label="Sidebar"` and shows "BLOODBOWL" with a red tag
 - AND its root carries `hidden md:flex`
 
-#### Scenario: Teams and Ligas navigation
+#### Scenario: Teams, Ligas, and My Profile navigation
 
 - GIVEN the shell renders on any route
 - WHEN the nav renders
-- THEN it contains the "Teams" link to `/` and the "Ligas" link to `/leagues`
+- THEN it contains the "Teams" link to `/`, the "Ligas" link to `/leagues`, and the "My Profile" link to `/profile`
 - AND no other nav items are present
 
 #### Scenario: Active and hover states
@@ -151,5 +151,5 @@ The Topbar MUST surface a logout control (e.g. a "Log out" button) when the sess
 | Design Tokens | Review/manual (visual); no automated assertion |
 | Light Body Layout | Manual on `/`, `/teams/create`, `/teams/[id]`, 404 |
 | Mobile Drawer Navigation | `app/AppShell.test.tsx` (open via hamburger, close via scrim + nav link, single Sidebar landmark); `app/page.test.tsx` (mobile hamburger aria) |
-| Sidebar Structure | `components/AppShell.test.tsx` (`getByLabelText("Sidebar")`, shared Teams + Ligas nav on desktop and drawer); `components/Sidebar.tsx` shared `NAV_ITEMS` |
+| Sidebar Structure | `components/AppShell.test.tsx` (`getByLabelText("Sidebar")`, shared Teams + Ligas + My Profile nav on desktop and drawer); `components/Sidebar.tsx` shared `NAV_ITEMS` |
 | Topbar + search | `app/page.test.tsx` (h1); `TeamList.test.tsx` (search label, filtering); route-conditional hiding needs a new unit/e2e assertion; e2e `create-team.spec.ts` loads `/teams/create` error-free without search |
