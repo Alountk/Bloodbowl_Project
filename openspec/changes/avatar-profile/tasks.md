@@ -39,7 +39,7 @@ Total est. ~620–780 lines, High risk glob, per-slice Medium. Design split "DB+
 - [x] 3.2 `components/UserAvatar.tsx`: `<img>` if `src` else nothing; test via `textContent`/regex (no jest-dom)
 - [x] 3.3 `features/profile/api.ts` (getMe/patchMe/uploadAvatar) + `CropDialog.tsx` (aspect 1, pan+zoom)
 - [x] 3.4 `app/profile/page.tsx` Spanish copy; show avatar, upload control, preview updates
-- [ ] 3.5 (app-shell) Sidebar `NAV_ITEMS` += `{href:"/profile", label:"My Profile"}`; update `AppShell.test.tsx` (delta: Teams+Ligas+My Profile only)
+- [x] 3.5 (app-shell) Sidebar `NAV_ITEMS` += `{href:"/profile", label:"My Profile"}`; update `AppShell.test.tsx` (delta: Teams+Ligas+My Profile only)
 
 ## Phase 4: MatchCard + E2E
 - [ ] 4.1 (R6) colindante route.test.ts:~190 add `avatar: null` to `homeOwner` `toEqual` (design-note intentional assertion change)
