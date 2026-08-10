@@ -73,22 +73,24 @@ describe("AppShell mobile drawer", () => {
     expect(screen.queryByTestId("drawer-scrim")).toBeNull();
   });
 
-  it("renders the shared nav with exactly Teams and Ligas links in both desktop and drawer", () => {
+  it("renders the shared nav with exactly Teams, Ligas, and My Profile links in both desktop and drawer", () => {
     render(
       <AppShell>
         <div>page content</div>
       </AppShell>,
     );
 
-    // Desktop sidebar: only the Teams and Ligas items (shared NAV_ITEMS).
+    // Desktop sidebar: exactly the Teams, Ligas, and My Profile items (shared NAV_ITEMS).
     const desktopNav = screen.getByRole("navigation");
     expect(within(desktopNav).getByRole("link", { name: "Teams" })).toBeTruthy();
     expect(within(desktopNav).getByRole("link", { name: "Ligas" })).toBeTruthy();
-    expect(within(desktopNav).getAllByRole("link")).toHaveLength(2);
+    expect(within(desktopNav).getByRole("link", { name: "My Profile" })).toBeTruthy();
+    expect(within(desktopNav).getAllByRole("link")).toHaveLength(3);
 
     // Drawer shares the same NAV_ITEMS when open.
     fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
     const drawer = screen.getByLabelText("Mobile navigation");
     expect(within(drawer).getByRole("link", { name: "Ligas" })).toBeTruthy();
+    expect(within(drawer).getByRole("link", { name: "My Profile" })).toBeTruthy();
   });
 });
