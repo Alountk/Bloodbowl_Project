@@ -93,9 +93,9 @@ interface RosterPlayerModel {
 
 export async function POST(
   req: Request,
-  { params }: { params: Promise<{ teamId: string; playerId: string }> },
+  { params }: { params: Promise<{ id: string; playerId: string }> },
 ) {
-  const { teamId, playerId } = await params;
+  const { id: teamId, playerId } = await params;
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {

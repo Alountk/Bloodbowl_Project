@@ -23,6 +23,7 @@ export default defineConfig({
         "**/league-season.spec.ts",
         "**/league-matchday.spec.ts",
         "**/avatar.spec.ts",
+        "**/match-report.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },

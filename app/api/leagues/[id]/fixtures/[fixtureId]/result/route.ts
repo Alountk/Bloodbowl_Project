@@ -76,7 +76,9 @@ function parseTeamResult(raw: unknown): TeamResultBody | null {
   if (typeof raw !== "object" || raw === null) return null;
   const team = raw as Record<string, unknown>;
   const score = team.score;
-  const heldBall = team.heldBall;
+  // The client contract (`ResultPayload`) sends `ballHeld`; treat an undefined
+  // legacy `heldBall` as absent so the boolean guard below rejects both.
+  const heldBall = typeof team.ballHeld === "boolean" ? team.ballHeld : team.heldBall;
   if (typeof score !== "number" || typeof heldBall !== "boolean") return null;
   const players = asPlayerActions(team.players);
   const mvp = team.mvp as Record<string, unknown> | undefined;

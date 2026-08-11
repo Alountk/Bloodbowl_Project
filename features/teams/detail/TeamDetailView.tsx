@@ -40,8 +40,9 @@ export interface TeamDetailViewProps {
    * omitted (e.g. read-only rival scouting).
    */
   progression?: Record<string, PlayerProgressionCore>;
-  /** Improve-route client. Required to render spend UI; absent = read-only. */
-  onImprove?: (body: ImproveBody) => Promise<Record<string, unknown>>;
+  /** Improve-route client (rosterPlayerId + body). Required to render spend UI;
+   * absent = read-only. Each roster player's panel is bound to its player id. */
+  onImprove?: (rosterPlayerId: string, body: ImproveBody) => Promise<Record<string, unknown>>;
 }
 
 export function TeamDetailView({ team, race, leagueName, progression, onImprove }: TeamDetailViewProps) {
@@ -124,7 +125,11 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
             </h2>
             <div className="space-y-2.5">
               {panels.map((panel) => (
-                <ProgressionPanel key={panel.rosterPlayerId} player={panel} onImprove={onImprove!} />
+                <ProgressionPanel
+                  key={panel.rosterPlayerId}
+                  player={panel}
+                  onImprove={(body) => onImprove!(panel.rosterPlayerId, body)}
+                />
               ))}
             </div>
           </section>

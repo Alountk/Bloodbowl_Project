@@ -161,8 +161,7 @@ describe("POST /api/.../[fixtureId]/result", () => {
     const res = await callRoute("POST", validBody);
 
     expect(res.status).toBe(200);
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
-    // Fixture persisted with the reported scores and derived winner.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);    // Fixture persisted with the reported scores and derived winner.
     expect(prismaMock.fixture.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "f1" },
@@ -179,6 +178,41 @@ describe("POST /api/.../[fixtureId]/result", () => {
         data: expect.objectContaining({ pettyCash: 150_000, loadedBy: "user-1" }),
       }),
     );
+  });
+
+  it("accepts the client-contract `ballHeld` field (ResultPayload), not just `heldBall`", async () => {
+    // The ResultModal/ResultPayload sends `ballHeld`; the route MUST read it or a
+    // real UI result load is rejected with "Invalid result payload" (400).
+    const clientBody = {
+      weather: "perfect",
+      home: {
+        score: 2,
+        ballHeld: true,
+        players: [
+          { rosterPlayerId: "p1", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
+          { rosterPlayerId: "p2", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
+        ],
+        mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] },
+        casualties: [] as { team: "home" | "away"; rosterPlayerId: string }[],
+      },
+      away: {
+        score: 0,
+        ballHeld: true,
+        players: [
+          { rosterPlayerId: "p3", tds: 0, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
+        ],
+        mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] },
+        casualties: [] as { team: "home" | "away"; rosterPlayerId: string }[],
+      },
+    };
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("POST", clientBody);
+    expect(res.status).toBe(200);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it("awards per-player PE in the same transaction", async () => {

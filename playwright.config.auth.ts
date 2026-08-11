@@ -20,6 +20,7 @@ export default defineConfig({
     "**/league-season.spec.ts",
     "**/league-matchday.spec.ts",
     "**/avatar.spec.ts",
+    "**/match-report.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
