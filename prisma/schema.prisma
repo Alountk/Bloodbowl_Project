@@ -63,6 +63,11 @@ model Fixture {
   scheduledAt DateTime?
   /// Set by the league owner's forfeit (walkover); derives the `played` status.
   winnerId    String?
+  /// Final score recorded when the result loads; a walkover writes 0/2-style scores.
+  homeScore   Int?
+  awayScore   Int?
+  /// The persisted match result record (populated by the result route).
+  result      MatchResult?
 
   homeTeam Team  @relation("FixtureHomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
   awayTeam Team  @relation("FixtureAwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
@@ -106,10 +111,80 @@ model Team {
   /// The league this team belongs to, if any. Set to null when expeled or the league is deleted.
   leagueId     String?
   league       League?   @relation("LeagueMembers", fields: [leagueId], references: [id], onDelete: SetNull)
+  /// Post-match winnings balance in gold coins (0 until the first result loads).
+  treasury     Int       @default(0)
   homeFixtures Fixture[] @relation("FixtureHomeTeam")
   awayFixtures Fixture[] @relation("FixtureAwayTeam")
   wonFixtures  Fixture[] @relation("FixtureWinner")
+  players      Player[]
 
   @@index([userId])
   @@index([leagueId])
+}
+
+/// BB2025 post-match resolution record persisted when a result loads.
+model MatchResult {
+  id         String                 @id @default(cuid())
+  fixtureId  String                 @unique
+  fixture    Fixture                @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  weather    String?
+  /// Snapshot of the two final scoreboards (home/away scores, winner).
+  scores     Json
+  /// Petty cash awarded to the lower-Total-Value team, stored in gold coins.
+  pettyCash  Int?
+  loadedBy   String
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+  corrections MatchResultCorrection[]
+
+  @@index([fixtureId])
+}
+
+/// Admin-only audit trail of a result correction (before/after snapshot).
+model MatchResultCorrection {
+  id          String     @id @default(cuid())
+  resultId    String
+  result      MatchResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  correctedBy String
+  before      Json
+  after       Json
+  correctedAt DateTime   @default(now())
+}
+
+/// Reconciliation row for a single roster player: owns progression state only.
+model Player {
+  id                 String             @id @default(cuid())
+  teamId             String
+  team               Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  rosterPlayerId     String
+  name               String
+  positionalKey      String
+  /// Primary experience balance used to purchase improvements.
+  pe                 Int                @default(0)
+  /// Acquired skill ids (`SkillId[]` as JSON).
+  skills             Json
+  /// Recorded injury outcomes (`string[]` as JSON).
+  injuries           Json
+  alive              Boolean            @default(true)
+  /// Value added by acquired skills (+10.000 normal, +20.000 élite).
+  valueBonus         Int                @default(0)
+  /// Improvement history (cost table rows applied, `Json[]` as JSON).
+  improvements       Json
+  /// Named attribute increases applied (e.g. `{"mv":1}`, `Json`).
+  attributeIncreases Json
+  pendingRolls       PlayerPendingRoll[]
+
+  @@unique([teamId, rosterPlayerId])
+  @@index([teamId])
+}
+
+/// Server-owned pending skill-roll/pick state (rolls before the player picks).
+model PlayerPendingRoll {
+  id        String   @id @default(cuid())
+  playerId  String   @unique
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  roll1     Int
+  roll2     Int?
+  kind      String
+  createdAt DateTime @default(now())
 }
