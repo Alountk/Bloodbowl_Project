@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   acceptFixtureProposal,
   assignTeam,
+  correctResult,
   forfeitFixture,
   getFixtureProposals,
   getScoutedTeam,
@@ -9,6 +10,7 @@ import {
   proposeFixtureDate,
   selfLeave,
   startLeague,
+  submitResult,
   type League,
   type LeagueDetail,
 } from "./api";
@@ -280,6 +282,48 @@ describe("matchday negotiation helpers", () => {
       },
     );
     expect(result.status).toBe("played");
+  });
+
+  it("submitResult POSTs a result payload to the fixture result route", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okJson({ fixtureId: "f1", status: "played", homeScore: 2, awayScore: 1, winnerId: "t1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const payload = {
+      weather: "perfect",
+      home: { score: 2, ballHeld: true, players: [{ rosterPlayerId: "p1", tds: 2, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 }], mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] }, casualties: [] },
+      away: { score: 1, ballHeld: true, players: [{ rosterPlayerId: "p3", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 }], mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] }, casualties: [] },
+    };
+
+    const outcome = await submitResult("l1", "f1", payload);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/l1/fixtures/f1/result",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    expect(outcome.winnerId).toBe("t1");
+  });
+
+  it("correctResult PUTs the corrected payload to the result route", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okJson({ fixtureId: "f1", status: "played", homeScore: 2, awayScore: 1, winnerId: "t1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const payload = {
+      home: { score: 2, ballHeld: true, players: [], mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] }, casualties: [] },
+      away: { score: 1, ballHeld: true, players: [], mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] }, casualties: [] },
+    };
+
+    await correctResult("l1", "f1", payload);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/l1/fixtures/f1/result",
+      { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) },
+    );
   });
 
   it("getFixtureProposals GETs the fixture proposals route and returns history", async () => {

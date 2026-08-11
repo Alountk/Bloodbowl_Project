@@ -21,6 +21,8 @@ function buildFixture(overrides: Record<string, unknown> = {}) {
     awayTeamId: "t2",
     scheduledAt: null,
     winnerId: null,
+    homeScore: null,
+    awayScore: null,
     league: { id: "l1", status: "started", ownerId: "user-owner" },
     homeTeam: { id: "t1", userId: "user-1" },
     awayTeam: { id: "t2", userId: "user-2" },
@@ -99,7 +101,7 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
     expect(prismaMock.fixture.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "f1" },
-        data: { winnerId: "t1", scheduledAt: null },
+        data: { winnerId: "t1", homeScore: 2, awayScore: 0, scheduledAt: null },
       }),
     );
     // Any open proposal is closed in the same transaction.
@@ -108,6 +110,24 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
         where: { fixtureId: "f1", acceptedAt: null, closedAt: null },
         data: { closedAt: expect.any(Date) },
       }),
+    );
+  });
+
+  it("records a 0-2 walkover when the away team wins", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    prismaMock.fixture.update.mockResolvedValue({
+      id: "f1",
+      homeScore: 0,
+      awayScore: 2,
+      winnerId: "t2",
+    });
+
+    const res = await forfeit({ winnerTeamId: "t2" });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.fixture.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { winnerId: "t2", homeScore: 0, awayScore: 2, scheduledAt: null } }),
     );
   });
 
@@ -138,8 +158,18 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
     expect(res.status).toBe(200);
     expect(prismaMock.fixture.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { winnerId: "t1", scheduledAt: null },
+        data: { winnerId: "t1", homeScore: 2, awayScore: 0, scheduledAt: null },
       }),
     );
+  });
+
+  it("returns 409 when the fixture already has a loaded result (mutual exclusion)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({ homeScore: 2, awayScore: 1, winnerId: "t1" }),
+    );
+    const res = await forfeit({ winnerTeamId: "t2" });
+    expect(res.status).toBe(409);
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
 });
