@@ -31,9 +31,9 @@ Chain strategy: stacked-to-main
 - [x] 1.2 RED: route.test.ts asserts 404 fixture-not-found / fixture-not-in-league / STARTED foreign non-member (no existence leak) (MV-1, D6: `findFirst({id,leagueId})`, STARTED owner-OR-ANY-member else 404)
 - [x] 1.3 RED: route.test.ts asserts 200 for league-owner, member-team-owner, and OPEN league any-authenticated (defensive, no fixtures while open) (MV-1)
 - [x] 1.4 Create `app/api/leagues/[id]/fixtures/[fixtureId]/route.ts` GET: import `enrichFixture` from `@/app/api/leagues/[id]/route` (D7), Prisma include per design (league status/ownerId/teams.userId archived-filtered, home/away team + user + players, result), strip nested homeTeam/awayTeam after enrich (D3 D1), walkover `scores` set + `result` null keeps 200 (MV-2)
-- [ ] 1.5 RED (refactor guard): result route.test.ts safety net — assert POST persists `scores.mvp.{home,away}` (from recomputed `computeMvpGrantee`) and `winnings` in the snapshot JSON; PUT recomputes `mvp` and preserves prior `winnings` (D4, MV-2)
-- [ ] 1.6 Modify `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts`: add `winnings:{home,away}` + `mvp:{home,away}` (rosterPlayerId) to POST `scoreboard` (D4) → `route.test.ts` red→green
-- [ ] 1.7 Modify result PUT `scoreboard`: recompute `mvp` from re-rolled grantee, preserve prior `winnings` (D4); legacy rows lacking `mvp`/`winnings` unaffected (forward-only, MV-6 no migration)
+- [x] 1.5 RED (refactor guard): result route.test.ts safety net — assert POST persists `scores.mvp.{home,away}` (from recomputed `computeMvpGrantee`) and `winnings` in the snapshot JSON; PUT recomputes `mvp` and preserves prior `winnings` (D4, MV-2)
+- [x] 1.6 Modify `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts`: add `winnings:{home,away}` + `mvp:{home,away}` (rosterPlayerId) to POST `scoreboard` (D4) → `route.test.ts` red→green
+- [x] 1.7 Modify result PUT `scoreboard`: recompute `mvp` from re-rolled grantee, preserve prior `winnings` (D4); legacy rows lacking `mvp`/`winnings` unaffected (forward-only, MV-6 no migration)
 
 ## PR 2 — Client fetch + pure mapping
 
