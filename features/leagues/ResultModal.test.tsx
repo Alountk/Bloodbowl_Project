@@ -29,6 +29,14 @@ const awayRoster: RosterPlayerRef[] = [
   { id: "a2", name: "Ansel" },
 ];
 
+/** A 6-player roster so a submitting test can meet the exact-6 MVP contract. */
+function sixRoster(prefix: string): RosterPlayerRef[] {
+  return Array.from({ length: 6 }, (_, i) => ({
+    id: `${prefix}${i + 1}`,
+    name: `${prefix}${i + 1}`,
+  }));
+}
+
 function scheduledFixture(): FixtureDraft {
   return {
     id: "f1",
@@ -159,16 +167,19 @@ describe("ResultModal", () => {
 
   it("assembles a payload and fires onSubmit when the scores match the TDs", () => {
     const { onSubmit } = renderModal({
-      homeRoster: [homeRoster[0]],
-      awayRoster: [awayRoster[0]],
+      homeRoster: sixRoster("h"),
+      awayRoster: sixRoster("a"),
     });
     const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
-    // Home scores 2, Hugo scores 2 → valid. Away scores 0.
+    // Home scores 2, h1 scores 2 → valid. Away scores 0.
     fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "2" } });
-    fireEvent.change(within(dialog).getByLabelText(/Anotaciones Hugo/), { target: { value: "2" } });
+    fireEvent.change(within(dialog).getByLabelText(/Anotaciones h1/), { target: { value: "2" } });
     fireEvent.change(within(dialog).getByLabelText(/Goles Orcs/), { target: { value: "0" } });
-    // Nominate Hugo as MVP #1 for Reavers.
-    fireEvent.change(within(dialog).getByLabelText("MVP 1 Reavers"), { target: { value: "h1" } });
+    // Fill the exact-6 MVP contract for both teams (h1 nominated as MVP #1).
+    for (let i = 1; i <= 6; i++) {
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Reavers`), { target: { value: `h${i}` } });
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Orcs`), { target: { value: `a${i}` } });
+    }
 
     fireEvent.click(within(dialog).getByRole("button", { name: /Guardar resultado/ }));
 
@@ -176,9 +187,8 @@ describe("ResultModal", () => {
     const payload = onSubmit.mock.calls[0][0] as ResultPayload;
     expect(payload.home.score).toBe(2);
     expect(payload.home.players[0].tds).toBe(2);
-    expect(payload.home.mvp.nominations[0]).toBe("h1");
-    // Every roster player appears in the players array.
-    expect(payload.home.players).toHaveLength(1);
+    expect(payload.home.players[0].rosterPlayerId).toBe("h1");
+    expect(payload.home.mvp.nominations).toHaveLength(6);
     expect(payload.away.score).toBe(0);
   });
 
@@ -198,19 +208,43 @@ describe("ResultModal", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("collects casualty victims when a player caused casualties", () => {
+  it("does not submit and warns when a team nominates fewer than six MVP players", () => {
     const { onSubmit } = renderModal({
-      homeRoster: [homeRoster[0]],
-      awayRoster: [awayRoster[0]],
+      homeRoster: [homeRoster[0], homeRoster[1]],
+      awayRoster: [awayRoster[0], awayRoster[1]],
     });
     const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
-    fireEvent.change(within(dialog).getByLabelText(/Anotaciones Hugo/), { target: { value: "1" } });
+    // Valid score with matching TDs, but only one of the six MVP slots filled
+    // for the home team (the route requires exactly six).
     fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "1" } });
-    fireEvent.change(within(dialog).getByLabelText(/Bajas causadas Hugo/), { target: { value: "1" } });
-    // The victim area appears because a player caused a casualty; pick Aurora as victim.
+    fireEvent.change(within(dialog).getByLabelText(/Anotaciones Hugo/), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText("MVP 1 Reavers"), { target: { value: "h1" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /Guardar resultado/ }));
+
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toMatch(/exactamente 6/);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("collects casualty victims when a player caused casualties", () => {
+    const { onSubmit } = renderModal({
+      homeRoster: sixRoster("h"),
+      awayRoster: sixRoster("a"),
+    });
+    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+    fireEvent.change(within(dialog).getByLabelText(/Anotaciones h1/), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText(/Bajas causadas h1/), { target: { value: "1" } });
+    // The victim area appears because a player caused a casualty; pick a1 as victim.
     expect(within(dialog).getByText(/Víctimas/)).toBeTruthy();
     const victimSelect = within(dialog).getAllByRole("combobox", { name: /Víctima 1/ })[0];
     fireEvent.change(victimSelect, { target: { value: "away:a1" } });
+    // Fill the exact-6 MVP contract for both teams.
+    for (let i = 1; i <= 6; i++) {
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Reavers`), { target: { value: `h${i}` } });
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Orcs`), { target: { value: `a${i}` } });
+    }
 
     fireEvent.click(within(dialog).getByRole("button", { name: /Guardar resultado/ }));
 

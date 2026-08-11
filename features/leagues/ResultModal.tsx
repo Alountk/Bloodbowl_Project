@@ -154,6 +154,13 @@ export function ResultModal({
       setError("La suma de anotaciones de cada equipo debe coincidir con su marcador final.");
       return;
     }
+    // The route requires exactly six MJP nominations per team (deduplicated),
+    // so mirror that contract client-side instead of silently hitting a 400.
+    const nominationsOf = (list: string[]) => new Set(list.filter(Boolean)).size;
+    if (nominationsOf(home.mvpNominations) !== 6 || nominationsOf(away.mvpNominations) !== 6) {
+      setError("Cada equipo debe nominar exactamente 6 jugadores para el MVP.");
+      return;
+    }
     setError(null);
     onSubmit(buildResultPayload(home, away));
   };

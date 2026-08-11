@@ -360,8 +360,8 @@ describe("LeagueDetail — STARTED league", () => {
       ownerId: "u2",
       ownerName: "Coach B",
       teams: [
-        { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: me, roster: [{ id: "h1", name: "Hugo" }] },
-        { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u8", roster: [{ id: "a1", name: "Ansel" }] },
+        { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: me, roster: Array.from({ length: 6 }, (_, i) => ({ id: `h${i + 1}`, name: `H${i + 1}` })) },
+        { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u8", roster: Array.from({ length: 6 }, (_, i) => ({ id: `a${i + 1}`, name: `A${i + 1}` })) },
       ],
       rounds: [{ round: 1, fixtures: ["fs"], complete: false }],
       fixtures: [
@@ -407,8 +407,13 @@ describe("LeagueDetail — STARTED league", () => {
     const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
     // Score 1 for Reavers, Hugo scores 1 TD → match. Score 0 for Orcs.
     fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "1" } });
-    fireEvent.change(within(dialog).getByLabelText(/Anotaciones Hugo/), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText(/Anotaciones H1/), { target: { value: "1" } });
     fireEvent.change(within(dialog).getByLabelText(/Goles Orcs/), { target: { value: "0" } });
+    // Fill the exact-6 MVP contract for both teams before submitting.
+    for (let i = 1; i <= 6; i++) {
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Reavers`), { target: { value: `h${i}` } });
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Orcs`), { target: { value: `a${i}` } });
+    }
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar resultado" }));
 
     // POSTs the assembled payload to the result route (then refreshes).
