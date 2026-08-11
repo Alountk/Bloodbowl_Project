@@ -21,4 +21,11 @@ describe("prisma singleton", () => {
     const again = (await import("./prisma")).prisma;
     expect(again).toBe(prisma);
   });
+
+  it("exposes the Player and Team.treasury post-match resolution models (S1a)", () => {
+    expect(typeof prisma.player).toBe("object");
+    expect(typeof prisma.matchResult).toBe("object");
+    expect(typeof prisma.matchResultCorrection).toBe("object");
+    expect(typeof prisma.playerPendingRoll).toBe("object");
+  });
 });
