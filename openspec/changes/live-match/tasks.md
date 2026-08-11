@@ -45,11 +45,11 @@ Chain strategy: stacked-to-main
 
 ## PR 3 — Page + MatchView
 
-- [ ] 3.1 Create `app/leagues/[id]/fixtures/[fixtureId]/page.tsx` (~15): thin server page rendering `<MatchView leagueId fixtureId/>` (D2)
-- [ ] 3.2 RED `features/leagues/MatchView.test.tsx`: 3-state render — played full summary (scores+winner, teams+race name, FF, winnings, casualties labels, weather, +4 MVP row), scheduled `Programado:` `formatMatchDate` es-ES (MV-3), pending notice no date (MV-3)
-- [ ] 3.3 RED `features/leagues/MatchView.test.tsx`: walkover renders fixture scores + `Victoria por incomparecencia.`, zero summary sections (MV-2); no visible live/timeline placeholder any state (MV-5/MV-6)
-- [ ] 3.4 RED `features/leagues/MatchView.test.tsx`: Spanish copy + rulebook-light tokens only, no deps/icons (MV-7); `notFound` collapses to 404 view
-- [ ] 3.5 Create `features/leagues/MatchView.tsx` (client): internal `useMatchDetail` hook (mirrors `useLeagueDetail`), 3-state rendering, `LiveTurnBar/LiveClock/LiveEventFeed` shells receiving `live:null` → render null (MV-5), 404→notFound, live region hook; red→green→refactor
+- [x] 3.1 Create `app/leagues/[id]/fixtures/[fixtureId]/page.tsx` (~15): thin server page rendering `<MatchView leagueId fixtureId/>` (D2)
+- [x] 3.2 RED `features/leagues/MatchView.test.tsx`: 3-state render — played full summary (scores+winner, teams+race name, FF, winnings, casualties labels, weather, +4 MVP row), scheduled `Programado:` `formatMatchDate` es-ES (MV-3), pending notice no date (MV-3)
+- [x] 3.3 RED `features/leagues/MatchView.test.tsx`: walkover renders fixture scores + `Victoria por incomparecencia.`, zero summary sections (MV-2); no visible live/timeline placeholder any state (MV-5/MV-6)
+- [x] 3.4 RED `features/leagues/MatchView.test.tsx`: Spanish copy + rulebook-light tokens only, no deps/icons (MV-7); `notFound` collapses to 404 view
+- [x] 3.5 Create `features/leagues/MatchView.tsx` (client): internal `useMatchDetail` hook (mirrors `useLeagueDetail`), 3-state rendering, `LiveTurnBar/LiveClock/LiveEventFeed` shells receiving `live:null` → render null (MV-5), 404→notFound, live region hook; red→green→refactor
 
 ## PR 4 — Navigation + E2E
 
