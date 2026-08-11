@@ -7,6 +7,9 @@ import {
   resolveRollOutcome,
   MANDATORY_SKILLS,
   isMandatorySkill,
+  skillCellIndex,
+  cellIndexToSkill,
+  MAX_CELL_INDEX,
 } from "./skills";
 
 describe("random skill table (bb2025-rules R3)", () => {
@@ -72,5 +75,34 @@ describe("random skill table (bb2025-rules R3)", () => {
     expect(isMandatorySkill("Apariencia asquerosa")).toBe(true);
     expect(isMandatorySkill("Furia")).toBe(true);
     expect(isMandatorySkill("Placar")).toBe(false);
+  });
+});
+
+describe("pending-roll cell encoding (random-pick candidate validation)", () => {
+  it("encodes each of the 12 cells per column to a reversible flat index", () => {
+    expect(MAX_CELL_INDEX).toBe(11);
+    // Block 1-3 (first D6), rows 1..6 → indexes 0..5.
+    expect(skillCellIndex("T", "Agresor discreto")).toBe(0);
+    expect(skillCellIndex("T", "Crujir")).toBe(1);
+    expect(skillCellIndex("T", "Dejada")).toBe(2);
+    expect(skillCellIndex("T", "Falta rápida")).toBe(3);
+    expect(skillCellIndex("T", "Furtivo")).toBe(4);
+    expect(skillCellIndex("T", "Innovador violento")).toBe(5);
+    // Block 4-6, rows 1..6 → indexes 6..11.
+    expect(skillCellIndex("T", "Jugar sucio")).toBe(6);
+    expect(skillCellIndex("T", "Vuelo letal")).toBe(11);
+  });
+
+  it("round-trips every cell back to the exact skill name", () => {
+    for (const column of SKILL_COLUMNS) {
+      for (let index = 0; index <= MAX_CELL_INDEX; index++) {
+        const name = cellIndexToSkill(column, index);
+        expect(skillCellIndex(column, name)).toBe(index);
+      }
+    }
+  });
+
+  it("returns the null index for a skill not in a column", () => {
+    expect(skillCellIndex("G", "Esquivar")).toBeNull();
   });
 });

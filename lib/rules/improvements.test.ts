@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { improvementCost, IMPROVEMENT_KINDS } from "./improvements";
+import {
+  improvementCost,
+  IMPROVEMENT_KINDS,
+  attributeOptionsForRoll,
+  PLAYER_ATTRIBUTES,
+} from "./improvements";
 import { computeWinnings } from "./winnings";
 import { postMatchFanFactor, preMatchFanFactor } from "./fanFactor";
 
@@ -41,6 +46,35 @@ describe("improvement cost table (bb2025-rules R2)", () => {
   it("reuses the 6ª cost for improvements beyond six", () => {
     expect(improvementCost(8, "primary")).toBe(30);
     expect(improvementCost(12, "attribute")).toBe(38);
+  });
+});
+
+describe("attribute improvement table (1D8, rulebook OCR)", () => {
+  it("exposes the five trainable attributes", () => {
+    expect(PLAYER_ATTRIBUTES).toEqual(["ma", "st", "ag", "pa", "av"]);
+  });
+
+  it("gives the eligible attributes per 1D8 outcome exactly as the rulebook OCR", () => {
+    // 1 → AR (Armour = av)
+    expect(attributeOptionsForRoll(1)).toEqual(["av"]);
+    // 2 → AR o PS (av or pa)
+    expect(attributeOptionsForRoll(2)).toEqual(["av", "pa"]);
+    // 3-4 → AR/MV o PS (av, ma or pa)
+    expect(attributeOptionsForRoll(3)).toEqual(["av", "ma", "pa"]);
+    expect(attributeOptionsForRoll(4)).toEqual(["av", "ma", "pa"]);
+    // 5 → MV o PS (ma or pa)
+    expect(attributeOptionsForRoll(5)).toEqual(["ma", "pa"]);
+    // 6 → AG o MV (ag or ma)
+    expect(attributeOptionsForRoll(6)).toEqual(["ag", "ma"]);
+    // 7 → AG o FU (ag or st)
+    expect(attributeOptionsForRoll(7)).toEqual(["ag", "st"]);
+    // 8 → cualquier atributo
+    expect(attributeOptionsForRoll(8)).toEqual(["ma", "st", "ag", "pa", "av"]);
+  });
+
+  it("returns the any-attribute row for 1D8 values outside 1-8", () => {
+    expect(attributeOptionsForRoll(0)).toEqual(["ma", "st", "ag", "pa", "av"]);
+    expect(attributeOptionsForRoll(9)).toEqual(["ma", "st", "ag", "pa", "av"]);
   });
 });
 

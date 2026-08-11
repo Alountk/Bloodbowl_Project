@@ -62,6 +62,41 @@ export function rollTwoSkills(
   return [randomSkill(dieA1, dieB1, column), randomSkill(dieA2, dieB2, column)];
 }
 
+/** Highest pending-roll cell index within one column (12 cells: 2 blocks × 6 rows). */
+export const MAX_CELL_INDEX = 11;
+
+/** Flattens a (block, row) cell into its 0..11 index within a column. */
+function cellIndex(block: SkillBlock, row: SkillRow): number {
+  return (block === "4-6" ? 6 : 0) + (row - 1);
+}
+
+/**
+ * Reverses a cell index (0..11) to the concrete skill name at that cell for a
+ * column. `kind` rows: index 0..5 = 1ºD6 1-3, index 6..11 = 1ºD6 4-6.
+ */
+export function cellIndexToSkill(column: SkillColumn, index: number): string {
+  const block: SkillBlock = index >= 6 ? "4-6" : "1-3";
+  const row = (index % 6) + 1 as SkillRow;
+  return RANDOM_SKILL_TABLE[block][row][column];
+}
+
+/**
+ * Maps a skill name to its unique 0..11 cell index within a column, or null
+ * when the skill does not appear in that column. Within a column every name is
+ * unique, so the mapping is injective — used to store two candidate skills in
+ * the `PlayerPendingRoll.roll1/roll2` integer columns without a schema change.
+ */
+export function skillCellIndex(column: SkillColumn, name: string): number | null {
+  for (const block of ["1-3", "4-6"] as const) {
+    for (const row of [1, 2, 3, 4, 5, 6] as const) {
+      if (RANDOM_SKILL_TABLE[block][row][column] === name) {
+        return cellIndex(block, row);
+      }
+    }
+  }
+  return null;
+}
+
 export interface RollOutcome {
   /** Skills the player may pick from, after dedup and dropping owned skills. */
   skills: string[];
