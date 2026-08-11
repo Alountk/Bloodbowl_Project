@@ -226,7 +226,9 @@ test("match view: pending → scheduled date → played summary, and Ver partido
     //     and "Ver partido" is the LAST link (MV-4 / fixturesTeamNames). ---
     await admin.goto(`/leagues/${leagueId}`);
     const region = admin.getByRole("region", { name: "Jornada 1" });
+    await expect(region).toBeVisible(); // fixtures load async after the page fetch
     const links = region.getByRole("link");
+    await expect(links.first()).toBeVisible(); // a first team link must appear
     const count = await links.count();
     expect(count).toBeGreaterThanOrEqual(3);
     const names: string[] = [];
@@ -258,12 +260,15 @@ test("match view: pending → scheduled date → played summary, and Ver partido
     await expect(admin.getByText(teamAName).first()).toBeVisible();
     // Teams + coach rows.
     await expect(admin.getByText(teamBName).first()).toBeVisible();
-    // Dedicated fans (postFf), winnings, weather sections render.
+    // Dedicated fans (postFf) + winnings are always persisted for a loaded
+    // result (omit-if-empty only hides genuinely absent fields).
     await expect(admin.getByText(/Afición/)).toBeVisible();
     await expect(admin.getByText(/Ganancias/)).toBeVisible();
-    await expect(admin.getByText(/Clima/)).toBeVisible();
     // The +4 PE MVP row renders (the MJP grantee badge).
     await expect(admin.getByText(/\+4 PE/).first()).toBeVisible();
+    // Weather is omit-if-empty: the ResultModal does not capture it, so the
+    // section stays hidden (never a placeholder) — covered by the unit mapper.
+    await expect(admin.getByText(/Clima/)).toBeHidden();
     // No live/timeline shell placeholder.
     await expect(admin.locator("body")).not.toContainText(/turno|minuto|½/i);
   } finally {
@@ -285,7 +290,7 @@ test("match view: walkover shows fixture scores + Victoria por incomparecencia."
 
     await expect(admin.getByText(/Victoria por incomparecencia/)).toBeVisible();
     // Walkover: fixture scores render (2 – 0 here) with zero summary sections.
-    await expect(admin.getByText(/2/)).toBeVisible();
+    await expect(admin.getByText(/2 – 0/)).toBeVisible();
     await expect(admin.getByText(/Afición/)).toBeHidden();
     await expect(admin.getByText(/Clima/)).toBeHidden();
   } finally {
