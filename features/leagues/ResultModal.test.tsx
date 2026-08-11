@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
   ResultModal,
   buildResultPayload,
@@ -257,5 +257,54 @@ describe("ResultModal", () => {
     renderModal({ mode: "correct" });
     const dialog = screen.getByRole("dialog", { name: /Corregir resultado/ });
     expect(within(dialog).getByRole("button", { name: /Corregir resultado/ })).toBeTruthy();
+  });
+
+  it("keeps the dialog open and shows the server error when onSubmit rejects", async () => {
+    const serverSubmit = vi.fn().mockRejectedValue({ status: 409, message: "already played" });
+    const { onClose } = renderModal({
+      homeRoster: sixRoster("h"),
+      awayRoster: sixRoster("a"),
+      onSubmit: serverSubmit,
+    });
+    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+    fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "2" } });
+    fireEvent.change(within(dialog).getByLabelText(/Anotaciones h1/), { target: { value: "2" } });
+    fireEvent.change(within(dialog).getByLabelText(/Goles Orcs/), { target: { value: "0" } });
+    for (let i = 1; i <= 6; i++) {
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Reavers`), { target: { value: `h${i}` } });
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Orcs`), { target: { value: `a${i}` } });
+    }
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /Guardar resultado/ }));
+
+    // The rejection surfaces in the existing role=alert; the dialog stays open.
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Ya hay un resultado cargado/),
+    );
+    expect(screen.getByRole("dialog", { name: /Cargar resultado/ })).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("shows no alert when onSubmit resolves", async () => {
+    const serverSubmit = vi.fn().mockResolvedValue(undefined);
+    const { onClose } = renderModal({
+      homeRoster: sixRoster("h"),
+      awayRoster: sixRoster("a"),
+      onSubmit: serverSubmit,
+    });
+    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+    fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "2" } });
+    fireEvent.change(within(dialog).getByLabelText(/Anotaciones h1/), { target: { value: "2" } });
+    fireEvent.change(within(dialog).getByLabelText(/Goles Orcs/), { target: { value: "0" } });
+    for (let i = 1; i <= 6; i++) {
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Reavers`), { target: { value: `h${i}` } });
+      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Orcs`), { target: { value: `a${i}` } });
+    }
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /Guardar resultado/ }));
+
+    await waitFor(() => expect(serverSubmit).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

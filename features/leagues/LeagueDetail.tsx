@@ -498,14 +498,16 @@ function Jornadas({
           rostersFor={rostersFor}
           mode={resultMode}
           onClose={() => setResultFixture(null)}
-          onSubmit={(payload) => {
+          onSubmit={async (payload) => {
             const fixture = resultFixture;
-            setResultFixture(null);
             if (resultMode === "correct") {
-              onCorrectResult(fixture.id, payload);
+              await onCorrectResult(fixture.id, payload);
             } else {
-              onSubmitResult(fixture.id, payload);
+              await onSubmitResult(fixture.id, payload);
             }
+            // Only close on success: ResultModal surfaces rejections (e.g. a
+            // 409 race) in its alert and keeps itself open.
+            setResultFixture(null);
           }}
         />
       ) : null}
@@ -529,7 +531,7 @@ function ResultModalFor({
     { id: string; name: string }[],
   ];
   mode: "load" | "correct";
-  onSubmit: (payload: ResultPayload) => void;
+  onSubmit: (payload: ResultPayload) => Promise<void>;
   onClose: () => void;
 }) {
   const [homeRoster, awayRoster] = rostersFor(fixture);
