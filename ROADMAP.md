@@ -28,7 +28,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Ligas como agrupación (CRUD, una liga por equipo, unirse, expulsar, guard 409) | #29, #32, #33 |
 | Campeonatos: jornadas automáticas (round-robin sin repetir, equipos impares) | #34, #37, #38 |
 | Matchday: negociación de fechas (toma y daca), forfeit del admin, scouting, completitud de jornada | #39, #42, #43 |
-| Match report: carga y corrección de resultados (marcador, ganador derivado, tesorería, FF, PE, lesiones, bote), progresión de jugadores (PE → mejoras, skill élite, recalculo de valor) y e2e de los flujos completos | #49–#52 (slices 1–3), S4/S5 pendientes de merge (PR final) |
+| Match report: carga y corrección de resultados (marcador, ganador derivado, tesorería, FF, PE, lesiones, bote), progresión de jugadores (PE → mejoras, skill élite, recalculo de valor) y e2e de los flujos completos | #49–#54 |
 
 ### Bugs resueltos
 | Bug | Fix |
