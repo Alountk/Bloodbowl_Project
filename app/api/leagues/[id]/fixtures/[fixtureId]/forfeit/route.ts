@@ -5,15 +5,16 @@ import { prisma } from "@/lib/prisma";
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit
  * The league owner (admin) awards a walkover victory to one of the fixture's two
- * teams: sets the fixture's `winnerId` (deriving `played`) and closes any open
- * proposal in a single `$transaction`. This is the only match-resolution
- * mechanism in this iteration.
+ * teams: sets the fixture's `winnerId`, records the walkover scores (winner
+ * 2, loser 0, per user decision), and closes any open proposal in a single
+ * `$transaction`. A walkover NEVER awards PE and is mutually exclusive with a
+ * loaded result (both return 409 on the other).
  *
  * Guards:
  *   - unauthenticated → 401
  *   - authenticated non-admin (participant, member, foreign) → 403
  *   - `winnerTeamId` not home or away → 400
- *   - fixture already `played` (winnerId set) → 409
+ *   - fixture already `played` (a result recorded: scores or winnerId) → 409
  *   - scheduled or pending fixtures MAY be forfeited (scheduledAt is cleared).
  */
 export async function POST(
@@ -45,9 +46,9 @@ export async function POST(
     );
   }
 
-  if (fixture.winnerId != null) {
+  if (fixture.winnerId != null || fixture.homeScore != null || fixture.awayScore != null) {
     return NextResponse.json(
-      { error: "This fixture is already played" },
+      { error: "This fixture already has a result" },
       { status: 409 },
     );
   }
@@ -65,6 +66,10 @@ export async function POST(
       { status: 400 },
     );
   }
+  // Walkover score per user decision (matchday-forfeit): winner 2, loser 0.
+  const isHome = winnerTeamId === fixture.homeTeamId;
+  const homeScore = isHome ? 2 : 0;
+  const awayScore = isHome ? 0 : 2;
 
   const updated = await prisma.$transaction(async (tx) => {
     await tx.scheduleProposal.updateMany({
@@ -73,7 +78,7 @@ export async function POST(
     });
     return tx.fixture.update({
       where: { id: fixtureId },
-      data: { winnerId: winnerTeamId, scheduledAt: null },
+      data: { winnerId: winnerTeamId, homeScore, awayScore, scheduledAt: null },
       include: {
         league: true,
         homeTeam: { select: { id: true, userId: true, name: true } },
