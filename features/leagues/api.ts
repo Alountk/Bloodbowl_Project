@@ -246,6 +246,86 @@ export async function forfeitFixture(
   return readJson<FixtureDraft>(res);
 }
 
+/** A single player's per-action report within a result load. */
+export interface ResultPlayerAction {
+  rosterPlayerId: string;
+  tds: number;
+  casualties: number;
+  completions: number;
+  interceptions: number;
+  fouls: number;
+  throwTeamMates: number;
+  landedSafe: number;
+}
+
+/** One side's scoreboard + per-player PE credits + mvp nomination list. */
+export interface TeamResultInput {
+  score: number;
+  ballHeld: boolean;
+  players: ResultPlayerAction[];
+  mvp: { nominations: string[] };
+}
+
+/** The POST/PUT result payload shared by the load and correction routes. */
+export interface ResultPayload {
+  weather?: string;
+  home: TeamResultInput;
+  away: TeamResultInput;
+}
+
+/** HTTP result of a load or correction, used to refresh the match card. */
+export interface ResultOutcome {
+  fixtureId: string;
+  status: "played";
+  homeScore: number;
+  awayScore: number;
+  winnerId: string | null;
+  winnings?: { home: number; away: number };
+  pettyCash?: number;
+  resultId?: string;
+}
+
+/**
+ * Loads a fixture's result (participant or league admin). Server-side: validates
+ * Σ per-player TDs == score (400), applies winnings/FF/PE/injuries/petty cash in
+ * one transaction, and returns 409 on an already-played or forfeited fixture.
+ */
+export async function submitResult(
+  leagueId: string,
+  fixtureId: string,
+  payload: ResultPayload,
+): Promise<ResultOutcome> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/result`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  return readJson<ResultOutcome>(res);
+}
+
+/**
+ * Corrects a played result (admin-only). Records a before/after audit
+ * `MatchResultCorrection` and re-runs PE, never revoking spent PE.
+ */
+export async function correctResult(
+  leagueId: string,
+  fixtureId: string,
+  payload: ResultPayload,
+): Promise<ResultOutcome> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/result`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  return readJson<ResultOutcome>(res);
+}
+
 /**
  * Fetches the full negotiation history for a fixture (participants/admin only;
  * 404 otherwise). Ordered newest-first.
