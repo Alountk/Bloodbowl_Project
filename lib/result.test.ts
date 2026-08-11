@@ -7,10 +7,10 @@ import {
   computeTeamPeAwards,
   computePettyCash,
   computeTeamTv,
-  resolveTeamInjuries,
+  resolveCasualtyOutcomes,
   PE,
 } from "./result";
-import type { ResultPlayerAction } from "./result";
+import type { ResultPlayerAction, CasualtyVictim } from "./result";
 
 const player = (rosterPlayerId: string, tds = 0): ResultPlayerAction => ({
   rosterPlayerId,
@@ -81,11 +81,31 @@ describe("result computation (match-result R1-R5)", () => {
     expect(computeTeamTv(0, 0, 0)).toBe(0);
   });
 
-  it("resolves one 1D16 injury outcome per reported casualty", () => {
-    const outcomes = resolveTeamInjuries(3, [10, 16, 2]);
-    expect(outcomes).toHaveLength(3);
-    expect(outcomes[0].kind).toBe("apaleado"); // 9-10
-    expect(outcomes[1].kind).toBe("dead"); // 15-16
-    expect(outcomes[2].kind).toBe("bruise"); // 1-8
+  it("resolves one 1D16 outcome per victim, preserving victim identity", () => {
+    const victims: CasualtyVictim[] = [
+      { team: "away", rosterPlayerId: "a2" },
+      { team: "away", rosterPlayerId: "a3" },
+      { team: "home", rosterPlayerId: "h1" },
+    ];
+    const resolved = resolveCasualtyOutcomes(victims, [10, 16, 2]);
+    expect(resolved).toHaveLength(3);
+    // A short roll list leaves the missing victim unrunned (server supplies one per victim).
+    const shortRun = resolveCasualtyOutcomes(victims, [10]);
+    expect(shortRun).toHaveLength(3);
+    expect(shortRun[1].outcome.kind).toBe("bruise"); // missing roll → 0 → bruise
+  });
+
+  it("maps each victim roll to its rulebook band (dead on 15-16)", () => {
+    const victims: CasualtyVictim[] = [
+      { team: "away", rosterPlayerId: "v1" },
+      { team: "away", rosterPlayerId: "v2" },
+    ];
+    const resolved = resolveCasualtyOutcomes(victims, [16, 3]);
+    expect(resolved[0]).toEqual({ team: "away", rosterPlayerId: "v1", outcome: { kind: "dead" } });
+    expect(resolved[1]).toEqual({ team: "away", rosterPlayerId: "v2", outcome: { kind: "bruise" } });
+  });
+
+  it("returns no outcomes for an empty victim list", () => {
+    expect(resolveCasualtyOutcomes([], [])).toHaveLength(0);
   });
 });

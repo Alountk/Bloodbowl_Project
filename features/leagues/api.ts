@@ -264,6 +264,13 @@ export interface TeamResultInput {
   ballHeld: boolean;
   players: ResultPlayerAction[];
   mvp: { nominations: string[] };
+  /**
+   * The casualties caused by this team, each naming the victim's team and
+   * rosterPlayerId. The server owns the 1D16 outcome roll per victim (the
+   * client sends no outcome); the result route persists the injury on the
+   * matching Player row.
+   */
+  casualties: { team: "home" | "away"; rosterPlayerId: string }[];
 }
 
 /** The POST/PUT result payload shared by the load and correction routes. */

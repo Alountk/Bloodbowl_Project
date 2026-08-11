@@ -14,8 +14,10 @@ import {
   computeTeamPeAwards,
   computePettyCash,
   computeTeamTv,
-  resolveTeamInjuries,
+  resolveCasualtyOutcomes,
   type ResultPlayerAction,
+  type CasualtyVictim,
+  type ResolvedCasualty,
 } from "@/lib/result";
 import { rollD3, rollD6, rollD16 } from "@/lib/random";
 import { ensurePlayersForTeam } from "@/lib/players";
@@ -36,6 +38,19 @@ interface TeamResultBody {
   heldBall: boolean;
   players: ResultPlayerAction[];
   nominations: string[];
+  casualties: CasualtyVictim[];
+}
+
+/** Parses the team's reported casualty victims ({team, rosterPlayerId}). */
+function parseCasualties(raw: unknown): CasualtyVictim[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null)
+    .map((c) => ({
+      team: c.team === "home" || c.team === "away" ? c.team : null,
+      rosterPlayerId: typeof c.rosterPlayerId === "string" ? c.rosterPlayerId : null,
+    }))
+    .filter((c): c is CasualtyVictim => c.team !== null && c.rosterPlayerId !== null);
 }
 
 function asPlayerActions(raw: unknown): ResultPlayerAction[] {
@@ -69,7 +84,7 @@ function parseTeamResult(raw: unknown): TeamResultBody | null {
     ? (mvp.nominations as unknown[]).filter((n): n is string => typeof n === "string")
     : [];
   if (nominations.length !== 6) return null;
-  return { score, heldBall, players, nominations };
+  return { score, heldBall, players, nominations, casualties: parseCasualties(team.casualties) };
 }
 
 function coachingOf(team: { coaching?: unknown }): CoachingStaff {
@@ -98,6 +113,52 @@ function raceTvParts(team: {
   };
 }
 
+/** Minimal Player write surface used by `persistCasualtyOutcomes`. */
+type PlayerPersistenceTx = {
+  findMany(args: Record<string, unknown>): Promise<
+    { teamId: string; rosterPlayerId: string; injuries: unknown; alive: boolean }[]
+  >;
+  updateMany(args: Record<string, unknown>): Promise<unknown>;
+};
+
+/**
+ * Appends each resolved casualty's injury band to the victim's Player row,
+ * marking the victim dead when the outcome is Muerto. Runs inside the result
+ * `$transaction`. Behaviour mirrors `ensurePlayersForTeam`'s skip-unknown:
+ * a victim with no backfilled Player row is skipped, an already-dead Player is
+ * skipped (no revive / re-append), and duplicate victim ids are applied once.
+ */
+async function persistCasualtyOutcomes(
+  player: PlayerPersistenceTx,
+  teamIdFor: (role: "home" | "away") => string,
+  resolved: readonly ResolvedCasualty[],
+): Promise<void> {
+  const deduped = Array.from(
+    new Map(resolved.map((c) => [`${c.team}:${c.rosterPlayerId}`, c])).values(),
+  );
+  if (deduped.length === 0) return;
+  const existing = await player.findMany({
+    where: {
+      OR: deduped.map((c) => ({ teamId: teamIdFor(c.team), rosterPlayerId: c.rosterPlayerId })),
+    },
+  });
+  const rowByKey = new Map(existing.map((row) => [`${row.teamId}:${row.rosterPlayerId}`, row]));
+  for (const c of deduped) {
+    const teamId = teamIdFor(c.team);
+    const row = rowByKey.get(`${teamId}:${c.rosterPlayerId}`);
+    if (!row) continue; // unknown roster id — not backfilled → skip
+    if (!row.alive) continue; // already dead → skip (no revive / re-append)
+    const injuries = Array.isArray(row.injuries) ? row.injuries : [];
+    await player.updateMany({
+      where: { teamId, rosterPlayerId: c.rosterPlayerId },
+      data: {
+        injuries: [...injuries, { kind: c.outcome.kind }] as never,
+        alive: c.outcome.kind === "dead" ? false : row.alive,
+      },
+    });
+  }
+}
+
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/result
  * Loads a match result. Authorized callers are the league owner (admin) or
@@ -107,7 +168,9 @@ function raceTvParts(team: {
  * transaction, persists the fixture scores + derived winner, the report record
  * (weather, scoreboard snapshot, petty cash), each team's winnings to the
  * treasury, post-match fan factor, per-player PE (incl. the MJP 4-PE grant),
- * and the 1D16 injury outcomes (bb2025-rules). A fixture already played or
+ * and each reported casualty's server-resolved 1D16 injury persisted on the
+ * victim's Player row (`injuries[]` appended, `alive:false` on death)
+ * (bb2025-rules R5). A fixture already played or
  * forfeited returns 409 with no re-award (idempotency).
  */
 export async function POST(
@@ -208,10 +271,14 @@ export async function POST(
   const homeAwards = computeTeamPeAwards(home.players, homeMvp);
   const awayAwards = computeTeamPeAwards(away.players, awayMvp);
 
-  const homeCasualties = home.players.reduce((total, p) => total + p.casualties, 0);
-  const awayCasualties = away.players.reduce((total, p) => total + p.casualties, 0);
-  const homeInjuries = resolveTeamInjuries(homeCasualties, Array.from({ length: homeCasualties }, () => rollD16()));
-  const awayInjuries = resolveTeamInjuries(awayCasualties, Array.from({ length: awayCasualties }, () => rollD16()));
+  // Server-owned 1D16 per reported victim resolves each injury band (bb2025-rules R5).
+  const allVictims: CasualtyVictim[] = [...home.casualties, ...away.casualties];
+  const resolvedCasualties = resolveCasualtyOutcomes(
+    allVictims,
+    allVictims.map(() => rollD16()),
+  );
+  const homeTeamVictims = resolvedCasualties.filter((c) => c.team === "home");
+  const awayTeamVictims = resolvedCasualties.filter((c) => c.team === "away");
 
   const homeParts = raceTvParts(fixture.homeTeam);
   const awayParts = raceTvParts(fixture.awayTeam);
@@ -220,8 +287,8 @@ export async function POST(
   const pettyCash = computePettyCash(homeTv, awayTv);
 
   const scoreboard = {
-    home: { score: home.score, postFf: postHomeFf, casualties: homeCasualties, injuries: homeInjuries, pe: homeAwards },
-    away: { score: away.score, postFf: postAwayFf, casualties: awayCasualties, injuries: awayInjuries, pe: awayAwards },
+    home: { score: home.score, postFf: postHomeFf, casualties: homeTeamVictims, pe: homeAwards },
+    away: { score: away.score, postFf: postAwayFf, casualties: awayTeamVictims, pe: awayAwards },
     winnerId,
   };
 
@@ -262,6 +329,11 @@ export async function POST(
         data: { pe: { increment: award.pe } },
       });
     }
+    await persistCasualtyOutcomes(
+      tx.player as unknown as PlayerPersistenceTx,
+      (role) => (role === "home" ? homeTeamId : awayTeamId),
+      resolvedCasualties,
+    );
     return report;
   });
 
@@ -375,9 +447,9 @@ export async function PUT(
   const winnerId = deriveWinnerId(home.score, away.score, homeTeamId, awayTeamId);
 
   // Correction re-runs the PE rules; the previous awards live in the snapshot.
-  const prevScores = (fixture.result.scores ?? {}) as {
-    home: { score: number; postFf?: number; pe: { rosterPlayerId: string; pe: number }[] };
-    away: { score: number; postFf?: number; pe: { rosterPlayerId: string; pe: number }[] };
+  const prevScores = (fixture.result.scores ?? {}) as unknown as {
+    home: { score: number; postFf?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
+    away: { score: number; postFf?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
   };
   const homeMvp = computeMvpGrantee(home.nominations, rollD6());
   const awayMvp = computeMvpGrantee(away.nominations, rollD6());
@@ -388,9 +460,18 @@ export async function PUT(
   const prevHomePe = sumAwards(prevScores?.home?.pe ?? []);
   const prevAwayPe = sumAwards(prevScores?.away?.pe ?? []);
 
+  // The correction re-resolves the reported victims (server-owned 1D16 per victim).
+  const allVictims: CasualtyVictim[] = [...home.casualties, ...away.casualties];
+  const resolvedCasualties = resolveCasualtyOutcomes(
+    allVictims,
+    allVictims.map(() => rollD16()),
+  );
+  const homeTeamVictims = resolvedCasualties.filter((c) => c.team === "home");
+  const awayTeamVictims = resolvedCasualties.filter((c) => c.team === "away");
+
   const scoreboard = {
-    home: { score: home.score, postFf: prevScores?.home?.postFf ?? 0, casualties: 0, pe: homeAwards },
-    away: { score: away.score, postFf: prevScores?.away?.postFf ?? 0, casualties: 0, pe: awayAwards },
+    home: { score: home.score, postFf: prevScores?.home?.postFf ?? 0, casualties: homeTeamVictims, pe: homeAwards },
+    away: { score: away.score, postFf: prevScores?.away?.postFf ?? 0, casualties: awayTeamVictims, pe: awayAwards },
     winnerId,
   };
 
@@ -424,6 +505,11 @@ export async function PUT(
         data: { pe: { increment: delta } },
       });
     }
+    await persistCasualtyOutcomes(
+      tx.player as unknown as PlayerPersistenceTx,
+      (role) => (role === "home" ? homeTeamId : awayTeamId),
+      resolvedCasualties,
+    );
   });
 
   return NextResponse.json({
