@@ -4,6 +4,10 @@
 
 PR 1 (tasks 1.1–1.7) **complete** — 7/7 tasks. Auth-gated fixture GET route created and the result snapshot extended with `winnings` + `mvp` (D4), cover MV-1/MV-2 for this slice. Strict TDD followed throughout (RED → GREEN → REFACTOR).
 
+## PR 2 — Client fetch + pure mapping (tasks 2.1–2.5)
+
+**Status: complete** — 5/5 tasks (merged into this cumulative progress; PR 1 section preserved below). Added `getMatchDetail` + match payload types (2.1) and the pure `buildMatchSummary` snapshot→section mapper with Spanish MVP/weather/casualty labels and omit-if-empty/walkover handling (2.2–2.5). Strict TDD RED→GREEN→REFACTOR.
+
 ## Scope (chained PR 1 of 4, stacked-to-main)
 
 Branch: `feat/live-match-api` (from `main` @ `f5d0387`). Implements PR 1 ONLY:
@@ -78,6 +82,84 @@ None — implementation matches design.md (D1/D3/D4/D6/D7). One refinement: the 
 
 ## Remaining (other PRs)
 
-- PR 2: `features/leagues/api.ts` `getMatchDetail` + types; `features/leagues/matchSummary.ts` + tests (2.1–2.5)
 - PR 3: page + `MatchView.tsx` + tests (3.1–3.5)
 - PR 4: MatchCard "Ver partido" link + auth e2e (4.1–4.4)
+
+---
+
+# Apply Progress — Live Match View (PR 2: Client fetch + pure mapping)
+
+## Status
+
+PR 2 (tasks 2.1–2.5) **complete** — 5/5. `getMatchDetail` + match payload types (2.1) and the pure `buildMatchSummary` snapshot→section mapper (2.2–2.5). Strict TDD RED→GREEN→REFACTOR throughout.
+
+## Scope (chained PR 2 of 4, stacked-to-main)
+
+Branch: `feat/live-match-client` (from updated `main` @ merged PR 1 #57). Implements PR 2 ONLY:
+- `features/leagues/api.ts` — `getMatchDetail` + `MatchDetail`/`MatchTeamDetail`/`MatchPlayer`/`MatchScoreboard`/`MatchResultRecord` types
+- `features/leagues/matchSummary.ts` + `matchSummary.test.ts`
+- Their tests + `tasks.md` marks.
+
+PR 3 (page/MatchView), PR 4 (MatchCard/e2e) are NOT in scope.
+
+## Completed Tasks
+
+- [x] 2.1 `getMatchDetail(leagueId, fixtureId)` + types (D2/D3: FixtureDraft reuse, nullable `result`)
+- [x] 2.2 MVP persisted `scores.mvp` wins; legacy fallback max-`pe` (floor ≥4, PE_MVP=4, tie→first); unresolved→omit section
+- [x] 2.3 weather Spanish labels (unknown as-is); casualty Spanish labels
+- [x] 2.4 omit-if-empty sections; fans `postFf` null→omit; winnings null→omit; walkover → zero sections + notice flag
+- [x] 2.5 `matchSummary.ts` pure section builders (score/teams/fans/winnings/casualties/weather/pe/mvp)
+
+## TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 2.1 | `features/leagues/api.test.ts` | Unit (fetch mock) | ✅ 14/14 | ✅ 2 RED | ✅ 16/16 | ✅ normalized + walkover | ✅ tsc type hygiene |
+| 2.2 | `features/leagues/matchSummary.test.ts` | Unit (pure) | N/A (new) | ✅ (import unresolved) | ✅ 12/12 | ✅ persisted/fallback/tie/omit | ✅ `mvpOf` null-on-unresolved |
+| 2.3 | matchSummary.test.ts | Unit (pure) | N/A | ✅ | ✅ 12/12 | ✅ all 5 weather + 5 casualty labels | ➖ Clean |
+| 2.4 | matchSummary.test.ts | Unit (pure) | N/A | ✅ | ✅ 12/12 | ✅ omit-if-empty + walkover + Empate | ➖ Clean |
+| 2.5 | `matchSummary.ts` | Pure functions | N/A (new) | ✅ (from 2.2–2.4) | ✅ 12/12 | ✅ section builders | ✅ removed dead code; re-export MatchDetail |
+
+### Work Unit Evidence (PR 2)
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `pnpm vitest run features/leagues/api.test.ts` → 16/16; `pnpm vitest run features/leagues/matchSummary.test.ts` → 12/12 |
+| Runtime harness command/scenario and exact result | `buildMatchSummary` is pure (no IO) → no runtime boundary in this slice: the real fetch is exercised by the route tests (PR 1) and the UI in PR 3/4. Full unit suite `pnpm test` → 951/951 green. Local e2e `AUTH_MODE=local playwright test` → 21/21 green (killed stale server first). |
+| Rollback boundary | Revert `api.ts` additions + `matchSummary.ts` + `matchSummary.test.ts` + `tasks.md` marks; leaves route (PR 1) and page/MatchView (PR 3) untouched. Commits `1a45da0`, `d4363b3` are the exact work-unit boundaries. |
+
+## Files Changed (PR 2)
+
+| File | Action | Notes |
+|------|--------|-------|
+| `features/leagues/api.ts` | Modified | +`getMatchDetail`, +types (~75) |
+| `features/leagues/api.test.ts` | Modified | +2 `getMatchDetail` tests |
+| `features/leagues/matchSummary.ts` | Created | pure section builders, labels, MVP |
+| `features/leagues/matchSummary.test.ts` | Created | 12 tests |
+| `openspec/changes/live-match/tasks.md` | Modified | Marked 2.1–2.5 `[x]` |
+
+## Deviations from Design
+
+None — matches design.md D2/D3/D5 and the snapshot→section mapping. Two refinements:
+- `mvpOf` returns `null` when the selected grantee id resolves to no roster Player row (omit that side / section — omit-not-crash), which is the strict reading of D5's "resolved to a Player row; unresolved → omit".
+- Casualties resolve the victim name via the casualty's own `team` field (home → homeTeam, away → awayTeam), rather than the section it lives in, matching `ResolvedCasualty.team`'s meaning.
+
+## Issues Found
+
+- None (no test-order coupling issue this slice: `matchSummary` is pure, zero mocks; `api.test.ts` uses the clean `vi.stubGlobal("fetch")` pattern).
+
+## Verification (PR 2)
+
+- Focused: `pnpm vitest run features/leagues/matchSummary.test.ts` → 12/12; `pnpm vitest run features/leagues/api.test.ts` → 16/16
+- `pnpm test` → 83 files / **951 tests passed** (baseline 939 + 12 new)
+- `pnpm lint` → 0 errors (pre-commit + standalone)
+- `npx tsc --noEmit` → clean
+- `AUTH_MODE=local pnpm exec playwright test` → **21/21 passed** (killed stale :3000 server first)
+- Auth e2e → NOT run (needs Docker; PR 4 owns new match-view e2e)
+
+## PR Boundary (PR 2)
+
+- Mode: **stacked PR slice 2 of 4** (stacked-to-main)
+- Commits: `1a45da0` (getMatchDetail), `d4363b3` (matchSummary)
+- Boundary: from merged `main` (PR 1 #57); ends after the pure mapper. Start of PR 3: page + `MatchView.tsx` + MatchView tests.
+- Review budget impact: ~430 authored code/test lines in this slice (matching PR 2 forecast ~405–465; planning docs are baseline context).
