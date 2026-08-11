@@ -8,7 +8,10 @@ import { getRaceById } from "@/features/teams/data/races";
 import { TeamDetailView } from "@/features/teams/detail/TeamDetailView";
 import { useLeagueName } from "@/features/leagues/useLeagueName";
 import { getScoutedTeam, type ScoutedTeamDetail } from "@/features/leagues/api";
+import { fetchTeamProgression, improvePlayer } from "@/features/teams/api";
+import type { PlayerProgressionCore } from "@/features/teams/types";
 import type { Race, Team } from "@/features/teams/types";
+import type { ImproveBody } from "@/lib/progression";
 
 interface TeamDetailPageProps {
   params: Promise<{ teamId: string }>;
@@ -29,6 +32,33 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   // Rival-scouting fallback state: a foreign team fetched read-only from the API.
   const [scouted, setScouted] = useState<ScoutedTeamDetail | null>(null);
   const [scoutFailed, setScoutFailed] = useState(false);
+
+  // Owner-team progression rows keyed by rosterPlayerId, plus a failed flag so
+  // the page renders the roster read-only (no Progresión controls) when the
+  // fetch fails or the team has no recorded result yet.
+  const [progression, setProgression] = useState<Record<string, PlayerProgressionCore> | null>(null);
+  const [progressionFailed, setProgressionFailed] = useState(false);
+
+  useEffect(() => {
+    if (!isHydrated || scouted) return;
+    let cancelled = false;
+    fetchTeamProgression(teamId)
+      .then((rows) => {
+        if (cancelled) return;
+        const byPlayer: Record<string, PlayerProgressionCore> = {};
+        for (const row of rows) byPlayer[row.rosterPlayerId] = row;
+        setProgression(byPlayer);
+        setProgressionFailed(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProgression(null);
+        setProgressionFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId, isHydrated, scouted]);
 
   useEffect(() => {
     if (!isHydrated || localTeam) return;
@@ -94,5 +124,34 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
     positionals: [],
   };
 
-  return <TeamDetailView team={resolvedTeam} race={resolvedRace} leagueName={leagueName} />;
+  // Owner teams wire the Progresión controls: `onImprove` fires the improve route
+  // for the targeted roster player and refreshes the progression rows so the
+  // panel reflects the new PE balance. A failed fetch or a rival team renders the
+  // roster read-only (no controls).
+  const isOwner = localTeam != null;
+  const onImprove = isOwner
+    ? async (rosterPlayerId: string, body: ImproveBody): Promise<Record<string, unknown>> => {
+        const result = await improvePlayer(teamId, rosterPlayerId, body).catch(
+          // keep signature: resolve `{ error }` so the panel surfaces it verbatim
+          (e: Error) => ({ error: e.message }),
+        );
+        if (!("error" in result)) {
+          const rows = await fetchTeamProgression(teamId).catch(() => []);
+          const byPlayer: Record<string, PlayerProgressionCore> = {};
+          for (const row of rows) byPlayer[row.rosterPlayerId] = row;
+          setProgression(byPlayer);
+        }
+        return result;
+      }
+    : undefined;
+
+  return (
+    <TeamDetailView
+      team={resolvedTeam}
+      race={resolvedRace}
+      leagueName={leagueName}
+      progression={isOwner && !progressionFailed && progression != null ? progression : undefined}
+      onImprove={onImprove}
+    />
+  );
 }
