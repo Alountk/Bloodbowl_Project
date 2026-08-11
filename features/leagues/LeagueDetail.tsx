@@ -9,7 +9,8 @@ import { useLeagueDetail } from "./useLeagueDetail";
 import { MatchCard } from "./MatchCard";
 import { NegotiationPanel } from "./NegotiationPanel";
 import { ForfeitModal } from "./ForfeitModal";
-import type { FixtureDraft, FixtureRound } from "./api";
+import { ResultModal } from "./ResultModal";
+import type { FixtureDraft, FixtureRound, ResultPayload } from "./api";
 
 interface LeagueDetailProps {
   leagueId: string;
@@ -44,6 +45,8 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
     propose,
     accept,
     forfeit,
+    submit,
+    correct,
   } = useLeagueDetail(leagueId);
   const { data: session } = useSession();
   const [selectedTeamId, setSelectedTeamId] = useState("");
@@ -189,6 +192,8 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
           onPropose={propose}
           onAccept={accept}
           onForfeit={forfeit}
+          onSubmitResult={submit}
+          onCorrectResult={correct}
         />
       ) : (
         <div className="space-y-6">
@@ -337,15 +342,19 @@ function Jornadas({
   onPropose,
   onAccept,
   onForfeit,
+  onSubmitResult,
+  onCorrectResult,
 }: {
   fixtures: FixtureDraft[];
   rounds: FixtureRound[];
-  teams: { id: string; name: string }[];
+  teams: { id: string; name: string; roster: unknown }[];
   currentUserId: string;
   isLeagueOwner: boolean;
   onPropose: (fixtureId: string, date: string) => void;
   onAccept: (fixtureId: string, proposalId: string) => void;
   onForfeit: (fixtureId: string, winnerTeamId: string) => void;
+  onSubmitResult: (fixtureId: string, payload: ResultPayload) => void;
+  onCorrectResult: (fixtureId: string, payload: ResultPayload) => void;
 }) {
   const teamNameById = useMemo(
     () => new Map(teams.map((team) => [team.id, team.name])),
@@ -362,6 +371,19 @@ function Jornadas({
 
   const [negotiateFixture, setNegotiateFixture] = useState<FixtureDraft | null>(null);
   const [forfeitFixture, setForfeitFixture] = useState<FixtureDraft | null>(null);
+
+  // The fixture whose ResultModal is open, plus its mode ("load" on a scheduled
+  // fixture by a captain/admin; "correct" by admin on a played result).
+  const [resultFixture, setResultFixture] = useState<FixtureDraft | null>(null);
+  const [resultMode, setResultMode] = useState<"load" | "correct">("load");
+
+  // Pure: the home/away rosters (id + name) for a fixture, from the member teams.
+  const rostersFor = (fixture: FixtureDraft | null) => {
+    const rosterOf = (teamId: string) =>
+      (teams.find((t) => t.id === teamId)?.roster as { id: string; name: string }[] | null) ?? [];
+    if (!fixture) return [rosterOf(""), rosterOf("")] as const;
+    return [rosterOf(fixture.homeTeamId), rosterOf(fixture.awayTeamId)] as const;
+  };
 
   if (roundNumbers.length === 0) {
     return (
@@ -421,6 +443,14 @@ function Jornadas({
             isLeagueOwner={isLeagueOwner}
             onNegotiate={setNegotiateFixture}
             onForfeit={setForfeitFixture}
+            onLoadResult={(f) => {
+              setResultMode("load");
+              setResultFixture(f);
+            }}
+            onCorrectResult={(f) => {
+              setResultMode("correct");
+              setResultFixture(f);
+            }}
           />
         ))}
       </div>
@@ -459,6 +489,60 @@ function Jornadas({
           onClose={() => setForfeitFixture(null)}
         />
       ) : null}
+
+      {resultFixture ? (
+        <ResultModalFor
+          key={resultMode === "correct" ? `c-${resultFixture.id}` : `l-${resultFixture.id}`}
+          fixture={resultFixture}
+          teamNameById={teamNameById}
+          rostersFor={rostersFor}
+          mode={resultMode}
+          onClose={() => setResultFixture(null)}
+          onSubmit={(payload) => {
+            const fixture = resultFixture;
+            setResultFixture(null);
+            if (resultMode === "correct") {
+              onCorrectResult(fixture.id, payload);
+            } else {
+              onSubmitResult(fixture.id, payload);
+            }
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** Mounts the ResultModal for a fixture, resolving its home/away rosters. */
+function ResultModalFor({
+  fixture,
+  teamNameById,
+  rostersFor,
+  mode,
+  onSubmit,
+  onClose,
+}: {
+  fixture: FixtureDraft;
+  teamNameById: Map<string, string>;
+  rostersFor: (fixture: FixtureDraft) => readonly [
+    { id: string; name: string }[],
+    { id: string; name: string }[],
+  ];
+  mode: "load" | "correct";
+  onSubmit: (payload: ResultPayload) => void;
+  onClose: () => void;
+}) {
+  const [homeRoster, awayRoster] = rostersFor(fixture);
+  return (
+    <ResultModal
+      open
+      fixture={fixture}
+      teamNameById={teamNameById}
+      homeRoster={homeRoster}
+      awayRoster={awayRoster}
+      mode={mode}
+      onSubmit={onSubmit}
+      onClose={onClose}
+    />
   );
 }

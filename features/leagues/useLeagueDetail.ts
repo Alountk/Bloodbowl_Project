@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   acceptFixtureProposal,
   assignTeam,
+  correctResult,
   expelTeam,
   forfeitFixture,
   getLeagueDetail,
@@ -11,8 +12,10 @@ import {
   proposeFixtureDate,
   selfLeave,
   startLeague,
+  submitResult,
   type ApiTeamForAssign,
   type LeagueDetail,
+  type ResultPayload,
 } from "./api";
 
 /**
@@ -131,6 +134,22 @@ export function useLeagueDetail(leagueId: string) {
     [leagueId, refresh],
   );
 
+  const submit = useCallback(
+    async (fixtureId: string, payload: ResultPayload) => {
+      await submitResult(leagueId, fixtureId, payload);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
+  const correct = useCallback(
+    async (fixtureId: string, payload: ResultPayload) => {
+      await correctResult(leagueId, fixtureId, payload);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
   return {
     league,
     unassigned,
@@ -145,5 +164,7 @@ export function useLeagueDetail(leagueId: string) {
     propose,
     accept,
     forfeit,
+    submit,
+    correct,
   };
 }
