@@ -29,6 +29,10 @@ export interface FixtureDraft {
   scheduledAt: string | null;
   /** Winner team id, present once a result is recorded (display + legacy forfeit). Display-only — does not derive `played`. */
   winnerId: string | null;
+  /** Final home score, present when a result is recorded (walkover writes 0/2). */
+  homeScore?: number | null;
+  /** Final away score, present when a result is recorded (walkover writes 0/2). */
+  awayScore?: number | null;
   /** Derived lifecycle: pending | scheduled | played (played ⇔ scores present). */
   status: FixtureStatus;
   /** Home team owner (id + name, plus optional avatar), null when unresolvable. */
