@@ -424,15 +424,16 @@ describe("POST /api/.../[fixtureId]/result", () => {
     await callRoute("POST", validBody);
 
     // The snapshot JSON is the MV-2 source of truth: it must carry both teams'
-    // winnings and the server-rolled MVP grantee roster ids (forward-only, no
-    // schema change). Fixed rolls → home preFF 3, away preFF 2, home TD 2,
-    // away TD 1, both held ball → home 45k, away 35k; MJP rolls home 1 → p1,
-    // away 3 → p5.
+    // winnings (per-side, per the MatchScoreboard contract) and the server-rolled
+    // MVP grantee roster ids (forward-only, no schema change). Fixed rolls →
+    // home preFF 3, away preFF 2, home TD 2, away TD 1, both held ball → home
+    // 45k, away 35k; MJP rolls home 1 → p1, away 3 → p5.
     expect(prismaMock.matchResult.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           scores: expect.objectContaining({
-            winnings: { home: 45_000, away: 35_000 },
+            home: expect.objectContaining({ winnings: 45_000 }),
+            away: expect.objectContaining({ winnings: 35_000 }),
             mvp: { home: "p1", away: "p5" },
           }),
         }),
@@ -462,10 +463,9 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
           home: { score: 2, postFf: 4, casualties: 0, pe: [{ rosterPlayerId: "p1", pe: 3 + PE_MVP }] },
           away: { score: 1, postFf: 2, casualties: 0, pe: [{ rosterPlayerId: "p3", pe: 3 }] },
         } as {
-          home: { score: number; postFf: number; casualties: number; pe: { rosterPlayerId: string; pe: number }[] };
-          away: { score: number; postFf: number; casualties: number; pe: { rosterPlayerId: string; pe: number }[] };
+          home: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[] };
+          away: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[] };
           mvp?: { home: string; away: string };
-          winnings?: { home: number; away: number };
         },
         pettyCash: 150_000,
         loadedBy: "user-1",
@@ -596,10 +596,11 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
 
   it("PUT recomputes MVP and preserves prior winnings in the snapshot (D4)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
-    // Prior snapshot already carries winnings (persisted by a PRE-D4 load);
-    // the correction must keep them and re-roll the MJP grantee.
+    // Prior snapshot already carries winnings (per-side, per the MatchScoreboard
+    // contract); the correction must keep them and re-roll the MJP grantee.
     const played = playedFixture();
-    played.result.scores.winnings = { home: 45_000, away: 35_000 };
+    played.result.scores.home.winnings = 45_000;
+    played.result.scores.away.winnings = 35_000;
     prismaMock.fixture.findFirst.mockResolvedValue(played);
     // PUT consumes only the two MJP 1D6s (no FF/winnings re-compute): home
     // roll 1 → p1, away roll 3 → p5.
@@ -616,8 +617,9 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           scores: expect.objectContaining({
+            home: expect.objectContaining({ winnings: 45_000 }),
+            away: expect.objectContaining({ winnings: 35_000 }),
             mvp: { home: "p1", away: "p5" },
-            winnings: { home: 45_000, away: 35_000 },
           }),
         }),
       }),
@@ -645,6 +647,7 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
       }),
     );
     const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
-    expect(updateArg.data.scores).not.toHaveProperty("winnings");
+    expect(updateArg.data.scores.home).not.toHaveProperty("winnings");
+    expect(updateArg.data.scores.away).not.toHaveProperty("winnings");
   });
 });

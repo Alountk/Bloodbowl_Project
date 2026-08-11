@@ -53,10 +53,10 @@ Chain strategy: stacked-to-main
 
 ## PR 4 — Navigation + E2E
 
-- [ ] 4.1 RED (refactor guard) `features/leagues/MatchCard.test.tsx`: approval—scheduled/played footer text byte-identical, "Ver partido" link is LAST DOM link, href `{leagueId}/fixtures/{fixtureId}`, renders in ALL 3 states incl. pending (MV-4), card-body click still negotiates
-- [ ] 4.2 Modify `features/leagues/MatchCard.tsx`: footer `footer` always rendered (MV-4 DOM order), append `<Link>Ver partido</Link>` last; scheduled/played lines unchanged (byte-identical → Jornadas/match-report e2e green, AC-3)
-- [ ] 4.3 Modify `playwright.config.ts` +`testIgnore` with `"**/match-view.spec.ts"` (+1) and `playwright.config.auth.ts` +`testMatch` (+1): new spec NOT in local, IS in auth run
-- [ ] 4.4 Create `e2e/match-view.spec.ts` (auth suite, ~230): full-league helpers — played summary renders, scheduled date, pending notice, walkover notice on real DB (MV-1..MV-4, AC-1..AC-3)
+- [x] 4.1 RED (refactor guard) `features/leagues/MatchCard.test.tsx`: approval—scheduled/played footer text byte-identical, "Ver partido" link is LAST DOM link, href `{leagueId}/fixtures/{fixtureId}`, renders in ALL 3 states incl. pending (MV-4), card-body click still negotiates
+- [x] 4.2 Modify `features/leagues/MatchCard.tsx`: footer `footer` always rendered (MV-4 DOM order), append `<Link>Ver partido</Link>` last; scheduled/played lines unchanged (byte-identical → Jornadas/match-report e2e green, AC-3)
+- [x] 4.3 Modify `playwright.config.ts` +`testIgnore` with `"**/match-view.spec.ts"` (+1) and `playwright.config.auth.ts` +`testMatch` (+1): new spec NOT in local, IS in auth run
+- [x] 4.4 Create `e2e/match-view.spec.ts` (auth suite, ~230): full-league helpers — played summary renders, scheduled date, pending notice, walkover notice on real DB (MV-1..MV-4, AC-1..AC-3)
 
 ## Traceability
 
