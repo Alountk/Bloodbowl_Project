@@ -28,6 +28,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Ligas como agrupación (CRUD, una liga por equipo, unirse, expulsar, guard 409) | #29, #32, #33 |
 | Campeonatos: jornadas automáticas (round-robin sin repetir, equipos impares) | #34, #37, #38 |
 | Matchday: negociación de fechas (toma y daca), forfeit del admin, scouting, completitud de jornada | #39, #42, #43 |
+| Match report: carga y corrección de resultados (marcador, ganador derivado, tesorería, FF, PE, lesiones, bote), progresión de jugadores (PE → mejoras, skill élite, recalculo de valor) y e2e de los flujos completos | #49–#52 (slices 1–3), S4/S5 pendientes de merge (PR final) |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -47,7 +48,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Feature | Notas |
 |---|---|
 | **Partido en vivo** (interacción entre dos clientes) | La feature más grande: sincronización en tiempo real, marcador, turnos. Requiere WebSockets/SSE o similar. |
-| **Resultados y tabla de posiciones** | Hoy el único resultado es el forfeit; falta cargar marcadores y calcular standings por jornada. |
+| **Tabla de posiciones / standings** | La carga de resultados y marcadores ya está implementada; falta calcular y mostrar las standings por jornada. |
 | **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
 
 ### Mejoras técnicas
