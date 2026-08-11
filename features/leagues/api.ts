@@ -378,3 +378,78 @@ export async function getScoutedTeam(teamId: string): Promise<ScoutedTeamDetail>
   const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}`);
   return readJson<ScoutedTeamDetail>(res);
 }
+
+/** A player in a match roster, as served by the per-fixture GET. */
+export interface MatchPlayer {
+  rosterPlayerId: string;
+  name: string;
+  positionalKey: string;
+  pe: number;
+  skills: unknown;
+  injuries: unknown;
+  alive: boolean;
+  valueBonus: number;
+}
+
+/** One team side of a match detail: identity, race, coach, and roster. */
+export interface MatchTeamDetail {
+  id: string;
+  name: string;
+  raceId: string;
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    avatar?: string | null;
+  } | null;
+  players: MatchPlayer[];
+}
+
+/** The persisted `scores` snapshot shape (D4: winnings + mvp are new fields). */
+export interface MatchScoreboard {
+  home: {
+    score: number;
+    postFf?: number | null;
+    winnings?: number | null;
+    casualties: { team: "home" | "away"; rosterPlayerId: string; outcome: { kind: string } }[];
+    pe: { rosterPlayerId: string; pe: number }[];
+  };
+  away: MatchScoreboard["home"];
+  winnerId: string | null;
+  /** Persisted server-rolled MVP grantee ids (absent on legacy rows → fallback). */
+  mvp?: { home: string; away: string } | null;
+}
+
+/** The persisted `MatchResult` row served for a played fixture. */
+export interface MatchResultRecord {
+  id: string;
+  fixtureId: string;
+  weather: string | null;
+  scores: MatchScoreboard;
+  pettyCash: number | null;
+  loadedBy: string;
+}
+
+/** A single match's normalized payload: fixture, snapshot (or null), rosters. */
+export interface MatchDetail {
+  fixture: FixtureDraft;
+  /** Present for a played fixture with a result; null for a walkover (MV-2). */
+  result: (MatchResultRecord & { scores: MatchScoreboard }) | null;
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
+}
+
+/**
+ * Fetches a single match detail (`GET /api/leagues/[id]/fixtures/[fixtureId]`).
+ * Auth-gated server-side: 401 unauthenticated, 404 foreign/missing/not-in-
+ * league (no existence leak), 200 for owner/member/any-authenticated-in-open.
+ */
+export async function getMatchDetail(
+  leagueId: string,
+  fixtureId: string,
+): Promise<MatchDetail> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}`,
+  );
+  return readJson<MatchDetail>(res);
+}
