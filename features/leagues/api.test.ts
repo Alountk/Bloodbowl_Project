@@ -291,8 +291,8 @@ describe("matchday negotiation helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
     const payload = {
       weather: "perfect",
-      home: { score: 2, ballHeld: true, players: [{ rosterPlayerId: "p1", tds: 2, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 }], mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] } },
-      away: { score: 1, ballHeld: true, players: [{ rosterPlayerId: "p3", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 }], mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] } },
+      home: { score: 2, ballHeld: true, players: [{ rosterPlayerId: "p1", tds: 2, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 }], mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] }, casualties: [] },
+      away: { score: 1, ballHeld: true, players: [{ rosterPlayerId: "p3", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 }], mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] }, casualties: [] },
     };
 
     const outcome = await submitResult("l1", "f1", payload);
@@ -314,8 +314,8 @@ describe("matchday negotiation helpers", () => {
       .mockResolvedValue(okJson({ fixtureId: "f1", status: "played", homeScore: 2, awayScore: 1, winnerId: "t1" }));
     vi.stubGlobal("fetch", fetchMock);
     const payload = {
-      home: { score: 2, ballHeld: true, players: [], mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] } },
-      away: { score: 1, ballHeld: true, players: [], mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] } },
+      home: { score: 2, ballHeld: true, players: [], mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] }, casualties: [] },
+      away: { score: 1, ballHeld: true, players: [], mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] }, casualties: [] },
     };
 
     await correctResult("l1", "f1", payload);

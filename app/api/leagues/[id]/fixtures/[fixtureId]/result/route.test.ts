@@ -7,7 +7,7 @@ const prismaMock = vi.hoisted(() => ({
   matchResult: { create: vi.fn(), update: vi.fn() },
   matchResultCorrection: { create: vi.fn() },
   team: { update: vi.fn() },
-  player: { createMany: vi.fn(), updateMany: vi.fn() },
+  player: { createMany: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 const randomMock = vi.hoisted(() => ({
@@ -74,7 +74,7 @@ function stubTransaction() {
         matchResult: { create: prismaMock.matchResult.create, update: prismaMock.matchResult.update },
         matchResultCorrection: { create: prismaMock.matchResultCorrection.create },
         team: { update: prismaMock.team.update },
-        player: { updateMany: prismaMock.player.updateMany },
+        player: { findMany: prismaMock.player.findMany, updateMany: prismaMock.player.updateMany },
       };
       return cb(data as never);
     },
@@ -91,6 +91,7 @@ const validBody = {
       { rosterPlayerId: "p2", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
     ],
     mvp: { nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] },
+    casualties: [] as { team: "home" | "away"; rosterPlayerId: string }[],
   },
   away: {
     score: 1,
@@ -99,6 +100,7 @@ const validBody = {
       { rosterPlayerId: "p3", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
     ],
     mvp: { nominations: ["p3", "p4", "p5", "p6", "p7", "p8"] },
+    casualties: [] as { team: "home" | "away"; rosterPlayerId: string }[],
   },
 };
 
@@ -193,6 +195,126 @@ describe("POST /api/.../[fixtureId]/result", () => {
     expect(peUpdate.some((c) => c.where.teamId === "t2" && c.where.rosterPlayerId === "p3" && c.data.pe.increment === 3)).toBe(true);
     // the home MJP grantee (p1, roll 1) gains the 4-PE MJP bonus on top.
     expect(peUpdate.some((c) => c.where.rosterPlayerId === "p1" && c.data.pe.increment === 3 + PE_MVP)).toBe(true);
+  });
+
+  it("persists per-victim injury outcomes on the Player rows in the same transaction", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    // home inflicts a casualty on away victim av1; away clears roll 1D16s [16=dead, 2=bruise].
+    const body = structuredClone(validBody);
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    body.away.casualties = [{ team: "home", rosterPlayerId: "hv1" }];
+    randomMock.rollD16.mockReturnValueOnce(16).mockReturnValueOnce(2); // av1 dead, hv1 bruise
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [], alive: true },
+      { teamId: "t1", rosterPlayerId: "hv1", injuries: [], alive: true },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("POST", body);
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.player.findMany).toHaveBeenCalledTimes(1);
+    // Death: away victim av1 appended {kind:dead} and marked dead.
+    expect(
+      prismaMock.player.updateMany.mock.calls.some(
+        (c) =>
+          c[0].where.teamId === "t2" &&
+          c[0].where.rosterPlayerId === "av1" &&
+          c[0].data.alive === false &&
+          c[0].data.injuries[0].kind === "dead",
+      ),
+    ).toBe(true);
+    // Non-fatal: home victim hv1 appended {kind:bruise}, stays alive.
+    expect(
+      prismaMock.player.updateMany.mock.calls.some(
+        (c) =>
+          c[0].where.teamId === "t1" &&
+          c[0].where.rosterPlayerId === "hv1" &&
+          c[0].data.alive === true &&
+          c[0].data.injuries[0].kind === "bruise",
+      ),
+    ).toBe(true);
+    // The report snapshot records each team's victims with their resolved band.
+    expect(prismaMock.matchResult.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          scores: expect.objectContaining({
+            home: expect.objectContaining({
+              casualties: expect.arrayContaining([
+                expect.objectContaining({ team: "home", rosterPlayerId: "hv1", outcome: { kind: "bruise" } }),
+              ]),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("skips unknown victim ids that are not in the roster (no write)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    const body = structuredClone(validBody);
+    body.home.casualties = [{ team: "away", rosterPlayerId: "ghost" }];
+    randomMock.rollD16.mockReturnValueOnce(7);
+    // Roster backfill created only known ids; the mocked read returns no Player row.
+    prismaMock.player.findMany.mockResolvedValue([]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    await callRoute("POST", body);
+
+    // No updateMany persisted for the unknown victim (findMany returned nothing for it).
+    const injuryWrites = prismaMock.player.updateMany.mock.calls.filter(
+      (c) => c[0].data.injuries !== undefined,
+    );
+    expect(injuryWrites.some((c) => c[0].where.rosterPlayerId === "ghost")).toBe(false);
+  });
+
+  it("skips an already-dead victim (no revive, no re-append)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    const body = structuredClone(validBody);
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    randomMock.rollD16.mockReturnValueOnce(5);
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [{ kind: "dead" }], alive: false },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    await callRoute("POST", body);
+
+    // alive:false row prevents any injury write for that victim.
+    const injuryWrites = prismaMock.player.updateMany.mock.calls.filter(
+      (c) => c[0].data.injuries !== undefined,
+    );
+    expect(injuryWrites.some((c) => c[0].where.rosterPlayerId === "av1")).toBe(false);
+  });
+
+  it("persists a duplicate victim id only once", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    const body = structuredClone(validBody);
+    // home lists the same away victim twice.
+    body.home.casualties = [
+      { team: "away", rosterPlayerId: "av1" },
+      { team: "away", rosterPlayerId: "av1" },
+    ];
+    randomMock.rollD16.mockReturnValueOnce(10).mockReturnValueOnce(10);
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [], alive: true },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    await callRoute("POST", body);
+
+    const av1Writes = prismaMock.player.updateMany.mock.calls.filter(
+      (c) => c[0].where.rosterPlayerId === "av1" && c[0].data.injuries !== undefined,
+    );
+    expect(av1Writes).toHaveLength(1);
   });
 
   it("returns 400 when TDs do not sum to the reported score", async () => {
@@ -349,6 +471,45 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
         (c) => c[0].where.teamId === "t2" && c[0].where.rosterPlayerId === "p3" && c[0].data.pe.increment === 2,
       ),
     ).toBe(true);
+  });
+
+  it("persists corrected per-victim injuries on re-run, skipping already-dead", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    // Previous report had no casualties; the corrected report now kills an away victim.
+    const played = playedFixture();
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubFixedRolls();
+    const body = structuredClone(validBody);
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    randomMock.rollD16.mockReturnValueOnce(15); // dead (15-16)
+    // av1 already dead from a prior load → the re-run must not revive or re-append.
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [{ kind: "dead" }], alive: false },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", body);
+
+    expect(res.status).toBe(200);
+    // The already-dead victim is skipped: no injury write for av1.
+    const injuryWrites = prismaMock.player.updateMany.mock.calls.filter(
+      (c) => c[0].data.injuries !== undefined,
+    );
+    expect(injuryWrites.some((c) => c[0].where.rosterPlayerId === "av1")).toBe(false);
+    // The audit snapshot records the corrected casualty (before empty, after dead).
+    expect(prismaMock.matchResultCorrection.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          after: expect.objectContaining({
+            away: expect.objectContaining({
+              casualties: expect.arrayContaining([
+                expect.objectContaining({ team: "away", rosterPlayerId: "av1", outcome: { kind: "dead" } }),
+              ]),
+            }),
+          }),
+        }),
+      }),
+    );
   });
 
   it("returns 409 when there is no result to correct", async () => {

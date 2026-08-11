@@ -97,22 +97,33 @@ export function computeTeamTv(rosterCost: number, coachingCost: number, valueBon
   return rosterCost + coachingCost + valueBonusSum;
 }
 
+/** A casualty's victim identity supplied by the client (the server owns the 1D16). */
+export interface CasualtyVictim {
+  /** The team the victim belongs to (where the Player row lives). */
+  team: "home" | "away";
+  rosterPlayerId: string;
+}
+
+/** A victim with its server-resolved rulebook injury band. */
+export interface ResolvedCasualty extends CasualtyVictim {
+  outcome: InjuryOutcome;
+}
+
 /**
- * Resolves one 1D16 injury outcome per reported casualty, in the order the
- * causes were reported. `rolls` are server-owned 1D16 values. Each casualty
- * yields the rulebook band (bruise/apaleado/grave/permanent/dead); a player
- * carrying a previous permanent injury would add a +1 LMC modifier but that
- * requires victim identity, so the aggregate resolution defaults to 0 here.
+ * Resolves one server-owned 1D16 outcome per reported victim, preserving each
+ * victim's team + rosterPlayerId so the result route can mutate the matching
+ * Player row (append to `injuries[]`, set `alive:false` on death). `rolls` are
+ * the server's 1D16 values, one per victim, in the order victims were reported.
+ * Reuses the rulebook `resolveInjury` band (bb2025-rules R5); the LMC +1
+ * permanent modifier is only meaningful with victim identity and is applied by
+ * the caller when a victim carries a previous permanent injury (0 here).
  */
-export function resolveTeamInjuries(
-  casualties: number,
+export function resolveCasualtyOutcomes(
+  victims: readonly CasualtyVictim[],
   rolls: readonly number[],
-  permanentModifier = 0,
-): InjuryOutcome[] {
-  const count = Math.max(0, casualties);
-  const outcomes: InjuryOutcome[] = [];
-  for (let i = 0; i < count; i++) {
-    outcomes.push(resolveInjury(rolls[i] ?? 0, permanentModifier));
-  }
-  return outcomes;
+): ResolvedCasualty[] {
+  return victims.map((victim, i) => ({
+    ...victim,
+    outcome: resolveInjury(rolls[i] ?? 0, 0),
+  }));
 }
