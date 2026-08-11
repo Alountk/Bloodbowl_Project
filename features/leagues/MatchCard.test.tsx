@@ -55,13 +55,13 @@ function renderCard(props: Partial<MatchCardProps> = {}) {
 
 describe("matchStatusLabel", () => {
   it("labels pending as Pendiente", () => {
-    expect(matchStatusLabel("pending", null, null)).toBe("Pendiente");
+    expect(matchStatusLabel("pending")).toBe("Pendiente");
   });
   it("labels scheduled as Programado", () => {
-    expect(matchStatusLabel("scheduled", "2026-03-01T10:00:00.000Z", null)).toBe("Programado");
+    expect(matchStatusLabel("scheduled")).toBe("Programado");
   });
   it("labels played as Jugado", () => {
-    expect(matchStatusLabel("played", null, "th")).toBe("Jugado");
+    expect(matchStatusLabel("played")).toBe("Jugado");
   });
 });
 
@@ -178,6 +178,15 @@ describe("MatchCard", () => {
     expect(labels.length).toBeGreaterThanOrEqual(1);
     // The footer names the winner team.
     expect(screen.getByText(/Ganador: Reavers/)).toBeTruthy();
+  });
+
+  it("does not label a winnerId-only forfeit as Jugado when no result is recorded", () => {
+    // Server now derives `played` from scores; winnerId alone → pending.
+    renderCard({ fixture: fixture({ status: "pending", winnerId: "th" }) });
+    expect(screen.getByText(/Pendiente/)).toBeTruthy();
+    expect(screen.queryByText(/Jugado/)).toBeNull();
+    // No winner footer either (no result recorded).
+    expect(screen.queryByText(/Ganador:/)).toBeNull();
   });
 
   it("links each team's name to its scouting page '/teams/[id]'", () => {

@@ -2,14 +2,14 @@ import Link from "next/link";
 import { UserAvatar } from "@/components/UserAvatar";
 import type { FixtureDraft, FixtureStatus } from "./api";
 
-/** Pure: resolves the Spanish status label shown on a match card. */
-export function matchStatusLabel(
-  status: FixtureStatus,
-  scheduledAt: string | null,
-  winnerId: string | null,
-): string {
-  if (status === "played" || winnerId) return "Jugado";
-  if (status === "scheduled" || scheduledAt) return "Programado";
+/**
+ * Pure: resolves the Spanish status label shown on a match card from the
+ * server-derived fixture status. `played` means a score/result was recorded —
+ * winnerId alone never labels a match Jugado (league-season delta).
+ */
+export function matchStatusLabel(status: FixtureStatus): string {
+  if (status === "played") return "Jugado";
+  if (status === "scheduled") return "Programado";
   return "Pendiente";
 }
 
@@ -59,7 +59,7 @@ export function MatchCard({
   onForfeit,
 }: MatchCardProps) {
   void currentUserId;
-  const status = matchStatusLabel(fixture.status, fixture.scheduledAt, fixture.winnerId);
+  const status = matchStatusLabel(fixture.status);
   const homeName = teamNameById.get(fixture.homeTeamId) ?? "Equipo";
   const awayName = teamNameById.get(fixture.awayTeamId) ?? "Equipo";
 
