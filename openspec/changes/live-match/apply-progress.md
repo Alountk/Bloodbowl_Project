@@ -244,3 +244,80 @@ None — matches design D2 (client fetch), D5 (MVP via mapper), and the MatchVie
 ## Remaining (PR 4 only)
 
 - 4.1–4.4: MatchCard "Ver partido" link (MV-4, byte-identical scheduled/played footer), playwright config split (new match-view spec in auth suite only), and `e2e/match-view.spec.ts` (auth, real-DB).
+
+---
+
+# Apply Progress — Live Match View (PR 4: Navigation + E2E) — FINAL SLICE
+
+## Status
+
+PR 4 (tasks 4.1–4.4) **complete** — the final slice closes the live-match MVP. MatchCard "Ver partido" link (MV-4), playwright config split, and a real-DB `e2e/match-view.spec.ts` (auth). Two in-scope bug fixes surfaced by the real-DB e2e: the result snapshot's `winnings` moved per-side to match the design's `MatchScoreboard` contract (PR 1 latent), and a pre-existing `league-matchday.spec.ts` `adminAsBye` test-harness guard repaired (was failing intermittently). Full unit + lint + tsc + local e2e + auth e2e all green.
+
+## Scope (chained PR 4 of 4, stacked-to-main)
+
+Branch: `feat/live-match-nav` (from updated `main` @ merged PR 3 #59).
+- `features/leagues/MatchCard.tsx` — always-rendered footer + "Ver partido" link LAST
+- `playwright.config.ts` / `playwright.config.auth.ts` — route match-view.spec into auth-only
+- `e2e/match-view.spec.ts` (new, auth suite)
+- `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts` + test — per-side winnings fix
+- `e2e/league-matchday.spec.ts` — `adminAsBye` guard fix (test harness)
+
+## Completed Tasks
+
+- [x] 4.1 RED (refactor guard) MatchCard.test.tsx: byte-identical scheduled/played footer, "Ver partido" LAST DOM link, href `{leagueId}/fixtures/{fixtureId}`, renders in all 3 states, card-body click still negotiates
+- [x] 4.2 MatchCard.tsx: always-rendered footer + "Ver partido" link last; scheduled/played lines byte-identical
+- [x] 4.3 playwright configs: `match-view.spec.ts` NOT in local testIgnore, IS in auth testMatch
+- [x] 4.4 `e2e/match-view.spec.ts`: pending → scheduled date → played summary + Ver partido nav + Jornadas intact; walkover notice (real DB)
+
+## TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1 | `features/leagues/MatchCard.test.tsx` | Unit (component) | ✅ 21/21 | ✅ 4 RED | ✅ 25/25 | ✅ 3 states + byte-identical + last-link | ✅ fixed `screen.unmount` misuse |
+| 4.2 | `MatchCard.tsx` | Component | ✅ 21/21 | ✅ (from 4.1) | ✅ 25/25 | ✅ last-link + href + pending | ➖ Clean |
+| 4.3 | `playwright.config.ts`/`.auth.ts` | Config | N/A | N/A (additive) | ✅ local 21 = excludes match-view | ✅ +1/+1 verified via `--list` | ➖ Minimal |
+| 4.4 | `e2e/match-view.spec.ts` | E2E (real DB) | N/A | ✅ (auth run red → green) | ✅ 2/2 in auth suite | ✅ pending/scheduled/played + walkover + Jornadas | ✅ await region; weather omit-if-empty soft-assert |
+| 4.2 fix | `result/route.ts` + test | Unit (route) | ✅ 24/24 | ✅ 2 RED (per-side) | ✅ 24/24 | ✅ POST per-side + PUT preserve per-side + legacy | ➖ Clean |
+| harness | `e2e/league-matchday.spec.ts` | E2E harness | N/A | ✅ (auth red on flake) | ✅ 3/3 | ✅ admin t1/t2/bye | ➖ guard only |
+
+### Work Unit Evidence (PR 4)
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `pnpm vitest run features/leagues/MatchCard.test.tsx` → 25/25; `features/leagues/MatchView.test.tsx` → 7/7; `result/route.test.ts` → 24/24 |
+| Runtime harness command/scenario and exact result | `pnpm run test:e2e:auth` (Docker) → **18/18 passed** including the new `e2e/match-view.spec.ts` and the pre-existing Jornadas/match-report specs. Local `AUTH_MODE=local playwright test` → 21/21 (match-view excluded via 4.3). |
+| Rollback boundary | Revert `MatchCard.tsx` + `MatchCard.test.tsx` + both playwright configs + `e2e/match-view.spec.ts` + the per-side winnings route change + the matchday guard fix; leaves PRs 1-3 intact. Commits `b03cfe9`, `0b88c5a`, `63d0f71`, `9d39a55`, `66e7e4e`, `b2c03de`. |
+
+## Files Changed (PR 4)
+
+| File | Action | Notes |
+|------|--------|-------|
+| `features/leagues/MatchCard.tsx` | Modified | always-rendered footer + "Ver partido" last (MV-4) |
+| `features/leagues/MatchCard.test.tsx` | Modified | +4 approval/nav tests |
+| `playwright.config.ts` | Modified | +`**/match-view.spec.ts` testIgnore |
+| `playwright.config.auth.ts` | Modified | +`**/match-view.spec.ts` testMatch |
+| `e2e/match-view.spec.ts` | Created | 2 auth journeys |
+| `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts` | Modified | per-side winnings (POST writer + PUT preserver) |
+| `.../result/route.test.ts` | Modified | per-side winnings assertions |
+| `e2e/league-matchday.spec.ts` | Modified | `adminAsBye` guard (t1||t2) |
+| `openspec/changes/live-match/tasks.md` | Modified | Marked 4.1–4.4 `[x]` |
+
+## Deviations from Design / Bugs Found & Fixed
+
+- **BUG (surfaced by e2e)** — the D4 snapshot stored `winnings` top-level `{home,away}`, but the design `MatchScoreboard` contract (and the PR 2 mapper / PR 3 MatchView) read `winnings` per-side. The result route now writes each side's `winnings` inside `home`/`away` (POST) and preserves prior per-side winnings on PUT (legacy rows omit the key — forward-only). No migration.
+- **BUG (pre-existing, test-harness)** — `e2e/league-matchday.spec.ts`'s `adminAsBye` guard only retried when the admin was the round-1 FIRST team (`t1`), so an admin-as-second-team pairing leaked through and the negotiation test's `not.toContain(admin)` failed intermittently (~1/3 runs). Fixed to check both `t1` and `t2`. Requires an orchestrator review: this is a repair of a latent test bug, not product scope.
+
+## Verification (PR 4)
+
+- Focused: `pnpm vitest run features/leagues/MatchCard.test.tsx` → 25/25; `MatchView.test.tsx` → 7/7; `result/route.test.ts` → 24/24
+- `pnpm test` → 84 files / **962 tests passed**
+- `pnpm lint` → 0 errors; `npx tsc --noEmit` → clean
+- `AUTH_MODE=local pnpm exec playwright test` → **21/21** (match-view excluded; confirmed via `--list` = 0)
+- `pnpm run test:e2e:auth` (Docker) → **18/18 passed** including `e2e/match-view.spec.ts` (2) and all pre-existing auth suites
+
+## PR Boundary (PR 4 / FINAL)
+
+- Mode: **stacked PR slice 4 of 4** (stacked-to-main)
+- Commits: `b03cfe9`, `0b88c5a`, `63d0f71`, `9d39a55`, `66e7e4e`, `b2c03de`
+- Boundary: from merged `main` (PR 3 #59); ends the live-match MVP. Change is COMPLETE → next phase `sdd-verify`.
+- Review budget impact: ~330 authored code/test/config lines in this slice (matching the PR 4 forecast ~280–330).
