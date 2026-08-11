@@ -164,12 +164,29 @@ describe("GET /api/leagues/[id]", () => {
 });
 
 describe("matchday fixture enrichment (pure functions)", () => {
-  it("derives pending/scheduled/played status from scheduledAt/winnerId", () => {
-    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: null })).toBe("pending");
-    expect(deriveFixtureStatus({ scheduledAt: new Date(), winnerId: null })).toBe("scheduled");
-    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: "t1" })).toBe("played");
-    // winnerId overrides scheduledAt (a forfeited scheduled match is played).
-    expect(deriveFixtureStatus({ scheduledAt: new Date(), winnerId: "t1" })).toBe("played");
+  it("derives pending/scheduled/played status from scores (league-season delta)", () => {
+    // No scores, no schedule → pending.
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: null, homeScore: null, awayScore: null })).toBe("pending");
+    // Scheduled (date agreed) but no result recorded yet → scheduled.
+    expect(deriveFixtureStatus({ scheduledAt: new Date(), winnerId: null, homeScore: null, awayScore: null })).toBe("scheduled");
+    // winnerId alone no longer derives played (winnerId is display-only).
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: "t1", homeScore: null, awayScore: null })).toBe("pending");
+    expect(deriveFixtureStatus({ scheduledAt: new Date(), winnerId: "t1", homeScore: null, awayScore: null })).toBe("scheduled");
+    // A recorded result (scores present) derives played, overriding schedule.
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: null, homeScore: 2, awayScore: 1 })).toBe("played");
+    expect(deriveFixtureStatus({ scheduledAt: new Date(), winnerId: "t1", homeScore: 1, awayScore: 1 })).toBe("played");
+  });
+
+  it("treats a score of 0 or a lone away score as a recorded result (not a falsy miss)", () => {
+    // 0-0 is a scoreline, not an absent result.
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: null, homeScore: 0, awayScore: 0 })).toBe("played");
+    // A lone away score (asymmetric/unusual) still records a result.
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: null, homeScore: null, awayScore: 0 })).toBe("played");
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: null, homeScore: 0, awayScore: null })).toBe("played");
+  });
+
+  it("derives played from a persisted result record even absent raw scores (forward-compat)", () => {
+    expect(deriveFixtureStatus({ scheduledAt: null, winnerId: "t1", result: { id: "mr1" } })).toBe("played");
   });
 
   it("enriches a fixture with status, owners and proposals", () => {
@@ -222,12 +239,13 @@ describe("matchday fixture enrichment (pure functions)", () => {
     expect(enriched.awayOwner).toEqual({ id: "user-2", name: "b@x", avatar: null });
   });
 
-  it("builds per-round complete flags: all played when every fixture in the round is played", () => {
+  it("builds per-round complete flags: complete only when every fixture in the round has scores", () => {
     const rounds = buildRoundsWithCompletion([
-      { id: "f1", round: 1, winnerId: "t1" },
-      { id: "f2", round: 1, winnerId: "t2" },
-      { id: "f3", round: 2, winnerId: null },
-      { id: "f4", round: 2, winnerId: "t1" },
+      { id: "f1", round: 1, homeScore: 2, awayScore: 1 },
+      { id: "f2", round: 1, homeScore: 0, awayScore: 0 },
+      { id: "f3", round: 2, homeScore: null, awayScore: null },
+      // winnerId alone is NOT a recorded result → not complete.
+      { id: "f4", round: 2, winnerId: "t1", homeScore: null, awayScore: null },
     ]);
     expect(rounds).toEqual([
       { round: 1, fixtures: ["f1", "f2"], complete: true },
@@ -262,9 +280,28 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
       createdAt: new Date("2026-02-01"),
       scheduledAt: new Date("2026-03-01"),
       winnerId: "t1",
+      // Final score recorded → derives `played` (overrides the schedule).
+      homeScore: 2,
+      awayScore: 1,
       homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x", avatar: "/uploads/avatars/u-1.webp" } },
       awayTeam: { user: { id: "user-2", name: "Coach B", email: "b@x" } },
       proposals: [{ id: "p1", acceptedAt: new Date() }],
+    };
+    const forfeitedFixture = {
+      id: "f3",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: new Date("2026-02-01"),
+      scheduledAt: null,
+      // winnerId alone is NOT a recorded result → does NOT derive played.
+      winnerId: "t1",
+      homeScore: null,
+      awayScore: null,
+      homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x", avatar: "/uploads/avatars/u-1.webp" } },
+      awayTeam: { user: { id: "user-2", name: "Coach B", email: "b@x" } },
+      proposals: [],
     };
     const pendingFixture = {
       id: "f2",
@@ -275,11 +312,13 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
       createdAt: new Date("2026-02-01"),
       scheduledAt: null,
       winnerId: null,
+      homeScore: null,
+      awayScore: null,
       homeTeam: { user: { id: "user-2", name: "Coach B", email: "b@x" } },
       awayTeam: { user: { id: "user-1", name: "Coach A", email: "a@x" } },
       proposals: [],
     };
-    prismaMock.fixture.findMany.mockResolvedValue([playedFixture, pendingFixture]);
+    prismaMock.fixture.findMany.mockResolvedValue([playedFixture, forfeitedFixture, pendingFixture]);
 
     const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
       params: Promise.resolve({ id: "l1" }),
@@ -287,16 +326,23 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
+    expect(body.fixtures).toHaveLength(3);
     expect(body.fixtures[0].status).toBe("played");
     expect(body.fixtures[0].winnerId).toBe("t1");
+    // Final scores are exposed on the enriched fixture.
+    expect(body.fixtures[0].homeScore).toBe(2);
+    expect(body.fixtures[0].awayScore).toBe(1);
+    // winnerId alone does NOT derive played.
     expect(body.fixtures[1].status).toBe("pending");
-    expect(body.fixtures[1].scheduledAt).toBeNull();
+    expect(body.fixtures[1].winnerId).toBe("t1");
+    expect(body.fixtures[2].status).toBe("pending");
+    expect(body.fixtures[2].scheduledAt).toBeNull();
     expect(body.fixtures[0].homeOwner.name).toBe("Coach A");
     expect(body.fixtures[0].homeOwner.avatar).toBe("/uploads/avatars/u-1.webp");
     expect(body.fixtures[0].proposals).toHaveLength(1);
-    // Round with a pending fixture is NOT complete.
+    // Round with a pending (or winnerId-only) fixture is NOT complete.
     expect(body.rounds).toEqual([
-      { round: 1, fixtures: ["f1", "f2"], complete: false },
+      { round: 1, fixtures: ["f1", "f3", "f2"], complete: false },
     ]);
     // The nested user select now carries `avatar` so MatchCard can render it.
     expect(prismaMock.fixture.findMany).toHaveBeenCalledWith(
@@ -313,7 +359,7 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
     );
   });
 
-  it("marks a round complete only when every fixture in it is played", async () => {
+  it("marks a round complete when every fixture in it has a recorded result (scores)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.findFirst.mockResolvedValue({
       id: "l1",
@@ -328,8 +374,8 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
       teams: [],
     });
     prismaMock.fixture.findMany.mockResolvedValue([
-      { id: "f1", round: 1, homeTeamId: "t1", awayTeamId: "t2", winnerId: "t1", scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
-      { id: "f2", round: 1, homeTeamId: "t2", awayTeamId: "t1", winnerId: "t2", scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
+      { id: "f1", round: 1, homeTeamId: "t1", awayTeamId: "t2", winnerId: "t1", homeScore: 2, awayScore: 0, scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
+      { id: "f2", round: 1, homeTeamId: "t2", awayTeamId: "t1", winnerId: "t2", homeScore: 1, awayScore: 3, scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
     ]);
 
     const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
@@ -337,6 +383,33 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
     } as never);
     const body = await res.json();
     expect(body.rounds[0].complete).toBe(true);
+  });
+
+  it("does not mark a round complete when fixtures carry only winnerId (no scores)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Started League",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: null },
+      status: "started",
+      seasonLength: 2,
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      teams: [],
+    });
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { id: "f1", round: 1, homeTeamId: "t1", awayTeamId: "t2", winnerId: "t1", homeScore: null, awayScore: null, scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
+      { id: "f2", round: 1, homeTeamId: "t2", awayTeamId: "t1", winnerId: "t2", homeScore: null, awayScore: null, scheduledAt: null, createdAt: new Date(), homeTeam: { user: null }, awayTeam: { user: null }, proposals: [] },
+    ]);
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+    const body = await res.json();
+    expect(body.rounds[0].complete).toBe(false);
+    expect(body.fixtures[0].status).toBe("pending");
   });
 });
 

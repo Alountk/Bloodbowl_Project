@@ -3,15 +3,31 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { FixtureStatus } from "@/features/leagues/api";
 
-/**
- * Pure: derives a fixture's lifecycle status from its scheduling fields.
- * `winnerId` overrides `scheduledAt` (a forfeited scheduled match is played).
- */
-export function deriveFixtureStatus(fixture: {
+/** The scheduling/result fields a fixture derives its lifecycle status from. */
+export interface FixtureStatusInput {
   scheduledAt?: Date | string | null;
   winnerId?: string | null;
-}): FixtureStatus {
-  if (fixture.winnerId) return "played";
+  homeScore?: number | null;
+  awayScore?: number | null;
+  result?: unknown;
+}
+
+/**
+ * Pure: derives a fixture's lifecycle status from its scheduling and result
+ * fields.
+ *
+ * A fixture is `played` when a result has been recorded — scored via the result
+ * route or a walkover (both write home/away scores) or when a persisted result
+ * record is present. `scheduledAt` alone only schedules; `winnerId` alone is
+ * display-only and no longer marks a match played (winnerId is derived from the
+ * scores when a result loads). League-season delta: `played ⇔ scores present ∥
+ * result present`.
+ */
+export function deriveFixtureStatus(fixture: FixtureStatusInput): FixtureStatus {
+  if (fixture.homeScore != null || fixture.awayScore != null) return "played";
+  // Forward-compat: a persisted result record marks the match played even if a
+  // legacy row has no raw score on the fixture (result route always writes both).
+  if (fixture.result) return "played";
   if (fixture.scheduledAt) return "scheduled";
   return "pending";
 }
@@ -35,6 +51,9 @@ interface FixtureWithMatchday {
   createdAt: Date | string;
   scheduledAt: Date | string | null;
   winnerId: string | null;
+  homeScore?: number | null;
+  awayScore?: number | null;
+  result?: unknown;
   homeTeam?: { user?: { id: string; name: string | null; email: string | null; avatar?: string | null } | null } | null;
   awayTeam?: { user?: { id: string; name: string | null; email: string | null; avatar?: string | null } | null } | null;
   proposals?: unknown[];
@@ -78,16 +97,18 @@ export function enrichFixture(fixture: FixtureWithMatchday): FixtureWithMatchday
 }
 
 /**
- * Pure: groups rich fixtures by round and computes each round's `complete`
- * flag (true only when EVERY fixture in the round derives `played`).
+ * Pure: groups fixtures by round and computes each round's `complete` flag.
+ * A round is complete only when EVERY fixture in it derives `played` (has a
+ * recorded result — scores present or a result record). winnerId alone never
+ * completes a round (league-season delta).
  */
 export function buildRoundsWithCompletion(
-  fixtures: { id: string; round: number; winnerId?: string | null }[],
+  fixtures: (FixtureStatusInput & { id: string; round: number })[],
 ): { round: number; fixtures: string[]; complete: boolean }[] {
-  const grouped = new Map<number, { id: string; winnerId?: string | null }[]>();
+  const grouped = new Map<number, typeof fixtures>();
   for (const fixture of fixtures) {
     const list = grouped.get(fixture.round) ?? [];
-    list.push({ id: fixture.id, winnerId: fixture.winnerId });
+    list.push(fixture);
     grouped.set(fixture.round, list);
   }
   return Array.from(grouped.entries())
@@ -95,7 +116,7 @@ export function buildRoundsWithCompletion(
     .map(([round, list]) => ({
       round,
       fixtures: list.map((f) => f.id),
-      complete: list.every((f) => Boolean(f.winnerId)),
+      complete: list.every((f) => deriveFixtureStatus(f) === "played"),
     }));
 }
 
