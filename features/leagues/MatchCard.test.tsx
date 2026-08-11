@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MatchCard, type MatchCardProps, matchStatusLabel, formatMatchDate } from "./MatchCard";
+import { MatchCard, type MatchCardProps, matchStatusLabel, formatMatchDate, formatMatchScore } from "./MatchCard";
 import type { FixtureDraft } from "./api";
 
 /**
@@ -81,6 +81,18 @@ describe("formatMatchDate", () => {
       }).format(new Date(iso));
     expect(formatMatchDate("2026-03-01T10:00:00.000Z")).toBe(fmt("2026-03-01T10:00:00.000Z"));
     expect(formatMatchDate("2026-03-15T20:30:00.000Z")).toBe(fmt("2026-03-15T20:30:00.000Z"));
+  });
+});
+
+describe("formatMatchScore", () => {
+  it("returns the en-dash score when both scores are recorded", () => {
+    expect(formatMatchScore(2, 1)).toBe("2 – 1");
+    expect(formatMatchScore(0, 0)).toBe("0 – 0");
+  });
+  it("returns null when either score is absent", () => {
+    expect(formatMatchScore(null, 1)).toBeNull();
+    expect(formatMatchScore(2, null)).toBeNull();
+    expect(formatMatchScore(null, null)).toBeNull();
   });
 });
 
@@ -173,10 +185,24 @@ describe("MatchCard", () => {
   });
 
   it("shows a Jugado badge with the winner when played", () => {
-    renderCard({ fixture: fixture({ status: "played", winnerId: "th" }) });
+    renderCard({ fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }) });
     const labels = screen.getAllByText(/Jugado/);
     expect(labels.length).toBeGreaterThanOrEqual(1);
     // The footer names the winner team.
+    expect(screen.getByText(/Ganador: Reavers/)).toBeTruthy();
+  });
+
+  it("renders the final score (homeScore – awayScore) with the winner on a played result", () => {
+    // league-season: result-loaded fixtures expose the score; MatchCard shows it.
+    renderCard({ fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }) });
+    expect(screen.getByText(/2 – 1/)).toBeTruthy();
+    expect(screen.getByText(/Ganador: Reavers/)).toBeTruthy();
+  });
+
+  it("shows only the winner label when a played result has no raw scores", () => {
+    renderCard({ fixture: fixture({ status: "played", winnerId: "th", homeScore: null, awayScore: null }) });
+    // No score shown (legacy/forfeit fixture without raw scores), winner still named.
+    expect(screen.queryByText(/–/)).toBeNull();
     expect(screen.getByText(/Ganador: Reavers/)).toBeTruthy();
   });
 

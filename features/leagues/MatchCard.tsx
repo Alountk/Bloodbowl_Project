@@ -29,18 +29,35 @@ export function formatMatchDate(iso: string | null): string {
   });
 }
 
+/**
+ * Pure: renders the recorded final score as "home – away" (en-dash) when both
+ * scores are present. Returns null when scores are absent so the MatchCard can
+ * fall back to the winner-only footer (legacy/forfeit rows without raw scores).
+ */
+export function formatMatchScore(
+  homeScore: number | null | undefined,
+  awayScore: number | null | undefined,
+): string | null {
+  if (homeScore == null || awayScore == null) return null;
+  return `${homeScore} – ${awayScore}`;
+}
+
 export interface MatchCardProps {
   fixture: FixtureDraft;
   /** Maps a member team id → team display name (from the league detail). */
   teamNameById: Map<string, string>;
   /** Session user id, used to decide whether the viewer is a match participant. */
   currentUserId: string;
-  /** True when the session user owns the league (admin → forfeit control). */
+  /** True when the session user owns the league (admin → forfeit/correct control). */
   isLeagueOwner: boolean;
   /** Opens the negotiation panel for this fixture (card click). */
   onNegotiate: (fixture: FixtureDraft) => void;
   /** Opens the forfeit modal for this fixture (admin only). */
   onForfeit: (fixture: FixtureDraft) => void;
+  /** Opens the ResultModal to load a result (participant/admin on a scheduled fixture). */
+  onLoadResult?: (fixture: FixtureDraft) => void;
+  /** Opens the ResultModal to correct a result (admin only on a played fixture). */
+  onCorrectResult?: (fixture: FixtureDraft) => void;
 }
 
 /**
@@ -57,31 +74,60 @@ export function MatchCard({
   isLeagueOwner,
   onNegotiate,
   onForfeit,
+  onLoadResult,
+  onCorrectResult,
 }: MatchCardProps) {
-  void currentUserId;
+  const isParticipant =
+    fixture.homeOwner?.id === currentUserId || fixture.awayOwner?.id === currentUserId;
   const status = matchStatusLabel(fixture.status);
   const homeName = teamNameById.get(fixture.homeTeamId) ?? "Equipo";
   const awayName = teamNameById.get(fixture.awayTeamId) ?? "Equipo";
+  const score = formatMatchScore(fixture.homeScore, fixture.awayScore);
+  const winnerName = teamNameById.get(fixture.winnerId ?? "") ?? "Equipo";
 
   const openNegotiation = () => onNegotiate(fixture);
   const openForfeit = () => onForfeit(fixture);
+  const openLoadResult = () => onLoadResult?.(fixture);
+  const openCorrectResult = () => onCorrectResult?.(fixture);
+
+  const canLoadResult = fixture.status === "scheduled" && (isParticipant || isLeagueOwner);
 
   return (
     <article
       aria-label={`Partido ${fixture.round} ${homeName} vs ${awayName}`}
       className="border border-[#e2e8f0] bg-white transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
     >
-      <header className="flex items-center justify-between gap-2 border-b border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
         <span>Partido {fixture.round} · {status}</span>
-        {isLeagueOwner && fixture.status !== "played" ? (
-          <button
-            type="button"
-            onClick={openForfeit}
-            className="rounded-sm border border-slate-300 px-2 py-0.5 text-[10px] font-semibold normal-case text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
-          >
-            Otorgar victoria
-          </button>
-        ) : null}
+        <span className="flex gap-2">
+          {canLoadResult ? (
+            <button
+              type="button"
+              onClick={openLoadResult}
+              className="rounded-sm border border-slate-300 px-2 py-0.5 text-[10px] font-semibold normal-case text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+            >
+              Cargar resultado
+            </button>
+          ) : null}
+          {isLeagueOwner && fixture.status === "played" ? (
+            <button
+              type="button"
+              onClick={openCorrectResult}
+              className="rounded-sm border border-slate-300 px-2 py-0.5 text-[10px] font-semibold normal-case text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+            >
+              Corregir resultado
+            </button>
+          ) : null}
+          {isLeagueOwner && fixture.status !== "played" ? (
+            <button
+              type="button"
+              onClick={openForfeit}
+              className="rounded-sm border border-slate-300 px-2 py-0.5 text-[10px] font-semibold normal-case text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+            >
+              Otorgar victoria
+            </button>
+          ) : null}
+        </span>
       </header>
       <div
         role="button"
@@ -115,7 +161,7 @@ export function MatchCard({
             <>Programado: {formatMatchDate(fixture.scheduledAt)}</>
           ) : (
             <>
-              Jugado · Ganador: {teamNameById.get(fixture.winnerId ?? "") ?? "Equipo"}
+              Jugado{score ? ` · ${score}` : ""} · Ganador: {winnerName}
             </>
           )}
         </footer>

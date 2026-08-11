@@ -353,6 +353,80 @@ describe("LeagueDetail — STARTED league", () => {
     });
   });
 
+  it("lets a participant open the ResultModal on a scheduled fixture and submit the result", async () => {
+    // me owns t1 (home) of a scheduled fixture → the Cargar resultado affordance.
+    const scheduledStarted = {
+      ...startedLeague,
+      ownerId: "u2",
+      ownerName: "Coach B",
+      teams: [
+        { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: me, roster: [{ id: "h1", name: "Hugo" }] },
+        { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u8", roster: [{ id: "a1", name: "Ansel" }] },
+      ],
+      rounds: [{ round: 1, fixtures: ["fs"], complete: false }],
+      fixtures: [
+        {
+          id: "fs",
+          leagueId: "l3",
+          round: 1,
+          homeTeamId: "t1",
+          awayTeamId: "t2",
+          createdAt: "2026-02-01",
+          scheduledAt: "2026-03-01T10:00:00.000Z",
+          winnerId: null,
+          status: "scheduled",
+          homeOwner: { id: me, name: "Coach Me" },
+          awayOwner: { id: "u8", name: "Coach B" },
+          proposals: [],
+        },
+      ],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url === "/api/leagues/l3") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(scheduledStarted) });
+      }
+      if (/\/api\/leagues\/l3\/fixtures\/fs\/result$/.test(url)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ fixtureId: "fs", status: "played", homeScore: 1, awayScore: 0, winnerId: "t1" }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cargar resultado" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Cargar resultado" }));
+
+    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+    // Score 1 for Reavers, Hugo scores 1 TD → match. Score 0 for Orcs.
+    fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText(/Anotaciones Hugo/), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText(/Goles Orcs/), { target: { value: "0" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar resultado" }));
+
+    // POSTs the assembled payload to the result route (then refreshes).
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("/fixtures/fs/result"));
+      expect(call).toBeTruthy();
+      expect((call as unknown[])[1]).toMatchObject({
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      const body = JSON.parse(
+        ((call as unknown as { 1: { body: string } })[1] as { body: string }).body,
+      ) as ResultPayloadTestShape;
+      expect(body.home.score).toBe(1);
+      expect(body.home.players[0].tds).toBe(1);
+    });
+  });
+
   it("renders the not-found page for a foreign non-member started league (404)", async () => {
     vi.stubGlobal(
       "fetch",
@@ -365,3 +439,7 @@ describe("LeagueDetail — STARTED league", () => {
     );
   });
 });
+
+interface ResultPayloadTestShape {
+  home: { score: number; players: { tds: number }[] };
+}
