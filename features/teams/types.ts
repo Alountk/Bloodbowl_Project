@@ -50,6 +50,20 @@ export interface PlayerEntry {
   positionalKey: string;
 }
 
+/**
+ * Progression read model for a roster player rendered by the ProgressionPanel
+ * (BB2025 PE spending, skills, value). Owned by the `Player` row; `rosterPlayerId`
+ * bridges it to the roster `PlayerEntry.id`.
+ */
+export interface PlayerProgressionCore {
+  rosterPlayerId: string;
+  pe: number;
+  skills: string[];
+  improvements: number;
+  valueBonus: number;
+  alive: boolean;
+}
+
 export interface CoachingStaff {
   rerolls: number;
   dedicatedFans: number;
