@@ -25,11 +25,11 @@ export interface FixtureDraft {
   homeTeamId: string;
   awayTeamId: string;
   createdAt: string;
-  /** "scheduled" when participants agreed a date, "played" when forfeited. */
+  /** "scheduled" when participants agreed a date, "played" when a result is recorded (scores via the result route or a walkover). */
   scheduledAt: string | null;
-  /** Set by the league owner's forfeit; derives `played`. */
+  /** Winner team id, present once a result is recorded (display + legacy forfeit). Display-only — does not derive `played`. */
   winnerId: string | null;
-  /** Derived lifecycle: pending | scheduled | played. */
+  /** Derived lifecycle: pending | scheduled | played (played ⇔ scores present). */
   status: FixtureStatus;
   /** Home team owner (id + name, plus optional avatar), null when unresolvable. */
   homeOwner: { id: string; name: string; avatar?: string | null } | null;
