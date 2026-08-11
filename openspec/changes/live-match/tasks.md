@@ -37,7 +37,7 @@ Chain strategy: stacked-to-main
 
 ## PR 2 — Client fetch + pure mapping
 
-- [ ] 2.1 Modify `features/leagues/api.ts`: add `getMatchDetail(leagueId, fixtureId)` + `MatchDetail`/`MatchTeamDetail`/`MatchPlayer`/`MatchScoreboard` types matching D3/D2 contract (`FixtureDraft` reuse, nullable `result`)
+- [x] 2.1 Modify `features/leagues/api.ts`: add `getMatchDetail(leagueId, fixtureId)` + `MatchDetail`/`MatchTeamDetail`/`MatchPlayer`/`MatchScoreboard` types matching D3/D2 contract (`FixtureDraft` reuse, nullable `result`)
 - [ ] 2.2 RED `features/leagues/matchSummary.test.ts`: MVP persisted `scores.mvp` wins; legacy fallback = per-team max-`pe` (floor≥4, PE_MVP=4, tie-first), unresolved→omit section (omit-not-crash) (D5, MV-2)
 - [ ] 2.3 RED `features/leagues/matchSummary.test.ts`: weather kind→Spanish (heat→Calor asfixiante, sunny→Muy soleado, perfect→Perfecto, rain→Lluvioso, blizzard→Ventisca; unknown as-is); casualty kind→labels (bruise→Magullado, apaleado→Apaleado, grave→Herida grave, permanent→Permanente, dead→Muerto) (MV-2)
 - [ ] 2.4 RED `features/leagues/matchSummary.test.ts`: omit-if-empty scoreboard sections, fans `postFf` (null→omit), winnings null→omit; walkover detection (fixture scores set, no snapshot) → zero summary sections + notice (MV-2)
