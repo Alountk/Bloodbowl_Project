@@ -27,6 +27,10 @@ export interface SkillCatalogEntry {
   translations: SkillTranslation[];
   description: string;
   descriptions: SkillDescriptionTranslation[];
+  /** Whether the skill is an élite skill (rulebook $ symbol, +20.000 value). */
+  elite: boolean;
+  /** Whether the skill is mandatory (rulebook * marker, must be used). */
+  mandatory: boolean;
 }
 
 const TODO_DESCRIPTION = "TODO: Official BB2025 rules text is still pending.";
@@ -36,6 +40,10 @@ interface RawSkillDef {
   name: string;
   category: SkillCategory;
   translations?: readonly SkillTranslation[];
+  /** Élite skill (rulebook $ symbol); default false. */
+  elite?: boolean;
+  /** Mandatory skill (rulebook * marker); default false. */
+  mandatory?: boolean;
 }
 
 function createSkill(def: RawSkillDef): SkillCatalogEntry {
@@ -53,6 +61,8 @@ function createSkill(def: RawSkillDef): SkillCatalogEntry {
       id: translation.id,
       description: `${TODO_DESCRIPTION} (${translation.translation})`,
     })),
+    elite: def.elite ?? false,
+    mandatory: def.mandatory ?? false,
   };
 }
 
@@ -63,7 +73,7 @@ const SKILL_DEFS = [
   { id: "animosity-goblin", name: "Animosity (Goblin)", category: "trait" },
   { id: "arm-bar", name: "Arm Bar", category: "strength", translations: [{ id: "es", translation: "Llave de brazo" }] },
   { id: "ball-and-chain", name: "Ball & Chain", category: "trait" },
-  { id: "block", name: "Block", category: "general" },
+  { id: "block", name: "Block", category: "general", elite: true },
   { id: "blood-lust-2-plus", name: "Blood Lust (2+)", category: "trait" },
   { id: "blood-lust-3-plus", name: "Blood Lust (3+)", category: "trait" },
   { id: "bombardier", name: "Bombardier", category: "trait" },
@@ -75,16 +85,16 @@ const SKILL_DEFS = [
   { id: "claws", name: "Claws", category: "mutation" },
   { id: "dauntless", name: "Dauntless", category: "general" },
   { id: "decay", name: "Decay", category: "trait" },
-  { id: "defensive", name: "Defensive", category: "agility", translations: [{ id: "es", translation: "Defensa" }] },
+  { id: "defensive", name: "Defensive", category: "agility", translations: [{ id: "es", translation: "Defensa" }], elite: true },
   { id: "dirty-player-plus-1", name: "Dirty Player (+1)", category: "devious" },
   { id: "disturbing-presence", name: "Disturbing Presence", category: "mutation", translations: [{ id: "es", translation: "Presencia perturbadora" }] },
-  { id: "dodge", name: "Dodge", category: "agility", translations: [{ id: "es", translation: "Esquivar" }] },
+  { id: "dodge", name: "Dodge", category: "agility", translations: [{ id: "es", translation: "Esquivar" }], elite: true },
   { id: "drunkard", name: "Drunkard", category: "trait" },
   { id: "dump-off", name: "Dump-off", category: "passing", translations: [{ id: "es", translation: "Dejada" }] },
   { id: "fend", name: "Fend", category: "general" },
   { id: "fire-breathing", name: "Fire Breathing", category: "trait", translations: [{ id: "es", translation: "Exhalar fuego" }] },
-  { id: "foul-appearance", name: "Foul Appearance", category: "mutation" },
-  { id: "frenzy", name: "Frenzy", category: "general", translations: [{ id: "es", translation: "Furia" }, { id: "es-ocr", translation: "Furia asesina" }] },
+  { id: "foul-appearance", name: "Foul Appearance", category: "mutation", mandatory: true },
+  { id: "frenzy", name: "Frenzy", category: "general", translations: [{ id: "es", translation: "Furia" }, { id: "es-ocr", translation: "Furia asesina" }], mandatory: true },
   { id: "grab", name: "Grab", category: "strength" },
   { id: "hit-and-run", name: "Hit and Run", category: "agility" },
   { id: "horns", name: "Horns", category: "mutation", translations: [{ id: "es", translation: "Cuernos" }] },
@@ -98,7 +108,7 @@ const SKILL_DEFS = [
   { id: "loner-3-plus", name: "Loner (3+)", category: "trait" },
   { id: "loner-4-plus", name: "Loner (4+)", category: "trait", translations: [{ id: "es", translation: "Solitario (4+)" }] },
   { id: "low-blow", name: "Low Blow", category: "trait" },
-  { id: "mighty-blow-plus-1", name: "Mighty Blow (+1)", category: "strength", translations: [{ id: "es", translation: "Golpe mortífero" }] },
+  { id: "mighty-blow-plus-1", name: "Mighty Blow (+1)", category: "strength", translations: [{ id: "es", translation: "Golpe mortífero" }], elite: true },
   { id: "nerves-of-steel", name: "Nerves of Steel", category: "passing" },
   { id: "no-hands", name: "No Hands", category: "trait" },
   { id: "nurgling-infestation", name: "Nurgling Infestation", category: "trait" },
