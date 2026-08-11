@@ -61,7 +61,7 @@ function callRoute(teamId: string, rosterPlayerId: string, body: unknown) {
       method: "POST",
       body: JSON.stringify(body),
     }),
-    { params: Promise.resolve({ teamId, playerId: rosterPlayerId }) } as never,
+    { params: Promise.resolve({ id: teamId, playerId: rosterPlayerId }) } as never,
   );
 }
 
@@ -87,7 +87,7 @@ beforeEach(() => {
   prismaMock.playerPendingRoll.delete.mockResolvedValue({ id: "pr-1" });
 });
 
-describe("POST /api/teams/[teamId]/players/[playerId]/improve", () => {
+describe("POST /api/teams/[id]/players/[playerId]/improve", () => {
   describe("authorization and player guards", () => {
     it("returns 401 when unauthenticated with no write", async () => {
       authMock.mockResolvedValue(null);
