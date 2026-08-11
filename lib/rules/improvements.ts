@@ -13,6 +13,40 @@ export const IMPROVEMENT_KINDS: readonly ImprovementKind[] = [
   "attribute",
 ];
 
+/** The five trainable attribute characteristics (design payload units). */
+export type PlayerAttribute = "ma" | "st" | "ag" | "pa" | "av";
+
+export const PLAYER_ATTRIBUTES: readonly PlayerAttribute[] = [
+  "ma",
+  "st",
+  "ag",
+  "pa",
+  "av",
+];
+
+/**
+ * Rulebook attribute-improvement table (1D8, OCR from the user's original
+ * message): each outcome names the attributes the coach may choose to increase.
+ * Abbreviations map to the design units: AR=av (Armadura), MV=ma (Movimiento),
+ * PS=pa (Pase), AG=ag (Agilidad), FU=st (Fuerza). Row 8 is "cualquier atributo"
+ * (all five). Any out-of-range 1D8 reads as the any-attribute row to stay safe.
+ */
+const ATTRIBUTE_OPTIONS: Readonly<Record<number, readonly PlayerAttribute[]>> = {
+  1: ["av"],
+  2: ["av", "pa"],
+  3: ["av", "ma", "pa"],
+  4: ["av", "ma", "pa"],
+  5: ["ma", "pa"],
+  6: ["ag", "ma"],
+  7: ["ag", "st"],
+};
+
+const ANY_ATTRIBUTE: readonly PlayerAttribute[] = [...PLAYER_ATTRIBUTES];
+
+export function attributeOptionsForRoll(roll8: number): readonly PlayerAttribute[] {
+  return ATTRIBUTE_OPTIONS[roll8] ?? ANY_ATTRIBUTE;
+}
+
 /** 2D cost table: row = kind, col = improvement number (0-based `[1ª, ..., 6ª]`). */
 const COSTS: readonly number[][] = [
   // 1ª, 2ª, 3ª, 4ª, 5ª, 6ª

@@ -264,4 +264,39 @@ describe("TeamDetailView", () => {
       expect(wrapper?.className).toContain("overflow-x-auto");
     });
   });
+
+  describe("progression wiring (S4)", () => {
+    const roster = [
+      { id: "p1", name: "Marty", positionalKey: "blitzer" },
+      { id: "p2", name: "Jane", positionalKey: "lineman" },
+    ];
+
+    it("renders a Panel per roster player when progression data and onImprove are provided", () => {
+      render(
+        <TeamDetailView
+          team={{ ...baseTeam, roster }}
+          race={humanRace}
+          progression={{
+            p1: { rosterPlayerId: "p1", pe: 12, skills: ["block"], improvements: 2, valueBonus: 20_000, alive: true },
+            p2: { rosterPlayerId: "p2", pe: 3, skills: [], improvements: 0, valueBonus: 0, alive: true },
+          }}
+          onImprove={async () => ({})}
+        />,
+      );
+      expect(screen.getByRole("heading", { name: "Progresión" })).toBeTruthy();
+      expect(screen.getByTestId("improvements-p1").textContent).toBe("2");
+      expect(screen.getByTestId("pe-p2").textContent).toBe("3");
+      // élite skill renders with the $ badge inside the panel
+      expect(screen.getByTestId("skill-block")).toBeTruthy();
+      // name appears in both the roster table and the panel (>= 1 is sufficient)
+      expect(screen.getAllByText("Marty").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Jane").length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("omits the Progresión section when no progression data is provided", () => {
+      render(<TeamDetailView team={{ ...baseTeam, roster }} race={humanRace} />);
+      expect(screen.queryByRole("heading", { name: "Progresión" })).toBeNull();
+      expect(screen.queryByText("Marty")).toBeTruthy(); // roster still renders via RosterTable
+    });
+  });
 });
