@@ -108,3 +108,21 @@ The default `pnpm run test:e2e` is unchanged and stays anonymous (`local`).
 - Confirm the runner/entrypoint runs migrations — either the image entrypoint or
   an explicit deploy-invoked `pnpm prisma migrate deploy` (see the Open Question
   in `design.md`).
+
+### Deploy automation (webhook → Arcane)
+
+- A GitHub repo webhook (`web`) points at
+  `https://arcane.androemda-surf.uk/api/webhooks/trigger/arc_wh_...` and fires
+  on every push to `main`. The Arcane trigger must run
+  `docker compose pull web && docker compose up -d --force-recreate web`.
+- The `pull` step is **mandatory**: `up -d` alone can reuse a locally cached
+  image, so a freshly published `latest` is missed until a manual pull. This
+  caused a stale-image bug (old slug error kept running after the fix merged).
+- Image tags published by `.github/workflows/docker-publish.yml`:
+  `latest` (mutable, used by Arcane), `<YYYY.MM.DD>-<run number>`
+  (e.g. `2026.08.11-3`, monotonic and human-readable), and `<git sha>`
+  (exact traceability). To pin Arcane to a specific version instead of
+  `latest`, reference `ghcr.io/alountk/bloodbowl_project:<YYYY.MM.DD>-<n>`
+  in `docker-compose.yml`.
+- If a "fixed" bug still reproduces in production, first check the running
+  image is current: `docker compose pull web && docker compose up -d --force-recreate web`.
