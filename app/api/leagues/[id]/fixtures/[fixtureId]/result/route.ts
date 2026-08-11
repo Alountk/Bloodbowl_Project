@@ -289,14 +289,14 @@ export async function POST(
   const awayTv = computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus);
   const pettyCash = computePettyCash(homeTv, awayTv);
 
-  // D4: the snapshot carries each team's winnings and the server-rolled MVP
-  // grantee ids so the match view renders them from persisted data (MV-2).
+  // D4: the snapshot carries each side's winnings (per the MatchScoreboard
+  // contract) and the server-rolled MVP grantee ids so the match view renders
+  // them from persisted data (MV-2).
   const scoreboard = {
-    home: { score: home.score, postFf: postHomeFf, casualties: homeTeamVictims, pe: homeAwards },
-    away: { score: away.score, postFf: postAwayFf, casualties: awayTeamVictims, pe: awayAwards },
+    home: { score: home.score, postFf: postHomeFf, winnings: homeWinnings, casualties: homeTeamVictims, pe: homeAwards },
+    away: { score: away.score, postFf: postAwayFf, winnings: awayWinnings, casualties: awayTeamVictims, pe: awayAwards },
     winnerId,
     mvp: { home: homeMvp, away: awayMvp },
-    winnings: { home: homeWinnings, away: awayWinnings },
   };
 
   await ensurePlayersForTeam(homeTeamId, Array.isArray(fixture.homeTeam.roster) ? (fixture.homeTeam.roster as unknown as PlayerEntry[]) : []);
@@ -455,10 +455,9 @@ export async function PUT(
 
   // Correction re-runs the PE rules; the previous awards live in the snapshot.
   const prevScores = (fixture.result.scores ?? {}) as unknown as {
-    home: { score: number; postFf?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
-    away: { score: number; postFf?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
+    home: { score: number; postFf?: number; winnings?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
+    away: { score: number; postFf?: number; winnings?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
     mvp?: { home: string; away: string };
-    winnings?: { home: number; away: number };
   };
   const homeMvp = computeMvpGrantee(home.nominations, rollD6());
   const awayMvp = computeMvpGrantee(away.nominations, rollD6());
@@ -479,14 +478,26 @@ export async function PUT(
   const awayTeamVictims = resolvedCasualties.filter((c) => c.team === "away");
 
   // D4: the correction recomputes the MJP grantee (mirrors the PE re-run) and
-  // preserves the prior winnings — a correction never clears what the original
-  // report earned. Legacy rows without winnings stay untouched (forward-only).
+  // preserves the prior per-side winnings — a correction never clears what the
+  // original report earned. Legacy rows without winnings stay untouched
+  // (forward-only: the `winnings` key is omitted, not set to undefined).
   const scoreboard = {
-    home: { score: home.score, postFf: prevScores?.home?.postFf ?? 0, casualties: homeTeamVictims, pe: homeAwards },
-    away: { score: away.score, postFf: prevScores?.away?.postFf ?? 0, casualties: awayTeamVictims, pe: awayAwards },
+    home: {
+      score: home.score,
+      postFf: prevScores?.home?.postFf ?? 0,
+      ...(prevScores?.home?.winnings != null ? { winnings: prevScores.home.winnings } : {}),
+      casualties: homeTeamVictims,
+      pe: homeAwards,
+    },
+    away: {
+      score: away.score,
+      postFf: prevScores?.away?.postFf ?? 0,
+      ...(prevScores?.away?.winnings != null ? { winnings: prevScores.away.winnings } : {}),
+      casualties: awayTeamVictims,
+      pe: awayAwards,
+    },
     winnerId,
     mvp: { home: homeMvp, away: awayMvp },
-    ...(prevScores?.winnings ? { winnings: prevScores.winnings } : {}),
   };
 
   await prisma.$transaction(async (tx) => {
