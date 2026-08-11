@@ -238,3 +238,93 @@ describe("MatchCard", () => {
     expect(onNegotiate).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("MatchCard — Ver partido navigation (MV-4)", () => {
+  function linksInOrder() {
+    return screen.getAllByRole("link").map((l) => ({
+      text: l.textContent?.trim() ?? "",
+      href: l.getAttribute("href"),
+    }));
+  }
+
+  it("renders 'Ver partido' as the LAST link in ALL states and hrefs to the match page", () => {
+    const states: { status: FixtureDraft["status"] }[] = [
+      { status: "pending" },
+      { status: "scheduled" },
+      { status: "played" },
+    ];
+    for (const { status } of states) {
+      const overrides: Partial<FixtureDraft> = { status };
+      if (status === "scheduled") overrides.scheduledAt = "2026-03-01T10:00:00.000Z";
+      if (status === "played") {
+        overrides.winnerId = "th";
+        overrides.homeScore = 2;
+        overrides.awayScore = 1;
+      }
+      const { unmount } = render(
+        <MatchCard
+          fixture={fixture(overrides)}
+          teamNameById={teamNameById}
+          currentUserId="u3"
+          isLeagueOwner={false}
+          onNegotiate={vi.fn()}
+          onForfeit={vi.fn()}
+        />,
+      );
+
+      const links = linksInOrder();
+      const last = links[links.length - 1];
+      // "Ver partido" is the LAST DOM link.
+      expect(last.text).toBe("Ver partido");
+      expect(last.href).toBe("/leagues/l1/fixtures/f1");
+      // The team links remain the first two (Jornadas fixturesTeamNames reads them).
+      expect(links[0].text).toBe("Reavers");
+      expect(links[1].text).toBe("Orcboyz");
+      unmount();
+    }
+  });
+
+  it("keeps the scheduled footer byte-identical and renders the link last", () => {
+    render(
+      <MatchCard
+        fixture={fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" })}
+        teamNameById={teamNameById}
+        currentUserId="u3"
+        isLeagueOwner={false}
+        onNegotiate={vi.fn()}
+        onForfeit={vi.fn()}
+      />,
+    );
+    // Exact existing scheduled line: Programado: DD/MM/YYYY, HH:MM
+    expect(screen.getByText(/Programado: \d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}/)).toBeTruthy();
+    const links = linksInOrder();
+    expect(links[links.length - 1].text).toBe("Ver partido");
+  });
+
+  it("keeps the played footer byte-identical and renders the link last", () => {
+    render(
+      <MatchCard
+        fixture={fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 })}
+        teamNameById={teamNameById}
+        currentUserId="u3"
+        isLeagueOwner={false}
+        onNegotiate={vi.fn()}
+        onForfeit={vi.fn()}
+      />,
+    );
+    // Exact existing played line: Jugado · 2 – 1 · Ganador: Reavers
+    expect(screen.getByText(/Jugado · 2 – 1 · Ganador: Reavers/)).toBeTruthy();
+    const links = linksInOrder();
+    expect(links[links.length - 1].text).toBe("Ver partido");
+  });
+
+  it("renders 'Ver partido' for pending with no state line (header labels Pendiente)", () => {
+    renderCard();
+    // Pending shows no Programado/Jugado line...
+    expect(screen.queryByText(/Programado:/)).toBeNull();
+    expect(screen.queryByText(/Jugado/)).toBeNull();
+    // ...but the nav link still renders.
+    const links = linksInOrder();
+    expect(links[links.length - 1].text).toBe("Ver partido");
+  });
+});
