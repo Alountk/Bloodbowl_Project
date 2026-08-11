@@ -1,4 +1,4 @@
-import type { Race, Team } from "../types";
+import type { Race, Team, PlayerProgressionCore } from "../types";
 import { RosterTable } from "../roster-table/RosterTable";
 import { useIsDesktop } from "../hooks/useIsDesktop";
 import {
@@ -9,6 +9,8 @@ import {
   STARTING_TREASURY,
 } from "../roster";
 import { formatRulebookCost } from "../format";
+import { ProgressionPanel } from "./ProgressionPanel";
+import type { ImproveBody, PlayerProgression } from "@/lib/progression";
 
 const COACHING_LABELS: Record<string, string> = {
   rerolls: "Segundas oportunidades",
@@ -32,15 +34,52 @@ export interface TeamDetailViewProps {
    * the meta line shows "Sin liga". PR2 resolves this from a league store.
    */
   leagueName?: string;
+  /**
+   * Each roster player's progression state, keyed by `rosterPlayerId`. When
+   * provided, a ProgressionPanel renders per player; otherwise the section is
+   * omitted (e.g. read-only rival scouting).
+   */
+  progression?: Record<string, PlayerProgressionCore>;
+  /** Improve-route client. Required to render spend UI; absent = read-only. */
+  onImprove?: (body: ImproveBody) => Promise<Record<string, unknown>>;
 }
 
-export function TeamDetailView({ team, race, leagueName }: TeamDetailViewProps) {
+export function TeamDetailView({ team, race, leagueName, progression, onImprove }: TeamDetailViewProps) {
   const isDesktop = useIsDesktop();
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
   const coachingCost = computeCoachingCost(race, team.coaching);
   const treasury = STARTING_TREASURY - rosterCost - coachingCost;
   const coachingItems = computeCoachingCostItems(race, team.coaching);
   const leagueLabel = team.leagueId ? (leagueName ?? "Sin liga") : "Sin liga";
+
+  const accessOf = (positionalKey: string): { primary: string[]; secondary: string[] } => {
+    const positional = race.positionals.find((p) => p.key === positionalKey);
+    return {
+      primary: positional?.accessPrimary ?? [],
+      secondary: positional?.accessSecondary ?? [],
+    };
+  };
+
+  const panels: PlayerProgression[] = team.roster.flatMap((entry) => {
+    const core = progression?.[entry.id];
+    if (!core) return [];
+    const access = accessOf(entry.positionalKey);
+    return [
+      {
+        rosterPlayerId: entry.id,
+        name: entry.name,
+        pe: core.pe,
+        improvements: core.improvements,
+        skills: core.skills,
+        valueBonus: core.valueBonus,
+        alive: core.alive,
+        accessPrimary: access.primary,
+        accessSecondary: access.secondary,
+      },
+    ];
+  });
+
+  const showProgression = panels.length > 0 && onImprove != null;
 
   return (
     <div className="mx-auto max-w-[860px] bg-white text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
@@ -73,6 +112,23 @@ export function TeamDetailView({ team, race, leagueName }: TeamDetailViewProps) 
             <RosterTable readOnly players={team.roster} race={race} />
           </div>
         </section>
+
+        {/* Progresión */}
+        {showProgression && (
+          <section className="mt-5" aria-labelledby="progression-heading">
+            <h2
+              id="progression-heading"
+              className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
+            >
+              Progresión
+            </h2>
+            <div className="space-y-2.5">
+              {panels.map((panel) => (
+                <ProgressionPanel key={panel.rosterPlayerId} player={panel} onImprove={onImprove!} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Cuerpo técnico */}
         <section className="mt-5" aria-labelledby="coaching-heading">
