@@ -45,4 +45,25 @@ describe("skills catalog", () => {
 
     expect(nonIds).toEqual([]);
   });
+
+  // REQ-RACE-08: user-confirmed élite skills.
+  it.each(["block", "dodge", "defensive", "mighty-blow-plus-1"])(
+    "marks %s as an élite skill",
+    (id) => {
+      expect(getSkillById(id)?.elite).toBe(true);
+    },
+  );
+
+  // REQ-RACE-08: asterisked skills are mandatory, not élite.
+  it.each(["foul-appearance", "frenzy"])(
+    "marks %s as mandatory (not élite)",
+    (id) => {
+      expect(getSkillById(id)).toMatchObject({ mandatory: true, elite: false });
+    },
+  );
+
+  it("defaults unlisted skills to non-élite and non-mandatory", () => {
+    expect(getSkillById("fend")).toMatchObject({ elite: false, mandatory: false });
+    expect(getSkillById("kick")).toMatchObject({ elite: false, mandatory: false });
+  });
 });
