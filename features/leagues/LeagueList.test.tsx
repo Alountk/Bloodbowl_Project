@@ -5,9 +5,10 @@ import { LeagueList } from "./LeagueList";
 /**
  * The list is public: `/api/leagues` returns the session user's own leagues
  * (any status) plus every OPEN league from any user, each with a server-side
- * `memberCount` and `ownerName`. `useSession` supplies the current user id so
- * the list can partition cards into "Mis Ligas" (owned) and "Ligas abiertas"
- * (foreign open leagues a user can join).
+ * `memberCount`, `ownerName` and an `isMember` flag (the user holds a
+ * non-archived member team). `useSession` supplies the current user id so the
+ * list can partition cards into "Mis Ligas" (owned OR joined — including
+ * started leagues) and "Ligas abiertas" (foreign open leagues the user can join).
  */
 
 const me = "u1";
@@ -32,6 +33,7 @@ const leaguesResponse = [
     startedAt: null,
     ownerName: "Coach A",
     memberCount: 3,
+    isMember: false,
   },
   // My own started league → "Mis Ligas" with the "Iniciada" badge.
   {
@@ -45,6 +47,7 @@ const leaguesResponse = [
     startedAt: "2026-02-02",
     ownerName: "Coach A",
     memberCount: 2,
+    isMember: false,
   },
   // A foreign OPEN league → "Ligas abiertas".
   {
@@ -58,6 +61,35 @@ const leaguesResponse = [
     startedAt: null,
     ownerName: "Coach B",
     memberCount: 5,
+    isMember: false,
+  },
+  // A STARTED league where I play (member, not owner) → "Mis Ligas".
+  {
+    id: "l4",
+    name: "Joined Started Cup",
+    description: null,
+    ownerId: "u2",
+    createdAt: "2026-04-01",
+    status: "started",
+    seasonLength: 1,
+    startedAt: "2026-04-02",
+    ownerName: "Coach B",
+    memberCount: 2,
+    isMember: true,
+  },
+  // An OPEN league where I am a member → "Mis Ligas" ONLY, never "Ligas abiertas".
+  {
+    id: "l5",
+    name: "Open Member Cup",
+    description: null,
+    ownerId: "u2",
+    createdAt: "2026-05-01",
+    status: "open",
+    seasonLength: null,
+    startedAt: null,
+    ownerName: "Coach B",
+    memberCount: 4,
+    isMember: true,
   },
 ];
 
@@ -106,6 +138,38 @@ describe("LeagueList", () => {
     // The foreign open league is under Ligas abiertas only.
     expect(within(openSection).getByText("Open Public Cup")).toBeTruthy();
     expect(within(openSection).queryByText("North Reikland")).toBeNull();
+  });
+
+  it("partitions a STARTED member league under Mis Ligas so the user can open it", async () => {
+    stubFetch();
+    render(<LeagueList />);
+
+    await waitFor(() => expect(screen.getByText("Joined Started Cup")).toBeTruthy());
+
+    const ownSection = screen.getByRole("heading", { level: 2, name: "Mis Ligas" }).closest("section") as HTMLElement;
+    const openSection = screen.getByRole("heading", { level: 2, name: "Ligas abiertas" }).closest("section") as HTMLElement;
+
+    // A league where I play (but don't own) belongs to Mis Ligas — otherwise a
+    // member of a started league could never navigate back to accept the VS.
+    expect(within(ownSection).getByText("Joined Started Cup")).toBeTruthy();
+    const joinedCard = screen.getByText("Joined Started Cup").closest("li") as HTMLElement;
+    expect(within(joinedCard).getByText("Iniciada")).toBeTruthy();
+    expect(within(openSection).queryByText("Joined Started Cup")).toBeNull();
+  });
+
+  it("keeps an OPEN league the user is a member of out of Ligas abiertas (Mis Ligas only)", async () => {
+    stubFetch();
+    render(<LeagueList />);
+
+    await waitFor(() => expect(screen.getByText("Open Member Cup")).toBeTruthy());
+
+    const ownSection = screen.getByRole("heading", { level: 2, name: "Mis Ligas" }).closest("section") as HTMLElement;
+    const openSection = screen.getByRole("heading", { level: 2, name: "Ligas abiertas" }).closest("section") as HTMLElement;
+
+    expect(within(ownSection).getByText("Open Member Cup")).toBeTruthy();
+    expect(within(openSection).queryByText("Open Member Cup")).toBeNull();
+    // Non-member open leagues still appear under Ligas abiertas.
+    expect(within(openSection).getByText("Open Public Cup")).toBeTruthy();
   });
 
   it("shows the open/started status badge, owner name and server member count on cards", async () => {
