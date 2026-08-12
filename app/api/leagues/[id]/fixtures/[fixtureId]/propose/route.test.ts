@@ -161,9 +161,28 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/propose", () => {
     expect(prismaMock.scheduleProposal.create).toHaveBeenCalled();
   });
 
-  it("returns 409 without storing when the fixture is already scheduled", async () => {
+  it("allows re-proposing on a SCHEDULED (not played) fixture — rejornar (200)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture({ scheduledAt: new Date("2026-03-01") }));
+    prismaMock.scheduleProposal.findFirst.mockResolvedValue(null); // no active yet
+    prismaMock.scheduleProposal.create.mockResolvedValue({
+      id: "p_new",
+      fixtureId: "f1",
+      userId: "user-1",
+      date: new Date("2026-03-05T10:00:00.000Z"),
+      createdAt: new Date("2026-02-03T10:00:00.000Z"),
+      acceptedAt: null,
+      closedAt: null,
+    });
+    const res = await propose({ date: "2026-03-05T10:00:00.000Z" });
+    expect(res.status).toBe(200);
+    // A scheduled-but-not-played fixture accepts a re-negotiation propose.
+    expect(prismaMock.scheduleProposal.create).toHaveBeenCalled();
+  });
+
+  it("returns 409 without storing when the fixture is PLAYED (winner set)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture({ winnerId: "t1", homeScore: 2, awayScore: 0 }));
     const res = await propose({ date: "2026-03-05T10:00:00.000Z" });
     expect(res.status).toBe(409);
     expect(prismaMock.scheduleProposal.create).not.toHaveBeenCalled();

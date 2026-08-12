@@ -433,6 +433,70 @@ test("negotiation: participants propose/counter/accept, non-participant member s
   }
 });
 
+// --- Journey 3b: Rejornar — re-negotiate a scheduled fixture before play ------
+test("rejornar: a participant re-opens negotiation on a scheduled fixture and a new accept updates the date", async ({
+  browser,
+}) => {
+  const league = await setupStartedLeague(browser, "rejar");
+  try {
+    const [t1, t2] = await fixturesTeamNames(league.pages.a);
+    const proposer = league.pageOfTeam.get(t1)!;
+    const accepter = league.pageOfTeam.get(t2)!;
+    expect(proposer).not.toBe(accepter);
+    const fixtureId = await fixtureIdOf(proposer, league.leagueId);
+
+    // 1) First schedule: a participant proposes and the other accepts (existing flow).
+    const slot1 = futureSlot(10, 18, 0);
+    await openNegotiation(proposer);
+    await expect(negotiationDialog(proposer)).toBeVisible();
+    await proposeInDialog(proposer, slot1.dateInput, "18:00");
+    await waitForActive(proposer, league.leagueId, fixtureId, 1);
+
+    await accepter.reload();
+    await openNegotiation(accepter);
+    await expect(negotiationDialog(accepter)).toBeVisible();
+    await negotiationDialog(accepter).getByRole("button", { name: "Aceptar" }).click();
+    await waitForFixtureStatus(accepter, league.leagueId, fixtureId, "scheduled");
+    // Proposer reloads to pick up the accepted status; the card now shows the
+    // first agreed date.
+    await proposer.reload();
+    const region = proposer.getByRole("region", { name: "Jornada 1" });
+    await expect(proposer.getByText(/Partido 1 · Programado/).first()).toBeVisible();
+    await expect(region.getByText(slot1.esRegex)).toBeVisible();
+
+    // 2) Rejornar: a participant re-opens negotiation on the SCHEDULED fixture and
+    //    proposes a NEW date (the panel is available pre-play for scheduled).
+    const slot2 = futureSlot(17, 20, 30);
+    await proposer.reload();
+    await openNegotiation(proposer);
+    await expect(negotiationDialog(proposer)).toBeVisible();
+    await expect(negotiationDialog(proposer).getByText(/Re-programar/)).toBeVisible();
+    await proposeInDialog(proposer, slot2.dateInput, "20:30");
+    await waitForActive(proposer, league.leagueId, fixtureId, 1);
+
+    // 3) The other participant accepts the re-negotiation → scheduledAt updates.
+    await accepter.reload();
+    await openNegotiation(accepter);
+    await expect(negotiationDialog(accepter)).toBeVisible();
+    await expect(negotiationDialog(accepter).getByText(slot2.esLabel)).toBeVisible();
+    await negotiationDialog(accepter).getByRole("button", { name: "Aceptar" }).click();
+    await waitForFixtureStatus(accepter, league.leagueId, fixtureId, "scheduled");
+
+    // 4) The card shows the NEW date (history kept the old cycles, intact).
+    await proposer.reload();
+    const regionAfter = proposer.getByRole("region", { name: "Jornada 1" });
+    await expect(proposer.getByText(/Partido 1 · Programado/).first()).toBeVisible();
+    await expect(regionAfter.getByText(slot2.esRegex)).toBeVisible();
+    await openNegotiation(proposer);
+    const history = negotiationDialog(proposer);
+    await expect(history).toBeVisible();
+    // History retains the old agreed proposal alongside the new schedule.
+    await expect(history.getByText(slot1.esLabel)).toBeVisible();
+  } finally {
+    await league.close();
+  }
+});
+
 // --- Journey 4: Owner participant negotiates (matchday-negotiation) ----------
 test("negotiation: the league owner whose team plays proposes and the other participant accepts", async ({
   browser,
