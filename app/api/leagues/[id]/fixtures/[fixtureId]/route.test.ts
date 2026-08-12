@@ -139,10 +139,12 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    // Top-level contract: fixture, result, and both normalized teams.
-    expect(Object.keys(body).sort()).toEqual(["awayTeam", "fixture", "homeTeam", "result"].sort());
+    // Top-level contract: fixture, result, both normalized teams, and the live DTO.
+    expect(Object.keys(body).sort()).toEqual(["awayTeam", "fixture", "homeTeam", "live", "result"].sort());
     expect(body.result?.id).toBe("mr1");
     expect(body.result.scores.home.score).toBe(2);
+    // No live match on this fixture → live: null (MV-5 static inert).
+    expect(body.live).toBeNull();
 
     // The fixture is enriched but its nested teams are stripped (D3).
     expect(body.fixture.status).toBe("played");
@@ -157,6 +159,65 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.homeTeam.players).toHaveLength(1);
     expect(body.homeTeam).not.toHaveProperty("homeTeam");
     expect(body.awayTeam).not.toHaveProperty("awayTeam");
+  });
+
+  it("serializes an active LiveMatch into the live DTO (state + chronological events)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeScore: null,
+        awayScore: null,
+        scheduledAt: new Date("2026-03-01").toISOString(),
+        league: {
+          id: "l1",
+          status: "started",
+          ownerId: "user-admin",
+          turnClockEnabled: true,
+          turnClockSeconds: 240,
+          teams: [{ userId: "user-1" }],
+        },
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "live",
+          half: 1,
+          turnNumber: 3,
+          activeSide: "home",
+          homeClock: 200,
+          awayClock: 240,
+          homeScore: 1,
+          awayScore: 0,
+          seq: 6,
+          paused: false,
+          clockStartedAt: new Date("2026-03-01T20:00:10"),
+          finishedAt: null,
+          events: [
+            { id: "e1", liveMatchId: "lm-1", seq: 5, kind: "turn", side: null, playerRosterId: null, half: 1, turnNumber: 2, payload: {}, createdAt: new Date("2026-03-01T20:00:05") },
+            { id: "e2", liveMatchId: "lm-1", seq: 6, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date("2026-03-01T20:00:10") },
+          ],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.live).not.toBeNull();
+    expect(body.live.status).toBe("live");
+    expect(body.live.half).toBe(1);
+    expect(body.live.turnNumber).toBe(3);
+    expect(body.live.activeSide).toBe("home");
+    expect(body.live.homeClock).toBe(200);
+    expect(body.live.homeScore).toBe(1);
+    expect(body.live.turnClockEnabled).toBe(true);
+    // The chronological event feed is serialized for the timeline (LM-10).
+    expect(body.live.events).toHaveLength(2);
+    expect(body.live.events[0].seq).toBe(5);
+    expect(body.live.events[0].kind).toBe("turn");
+    expect(body.live.events[1].seq).toBe(6);
+    expect(body.live.events[1].kind).toBe("td");
+    expect(body.live.events[1].side).toBe("home");
   });
 
   it("returns 200 for a member-team owner (not league owner)", async () => {

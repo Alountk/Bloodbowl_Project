@@ -3,6 +3,92 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 
+/** A persisted live event, serialized for the timeline (LM-10). */
+interface LiveEventDto {
+  seq: number;
+  kind: string;
+  side: "home" | "away" | null;
+  playerRosterId: string | null;
+  half: number;
+  turnNumber: number;
+  payload: Record<string, unknown>;
+  at: number;
+}
+
+/** The shared live-match DTO (D8/D13): consumed by MatchView, timeline, prefill. */
+interface LiveDto {
+  seq: number;
+  status: "pending" | "live" | "finished";
+  half: number;
+  turnNumber: number;
+  activeSide: "home" | "away";
+  turnClockEnabled: boolean;
+  homeClock: number | null;
+  awayClock: number | null;
+  homeScore: number;
+  awayScore: number;
+  paused: boolean | null;
+  finishedAt: number | null;
+  events: LiveEventDto[];
+}
+
+/** A raw Prisma LiveMatch row (with nested events) cast structurally. */
+interface LiveMatchRow {
+  id: string;
+  status: "pending" | "live" | "finished";
+  half: number;
+  turnNumber: number;
+  activeSide: "home" | "away";
+  homeClock: number;
+  awayClock: number;
+  homeScore: number;
+  awayScore: number;
+  seq: number;
+  paused: boolean;
+  finishedAt: Date | null;
+  events: {
+    seq: number;
+    kind: string;
+    side: "home" | "away" | null;
+    playerRosterId: string | null;
+    half: number;
+    turnNumber: number;
+    payload: unknown;
+    createdAt: Date;
+  }[];
+}
+
+/** Pure: serializes a LiveMatch row + league clock config into the shared DTO. */
+function serializeLive(row: LiveMatchRow, turnClockEnabled: boolean): LiveDto {
+  return {
+    seq: row.seq,
+    status: row.status,
+    half: row.half,
+    turnNumber: row.turnNumber,
+    activeSide: row.activeSide,
+    turnClockEnabled,
+    homeClock: turnClockEnabled ? row.homeClock : null,
+    awayClock: turnClockEnabled ? row.awayClock : null,
+    homeScore: row.homeScore,
+    awayScore: row.awayScore,
+    paused: turnClockEnabled ? row.paused : null,
+    finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
+    events: row.events.map((e) => ({
+      seq: e.seq,
+      kind: e.kind,
+      side: e.side,
+      playerRosterId: e.playerRosterId,
+      half: e.half,
+      turnNumber: e.turnNumber,
+      payload:
+        typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
+          ? (e.payload as Record<string, unknown>)
+          : {},
+      at: new Date(e.createdAt).getTime(),
+    })),
+  };
+}
+
 /**
  * GET /api/leagues/[id]/fixtures/[fixtureId]
  * Returns a single fixture together with its persisted `MatchResult` snapshot
@@ -40,8 +126,13 @@ export async function GET(
         select: {
           status: true,
           ownerId: true,
+          turnClockEnabled: true,
+          turnClockSeconds: true,
           teams: { select: { userId: true }, where: { archivedAt: null } },
         },
+      },
+      liveMatch: {
+        include: { events: { orderBy: { seq: "asc" } } },
       },
       homeTeam: {
         select: {
@@ -103,8 +194,8 @@ export async function GET(
 
   // D3: `fixture` = enriched output with nested teams stripped; `result` stays
   // top-level (null for a walkover); teams carry the normalized roster/coach.
-  // `FixtureWithMatchday` is not exported from the detail route — cast the raw
-  // row structurally (D7).
+  // The nested `liveMatch` is also stripped from `fixture` and surfaced as the
+  // shared `live` DTO (D8/D13).
   const enriched = enrichFixture(fixture as never);
   const { homeTeam, awayTeam } = fixture;
   const {
@@ -112,13 +203,20 @@ export async function GET(
     homeTeam: _strippedHome,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     awayTeam: _strippedAway,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    liveMatch: _strippedLive,
     ...fixtureRest
   } = enriched;
+
+  const live = fixture.liveMatch
+    ? serializeLive(fixture.liveMatch as LiveMatchRow, fixture.league.turnClockEnabled)
+    : null;
 
   return NextResponse.json({
     fixture: fixtureRest,
     result: fixture.result ?? null,
     homeTeam,
     awayTeam,
+    live,
   });
 }
