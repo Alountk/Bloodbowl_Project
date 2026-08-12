@@ -134,6 +134,15 @@ describe("NegotiationPanel — participant", () => {
     // (Covered by the case above; here we also confirm Aceptar still appears for the rival's.)
     expect(screen.queryAllByRole("button", { name: "Aceptar" }).length).toBeGreaterThanOrEqual(1);
   });
+
+  it("shows negotiate controls for a league owner who is also a participant", () => {
+    // Bug fix: an admin who owns one of the fixture's teams is a PARTICIPANT and
+    // may negotiate (participant rule). Only a non-participant admin is read-only.
+    renderPanel({ isParticipant: true, isLeagueOwner: true });
+    expect(screen.getByRole("button", { name: "Proponer" })).toBeTruthy();
+    expect(screen.getByLabelText(/Fecha propuesta/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Aceptar" }).length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe("NegotiationPanel — non-participant / admin", () => {
@@ -148,5 +157,19 @@ describe("NegotiationPanel — non-participant / admin", () => {
     renderPanel({ isParticipant: false, isLeagueOwner: true });
     expect(screen.queryByRole("button", { name: "Proponer" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
+  });
+});
+
+describe("NegotiationPanel — submit error", () => {
+  it("renders the submit error as an alert near the history", () => {
+    renderPanel({ submitError: "No se pudo proponer la fecha. Error de prueba" });
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("No se pudo proponer la fecha.");
+    expect(alert.textContent).toContain("Error de prueba");
+  });
+
+  it("renders no alert when there is no submit error", () => {
+    renderPanel();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

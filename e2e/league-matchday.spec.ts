@@ -11,7 +11,8 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  *    proposes, and the first accepts → the fixture derives `scheduled` and the
  *    card shows "Programado" with the agreed date+time. A third member who does
  *    NOT play this fixture sees the same history READ-ONLY (no Proponer /
- *    Aceptar controls).
+ *    Aceptar controls). A second negotiation journey proves the league owner may
+ *    drive the negotiation when their team plays (owner-participant).
  *
  * 2. Forfeit + completion (matchday-forfeit): the league owner awards a walkover
  *    via the forfeit modal → the card shows "Jugado" with the winner and the
@@ -212,15 +213,18 @@ interface StartedLeague {
 /**
  * Builds one started 3-member league (admin A + rivals B, C), each owning an
  * 11-player team, with a 1-jornada season (odd team count → one fixture with
- * one bye per round). Callers can require the ADMIN to be the bye (opts.adminAsBye)
- * so the round's single fixture pairs two NON-ADMIN members — the only pairing the
- * negotiation spec allows a negotiator to drive (the league owner is always
- * read-only). Called repeatedly by `setupStartedLeague` (which bumps the `tag`
- * per attempt) until the constraint holds; the round-robin start shuffles team
- * ids, so the bye landing on the admin is random (~1/3 per attempt).
+ * one bye per round). Callers can constrain the round-1 pairing with:
+ * - opts.adminAsBye: the round's fixture must pair two NON-ADMIN members (the
+ *   admin is the non-participant and stays read-only in the negotiation panel);
+ * - opts.adminPlays: the round's fixture must INCLUDE the admin's team (the
+ *   owner-participant negotiates with the other participant).
+ * Called repeatedly by `setupStartedLeague` (which bumps the `tag` per attempt)
+ * until the constraint holds; the round-robin start shuffles team ids, so
+ * `adminPlays` holds ~2/3 and `adminAsBye` ~1/3 of the time per attempt.
  */
 interface SetupOptions {
   adminAsBye?: boolean;
+  adminPlays?: boolean;
 }
 
 async function buildOneStartedLeague(
@@ -321,6 +325,17 @@ async function buildOneStartedLeague(
       }
     }
 
+    // Constraint guard: when the caller needs the ADMIN to be a fixture
+    // participant (owner-participant journey), the round's fixture MUST include
+    // the admin's team; when the admin is the round-1 bye, retry.
+    if (opts.adminPlays) {
+      const [t1, t2] = await fixturesTeamNames(pageA);
+      if (t1 !== teamAName && t2 !== teamAName) {
+        await close();
+        return null as unknown as StartedLeague;
+      }
+    }
+
     return {
       pages: { a: pageA, b: pageB, c: pageC },
       pageOfTeam,
@@ -336,7 +351,7 @@ async function buildOneStartedLeague(
 }
 
 /** Sets up a started 3-member league, retrying with fresh unique data until the
- * `adminAsBye` constraint (if requested) is satisfied. */
+ * requested pairing constraint (`adminAsBye` / `adminPlays`) is satisfied. */
 async function setupStartedLeague(
   browser: Browser,
   tag: string,
@@ -348,7 +363,7 @@ async function setupStartedLeague(
     if (built) return built;
   }
   throw new Error(
-    `setupStartedLeague("${tag}"): could not create a league where the admin is the bye after 8 attempts`,
+    `setupStartedLeague("${tag}"): could not satisfy the pairing constraints after 8 attempts`,
   );
 }
 
@@ -356,10 +371,10 @@ async function setupStartedLeague(
 test("negotiation: participants propose/counter/accept, non-participant member sees read-only history", async ({
   browser,
 }) => {
-  // The league owner (admin) is ALWAYS read-only in the negotiation panel (spec:
-  // "The league owner ... MUST NOT negotiate"), so the round's fixture must pair
-  // the two NON-ADMIN members. `adminAsBye` retries the start until the admin's
-  // team is the round-1 bye.
+  // The league owner is read-only in the negotiation panel only when they do NOT
+  // play the fixture (participant rule), so this journey pairs the two NON-ADMIN
+  // members and asserts the admin (a non-participant) still sees read-only
+  // history. `adminAsBye` retries the start until the admin's team is the bye.
   const league = await setupStartedLeague(browser, "nego", { adminAsBye: true });
   try {
     // The admin's team must be the non-participant this round.
@@ -413,6 +428,47 @@ test("negotiation: participants propose/counter/accept, non-participant member s
     await expect(readOnly.getByText(slot2.esLabel)).toBeVisible();
     await expect(readOnly.getByRole("button", { name: /Proponer/ })).not.toBeVisible();
     await expect(readOnly.getByRole("button", { name: /Aceptar/ })).not.toBeVisible();
+  } finally {
+    await league.close();
+  }
+});
+
+// --- Journey 4: Owner participant negotiates (matchday-negotiation) ----------
+test("negotiation: the league owner whose team plays proposes and the other participant accepts", async ({
+  browser,
+}) => {
+  // The participant rule lets a league owner negotiate when they own one of the
+  // fixture's teams (spec: "Owner participant negotiates"). `adminPlays` retries
+  // the start until the admin's team is one of the round-1 fixture participants.
+  const league = await setupStartedLeague(browser, "owner-nego", { adminPlays: true });
+  try {
+    const adminTeamName = league.teamNames[0];
+    const [t1, t2] = await fixturesTeamNames(league.pages.a);
+    expect([t1, t2]).toContain(adminTeamName);
+    const admin = league.pages.a;
+
+    // The admin (owner-participant) proposes a date+time from the negotiation panel.
+    const fixtureId = await fixtureIdOf(admin, league.leagueId);
+    const slot = futureSlot(14, 17, 30);
+    await openNegotiation(admin);
+    await expect(negotiationDialog(admin)).toBeVisible();
+    await proposeInDialog(admin, slot.dateInput, "17:30");
+    await waitForActive(admin, league.leagueId, fixtureId, 1);
+
+    // The other participant reloads, sees the owner's proposal and accepts it.
+    const otherName = t1 === adminTeamName ? t2 : t1;
+    const other = league.pageOfTeam.get(otherName)!;
+    await other.reload();
+    await openNegotiation(other);
+    await expect(negotiationDialog(other)).toBeVisible();
+    await expect(negotiationDialog(other).getByText(slot.esLabel)).toBeVisible();
+    await negotiationDialog(other).getByRole("button", { name: "Aceptar" }).click();
+    await waitForFixtureStatus(other, league.leagueId, fixtureId, "scheduled");
+
+    // The fixture derives scheduled on the other participant's card.
+    const region = other.getByRole("region", { name: "Jornada 1" });
+    await expect(region.getByText(/Partido 1 · Programado/)).toBeVisible();
+    await expect(region.getByText(slot.esRegex)).toBeVisible();
   } finally {
     await league.close();
   }

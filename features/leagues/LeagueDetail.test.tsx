@@ -291,6 +291,127 @@ describe("LeagueDetail — STARTED league", () => {
     expect(jugado.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("defaults to the first INCOMPLETE round when round 1 is complete (current jornada)", async () => {
+    // Bug fix: Jornadas always opened on round 1 even when it was already complete.
+    makeFetch({
+      ...startedLeague,
+      rounds: [
+        { round: 1, fixtures: ["f1"], complete: true },
+        { round: 2, fixtures: ["f2"], complete: false },
+      ],
+      fixtures: [
+        { ...startedLeague.fixtures[0], status: "played", winnerId: "t1", scheduledAt: "2026-02-05" },
+        { ...startedLeague.fixtures[1], status: "pending", winnerId: null, scheduledAt: null },
+      ],
+    });
+    render(<LeagueDetail leagueId="l3" />);
+
+    // The initial tab is the first round still in play (round 2), not round 1.
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("true"),
+    );
+    expect(screen.getByRole("tab", { name: "Jornada 1" }).getAttribute("aria-selected")).toBe("false");
+    expect(screen.getByRole("region", { name: "Jornada 2" })).toBeTruthy();
+  });
+
+  it("falls back to the first round when every round is complete", async () => {
+    makeFetch({
+      ...startedLeague,
+      rounds: [
+        { round: 1, fixtures: ["f1"], complete: true },
+        { round: 2, fixtures: ["f2"], complete: true },
+      ],
+    });
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Jornada 1" }).getAttribute("aria-selected")).toBe("true"),
+    );
+    expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("keeps the viewed round when a refresh completes it (one-shot initializer)", async () => {
+    // Mount defaults to round 2 (the first incomplete round); a refresh that also
+    // completes round 2 must NOT auto-advance the selection back to round 1.
+    let round2Complete = false;
+    const detail = () => ({
+      ...startedLeague,
+      rounds: [
+        { round: 1, fixtures: ["f1"], complete: true },
+        { round: 2, fixtures: ["f2"], complete: round2Complete },
+      ],
+      fixtures: [
+        { ...startedLeague.fixtures[0], status: "played", winnerId: "t2", scheduledAt: "2026-02-05" },
+        { ...startedLeague.fixtures[1], status: "pending", winnerId: null, scheduledAt: null },
+      ],
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url === "/api/leagues/l3") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(detail()) });
+      }
+      if (/\/api\/leagues\/l3\/fixtures\/f2\/propose$/.test(url)) {
+        round2Complete = true;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(detail()) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("true"),
+    );
+
+    // me owns the away team of f2 (round 2) → propose a date; success closes the panel.
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 2" })).getByText("VS"));
+    fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
+    fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Jornada 1" }).getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("keeps the negotiation panel open and surfaces the error when proposing fails", async () => {
+    // Bug fix: propose failures were swallowed (void) and the panel closed silently.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url === "/api/leagues/l3") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(startedLeague) });
+      }
+      if (/\/api\/leagues\/l3\/fixtures\/f1\/propose$/.test(url)) {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ error: "La jornada ya está cerrada." }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByText("VS"));
+    fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
+    fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
+
+    // The panel stays open and the failure surfaces as an alert near the history.
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("dialog", { name: /Acordar fecha/ })).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("No se pudo proponer la fecha.");
+    expect(screen.getByRole("alert").textContent).toContain("La jornada ya está cerrada.");
+  });
+
   it("links a match card team to its scouting page /teams/[id]", async () => {
     makeFetch(startedLeague);
     render(<LeagueDetail leagueId="l3" />);

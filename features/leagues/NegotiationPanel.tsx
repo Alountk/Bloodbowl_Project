@@ -17,13 +17,16 @@ export interface NegotiationPanelProps {
   currentUserId: string;
   /** True when the viewer owns the fixture's home or away team. */
   isParticipant: boolean;
-  /** True when the viewer owns the league (admin). Participants false. */
+  /** True when the viewer owns the league (admin). Retained for the caller's
+   * role contract; the participant rule alone decides the controls. */
   isLeagueOwner: boolean;
   /** Fires with an ISO timestamp to POST propose. */
   onPropose: (date: string) => void;
   /** Fires with a proposal id to POST accept. */
   onAccept: (proposalId: string) => void;
   onClose: () => void;
+  /** A failed propose/accept message to surface near the history (keeps the panel open). */
+  submitError?: string | null;
 }
 
 /** Finds the single active (open, unaccepted) proposal, if any. */
@@ -36,21 +39,23 @@ function latestActiveProposal(proposals: ScheduleProposal[]): ScheduleProposal |
 
 /**
  * Negotiation panel (modal) for agreeing a match date. Only the two match
- * participants get the propose/accept controls; non-participants and the league
- * owner (admin) see the history read-only with no controls. History shows the
- * author, the proposed date/time and — on an accepted proposal — "✓ Acordado".
+ * participants get the propose/accept controls (a league owner who owns one of
+ * the fixture's teams counts as a participant); non-participants, including a
+ * league owner who does NOT play the fixture, see the history read-only with no
+ * controls. History shows the author, the proposed date/time and — on an
+ * accepted proposal — "✓ Acordado".
  */
 export function NegotiationPanel({
   fixture,
   teamNameById,
   currentUserId,
   isParticipant,
-  isLeagueOwner,
   onPropose,
   onAccept,
   onClose,
+  submitError,
 }: NegotiationPanelProps) {
-  const canNegotiate = isParticipant && !isLeagueOwner;
+  const canNegotiate = isParticipant;
   // Even if a participant, a scheduled/played fixture is no longer negotiable.
   const negotiationOpen = canNegotiate && fixture.status === "pending";
   const active = latestActiveProposal(fixture.proposals);
@@ -93,6 +98,11 @@ export function NegotiationPanel({
           <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
             Historial de propuestas
           </h4>
+          {submitError ? (
+            <p role="alert" className="mb-2 text-xs text-red-600">
+              {submitError}
+            </p>
+          ) : null}
           <ul className="divide-y divide-[#f1f5f9]">
             {fixture.proposals.length === 0 ? (
               <li className="py-2 text-sm text-slate-500">
