@@ -46,10 +46,10 @@ Chain strategy: stacked-to-main
 
 ## PR 2 — Permissions + Nudge
 
-- [ ] 2.1 Create `lib/livePhase.ts` `resolveEventPermission` 6-cell matrix (D14); RED
-- [ ] 2.2 live/route side-guard recordCasualty/foul (409/403/404); turnStart+requestTurn events; 60s cooldown (D17); RED
-- [ ] 2.3 MatchView controls by viewerSide+"Tu turno"+"Pedir turno"; liveEventLabels 2 labels; RED tests
-- [ ] 2.4 **WARNING split path**: if >400, split 2a (matrix+guards+tests) / 2b (UI+labels+tests)
+- [x] 2.1 Create `lib/livePhase.ts` `resolveEventPermission` 6-cell matrix (D14); RED
+- [x] 2.2 live/route side-guard recordCasualty/foul (409/403/404); turnStart+requestTurn events; 60s cooldown (D17); RED
+- [x] 2.3 MatchView controls by viewerSide+"Tu turno"+"Pedir turno"; liveEventLabels 2 labels; RED tests
+- [x] 2.4 **WARNING split path**: if >400, split 2a (matrix+guards+tests) / 2b (UI+labels+tests)
 
 ## PR 3 — Rejornar
 
