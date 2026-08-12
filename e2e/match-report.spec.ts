@@ -320,3 +320,62 @@ test("correction: admin corrects a played result → the MatchCard score updates
     await league.rival.context()?.close().catch(() => undefined);
   }
 });
+
+test("correction: a participant captain (rival) corrects a played result → the MatchCard score updates", async ({
+  browser,
+}) => {
+  const league = await buildTwoMemberStartedLeague(browser, "captcorr");
+  try {
+    const fixtureId = await scheduleFixture(league);
+    // The admin loads the result first (2–0 for team A) so the fixture is played.
+    await league.admin.reload();
+    await loadResultViaModal(league.admin, league.teamAName, league.teamBName, 2);
+    await waitForFixtureStatus(league.admin, league.leagueId, fixtureId, "played");
+
+    // The rival (a participant captain, NOT the admin) corrects it to a 1–1 draw
+    // through the SAME modal path — the correction gate is admin ∪ participants.
+    await league.rival.reload();
+    const card = league.rival.getByRole("region", { name: "Jornada 1" });
+    await expect(card.getByRole("button", { name: "Corregir resultado" }).first()).toBeVisible();
+    await card.getByRole("button", { name: "Corregir resultado" }).first().click();
+    const dialog = league.rival.getByRole("dialog", { name: /Corregir resultado/ });
+    await expect(dialog).toBeVisible();
+    const homeSection = dialog.getByLabel(`Resultado ${league.teamAName}`);
+    const awaySection = dialog.getByLabel(`Resultado ${league.teamBName}`);
+    await homeSection.getByLabel(`Goles ${league.teamAName}`).fill("1");
+    await awaySection.getByLabel(`Goles ${league.teamBName}`).fill("1");
+    await homeSection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
+    await awaySection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
+    for (const section of [homeSection, awaySection]) {
+      for (let i = 1; i <= 6; i++) {
+        await section
+          .getByLabel(`MVP ${i} ${section === homeSection ? league.teamAName : league.teamBName}`)
+          .selectOption({ index: i });
+      }
+    }
+    await dialog.getByRole("button", { name: "Corregir resultado" }).click();
+    await expect(dialog).not.toBeVisible();
+
+    // Poll until the corrected score commits, then verify the card shows 1 – 1.
+    await expect
+      .poll(
+        async () => {
+          const res = await league.rival.request.get(`/api/leagues/${league.leagueId}`);
+          if (res.status() !== 200) return null;
+          const body = (await res.json()) as {
+            fixtures: { id: string; homeScore: number | null; awayScore: number | null }[];
+          };
+          const f = body.fixtures.find((x) => x.id === fixtureId);
+          return f ? `${f.homeScore}-${f.awayScore}` : null;
+        },
+        { timeout: 20_000 },
+      )
+      .not.toBe(null);
+    await league.rival.reload();
+    const after = league.rival.getByRole("region", { name: "Jornada 1" });
+    await expect(after.getByText(/Jugado · 1 – 1/)).toBeVisible();
+  } finally {
+    await league.admin.context()?.close().catch(() => undefined);
+    await league.rival.context()?.close().catch(() => undefined);
+  }
+});
