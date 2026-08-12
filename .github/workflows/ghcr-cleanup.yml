@@ -1,0 +1,90 @@
+name: GHCR Cleanup
+
+# Prunes old versions of the container image in GitHub Container Registry.
+# Every merge to main publishes a version with three tags (`latest`, a
+# readable date-run tag and the commit sha), so without a cleanup the registry
+# accumulates one version per merge. This workflow keeps the newest KEEP
+# versions (protecting the `latest` tag) and deletes the rest, preserving
+# rollback ability while keeping the package tidy.
+#
+# Runs weekly, and can be triggered manually via the Actions tab
+# (Run workflow) — the first manual run prunes the historical backlog.
+
+on:
+  schedule:
+    # Weekly Sunday 03:17 UTC (off-peak, non-round minute).
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The repository publishes the package via docker-publish.yml, so the
+  # workflow is linked to the package and this token has admin permission on
+  # it — enough to list versions and delete them via the REST API (public
+  # preview feature).
+  packages: write
+
+jobs:
+  cleanup:
+    name: Prune old GHCR versions
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      OWNER: ${{ github.repository_owner }}
+      PACKAGE: bloodbowl_project
+      KEEP: 10
+    steps:
+      - name: List package versions
+        run: |
+          gh api --paginate \
+            "/users/$OWNER/packages/container/$PACKAGE/versions?per_page=100" \
+            > /tmp/versions.json
+          echo "total listed: $(jq length /tmp/versions.json)"
+
+      - name: Delete old versions
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          with open("/tmp/versions.json") as f:
+              versions = json.load(f)
+
+          keep = int(os.environ["KEEP"])
+          owner = os.environ["OWNER"]
+          pkg = os.environ["PACKAGE"]
+
+          # Newest first by created_at.
+          versions.sort(key=lambda v: v.get("created_at", ""), reverse=True)
+
+          kept = 0
+          protected_latest = 0
+          deleted = []
+          for v in versions:
+              tags = v.get("metadata", {}).get("container", {}).get("tags", []) or []
+              # Never delete the version carrying `latest`: Arcane pulls it and
+              # a rollback may temporarily point `latest` at an older version.
+              if "latest" in tags:
+                  protected_latest += 1
+                  continue
+              if kept < keep:
+                  kept += 1
+                  continue
+              vid = v["id"]
+              url = f"/users/{owner}/packages/container/{pkg}/versions/{vid}"
+              r = subprocess.run(["gh", "api", "-X", "DELETE", url],
+                                 capture_output=True, text=True)
+              if r.returncode == 0:
+                  deleted.append((v.get("created_at", "?"), tags))
+              else:
+                  print(f"WARN delete failed {vid}: {r.stderr.strip()}")
+
+          print(f"kept newest (non-latest): {kept}")
+          print(f"protected 'latest': {protected_latest}")
+          print(f"deleted: {len(deleted)}")
+          for created, tags in deleted[:15]:
+              print(f"  - {created} {tags}")
+          if len(deleted) > 15:
+              print(f"  ... and {len(deleted) - 15} more")
+          PY
