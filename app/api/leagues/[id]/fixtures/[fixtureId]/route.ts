@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { deriveLiveClock } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 
 /** A persisted live event, serialized for the timeline (LM-10). */
@@ -15,19 +16,27 @@ interface LiveEventDto {
   at: number;
 }
 
-/** The shared live-match DTO (D8/D13): consumed by MatchView, timeline, prefill. */
-interface LiveDto {
+/**
+ * The shared live-match DTO (D8/D13/D19): consumed by MatchView, timeline,
+ * prefill, and the live SSE/POST routes. Field-set parity with
+ * `toLiveViewState` (unified clock) is asserted by a test.
+ */
+export interface LiveDto {
   seq: number;
-  status: "pending" | "live" | "finished";
+  status: "pending" | "ready" | "live" | "finished";
   half: number;
   turnNumber: number;
   activeSide: "home" | "away";
-  turnClockEnabled: boolean;
-  homeClock: number | null;
-  awayClock: number | null;
+  homeConsented: boolean;
+  awayConsented: boolean;
+  viewerSide: "home" | "away" | null;
+  startedAt: number | null;
+  elapsed: number;
+  homeTurnMs: number;
+  awayTurnMs: number;
+  paused: boolean;
   homeScore: number;
   awayScore: number;
-  paused: boolean | null;
   finishedAt: number | null;
   events: LiveEventDto[];
 }
@@ -35,16 +44,20 @@ interface LiveDto {
 /** A raw Prisma LiveMatch row (with nested events) cast structurally. */
 interface LiveMatchRow {
   id: string;
-  status: "pending" | "live" | "finished";
+  status: "pending" | "ready" | "live" | "finished";
   half: number;
   turnNumber: number;
   activeSide: "home" | "away";
-  homeClock: number;
-  awayClock: number;
+  homeConsented: boolean;
+  awayConsented: boolean;
+  startedAt: Date | null;
+  homeTurnMs: number;
+  awayTurnMs: number;
   homeScore: number;
   awayScore: number;
   seq: number;
   paused: boolean;
+  clockStartedAt: Date | null;
   finishedAt: Date | null;
   events: {
     seq: number;
@@ -58,20 +71,44 @@ interface LiveMatchRow {
   }[];
 }
 
-/** Pure: serializes a LiveMatch row + league clock config into the shared DTO. */
-function serializeLive(row: LiveMatchRow, turnClockEnabled: boolean): LiveDto {
+/**
+ * Pure: serializes a LiveMatch row into the shared unified-clock DTO. Uses
+ * `deriveLiveClock` (shared with `toLiveViewState`) so the active side's
+ * accumulation at read time is derived identically — field-set parity is
+ * asserted by a test. `viewerSide` is per-viewer (D19).
+ */
+export function serializeLive(
+  row: LiveMatchRow,
+  viewerSide: "home" | "away" | null,
+  now: number,
+): LiveDto {
+  const clock = deriveLiveClock(
+    {
+      status: row.status,
+      activeSide: row.activeSide,
+      paused: row.paused,
+      clockStartedAt: row.clockStartedAt ? new Date(row.clockStartedAt).getTime() : null,
+      homeTurnMs: row.homeTurnMs,
+      awayTurnMs: row.awayTurnMs,
+    },
+    now,
+  );
   return {
     seq: row.seq,
     status: row.status,
     half: row.half,
     turnNumber: row.turnNumber,
     activeSide: row.activeSide,
-    turnClockEnabled,
-    homeClock: turnClockEnabled ? row.homeClock : null,
-    awayClock: turnClockEnabled ? row.awayClock : null,
+    homeConsented: row.homeConsented,
+    awayConsented: row.awayConsented,
+    viewerSide,
+    startedAt: row.startedAt ? new Date(row.startedAt).getTime() : null,
+    elapsed: clock.elapsed,
+    homeTurnMs: clock.homeTurnMs,
+    awayTurnMs: clock.awayTurnMs,
+    paused: clock.paused,
     homeScore: row.homeScore,
     awayScore: row.awayScore,
-    paused: turnClockEnabled ? row.paused : null,
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
     events: row.events.map((e) => ({
       seq: e.seq,
@@ -126,8 +163,6 @@ export async function GET(
         select: {
           status: true,
           ownerId: true,
-          turnClockEnabled: true,
-          turnClockSeconds: true,
           teams: { select: { userId: true }, where: { archivedAt: null } },
         },
       },
@@ -208,8 +243,16 @@ export async function GET(
     ...fixtureRest
   } = enriched;
 
+  // D19: per-viewer side computed server-side from the session + team owners.
+  const side: "home" | "away" | null =
+    userId === fixture.homeTeam.userId
+      ? "home"
+      : userId === fixture.awayTeam.userId
+        ? "away"
+        : null;
+
   const live = fixture.liveMatch
-    ? serializeLive(fixture.liveMatch as LiveMatchRow, fixture.league.turnClockEnabled)
+    ? serializeLive(fixture.liveMatch as LiveMatchRow, side, Date.now())
     : null;
 
   return NextResponse.json({
