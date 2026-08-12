@@ -25,6 +25,8 @@ export interface NegotiationPanelProps {
   /** Fires with a proposal id to POST accept. */
   onAccept: (proposalId: string) => void;
   onClose: () => void;
+  /** A failed propose/accept message to surface near the history (keeps the panel open). */
+  submitError?: string | null;
 }
 
 /** Finds the single active (open, unaccepted) proposal, if any. */
@@ -51,6 +53,7 @@ export function NegotiationPanel({
   onPropose,
   onAccept,
   onClose,
+  submitError,
 }: NegotiationPanelProps) {
   const canNegotiate = isParticipant;
   // Even if a participant, a scheduled/played fixture is no longer negotiable.
@@ -95,6 +98,11 @@ export function NegotiationPanel({
           <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
             Historial de propuestas
           </h4>
+          {submitError ? (
+            <p role="alert" className="mb-2 text-xs text-red-600">
+              {submitError}
+            </p>
+          ) : null}
           <ul className="divide-y divide-[#f1f5f9]">
             {fixture.proposals.length === 0 ? (
               <li className="py-2 text-sm text-slate-500">

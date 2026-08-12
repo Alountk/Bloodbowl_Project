@@ -159,3 +159,17 @@ describe("NegotiationPanel — non-participant / admin", () => {
     expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
   });
 });
+
+describe("NegotiationPanel — submit error", () => {
+  it("renders the submit error as an alert near the history", () => {
+    renderPanel({ submitError: "No se pudo proponer la fecha. Error de prueba" });
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("No se pudo proponer la fecha.");
+    expect(alert.textContent).toContain("Error de prueba");
+  });
+
+  it("renders no alert when there is no submit error", () => {
+    renderPanel();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

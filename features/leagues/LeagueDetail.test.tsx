@@ -377,6 +377,41 @@ describe("LeagueDetail — STARTED league", () => {
     expect(screen.getByRole("tab", { name: "Jornada 1" }).getAttribute("aria-selected")).toBe("false");
   });
 
+  it("keeps the negotiation panel open and surfaces the error when proposing fails", async () => {
+    // Bug fix: propose failures were swallowed (void) and the panel closed silently.
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url === "/api/leagues/l3") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(startedLeague) });
+      }
+      if (/\/api\/leagues\/l3\/fixtures\/f1\/propose$/.test(url)) {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ error: "La jornada ya está cerrada." }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByText("VS"));
+    fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
+    fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
+
+    // The panel stays open and the failure surfaces as an alert near the history.
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("dialog", { name: /Acordar fecha/ })).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("No se pudo proponer la fecha.");
+    expect(screen.getByRole("alert").textContent).toContain("La jornada ya está cerrada.");
+  });
+
   it("links a match card team to its scouting page /teams/[id]", async () => {
     makeFetch(startedLeague);
     render(<LeagueDetail leagueId="l3" />);
