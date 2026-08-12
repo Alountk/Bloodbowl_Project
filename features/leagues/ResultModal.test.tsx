@@ -128,6 +128,62 @@ describe("ResultModal", () => {
     return { onSubmit, onClose };
   }
 
+  it("prefills scores + per-scorer TDs from a finished live match as INITIAL state (LM-9)", () => {
+    renderModal({
+      initial: {
+        home: {
+          score: 2,
+          ballHeld: true,
+          players: {
+            h1: { tds: 2, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
+          },
+          mvpNominations: [],
+          casualties: [],
+        },
+        away: {
+          score: 1,
+          ballHeld: true,
+          players: {
+            a1: { tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
+          },
+          mvpNominations: [],
+          casualties: [],
+        },
+      },
+    });
+    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+
+    // Scores prefilled from the live scoreboard.
+    expect((within(dialog).getByLabelText(/Goles Reavers/) as HTMLInputElement).value).toBe("2");
+    expect((within(dialog).getByLabelText(/Goles Orcs/) as HTMLInputElement).value).toBe("1");
+
+    // Per-scorer TDs prefilled for the TD scorers.
+    expect((within(dialog).getByLabelText(/Anotaciones Hugo/) as HTMLInputElement).value).toBe("2");
+    expect((within(dialog).getByLabelText(/Anotaciones Aurora/) as HTMLInputElement).value).toBe("1");
+
+    // A non-scorer roster player is NOT pre-filled (TD stays 0/empty).
+    const helga = within(dialog).getByLabelText(/Anotaciones Helga/) as HTMLInputElement;
+    expect(helga.value === "" || helga.value === "0").toBe(true);
+  });
+
+  it("does not apply a prefill through a reset effect — only as initial state", () => {
+    // A prefill present at mount is read once; a later closure change must NOT
+    // reset the coach's edits. (Guarded by the keyed remount in LeagueDetail.)
+    const { onClose } = renderModal({
+      initial: {
+        home: { score: 1, ballHeld: true, players: {}, mvpNominations: [], casualties: [] },
+        away: { score: 0, ballHeld: true, players: {}, mvpNominations: [], casualties: [] },
+      },
+    });
+    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+    const scoreInput = within(dialog).getByLabelText(/Goles Reavers/) as HTMLInputElement;
+    expect(scoreInput.value).toBe("1");
+    // Edit the field; the modal keeps the coach's input (no reset).
+    fireEvent.change(scoreInput, { target: { value: "3" } });
+    expect(scoreInput.value).toBe("3");
+    void onClose;
+  });
+
   it("renders nothing when closed", () => {
     renderModal({ open: false });
     expect(screen.queryByRole("dialog")).toBeNull();

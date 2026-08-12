@@ -23,6 +23,7 @@ export default defineConfig({
     "**/match-report.spec.ts",
     "**/full-league-flow.spec.ts",
     "**/match-view.spec.ts",
+    "**/live-match.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
