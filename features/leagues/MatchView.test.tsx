@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { MatchView } from "./MatchView";
-import { formatMatchDate } from "./MatchCard";
 import type { LiveMatchView, MatchDetail } from "./api";
+
+// `MatchView` uses the session to derive the viewer's side when no live row
+// exists (D19). Default the viewer to the home coach (u1).
+vi.mock("next-auth/react", () => ({
+  useSession: vi.fn(() => ({ data: { user: { id: "u1" } } })),
+}));
 
 /** Fake EventSource so MatchView's `useLiveMatch` (LiveActiveMatch) can connect. */
 class FakeEventSource {
@@ -191,15 +196,15 @@ describe("MatchView — played full summary (MV-2)", () => {
   });
 });
 
-describe("MatchView — scheduled / pending (MV-3)", () => {
-  it("shows Programado: with the es-ES formatted date for a scheduled fixture", async () => {
+describe("MatchView — scheduled / pending (MV-3, D16 consent-start)", () => {
+  it("shows the consent-start panel (not the legacy 'Programado:' date) for a scheduled fixture", async () => {
+    stubLiveEventSource();
     stubMatch(scheduledDetail());
     renderPlayed();
 
-    const expected = `Programado: ${formatMatchDate("2026-03-01T20:00:00")}`;
-    expect(await screen.findByText(expected)).toBeTruthy();
-    // The formatted date is a real DD/MM/YYYY HH:MM es-ES date, not empty.
-    expect(formatMatchDate("2026-03-01T20:00:00")).toContain("03/2026");
+    // A scheduled fixture now renders the two-phase consent start (D16).
+    expect(await screen.findByText(/Partido programado/)).toBeTruthy();
+    expect(screen.queryByText(/Programado:/)).toBeNull();
   });
 
   it("shows a pending notice with no date for a pending fixture", async () => {
@@ -229,11 +234,12 @@ describe("MatchView — walkover and inert live shells (MV-2/MV-5/MV-6)", () => 
     const cases = [playedDetail(), scheduledDetail(), pendingDetail(), walkoverDetail()];
     for (const detail of cases) {
       vi.unstubAllGlobals();
+      stubLiveEventSource(); // scheduled renders LiveActiveMatch (consent panel)
       stubMatch(detail);
       const { container } = renderPlayed();
       await waitFor(() => expect(container.textContent?.length ?? 0).toBeGreaterThan(0));
-      // No turn/clock/half/event-feed placeholder may be visible in ANY state.
-      expect(container.textContent).not.toMatch(/turno|tiempo|evento|minuto|½/i);
+      // No turn/clock/half/event-feed digits appear in ANY pre-live state.
+      expect(container.textContent).not.toMatch(/turno \d|tiempo|mitad|evento|:\d{2}/i);
     }
   });
 });
@@ -249,9 +255,13 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       half: 1,
       turnNumber: 3,
       activeSide: "home",
-      turnClockEnabled: true,
-      homeClock: 200,
-      awayClock: 240,
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: "home",
+      startedAt: 8000,
+      elapsed: 2100,
+      homeTurnMs: 2100,
+      awayTurnMs: 0,
       homeScore: 1,
       awayScore: 0,
       paused: false,
@@ -276,9 +286,13 @@ function finishedLiveDetail(): MatchDetail {
       half: 2,
       turnNumber: 8,
       activeSide: "away",
-      turnClockEnabled: true,
-      homeClock: 40,
-      awayClock: 0,
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: null,
+      startedAt: 1000,
+      elapsed: 3100,
+      homeTurnMs: 1500,
+      awayTurnMs: 1600,
       homeScore: 2,
       awayScore: 1,
       paused: false,
@@ -296,7 +310,7 @@ function finishedLiveDetail(): MatchDetail {
 describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("renders the live turn bar, clocks, score and event feed from the live state", async () => {
+  it("renders the live turn bar, unified clock, score and event feed from the live state", async () => {
     stubLiveEventSource();
     stubMatch(liveDetail());
     const { container } = renderPlayed();
@@ -304,26 +318,11 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     // The live section shows real server state: header (half/turn), score.
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
     expect(container.textContent).toMatch(/1\s*–\s*0/);
+    // Unified-clock per-side accumulators render (homeTurnMs=2100 → 0:02).
+    expect(container.textContent).toMatch(/0:02/);
     // The feed labels the persisted TD + start events.
     expect(screen.getAllByText(/Touchdown/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Inicio del partido/).length).toBeGreaterThan(0);
-  });
-
-  it("hides clocks when the league turns the clock option off", async () => {
-    stubLiveEventSource();
-    const detail = liveDetail();
-    detail.live!.turnClockEnabled = false;
-    detail.live!.homeClock = null;
-    detail.live!.awayClock = null;
-    detail.live!.paused = null;
-    stubMatch(detail);
-
-    renderPlayed();
-    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // No clock-digit text appears anywhere (LM-5: client can never derive a clock).
-    expect(screen.queryByText(/\d+:\d{2}/)).toBeNull();
-    // The event feed still renders (turn/event flow unchanged when clocks off).
-    expect(screen.getAllByText(/Touchdown/).length).toBeGreaterThan(0);
   });
 
   it("sends a control command when the coach clicks 'Dar el turno'", async () => {
@@ -332,7 +331,7 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
       // getMatchDetail GET → the live detail; sendCommand POST → the new view.
       return Promise.resolve(
         /\/live$/.test(url)
-          ? { ok: true, status: 200, json: () => Promise.resolve({ view: { seq: 7, status: "live", half: 1, turnNumber: 4, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null } }) }
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: { seq: 7, status: "live", half: 1, turnNumber: 4, activeSide: "away", homeConsented: true, awayConsented: true, viewerSide: "home", startedAt: 8000, elapsed: 2400, homeTurnMs: 2100, awayTurnMs: 300, paused: false, homeScore: 1, awayScore: 0, finishedAt: null } }) }
           : { ok: true, status: 200, json: () => Promise.resolve(liveDetail()) },
       );
     });
@@ -351,6 +350,137 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
         expect.objectContaining({ method: "POST" }),
       ),
     );
+  });
+});
+
+describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A scheduled fixture with no LiveMatch row yet → consent start panel. */
+  function scheduledNoLive(): MatchDetail {
+    const raw = scheduledDetail();
+    // No row: the fixture is scheduled with no LiveMatch.
+    return { ...raw, live: null };
+  }
+
+  it("shows 'Iniciar partido' for a home coach on a scheduled fixture with no live row", async () => {
+    stubLiveEventSource();
+    stubMatch(scheduledNoLive());
+    renderPlayed();
+
+    // The consent-start panel renders for a scheduled fixture with no row.
+    expect(await screen.findByText(/Partido programado/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
+  });
+
+  it("shows a pending 'listo, esperando al rival' state after the first consent", async () => {
+    stubLiveEventSource();
+    const detail = scheduledNoLive();
+    detail.live = {
+      seq: 1,
+      status: "pending",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: false,
+      viewerSide: "home",
+      startedAt: null,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      paused: false,
+      homeScore: 0,
+      awayScore: 0,
+      finishedAt: null,
+      events: [],
+    };
+    stubMatch(detail);
+    renderPlayed();
+
+    // The home coach sees their side confirmed + the retract control.
+    expect(await screen.findByText(/Listo, esperando al rival/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Retirar consentimiento/i })).toBeTruthy();
+  });
+
+  it("shows 'Empezar partido' (begin) once both coaches consent (ready)", async () => {
+    stubLiveEventSource();
+    const detail = scheduledNoLive();
+    detail.live = {
+      seq: 2,
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: "home",
+      startedAt: null,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      paused: false,
+      homeScore: 0,
+      awayScore: 0,
+      finishedAt: null,
+      events: [],
+    };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Empezar partido/i })).toBeTruthy();
+  });
+
+  it("sends a begin command when the coach clicks 'Empezar partido'", async () => {
+    stubLiveEventSource();
+    const detail = scheduledNoLive();
+    detail.live = {
+      seq: 2,
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: "home",
+      startedAt: null,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      paused: false,
+      homeScore: 0,
+      awayScore: 0,
+      finishedAt: null,
+      events: [],
+    };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: { seq: 3, status: "live", half: 1, turnNumber: 1, activeSide: "home", homeConsented: true, awayConsented: true, viewerSide: "home", startedAt: 1000, elapsed: 0, homeTurnMs: 0, awayTurnMs: 0, paused: false, homeScore: 0, awayScore: 0, finishedAt: null } }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(detail) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+    renderPlayed();
+
+    expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
+    act(() => {
+      screen.getByRole("button", { name: /Empezar partido/i }).click();
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/leagues/l1/fixtures/f1/live",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    // The POST body is the begin command (two-phase lifecycle, LM-11).
+    const livePost = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/live"));
+    expect(livePost).toBeDefined();
+    const init = (livePost as unknown[])[1] as { body: string };
+    expect((JSON.parse(init.body) as { type: string }).type).toBe("begin");
   });
 });
 

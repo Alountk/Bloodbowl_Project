@@ -244,10 +244,11 @@ test("match view: pending → scheduled date → played summary, and Ver partido
     await links.last().click();
     await expect(admin).toHaveURL(matchUrl);
 
-    // --- Scheduled: after both agree a date, the page shows Programado: ---
+    // --- Scheduled: after both agree a date, the page GATES the start behind
+    //     the two-phase consent panel (D16) instead of the legacy "Programado:" ---
     await scheduleFixture(league);
     await admin.goto(matchUrl);
-    await expect(admin.getByText(/Programado:/)).toBeVisible();
+    await expect(admin.getByText(/Partido programado/)).toBeVisible();
     await expect(admin.getByText(/Sin jornada programada/)).toBeHidden();
 
     // --- Played: load the result, then the page renders the full summary. ---

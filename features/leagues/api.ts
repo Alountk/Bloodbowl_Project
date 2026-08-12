@@ -43,9 +43,13 @@ export interface FixtureDraft {
   proposals: ScheduleProposal[];
 }
 
-/** The league-level turn-clock option (AC-10): enabled toggle + per-turn
- * duration. The duration is meaningful only when enabled. Immutable after
- * creation — no update path exists. */
+/**
+ * The (deprecated) league-level turn-clock option (D15). The columns REMAIN on
+ * the League row for backward compatibility but are no longer read or written
+ * anywhere: the creation UI/API dropped the option, and live matches never
+ * consult it. Kept only to type the persisted columns.
+ * @deprecated The turn-clock option was removed from creation and never read.
+ */
 export interface TurnClockOption {
   turnClockEnabled: boolean;
   turnClockSeconds: 120 | 240 | 360;
@@ -70,8 +74,16 @@ export interface League {
    * (server-computed); used to surface started member leagues in the list.
    */
   isMember: boolean;
-  /** The immutable turn-clock option for live matches on this league. */
+  /**
+   * DEPRECATED (D15): the per-turn clock columns remain on the row for backward
+   * compatibility but are never read or written by the current app.
+   * @deprecated The turn-clock option no longer constrains live matches.
+   */
   turnClockEnabled: boolean;
+  /**
+   * DEPRECATED (D15): the legacy per-turn clock duration.
+   * @deprecated Superseded by the unified server-owned match clock.
+   */
   turnClockSeconds: 120 | 240 | 360;
 }
 
@@ -118,19 +130,19 @@ export async function listLeagues(): Promise<League[]> {
   return readJson<League[]>(res);
 }
 
+/**
+ * Creates a league. The deprecated turn-clock option is GONE from the client
+ * (D15): the payload carries name + description only, and the server ignores
+ * any legacy clock fields (columns keep their DB defaults).
+ */
 export async function createLeague(
   name: string,
   description: string | null,
-  option?: { turnClockEnabled: boolean; turnClockSeconds: 120 | 240 | 360 },
 ): Promise<League> {
   const res = await fetch("/api/leagues", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(
-      option
-        ? { name, description, ...option }
-        : { name, description },
-    ),
+    body: JSON.stringify({ name, description }),
   });
   return readJson<League>(res);
 }
@@ -483,21 +495,31 @@ export async function getMatchDetail(
   return readJson<MatchDetail>(res);
 }
 
-/** Live-match lifecycle state (LM-8 DTO, shared by MatchView/timeline/prefill).
- * Clocks are `null` when the league's turn-clock option is disabled (LM-5), and
- * `clockSeconds` is absent so the client can never derive a clock. */
+/**
+ * The unified live-match DTO (LM-5/LM-8/D19): consents + per-side millisecond
+ * accumulators + elapsed (server-derived), the per-viewer side, and the
+ * kickoff anchor. The deprecated per-turn clock fields are gone.
+ */
 export interface LiveMatchViewState {
   seq: number;
-  status: "pending" | "live" | "finished";
+  status: "pending" | "ready" | "live" | "finished";
   half: number;
   turnNumber: number;
   activeSide: "home" | "away";
-  turnClockEnabled: boolean;
-  homeClock: number | null;
-  awayClock: number | null;
+  /** Whether each coach has consented to start (LM-11). */
+  homeConsented: boolean;
+  awayConsented: boolean;
+  /** Per-viewer side (D19): null on hub fan-out frames; set on POST/snapshot/GET. */
+  viewerSide: "home" | "away" | null;
+  /** Kickoff anchor (milliseconds); null before the first turn. */
+  startedAt: number | null;
+  /** Unified elapsed = accumulated home+away turn time (milliseconds). */
+  elapsed: number;
+  homeTurnMs: number;
+  awayTurnMs: number;
+  paused: boolean;
   homeScore: number;
   awayScore: number;
-  paused: boolean | null;
   finishedAt: number | null;
 }
 
@@ -513,9 +535,11 @@ export interface LiveMatchEventDto {
   at: number;
 }
 
-/** Control commands the live POST route accepts (LM-4/D10/D11). */
+/** Control commands the live POST route accepts (LM-4/D10/D11/LM-11). */
 export type LiveCommand =
-  | { type: "start" }
+  | { type: "consent"; side: "home" | "away" }
+  | { type: "retractConsent"; side: "home" | "away" }
+  | { type: "begin" }
   | { type: "endTurn"; side: "home" | "away" }
   | { type: "td"; side: "home" | "away"; playerRosterId: string }
   | { type: "casualty"; side: "home" | "away"; victimRosterId: string; band?: unknown }

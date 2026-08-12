@@ -129,8 +129,14 @@ async function persistAndPublish(
   input: { liveMatchId: string; fixtureId: string; currentSeq: number; next: LiveMatchState; now: number },
   deps: StoreDeps,
 ): Promise<number> {
-  const nextSeq = input.currentSeq + 1;
   const eventsToPersist = input.next.events.filter((e) => e.seq > input.currentSeq);
+  // Advance the row seq past BOTH the previous value and every newly-appended
+  // delta event. Most transitions emit exactly one event (seq = currentSeq+1),
+  // but `beginMatch` emits TWO (`start` + `turnStart`), so the row must advance
+  // to the highest event seq — otherwise the next transition's event collides
+  // on `@@unique([liveMatchId, seq])` (P2002).
+  const highestEventSeq = eventsToPersist.reduce((max, e) => Math.max(max, e.seq), input.currentSeq);
+  const nextSeq = Math.max(input.currentSeq + 1, highestEventSeq);
 
   await deps.prisma.$transaction(async (tx) => {
     const updated = await tx.liveMatch.updateMany({
