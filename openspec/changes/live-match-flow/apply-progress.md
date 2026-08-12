@@ -1,8 +1,8 @@
-# Apply Progress — live-match-flow (PR 1a + PR 1b)
+# Apply Progress — live-match-flow (PR 1a + 1b + 2)
 
-> Change: `live-match-flow` · PR slices: **1a** + **1b** (stacked-to-main chain)
+> Change: `live-match-flow` · PR slices: **1a** + **1b** + **2** (stacked-to-main chain)
 > Phase: sdd-apply · Mode: **Strict TDD** (vitest)
-> Status: **1a + 1b COMPLETE — 16/16 tasks** · Next: sdd-verify or apply → PR 2
+> Status: **1a + 1b + 2 COMPLETE — 20/20 tasks** · Next: sdd-verify or apply → PR 3
 
 ## Scope
 
@@ -205,3 +205,80 @@ Modified:
 - `e2e/live-match.spec.ts` (begin-step rewrite)
 - `e2e/match-view.spec.ts` (scheduled-state consent assertion)
 - `openspec/changes/live-match-flow/tasks.md` (1b.1–1b.4 `[x]`)
+
+---
+
+# PR 2 — Permissions + Nudge (MERGED)
+
+## Scope
+
+Implemented EXACTLY `tasks.md` PR 2 (2.1–2.4): permissions + nudge. No rejornar
+(PR 3), no correction (PR 4), no migration. Committed in 4 work units: ca82296,
+f7402f2, f2393ae, 79e9ef4. Clean working tree on `feat/live-match-flow-2`.
+
+## Summary of changes
+
+- **2.1** Created `lib/livePhase.ts` with the pure `resolveEventPermission`
+  side-matrix (LM-12/D14): ACTIVE coach → any event on any victim; NON-ACTIVE
+  coach → ONLY a casualty to their OWN player; caller with no side
+  (admin/spectator) → deny all events. RED matrix tests cover every cell
+  (`lib/livePhase.test.ts`, 7 tests).
+- **2.2** Wired the side-matrix guard into the live POST route for the event
+  commands (endTurn/pass, TD, casualty, foul) — a deny returns 409 (the only
+  callers reaching it are fixture coaches or the no-team admin; spectator 403 /
+  foreign 404 are handled by the existing coach gate + `loadFixtureGate`).
+  Added `requestTurn` (non-active coach only; persists a labeled event, no turn/
+  clock change) with the 60s `REQUEST_TURN_COOLDOWN_MS` cooldown (D17) keyed on
+  the last persisted `requestTurn` event. `turnTransition` now emits an explicit
+  `turnStart(nextActive)` event on every turn flip (LM-13).
+- **2.3** `liveEventLabels.ts` labels `turnStart` → "Tu turno" and `requestTurn`
+  → "Te piden el turno". `MatchView` renders the "Tu turno" notice for the
+  ACTIVE coach (viewerSide === activeSide) and "Dar el turno" for the active
+  coach / "Pedir turno" for the non-active coach (LM-12/D19). 16 MatchView tests.
+- **2.4** `api.ts` `LiveCommand` gains `requestTurn`. (`useLiveMatch` already
+  forwards any `LiveCommand`; DTO kinds flow through the string-typed event.)
+
+## Work-unit commits
+
+1. `ca82296` feat(live): add resolveEventPermission side-matrix decision (LM-12)
+2. `f7402f2` feat(live): gate event commands by side matrix and add requestTurn nudge (LM-12/LM-13)
+3. `f2393ae` feat(leagues): side-aware MatchView controls with 'Tu turno' and 'Pedir turno' (LM-12/LM-13)
+4. `79e9ef4` test(e2e): route live-match TD and first pass through the active coach (LM-12)
+
+## TDD Cycle Evidence (PR 2)
+
+| Task | Test File | Layer | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|-----|-------|-------------|----------|
+| 2.1 | `lib/livePhase.test.ts` | Unit | ✅ (before impl) | ✅ 7/7 | ✅ 6 cells | ✅ |
+| 2.2 | `live/route.test.ts` | Integr. | ✅ 6 fail | ✅ 26/26 | ✅ 8 cases | ✅ |
+| 2.3 | `MatchView.test.tsx`, `liveEventLabels.test.ts` | Component | ✅ | ✅ 16/16 + 9/9 | ✅ 2 cases | ✅ |
+| 2.4 | `api.test.ts` | Unit | ✅ (type) | ✅ 22/22 | ✅ | ✅ |
+
+## Work Unit Evidence (PR 2)
+
+| Evidence | Required value |
+|---|---|
+| Focused vitest | 105/105 across livePhase/liveMatch/live route/MatchView/labels/api |
+| Full gates | `pnpm test` 1115/1115 (93 files) · `pnpm lint` clean · `npx tsc --noEmit` clean |
+| Local e2e | `AUTH_MODE=local pnpm exec playwright test` → **21/21** |
+| Auth e2e (authoritative) | `pnpm run test:e2e:auth` → **29/29 passed** (2.7m) — live-match journey green under the new side guards |
+| Rollback boundary | Revert the 4 PR-2 commits; server core (PR 1a) + client (PR 1b) stay on main |
+
+## Deviations / Issues
+
+- The existing live-match e2e previously let the admin record an AWAY TD from
+  their context regardless of side — invalid under LM-12. Fixed to route both
+  the first "Dar el turno" (HOME coach) and the away TD (AWAY coach) through the
+  coach who owns the active side. This is the intended tightening, not a break.
+- `passTurn` in the matrix is the `endTurn` command (the design's term); the
+  route maps `endTurn` → `passTurn` for the gate.
+- No slice split was needed: PR 2 (matrix+guards+tests then UI+labels+tests)
+  stayed within budget across two commits, matching the 2a/2b WARNING path.
+
+## Files Changed (PR 2)
+
+- Created: `lib/livePhase.ts`, `lib/livePhase.test.ts`
+- Modified: `lib/liveMatch.ts` (turnStart-on-flip + `applyRequestTurn` + cooldown const),
+  `live/route.ts` + `.test.ts`, `features/leagues/MatchView.tsx` + `.test.tsx`,
+  `features/leagues/liveEventLabels.ts` + `.test.ts`, `features/leagues/api.ts`,
+  `e2e/live-match.spec.ts`, `tasks.md`
