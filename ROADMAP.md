@@ -29,7 +29,8 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Campeonatos: jornadas automáticas (round-robin sin repetir, equipos impares) | #34, #37, #38 |
 | Matchday: negociación de fechas (toma y daca), forfeit del admin, scouting, completitud de jornada | #39, #42, #43 |
 | Match report: carga y corrección de resultados (marcador, ganador derivado, tesorería, FF, PE, lesiones, bote), progresión de jugadores (PE → mejoras, skill élite, recalculo de valor) y e2e de los flujos completos | #49–#54 |
-| **Partido en vivo** (vista MVP): página de detalle del partido con los 3 estados (jugado/sin programar/pendiente), resumen del snapshot (marcador, equipos, FF, ganancias, bajas, clima, MVP), acceso "Ver partido" en MatchCard y shells inertes de turno/reloj/eventos listos para el modo en vivo | #57–#60 |
+| **Partido en vivo** (MVP): página de detalle del partido con los 3 estados (jugado/sin programar/pendiente), resumen del snapshot (marcador, equipos, FF, ganancias, bajas, clima, MVP), acceso "Ver partido" en MatchCard y shells inertes de turno/reloj/eventos listos para el modo en vivo | #57–#60 |
+| **Partido en vivo** (modo en tiempo real): modo interactivo 2 entrenadores vía SSE — sincronización de turnos, relojes por equipo (120/240/360s, configurados por liga), marcador y feed cronológico de eventos persistidos desde el día 1 (visible en partidos en vivo Y jugados); reloj servidor-derivado, reversión/restart, grace de 10s, recuperación en nuevo dispositivo, prefill del modal de resultado; opción de reloj en la creación de liga; migración aditiva LiveMatch/LiveEvent | #61–#67 |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -48,7 +49,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 ### Features planificadas
 | Feature | Notas |
 |---|---|
-| **Partido en vivo** (sincronización en tiempo real) | El MVP (vista de detalle, 3 estados, shells inertes) ya está en Completado (#57–#60); lo que falta es el modo en vivo real: sincronización en tiempo real de turnos, reloj, mitad y feed de eventos entre clientes. Requiere WebSockets/SSE o similar. |
+| **Histórico completo con replay / taxonomía amplia** | El modo en vivo (SSE, turnos, relojes, timeline) ya está en Completado (#61–#67); lo que queda es replay de partidos, taxonomía completa de eventos (intercepciones, skills, clima), filtros y visualización pública — todo explícitamente fuera del alcance de MV-6. |
 | **Tabla de posiciones / standings** | La carga de resultados y marcadores ya está implementada; falta calcular y mostrar las standings por jornada. |
 | **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
 

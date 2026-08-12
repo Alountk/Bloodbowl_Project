@@ -80,7 +80,14 @@ A "Ver partido" access point on `MatchCard` MUST link to the match page. The car
 
 ### Requirement: MV-5 · Inert Live Shells
 
-Turn-counter, half/clock, and event-feed sections MUST exist as inert shells (hidden for non-live fixtures) so the future live change only fills data; MUST NOT render visible placeholders or fake values.
+Turn-counter, half/clock, and event-feed sections MUST render live match state when the fixture has an active `LiveMatch`, fed by a `useLiveMatch` SSE hook; for played, scheduled, or pending fixtures they MUST remain hidden and MUST NOT render visible placeholders or fake values.
+(Previously: the shells were always inert — `live: null` for every fixture state.)
+
+#### Scenario: Live fixture shows live UI
+
+- GIVEN a fixture with an active LiveMatch
+- WHEN the page renders
+- THEN turn counter, half, clocks, score, and event feed show server state
 
 #### Scenario: No live UI for static states
 
@@ -90,13 +97,20 @@ Turn-counter, half/clock, and event-feed sections MUST exist as inert shells (hi
 
 ### Requirement: MV-6 · Out-of-Scope Lock
 
-Realtime sync, live state (turns/half/clock/events), and the chronological event timeline MUST NOT be implemented; the schema MUST remain unchanged (no migration).
+A schema migration adding `LiveMatch`/`LiveEvent` and a chronological event timeline for live AND played matches MUST be implemented; replay, full event taxonomy (interceptions/skills/weather), filters, and public viewing MUST NOT be implemented; no other schema drift is allowed.
+(Previously: realtime, live state, the timeline, and ANY migration were prohibited.)
 
-#### Scenario: Timeline absent
+#### Scenario: Timeline shown for live and played
+
+- GIVEN a live fixture or a played fixture with persisted events
+- WHEN the page renders
+- THEN the chronological event timeline is shown from persisted events
+
+#### Scenario: Replay and public viewing stay out
 
 - GIVEN any fixture state
 - WHEN the page renders
-- THEN no chronological event timeline is shown
+- THEN no replay controls, no anonymous/public access, and no out-of-taxonomy events appear
 
 ### Requirement: MV-7 · Design System and Copy
 
@@ -115,5 +129,5 @@ MatchView MUST use only rulebook-light tokens (navy `#12225a`, red `#d11938`, ba
 | AC-1 | GET honors 401/404; fixture + result + rosters in both auth modes | route |
 | AC-2 | Played/scheduled/pending render real data, no placeholders | unit |
 | AC-3 | "Ver partido" navigates; card click negotiates; Jornadas unchanged | unit + e2e |
-| AC-4 | No visible live UI or timeline on any state | unit |
-| AC-5 | No migration/deps/icons; tokens and Spanish copy respected | lint/tsc/e2e |
+| AC-4 | Live UI and timeline only for live/played fixtures; none for static states | unit + e2e |
+| AC-5 | Migration additive (LiveMatch/LiveEvent only); no deps/icons; tokens and Spanish copy respected | lint/tsc/e2e |
