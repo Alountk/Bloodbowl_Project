@@ -8,7 +8,9 @@ const prismaMock = vi.hoisted(() => ({
   liveMatch: { findFirst: vi.fn() },
 }));
 
-const startLiveMatchMock = vi.hoisted(() => vi.fn());
+const consentLiveMatchMock = vi.hoisted(() => vi.fn());
+const retractLiveConsentMock = vi.hoisted(() => vi.fn());
+const beginLiveMatchMock = vi.hoisted(() => vi.fn());
 const applyTransitionMock = vi.hoisted(() => vi.fn());
 const liveMatchRowToStateMock = vi.hoisted(() => vi.fn());
 const pauseLiveMatchMock = vi.hoisted(() => vi.fn());
@@ -28,10 +30,12 @@ vi.mock("@/lib/auth-mode", () => ({ isAuthEnabled: isAuthEnabledMock }));
 vi.mock("@/lib/liveHub", () => ({
   liveHub: hubMock,
 }));
-// The route's store calls are mocked so POST cases control seq-conflict/start
+// The route's store calls are mocked so POST cases control guard/transition
 // outcomes; the route's own pure-transition mapping (lib/liveMatch) stays real.
 vi.mock("@/lib/liveStore", () => ({
-  startLiveMatch: startLiveMatchMock,
+  consentLiveMatch: consentLiveMatchMock,
+  retractLiveConsent: retractLiveConsentMock,
+  beginLiveMatch: beginLiveMatchMock,
   applyTransition: applyTransitionMock,
   liveMatchRowToState: liveMatchRowToStateMock,
   pauseLiveMatch: pauseLiveMatchMock,
@@ -66,57 +70,96 @@ function startedFixture(id: string, leagueId: string): Record<string, unknown> {
   };
 }
 
-/** A live LiveMatch row as prisma would return it (ISO timestamps). */
-function liveRow(seq: number): Record<string, unknown> {
+/** A pending first-consent LiveMatch row as prisma would return it. */
+function pendingRow(seq: number): Record<string, unknown> {
   return {
     id: "lm-1",
     fixtureId: "f-1",
-    status: "live",
+    status: "pending",
     half: 1,
     turnNumber: 1,
     activeSide: "home",
-    homeClock: 240,
-    awayClock: 240,
+    homeConsented: true,
+    awayConsented: false,
+    startedAt: null,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
     homeScore: 0,
     awayScore: 0,
     seq,
     paused: false,
-    clockStartedAt: new Date(1000).toISOString(),
+    clockStartedAt: null,
+    finishedAt: null,
+  };
+}
+
+/** A ready LiveMatch row (both consented). */
+function readyRow(seq: number): Record<string, unknown> {
+  return {
+    id: "lm-1",
+    fixtureId: "f-1",
+    status: "ready",
+    half: 1,
+    turnNumber: 1,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    startedAt: null,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    homeScore: 0,
+    awayScore: 0,
+    seq,
+    paused: false,
+    clockStartedAt: null,
     finishedAt: null,
   };
 }
 
 /** Matches what `liveMatchRowToState` returns (epoch ms, ISO→number). */
-const rowState = {
-  seq: 5,
-  status: "live" as const,
+const readyState = {
+  seq: 2,
+  status: "ready" as const,
   half: 1,
   turnNumber: 1,
   activeSide: "home" as const,
-  homeClock: 240,
-  awayClock: 240,
+  homeConsented: true,
+  awayConsented: true,
+  startedAt: null,
+  homeTurnMs: 0,
+  awayTurnMs: 0,
   homeScore: 0,
   awayScore: 0,
   paused: false,
-  clockStartedAt: 1000,
+  clockStartedAt: null,
   finishedAt: null,
-  league: { turnClockEnabled: true, turnClockSeconds: 240 as const },
   events: [],
+};
+
+const liveState = {
+  ...readyState,
+  status: "live" as const,
+  startedAt: 1000,
+  clockStartedAt: 1000,
 };
 
 function liveView(overrides: Record<string, unknown> = {}) {
   return {
-    seq: 6,
+    seq: 3,
     status: "live",
     half: 1,
-    turnNumber: 2,
-    activeSide: "away",
-    turnClockEnabled: true,
-    homeClock: 240,
-    awayClock: 240,
+    turnNumber: 1,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    viewerSide: null,
+    startedAt: 1000,
+    elapsed: 0,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    paused: false,
     homeScore: 0,
     awayScore: 0,
-    paused: false,
     finishedAt: null,
     ...overrides,
   };
@@ -175,33 +218,62 @@ describe("GET .../live — read gate (unchanged shape)", () => {
   });
 });
 
-describe("GET .../live — snapshot-first reads the persisted live row", () => {
+describe("GET .../live — snapshot carries the persistent state + per-viewer viewerSide (D19)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     isAuthEnabledMock.mockReturnValue(true);
     authMock.mockResolvedValue(authSession("coach-home"));
     prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
-    liveMatchRowToStateMock.mockReturnValue({ ...rowState, events: [] });
-    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, events: [] });
     hubMock.subscribe.mockReturnValue(hubMock.unsubscribe);
   });
 
-  it("emits the persisted live state as a snapshot-first SSE frame", async () => {
+  it("emits the persisted live state and the viewer's side in the snapshot frame", async () => {
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...pendingRow(5),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, seq: 5, events: [] });
     const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     const reader = res.body!.getReader();
     const first = new TextDecoder().decode((await reader.read()).value);
-    // Snapshot frame carries the live state (seq 5 → cursor).
     expect(first).toContain("event: snapshot");
     expect(first).toContain('"seq":5');
-    expect(first).toContain('"activeSide":"home"');
+    // D19: the snapshot carries the home coach's side.
+    expect(first).toContain('"viewerSide":"home"');
     await reader.cancel().catch(() => {});
+  });
+
+  it("starts the unified-clock ticker for a live match (no onClockExpired seam)", async () => {
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...pendingRow(5),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, seq: 5, events: [] });
+    const res = await GET(
+      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    // The ticker is started with the unified-clock snapshot (no expiry callback).
+    expect(hubMock.startTicking).toHaveBeenCalledWith("f-1", expect.objectContaining({ activeSide: "home", status: "live" }));
+    // The second argument (previously onClockExpired) is no longer passed.
+    expect(hubMock.startTicking.mock.calls[0].length).toBe(2);
+    await res.body!.getReader().cancel().catch(() => {});
   });
 });
 
-describe("GET .../live — grace wiring (LM-7, PR 3)", () => {
+describe("GET .../live — grace wiring (LM-7)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     isAuthEnabledMock.mockReturnValue(true);
@@ -211,13 +283,9 @@ describe("GET .../live — grace wiring (LM-7, PR 3)", () => {
 
   it("resumes a paused match when the active coach reconnects (identity = user cookie)", async () => {
     authMock.mockResolvedValue(authSession("coach-home"));
-    const pausedRow = { ...liveRow(5), paused: true, clockStartedAt: null };
+    const pausedRow = { ...readyRow(5), paused: true, clockStartedAt: null, homeTurnMs: 1000 };
     prismaMock.liveMatch.findFirst.mockResolvedValue(pausedRow);
-    liveMatchRowToStateMock.mockReturnValue({
-      ...rowState,
-      paused: true,
-      clockStartedAt: null,
-    });
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, paused: true, clockStartedAt: null, homeTurnMs: 1000 });
     resumeLiveMatchMock.mockResolvedValue(undefined);
 
     const res = await GET(
@@ -226,7 +294,6 @@ describe("GET .../live — grace wiring (LM-7, PR 3)", () => {
     );
 
     expect(res.status).toBe(200);
-    // The active coach's reconnect threw a resume through the store.
     expect(resumeLiveMatchMock).toHaveBeenCalledWith(
       expect.objectContaining({ fixtureId: "f-1" }),
       expect.anything(),
@@ -236,9 +303,9 @@ describe("GET .../live — grace wiring (LM-7, PR 3)", () => {
 
   it("does NOT resume for a spectator reconnect (not the active coach)", async () => {
     authMock.mockResolvedValue(authSession("coach-away")); // away is NOT active (home is)
-    const pausedRow = { ...liveRow(5), paused: true, clockStartedAt: null };
+    const pausedRow = { ...readyRow(5), paused: true, clockStartedAt: null, homeTurnMs: 1000 };
     prismaMock.liveMatch.findFirst.mockResolvedValue(pausedRow);
-    liveMatchRowToStateMock.mockReturnValue({ ...rowState, paused: true, clockStartedAt: null });
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, paused: true, clockStartedAt: null, homeTurnMs: 1000 });
 
     const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
@@ -247,7 +314,6 @@ describe("GET .../live — grace wiring (LM-7, PR 3)", () => {
 
     expect(res.status).toBe(200);
     expect(resumeLiveMatchMock).not.toHaveBeenCalled();
-    // The subscribe carries an activeCoachId = the home owner (the active turn).
     const subscribeArg = hubMock.subscribe.mock.calls[0][0];
     expect(subscribeArg.activeCoachId).toBe("coach-home");
     await res.body!.getReader().cancel().catch(() => {});
@@ -268,7 +334,7 @@ describe("POST .../live — control gate", () => {
   it("returns 401 without a session (both auth modes)", async () => {
     authMock.mockResolvedValue(null);
     prismaMock.fixture.findFirst.mockResolvedValue(null);
-    const res = await POST(req({ type: "endTurn", side: "home" }), {
+    const res = await POST(req({ type: "consent", side: "home" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(401);
@@ -277,7 +343,7 @@ describe("POST .../live — control gate", () => {
   it("returns 404 for a foreign/unknown league in control", async () => {
     authMock.mockResolvedValue(authSession("guest"));
     prismaMock.fixture.findFirst.mockResolvedValue(null);
-    const res = await POST(req({ type: "endTurn", side: "home" }), {
+    const res = await POST(req({ type: "consent", side: "home" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(404);
@@ -285,8 +351,6 @@ describe("POST .../live — control gate", () => {
 
   it("returns 403 for a league member who is a spectator (not a fixture coach or admin)", async () => {
     setUpAllowed();
-    // "owner-1" is the league owner/admin, so resolveLiveAccess action:"control"
-    // allows every member. A member who owns neither team and is not admin → 403.
     authMock.mockResolvedValue(authSession("member-spectator"));
     prismaMock.fixture.findFirst.mockResolvedValue({
       ...startedFixture("f-1", "lg-1"),
@@ -300,16 +364,16 @@ describe("POST .../live — control gate", () => {
         teams: [{ userId: "coach-home" }, { userId: "coach-away" }, { userId: "member-spectator" }],
       },
     });
-    const res = await POST(req({ type: "endTurn", side: "home" }), {
+    const res = await POST(req({ type: "consent", side: "home" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(403);
-    expect(startLiveMatchMock).not.toHaveBeenCalled();
+    expect(consentLiveMatchMock).not.toHaveBeenCalled();
     expect(applyTransitionMock).not.toHaveBeenCalled();
   });
 });
 
-describe("POST .../live — command handling", () => {
+describe("POST .../live — consent/retract/begin command handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     isAuthEnabledMock.mockReturnValue(true);
@@ -330,38 +394,90 @@ describe("POST .../live — command handling", () => {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(400);
-    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(consentLiveMatchMock).not.toHaveBeenCalled();
   });
 
-  it("returns 409 when starting a played/result fixture (start guard)", async () => {
-    startLiveMatchMock.mockRejectedValue(Object.assign(new Error("cannot start"), { status: 409 }));
+  it("no longer accepts the legacy `start` command (removed, D4)", async () => {
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    const res = await POST(req({ type: "start" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(consentLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when consenting a played/result-loaded fixture (replay rejected)", async () => {
+    consentLiveMatchMock.mockRejectedValue(Object.assign(new Error("cannot consent"), { status: 409 }));
     prismaMock.fixture.findFirst.mockResolvedValue({
       ...startedFixture("f-1", "lg-1"),
       homeScore: 2,
       awayScore: 0,
     });
-    const res = await POST(req({ type: "start" }), {
+    const res = await POST(req({ type: "consent", side: "home" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(409);
   });
 
-  it("returns 409 for an out-of-turn transition", async () => {
+  it("consent wires through consentLiveMatch and returns the view with the viewer's side", async () => {
+    consentLiveMatchMock.mockResolvedValue({ liveMatchId: "lm-1", view: liveView({ status: "pending", viewerSide: "home" }) });
     prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
-    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
-    liveMatchRowToStateMock.mockReturnValue(rowState);
-    // Home is active; the away coach submits an out-of-turn endTurn → 409.
-    const res = await POST(req({ type: "endTurn", side: "away" }), {
+    const res = await POST(req({ type: "consent", side: "home" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
-    expect(res.status).toBe(409);
-    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(consentLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fixtureId: "f-1", side: "home", fixture: expect.objectContaining({ scheduled: true }) }),
+      expect.anything(),
+    );
+    const body = await res.json();
+    expect(body.view.viewerSide).toBe("home");
   });
 
-  it("returns 409 on a seq-conflict (updateMany 0 rows → double-action)", async () => {
+  it("retract wires through retractLiveConsent and returns a pending view", async () => {
+    retractLiveConsentMock.mockResolvedValue({ view: liveView({ status: "pending", viewerSide: "home", homeConsented: false }) });
     prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
-    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
-    liveMatchRowToStateMock.mockReturnValue(rowState);
+    prismaMock.liveMatch.findFirst.mockResolvedValue(pendingRow(2));
+    const res = await POST(req({ type: "retractConsent", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(retractLiveConsentMock).toHaveBeenCalledWith(
+      expect.objectContaining({ side: "home", liveMatchId: "lm-1" }),
+      expect.anything(),
+    );
+    const body = await res.json();
+    expect(body.view.status).toBe("pending");
+  });
+
+  it("begin wires through beginLiveMatch → live with the viewer's side", async () => {
+    beginLiveMatchMock.mockResolvedValue({ seq: 3, view: liveView({ status: "live", viewerSide: "home" }) });
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(2));
+    const res = await POST(req({ type: "begin" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(beginLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ liveMatchId: "lm-1", fixtureId: "f-1" }),
+      expect.anything(),
+    );
+    const body = await res.json();
+    expect(body.view.status).toBe("live");
+    expect(body.view.viewerSide).toBe("home");
+  });
+
+  it("returns 409 on a seq-conflict during a live transition (double-action)", async () => {
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
     applyTransitionMock.mockRejectedValue(Object.assign(new Error("seq conflict"), { status: 409 }));
 
     const res = await POST(req({ type: "endTurn", side: "home" }), {
@@ -369,42 +485,5 @@ describe("POST .../live — command handling", () => {
     } as never);
     expect(res.status).toBe(409);
     expect(applyTransitionMock).toHaveBeenCalled();
-  });
-
-  it("returns 200 and the view on a happy-path advance (publish-after-commit)", async () => {
-    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
-    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
-    liveMatchRowToStateMock.mockReturnValue(rowState);
-    applyTransitionMock.mockResolvedValue({ seq: 6, view: liveView() });
-
-    const res = await POST(req({ type: "endTurn", side: "home" }), {
-      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
-    } as never);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.view.activeSide).toBe("away");
-    // The store (applyTransition) was called with the optimistic seq guard.
-    expect(applyTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ liveMatchId: "lm-1", current: rowState, league: expect.objectContaining({ turnClockEnabled: true }) }),
-      expect.anything(),
-    );
-  });
-
-  it("returns 200 on a happy-path start", async () => {
-    startLiveMatchMock.mockResolvedValue({ liveMatchId: "lm-1", view: liveView({ status: "live" }) });
-    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
-    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(1));
-
-    const res = await POST(req({ type: "start" }), {
-      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
-    } as never);
-    expect(res.status).toBe(200);
-    expect(startLiveMatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        fixtureId: "f-1",
-        fixture: expect.objectContaining({ scheduled: true, played: false }),
-      }),
-      expect.anything(),
-    );
   });
 });

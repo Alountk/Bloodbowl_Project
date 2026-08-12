@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  startLiveMatch,
+  consentLiveMatch,
+  retractLiveConsent,
+  beginLiveMatch,
   applyTransition,
   pauseLiveMatch,
   resumeLiveMatch,
@@ -10,12 +12,13 @@ import {
 import type { LiveMatchState, TeamSide } from "./liveMatch";
 
 /**
- * Store tests — optimistic `seq` guard (409 on 0 rows), atomic event append,
- * and publish-after-commit. `prisma` and `hub` are injected (fake deps) so the
- * store logic is fully deterministic (no DB, no timers).
+ * Store tests — consent/begin persistence (D16), optimistic `seq` guard (409 on
+ * 0 rows), atomic event append, publish-after-commit, and the repurposed
+ * pause/resume unified-clock segment handling (LM-7).
  */
 
-const league = { turnClockEnabled: true, turnClockSeconds: 240 as const };
+const scheduledFixture = { scheduled: true, played: false, result: false };
+const playedFixture = { scheduled: true, played: true, result: false };
 
 function fakeRow(): LiveMatchState {
   return {
@@ -24,14 +27,16 @@ function fakeRow(): LiveMatchState {
     half: 1,
     turnNumber: 1,
     activeSide: "home" as TeamSide,
-    homeClock: 240,
-    awayClock: 240,
+    homeConsented: true,
+    awayConsented: true,
+    startedAt: 1000,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
     homeScore: 0,
     awayScore: 0,
     paused: false,
     clockStartedAt: 1000,
     finishedAt: null,
-    league,
     events: [],
   };
 }
@@ -41,11 +46,13 @@ function makeDeps(updateCount: number): {
   updateMany: ReturnType<typeof vi.fn>;
   liveEventCreate: ReturnType<typeof vi.fn>;
   liveMatchCreate: ReturnType<typeof vi.fn>;
+  liveMatchFindFirst: ReturnType<typeof vi.fn>;
   publish: ReturnType<typeof vi.fn>;
 } {
   const updateMany = vi.fn().mockResolvedValue({ count: updateCount });
   const liveEventCreate = vi.fn().mockResolvedValue({ id: "ev-1" });
   const liveMatchCreate = vi.fn();
+  const liveMatchFindFirst = vi.fn().mockResolvedValue(null);
   const publish = vi.fn();
   const tx = {
     liveMatch: { updateMany, create: liveMatchCreate },
@@ -55,36 +62,213 @@ function makeDeps(updateCount: number): {
     .fn()
     .mockImplementation(async <T>(fn: (t: typeof tx) => Promise<T>) => fn(tx));
   const deps: StoreDeps = {
-    prisma: { $transaction, liveMatch: { create: liveMatchCreate } },
+    prisma: {
+      $transaction,
+      liveMatch: { create: liveMatchCreate, findFirst: liveMatchFindFirst },
+    },
     hub: { publish },
   };
-  return { deps, updateMany, liveEventCreate, liveMatchCreate, publish };
+  return { deps, updateMany, liveEventCreate, liveMatchCreate, liveMatchFindFirst, publish };
 }
 
 describe("liveMatchRowToState", () => {
-  it("maps a LiveMatch row to a pure state and converts timestamps to epoch ms", () => {
-    const state = liveMatchRowToState(
-      {
-        id: "lm-1",
-        fixtureId: "f-1",
-        status: "live",
-        half: 1,
-        turnNumber: 1,
-        activeSide: "home",
-        homeClock: 240,
-        awayClock: 240,
-        homeScore: 0,
-        awayScore: 0,
-        seq: 5,
-        paused: false,
-        clockStartedAt: new Date(1000),
-        finishedAt: null,
-      },
-      league,
+  it("maps a LiveMatch row to a pure state including the new unified-clock fields", () => {
+    const state = liveMatchRowToState({
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: false,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 1,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    });
+    expect(state.status).toBe("ready");
+    expect(state.homeConsented).toBe(true);
+    expect(state.awayConsented).toBe(false);
+    expect(state.startedAt).toBeNull();
+    expect(state.homeTurnMs).toBe(0);
+    expect(state.awayTurnMs).toBe(0);
+  });
+});
+
+describe("consentLiveMatch — create-on-first-consent, ready on second (LM-11, D16)", () => {
+  it("creates the LiveMatch row with the consent boolean on the FIRST coach's consent", async () => {
+    const { deps, liveMatchCreate, publish } = makeDeps(1);
+    liveMatchCreate.mockResolvedValue({ id: "lm-new" });
+
+    const result = await consentLiveMatch(
+      { fixtureId: "f-1", fixture: scheduledFixture, side: "home", now: 500 },
+      deps,
     );
-    expect(state.seq).toBe(5);
-    expect(state.activeSide).toBe("home");
-    expect(state.clockStartedAt).toBe(1000);
+
+    expect(liveMatchCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fixtureId: "f-1", status: "pending", homeConsented: true, awayConsented: false }),
+      }),
+    );
+    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "pending", homeConsented: true }));
+    expect(result.liveMatchId).toBe("lm-new");
+  });
+
+  it("applies the SECOND consent to the existing row → ready, no new row", async () => {
+    const { deps, liveMatchCreate, updateMany, liveMatchFindFirst, publish } = makeDeps(1);
+    const existingRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "pending",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: false,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 1,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(existingRow);
+
+    const result = await consentLiveMatch(
+      { fixtureId: "f-1", fixture: scheduledFixture, side: "away", now: 600 },
+      deps,
+    );
+
+    expect(liveMatchCreate).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "lm-1", seq: 1 } }),
+    );
+    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "ready", homeConsented: true, awayConsented: true, seq: 2 }));
+    expect(result.liveMatchId).toBe("lm-1");
+  });
+
+  it("rejects consent on a played/result-loaded fixture with 409 and creates nothing", async () => {
+    const { deps, liveMatchCreate, publish } = makeDeps(1);
+    await expect(
+      consentLiveMatch({ fixtureId: "f-1", fixture: playedFixture, side: "home", now: 500 }, deps),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(liveMatchCreate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("retractLiveConsent — clears the boolean and returns to pending (LM-11)", () => {
+  it("updates the existing ready row back to pending with the consent cleared", async () => {
+    const { deps, updateMany, liveMatchFindFirst, publish } = makeDeps(1);
+    const readyRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 2,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(readyRow);
+
+    await retractLiveConsent({ liveMatchId: "lm-1", fixtureId: "f-1", side: "home", now: 700 }, deps);
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 2 },
+        data: expect.objectContaining({ seq: 3, status: "pending", homeConsented: false }),
+      }),
+    );
+    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "pending", homeConsented: false }));
+  });
+
+  it("is a no-op when the side never consented (no bump, no publish)", async () => {
+    const { deps, updateMany, liveMatchFindFirst, publish } = makeDeps(1);
+    const pendingRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "pending",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: false,
+      awayConsented: false,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 1,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(pendingRow);
+
+    await retractLiveConsent({ liveMatchId: "lm-1", fixtureId: "f-1", side: "home", now: 700 }, deps);
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("beginLiveMatch — ready→live ONLY via the first turn (LM-3)", () => {
+  it("runs beginMatch and persists the live state alongside the start + turnStart events", async () => {
+    const { deps, updateMany, liveEventCreate, liveMatchFindFirst, publish } = makeDeps(1);
+    const readyRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 2,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(readyRow);
+
+    const result = await beginLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", now: 1000 }, deps);
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 2 },
+        data: expect.objectContaining({ seq: 3, status: "live", startedAt: new Date(1000), clockStartedAt: new Date(1000), activeSide: "home" }),
+      }),
+    );
+    // The start + turnStart events are appended in the same transaction.
+    const createCalls = liveEventCreate.mock.calls.map((c: { data: { kind: string } }[]) => c[0].data.kind);
+    expect(createCalls).toContain("start");
+    expect(createCalls).toContain("turnStart");
+    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "live", startedAt: 1000 }));
+    expect(result.view.status).toBe("live");
   });
 });
 
@@ -99,7 +283,7 @@ describe("applyTransition — optimistic seq + atomic event + publish-after-comm
       events: [
         {
           seq: 6,
-          kind: "turn",
+          kind: "turn" as const,
           side: null,
           playerRosterId: null,
           half: 1,
@@ -111,22 +295,19 @@ describe("applyTransition — optimistic seq + atomic event + publish-after-comm
     };
 
     const result = await applyTransition(
-      { liveMatchId: "lm-1", fixtureId: "f-1", current, next, league, now: 2000 },
+      { liveMatchId: "lm-1", fixtureId: "f-1", current, next, now: 2000 },
       deps,
     );
 
-    // Optimistic guard: WHERE seq = prev (5), data bumps to 6.
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "lm-1", seq: 5 },
       data: expect.objectContaining({ seq: 6, activeSide: "away", turnNumber: 2 }),
     });
-    // The delta event (seq 6) is created in the SAME transaction.
     expect(liveEventCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ liveMatchId: "lm-1", seq: 6, kind: "turn" }),
       }),
     );
-    // Publish happens AFTER commit (after the $transaction resolves).
     expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ seq: 6 }));
     expect(result).not.toBeNull();
   });
@@ -136,7 +317,7 @@ describe("applyTransition — optimistic seq + atomic event + publish-after-comm
     const current = fakeRow();
 
     await expect(
-      applyTransition({ liveMatchId: "lm-1", fixtureId: "f-1", current, next: current, league, now: 2000 }, deps),
+      applyTransition({ liveMatchId: "lm-1", fixtureId: "f-1", current, next: current, now: 2000 }, deps),
     ).rejects.toMatchObject({ status: 409 });
 
     expect(liveEventCreate).not.toHaveBeenCalled();
@@ -144,74 +325,39 @@ describe("applyTransition — optimistic seq + atomic event + publish-after-comm
   });
 });
 
-describe("startLiveMatch — start guard + insert + publish", () => {
-  it("creates the LiveMatch row and start event and publishes the initial live view", async () => {
-    const { deps, liveMatchCreate, publish } = makeDeps(1);
-    liveMatchCreate.mockResolvedValue({ id: "lm-new" });
-
-    const result = await startLiveMatch(
-      { fixtureId: "f-1", fixture: { scheduled: true, played: false, result: false }, league, now: 500 },
-      deps,
-    );
-
-    expect(liveMatchCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ fixtureId: "f-1", status: "live", homeClock: 240 }),
-      }),
-    );
-    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "live" }));
-    expect(result.liveMatchId).toBe("lm-new");
-  });
-
-  it("rejects starting a played/result fixture (409 start guard)", async () => {
-    const { deps, liveMatchCreate, publish } = makeDeps(1);
-    await expect(
-      startLiveMatch(
-        { fixtureId: "f-1", fixture: { scheduled: true, played: true, result: false }, league, now: 500 },
-        deps,
-      ),
-    ).rejects.toMatchObject({ status: 409 });
-    expect(liveMatchCreate).not.toHaveBeenCalled();
-    expect(publish).not.toHaveBeenCalled();
-  });
-});
-
-describe("pauseLiveMatch / resumeLiveMatch — disconnect grace (LM-7)", () => {
-  it("persists paused with a nulled clockStartedAt and publishes (grace expiry)", async () => {
+describe("pause/resume — unified clock segment handling (LM-7, D18)", () => {
+  it("pause bumps the ACTIVE accumulator by the in-flight segment then nulls the segment start", async () => {
     const { deps, updateMany, publish } = makeDeps(1);
-    const current = fakeRow(); // not paused, seq 5
+    const current = fakeRow(); // home active, clockStartedAt=1000, now=2000 → +1000ms
 
-    await pauseLiveMatch(
-      { liveMatchId: "lm-1", fixtureId: "f-1", current, league, now: 2000 },
-      deps,
-    );
+    await pauseLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", current, now: 2000 }, deps);
 
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "lm-1", seq: 5 },
-      data: expect.objectContaining({ seq: 6, paused: true, clockStartedAt: null }),
+      data: expect.objectContaining({ seq: 6, paused: true, clockStartedAt: null, homeTurnMs: 1000 }),
     });
-    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ paused: true }));
+    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ paused: true, homeTurnMs: 1000 }));
   });
 
   it("is a no-op when already paused (no seq bump, no publish)", async () => {
     const { deps, updateMany, publish } = makeDeps(1);
     const alreadyPaused = { ...fakeRow(), paused: true, clockStartedAt: null };
 
-    await pauseLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", current: alreadyPaused, league, now: 2000 }, deps);
+    await pauseLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", current: alreadyPaused, now: 2000 }, deps);
 
     expect(updateMany).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
   });
 
-  it("resumes on reconnect: clears pause, restarts the clock at now, publishes", async () => {
+  it("resume restarts the segment at now: clears pause, sets clockStartedAt, does NOT accumulate", async () => {
     const { deps, updateMany, publish } = makeDeps(1);
-    const paused = { ...fakeRow(), paused: true, clockStartedAt: null };
+    const paused = { ...fakeRow(), paused: true, clockStartedAt: null, homeTurnMs: 1000 };
 
-    await resumeLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", current: paused, league, now: 3000 }, deps);
+    await resumeLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", current: paused, now: 3000 }, deps);
 
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "lm-1", seq: 5 },
-      data: expect.objectContaining({ seq: 6, paused: false, clockStartedAt: new Date(3000) }),
+      data: expect.objectContaining({ seq: 6, paused: false, clockStartedAt: new Date(3000), homeTurnMs: 1000 }),
     });
     expect(publish).toHaveBeenCalled();
   });
