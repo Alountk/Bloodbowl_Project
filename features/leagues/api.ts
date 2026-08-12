@@ -495,21 +495,31 @@ export async function getMatchDetail(
   return readJson<MatchDetail>(res);
 }
 
-/** Live-match lifecycle state (LM-8 DTO, shared by MatchView/timeline/prefill).
- * Clocks are `null` when the league's turn-clock option is disabled (LM-5), and
- * `clockSeconds` is absent so the client can never derive a clock. */
+/**
+ * The unified live-match DTO (LM-5/LM-8/D19): consents + per-side millisecond
+ * accumulators + elapsed (server-derived), the per-viewer side, and the
+ * kickoff anchor. The deprecated per-turn clock fields are gone.
+ */
 export interface LiveMatchViewState {
   seq: number;
-  status: "pending" | "live" | "finished";
+  status: "pending" | "ready" | "live" | "finished";
   half: number;
   turnNumber: number;
   activeSide: "home" | "away";
-  turnClockEnabled: boolean;
-  homeClock: number | null;
-  awayClock: number | null;
+  /** Whether each coach has consented to start (LM-11). */
+  homeConsented: boolean;
+  awayConsented: boolean;
+  /** Per-viewer side (D19): null on hub fan-out frames; set on POST/snapshot/GET. */
+  viewerSide: "home" | "away" | null;
+  /** Kickoff anchor (milliseconds); null before the first turn. */
+  startedAt: number | null;
+  /** Unified elapsed = accumulated home+away turn time (milliseconds). */
+  elapsed: number;
+  homeTurnMs: number;
+  awayTurnMs: number;
+  paused: boolean;
   homeScore: number;
   awayScore: number;
-  paused: boolean | null;
   finishedAt: number | null;
 }
 
@@ -525,9 +535,11 @@ export interface LiveMatchEventDto {
   at: number;
 }
 
-/** Control commands the live POST route accepts (LM-4/D10/D11). */
+/** Control commands the live POST route accepts (LM-4/D10/D11/LM-11). */
 export type LiveCommand =
-  | { type: "start" }
+  | { type: "consent"; side: "home" | "away" }
+  | { type: "retractConsent"; side: "home" | "away" }
+  | { type: "begin" }
   | { type: "endTurn"; side: "home" | "away" }
   | { type: "td"; side: "home" | "away"; playerRosterId: string }
   | { type: "casualty"; side: "home" | "away"; victimRosterId: string; band?: unknown }
