@@ -51,13 +51,14 @@ export interface TickSnapshot {
 
 type SubscriberEntry = HubSubscriber & {
   coachId?: string | null;
-  onGraceExpired?: (fixtureId: string) => void;
 };
 
 interface Channel {
   subs: Set<SubscriberEntry>;
   activeCoachId: string | null;
   config: { turnClockEnabled: boolean; turnClockSeconds: number };
+  /** Fixture-level grace handler (pause persistence), set by subscribe. */
+  onGraceExpired: ((fixtureId: string) => void) | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   tickTimer: ReturnType<typeof setInterval> | null;
   tickState: TickSnapshot | null;
@@ -85,11 +86,12 @@ export function createLiveHub(): LiveHub {
 
   function channel(fixtureId: string): Channel {
     let ch = channels.get(fixtureId);
-    if (!ch) {
+      if (!ch) {
       ch = {
         subs: new Set(),
         activeCoachId: null,
         config: { turnClockEnabled: true, turnClockSeconds: 240 },
+        onGraceExpired: null,
         graceTimer: null,
         tickTimer: null,
         tickState: null,
@@ -121,9 +123,10 @@ export function createLiveHub(): LiveHub {
     if (!ch.config.turnClockEnabled) return;
     ch.graceTimer = setTimeout(() => {
       ch.graceTimer = null;
-      // Fire only if the active coach is STILL disconnected when the window ends.
+      // Fire the match-level pause handler ONLY if the active coach is still
+      // disconnected when the window ends.
       if (!activeCoachConnected(ch)) {
-        for (const sub of ch.subs) sub.onGraceExpired?.(fixtureId);
+        ch.onGraceExpired?.(fixtureId);
       }
     }, GRACE_MS);
   }
@@ -150,10 +153,11 @@ export function createLiveHub(): LiveHub {
       const ch = channel(fixtureId);
       const entry = subscriber as SubscriberEntry;
       entry.coachId = coachId;
-      entry.onGraceExpired = onGraceExpired;
       ch.subs.add(entry);
       ch.activeCoachId = activeCoachId ?? ch.activeCoachId;
       ch.config = config;
+      // The (single) fixture-level grace handler is (re)set by this subscribe.
+      if (onGraceExpired) ch.onGraceExpired = onGraceExpired;
 
       // A (re)connect by the active coach clears a pending grace pause.
       if (ch.activeCoachId && coachId === ch.activeCoachId) clearGrace(ch);
