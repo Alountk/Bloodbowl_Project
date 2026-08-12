@@ -260,7 +260,10 @@ describe("beginLiveMatch — ready→live ONLY via the first turn (LM-3)", () =>
     expect(updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "lm-1", seq: 2 },
-        data: expect.objectContaining({ seq: 3, status: "live", startedAt: new Date(1000), clockStartedAt: new Date(1000), activeSide: "home" }),
+        // begin emits TWO events (start + turnStart, seq 3 & 4), so the row seq
+        // advances to the highest event seq (4), not just currentSeq+1 — that is
+        // what prevents the next transition's event from colliding (P2002).
+        data: expect.objectContaining({ seq: 4, status: "live", startedAt: new Date(1000), clockStartedAt: new Date(1000), activeSide: "home" }),
       }),
     );
     // The start + turnStart events are appended in the same transaction.
