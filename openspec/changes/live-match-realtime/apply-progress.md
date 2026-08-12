@@ -404,3 +404,102 @@ deploy` already present, unchanged).
 - `8eecf4f` feat(leagues): return the shared live DTO from fixture GET
 - `fc97806` feat(leagues): wire MatchView live shells and timeline
 - + docs commit (this file + tasks.md marks)
+
+---
+
+## PR 6: Result Prefill + Auth E2E (FINALE — 6/6)
+
+### What shipped (PR 6)
+
+- `features/leagues/resultPrefill.ts` (+ test): pure mapping of a finished
+  `LiveMatchView` into the result modal's INITIAL drafts — the final scores and
+  each scorer's TD count derived from the live `td` events. MJP nominations,
+  casualty victims, and every other action stay coach input (LM-9; the result
+  POST's ΣTD == score / 6-MJP / server-roll validation stays authoritative).
+- `features/leagues/ResultModal.tsx`: optional `initial` prop consumed as the
+  `useState` initializer (read once at mount — the LeagueDetail parent keys the
+  modal per fixture, so there is NO reset effect).
+- `features/leagues/LeagueDetail.tsx` (`ResultModalFor`): resolves the finished
+  live DTO via `getMatchDetail(fixtureId)` before mounting the modal, builds
+  `buildResultPrefill(live)`, and passes it as `initial`. A fixture without a
+  finished live match opens with an empty draft.
+- `e2e/live-match.spec.ts` (AUTH suite): two-member league (clocks enabled@240),
+  schedule via API, live start via API, Coach A "Dar el turno" flips the turn,
+  Coach B + fresh-context converge via snapshot-first (LM-8), and a finished
+  live match pre-fills the result modal (away TD → away score 1 + scorer TD 1).
+- Configs: `live-match.spec.ts` added to the auth `testMatch` and the local
+  `testIgnore` (local suite stays 21/21).
+
+### PR 6 TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 6.1 | `resultPrefill.test.ts` | Unit (pure) | N/A | ✅ | ✅ 5/5 | ✅ scores/TDs/MJP-untouched/ignore-non-td/ΣTD | ✅ reused EMPTY_ACTIONS, `tdsByScorer` |
+| 6.1 | `ResultModal.test.tsx` | Integration | ✅ 14/14 | ✅ | ✅ 16/16 | ✅ initial-seed + no-reset-effect | ➖ |
+| 6.1 | `LeagueDetail.test.tsx` | Integration | ✅ 13/13 | ✅ | ✅ 14/14 | ✅ modal prefills finished live | ➖ waiter for async prefill |
+| 6.2 | `e2e/live-match.spec.ts` | E2E (auth) | — | ✅ RED | ✅ 1/1 | ✅ two-context + recovery + prefill | ✅ away-side TD to avoid out-of-turn 409 |
+| 6.3 | configs | — | ✅ local 21/21 | — | ✅ auth 27/27 | ✅ local excludes + auth includes | ➖ |
+
+### PR 6 Test Summary
+
+- **Unit**: 35 focused (5 + 16 + 14) · full suite **1066/1066** (92 files).
+- **E2E**: local **21/21** (live-match excluded); auth **27/27** (incl. live-match + all pre-existing).
+
+### PR 6 Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused unit | `pnpm vitest run features/leagues/resultPrefill.test.ts features/leagues/ResultModal.test.tsx features/leagues/LeagueDetail.test.tsx` → 35/35 |
+| Local E2E | `AUTH_MODE=local pnpm exec playwright test` → 21/21 (`--list` shows 21; live-match excluded) |
+| **Auth E2E (authoritative)** | `pnpm run test:e2e:auth` → **27/27 passed (2.6m)** incl. the new `live-match.spec.ts` and every pre-existing auth suite |
+| Rollback boundary | Revert result-prefill commits (resultPrefill + ResultModal/LeagueDetail) and the live-match e2e + config lines independently of PRs 1-5; the prefill is `initial`-only, POST stays authoritative. |
+
+### Deviations / Risks (PR 6)
+
+- **CRITICAL (dev-only, NOT a production defect)**: the in-memory `liveHub` singleton is
+  re-instantiated per request under `next dev` (Turbopack module isolation), so a live SSE
+  push between two simultaneously-tested browser contexts is not observable in the e2e. In
+  production the single `next start` process shares the hub and broadcasts live to both
+  coaches. The e2e therefore verifies Coach B / fresh-device convergence via the
+  snapshot-first LM-8 path (DB-backed), the realtime fan-out is covered by the unit/route
+  tests, and the production behavior is documented here. Deploy must use `next start`
+  (single process) — not multi-instance `next dev` — for the SSE fan-out contract.
+- WARNING: this is a final-slice deviation from the e2e's literal "B sees flip via SSE"
+  wording; the snapshot-convergence + control coverage is the closest testable equivalent
+  under dev-mode isolation.
+- WARNING: PR 6 authored lines ≈ 600 (production ~107; tests/e2e the rest) — the two-context
+  e2e is a large test artifact, not production scope. No production `size:exception` needed.
+- The result-preflill `ResultModalFor` resolves the live DTO async before opening the modal
+  (a brief pause while fetching). Fixtures without a finished live open with an empty draft.
+- Local `--list` remains 21 tests (live-match excluded from the local suite).
+
+### Remaining Tasks
+
+None — the 6-slice change is complete (Phase 1-6, all 22 tasks `[x]`). Next phase: **verify**.
+
+### AC Traceability (full change)
+
+| AC | Covered in |
+|----|-----------|
+| AC-1 | 1.6 + 2.3 + 3.2 (auth gates) |
+| AC-2 | 3.2 control gates + 409s |
+| AC-3 | 3.1 pure invariants |
+| AC-4 | 2.3/2.4 snapshot-first + seq gap replay/dedup; 3.2 optimistic seq 409 |
+| AC-5 | 5.1 live UI only for live/played; static guard preserved |
+| AC-6 | 6.1 prefill scores+ΣTD; POST authoritative |
+| AC-7 | 5.1 Spanish copy + rulebook-light tokens (MV-7) |
+| AC-8 | 2.3 + 4.1 + 6.2 snapshot-first recovery / Last-Event-ID / new-device |
+| AC-9 | 2.2/3.3 hub grace + pause/resume (LM-7) |
+| AC-10 | 1.1-1.5 league option (league clock @240) |
+
+## Commits (PR 6, feat/live-match-realtime-pr6)
+
+- `6ca6efd` feat(leagues): prefill result modal from a finished live match
+- `4fa2eef` test(e2e): add live-match two-context realtime spec with config exclusion
+- + docs commit (this file + tasks.md marks — FINAL)
+
+## Total change
+
+- 6 stacked PRs (all merged to main: #61 #62 #63 #64 #65 + this one), 22/22 tasks
+  complete, ~1066 unit tests + 27 auth e2e green. The live-match-realtime feature is
+  DONE and ready for `sdd-verify`.
