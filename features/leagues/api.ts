@@ -453,6 +453,14 @@ export interface MatchDetail {
   result: (MatchResultRecord & { scores: MatchScoreboard }) | null;
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
+  /** The shared live-match DTO (state + chronological events) or null when no
+   * LiveMatch exists for this fixture (MV-5 static inert). */
+  live: LiveMatchView | null;
+}
+
+/** The live-match DTO returned by the fixture GET: view state + event feed. */
+export interface LiveMatchView extends LiveMatchViewState {
+  events: LiveMatchEventDto[];
 }
 
 /**

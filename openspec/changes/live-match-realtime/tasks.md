@@ -57,9 +57,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: MatchView + Timeline + Labels (PR 5)
 
-- [ ] 5.1 RED `MatchView.test.tsx`: live UI shows state; clocks hidden when `turnClockEnabled` false; static states keep `not.toContainText(/turno\|minuto\|½/i)` (MV-5/AC-5). GREEN `MatchView.tsx` + `useLiveMatch` wiring.
-- [ ] 5.2 RED `liveEventLabels.test.ts`: Spanish labels pure-fn. GREEN `liveEventLabels.ts` (matchSummary precedent).
-- [ ] 5.3 `app/api/leagues/[id]/fixtures/[fixtureId]/route.ts`: return `live: LiveMatchViewState | null` (turn-clock include + DTO); test.
+- [x] 5.1 RED `MatchView.test.tsx`: live UI shows state; clocks hidden when `turnClockEnabled` false; static states keep `not.toContainText(/turno\|minuto\|½/i)` (MV-5/AC-5). GREEN `MatchView.tsx` + `useLiveMatch` wiring.
+- [x] 5.2 RED `liveEventLabels.test.ts`: Spanish labels pure-fn. GREEN `liveEventLabels.ts` (matchSummary precedent).
+- [x] 5.3 `app/api/leagues/[id]/fixtures/[fixtureId]/route.ts`: return `live: LiveMatchViewState | null` (turn-clock include + DTO); test.
 
 ## Phase 6: Prefill (PR 6)
 

@@ -1,8 +1,42 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MatchView } from "./MatchView";
 import { formatMatchDate } from "./MatchCard";
-import type { MatchDetail } from "./api";
+import type { LiveMatchView, MatchDetail } from "./api";
+
+/** Fake EventSource so MatchView's `useLiveMatch` (LiveActiveMatch) can connect. */
+class FakeEventSource {
+  url: string;
+  onopen: (() => void) | null = null;
+  onerror: ((ev: unknown) => void) | null = null;
+  close = vi.fn();
+  listeners: Record<string, (ev: { data: string; lastEventId: string }) => void> = {};
+  constructor(url: string) {
+    this.url = url;
+  }
+  addEventListener = vi.fn((type: string, fn: (ev: { data: string; lastEventId: string }) => void) => {
+    this.listeners[type] = fn;
+  });
+  removeEventListener = vi.fn();
+  dispatch(type: string, data: string) {
+    this.listeners[type]?.({ data, lastEventId: "" } as unknown as MessageEvent);
+  }
+}
+
+const liveInstances: FakeEventSource[] = [];
+
+function stubLiveEventSource() {
+  liveInstances.length = 0;
+  vi.stubGlobal(
+    "EventSource",
+    class extends FakeEventSource {
+      constructor(url: string) {
+        super(url);
+        liveInstances.push(this);
+      }
+    },
+  );
+}
 
 /**
  * MatchView behavioral tests (MV-2/MV-3/MV-5/MV-6/MV-7). The client fetch is
@@ -79,6 +113,7 @@ function playedDetail(): MatchDetail {
         { rosterPlayerId: "p3", name: "Blitzer B", positionalKey: "blitzer", pe: 3, skills: [], injuries: [], alive: true, valueBonus: 0 },
       ],
     },
+    live: null,
   };
 }
 
@@ -200,6 +235,139 @@ describe("MatchView — walkover and inert live shells (MV-2/MV-5/MV-6)", () => 
       // No turn/clock/half/event-feed placeholder may be visible in ANY state.
       expect(container.textContent).not.toMatch(/turno|tiempo|evento|minuto|½/i);
     }
+  });
+});
+
+/** A scheduled fixture with an active LiveMatch (status live). */
+function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
+  const raw = scheduledDetail();
+  return {
+    ...raw,
+    live: {
+      seq: 6,
+      status: "live",
+      half: 1,
+      turnNumber: 3,
+      activeSide: "home",
+      turnClockEnabled: true,
+      homeClock: 200,
+      awayClock: 240,
+      homeScore: 1,
+      awayScore: 0,
+      paused: false,
+      finishedAt: null,
+      events: [
+        { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+        { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+/** A played fixture whose LiveMatch finished (persisted timeline). */
+function finishedLiveDetail(): MatchDetail {
+  const raw = playedDetail();
+  return {
+    ...raw,
+    live: {
+      seq: 12,
+      status: "finished",
+      half: 2,
+      turnNumber: 8,
+      activeSide: "away",
+      turnClockEnabled: true,
+      homeClock: 40,
+      awayClock: 0,
+      homeScore: 2,
+      awayScore: 1,
+      paused: false,
+      finishedAt: 5000,
+      events: [
+        { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+        { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
+        { seq: 9, kind: "casualty", side: "away", playerRosterId: "p3", half: 2, turnNumber: 6, payload: { band: "grave" }, at: 3000 },
+        { seq: 10, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, at: 4000 },
+      ],
+    } as LiveMatchView,
+  };
+}
+
+describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("renders the live turn bar, clocks, score and event feed from the live state", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail());
+    const { container } = renderPlayed();
+
+    // The live section shows real server state: header (half/turn), score.
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(container.textContent).toMatch(/1\s*–\s*0/);
+    // The feed labels the persisted TD + start events.
+    expect(screen.getAllByText(/Touchdown/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Inicio del partido/).length).toBeGreaterThan(0);
+  });
+
+  it("hides clocks when the league turns the clock option off", async () => {
+    stubLiveEventSource();
+    const detail = liveDetail();
+    detail.live!.turnClockEnabled = false;
+    detail.live!.homeClock = null;
+    detail.live!.awayClock = null;
+    detail.live!.paused = null;
+    stubMatch(detail);
+
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    // No clock-digit text appears anywhere (LM-5: client can never derive a clock).
+    expect(screen.queryByText(/\d+:\d{2}/)).toBeNull();
+    // The event feed still renders (turn/event flow unchanged when clocks off).
+    expect(screen.getAllByText(/Touchdown/).length).toBeGreaterThan(0);
+  });
+
+  it("sends a control command when the coach clicks 'Dar el turno'", async () => {
+    stubLiveEventSource();
+    const fetchMock = vi.fn((url: string) => {
+      // getMatchDetail GET → the live detail; sendCommand POST → the new view.
+      return Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: { seq: 7, status: "live", half: 1, turnNumber: 4, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null } }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(liveDetail()) },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => {
+      screen.getByRole("button", { name: /Dar el turno/i }).click();
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/leagues/l1/fixtures/f1/live",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+  });
+});
+
+describe("MatchView — finished live match timeline (LM-10)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("renders the chronological timeline from persisted events for a played live match", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    // Timeline entries (Spanish labels) present.
+    expect(container.textContent).toContain("Touchdown");
+    expect(container.textContent).toContain("Baja · Herida grave");
+    expect(container.textContent).toContain("Fin del partido");
+    // Final scoreboard 2 – 1.
+    expect(container.textContent).toMatch(/2\s*–\s*1/);
   });
 });
 

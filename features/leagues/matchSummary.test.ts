@@ -64,16 +64,17 @@ function playedDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
         { rosterPlayerId: "p2", name: "Thrower A", positionalKey: "thrower", pe: 3, skills: [], injuries: [], alive: true, valueBonus: 0 },
       ],
     },
-    awayTeam: {
-      id: "t2",
-      name: "Dwarves",
-      raceId: "dwarf",
-      user: { id: "u2", name: "Coach B", email: "b@x", avatar: null },
-      players: [
-        { rosterPlayerId: "p3", name: "Blitzer B", positionalKey: "blitzer", pe: 3, skills: [], injuries: [], alive: true, valueBonus: 0 },
-      ],
-    },
-    ...overrides,
+      awayTeam: {
+        id: "t2",
+        name: "Dwarves",
+        raceId: "dwarf",
+        user: { id: "u2", name: "Coach B", email: "b@x", avatar: null },
+        players: [
+          { rosterPlayerId: "p3", name: "Blitzer B", positionalKey: "blitzer", pe: 3, skills: [], injuries: [], alive: true, valueBonus: 0 },
+        ],
+      },
+      live: null,
+      ...overrides,
   };
 }
 
