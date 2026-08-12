@@ -53,6 +53,12 @@ jobs:
         run: |
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Compute readable version tag
+        id: version
+        run: |
+          # Monotonic, human-readable tag: <YYYY.MM.DD>-<run number>, e.g. 2026.08.11-3.
+          echo "tag=$(date -u +%Y.%m.%d)-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
       - name: Build image
         uses: docker/build-push-action@v6
         with:
@@ -60,6 +66,7 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: |
             ${{ steps.meta.outputs.image }}:latest
+            ${{ steps.meta.outputs.image }}:${{ steps.version.outputs.tag }}
             ${{ steps.meta.outputs.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
