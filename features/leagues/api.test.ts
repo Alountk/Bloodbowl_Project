@@ -163,7 +163,7 @@ describe("League lifecycle types", () => {
 });
 
 describe("createLeague", () => {
-  it("POSTs the turn-clock option through to the leagues route when provided", async () => {
+  it("POSTs name + description only — the deprecated turn-clock option is never sent (D15)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       okJson({
         id: "l1",
@@ -182,26 +182,21 @@ describe("createLeague", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createLeague("Clock League", null, { turnClockEnabled: true, turnClockSeconds: 240 });
+    await createLeague("Clock League", null);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: "Clock League",
-        description: null,
-        turnClockEnabled: true,
-        turnClockSeconds: 240,
-      }),
+      body: JSON.stringify({ name: "Clock League", description: null }),
     });
   });
 
-  it("omits the option from the payload when not supplied (server defaults apply)", async () => {
+  it("omits the (removed) option from the client — the League type still carries the deprecated columns", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       okJson({
         id: "l1",
         name: "No Option",
-        description: null,
+        description: "just a name",
         ownerId: "u1",
         createdAt: "2026-01-01",
         status: "open",
@@ -215,13 +210,16 @@ describe("createLeague", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createLeague("No Option", "just a name");
+    const league = await createLeague("No Option", "just a name");
 
     expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "No Option", description: "just a name" }),
     });
+    // The deprecated columns remain on the League type for backward compat.
+    expect(league.turnClockEnabled).toBe(true);
+    expect(league.turnClockSeconds).toBe(240);
   });
 });
 
@@ -554,65 +552,83 @@ describe("getMatchDetail", () => {
   });
 });
 
-describe("LiveMatchViewState DTO (LM-5/LM-8)", () => {
-  it("exposes turnClockEnabled and nullable clocks when the league option is off", () => {
-    const enabled: LiveMatchViewState = {
+describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
+  it("carries consents, viewerSide, start anchor, accumulators and elapsed — no per-turn clock fields", () => {
+    const live: LiveMatchViewState = {
       seq: 12,
+      status: "pending",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: false,
+      viewerSide: "home",
+      startedAt: null,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      paused: false,
+      homeScore: 0,
+      awayScore: 0,
+      finishedAt: null,
+    };
+    expect(live.status).toBe("pending");
+    expect(live.homeConsented).toBe(true);
+    expect(live.awayConsented).toBe(false);
+    expect(live.viewerSide).toBe("home");
+    expect(live.homeTurnMs).toBe(0);
+    expect(live.awayTurnMs).toBe(0);
+    // The deprecated per-turn clock fields are gone (D4 sweep).
+    expect("turnClockEnabled" in live).toBe(false);
+    expect("homeClock" in live).toBe(false);
+    expect("awayClock" in live).toBe(false);
+  });
+
+  it("reflects a unified-clock read for a live match", () => {
+    const live: LiveMatchViewState = {
+      seq: 20,
       status: "live",
       half: 1,
       turnNumber: 3,
       activeSide: "home",
-      turnClockEnabled: true,
-      homeClock: 200,
-      awayClock: 240,
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: "away",
+      startedAt: 5000,
+      elapsed: 8100,
+      homeTurnMs: 5100,
+      awayTurnMs: 3000,
+      paused: false,
       homeScore: 1,
       awayScore: 0,
-      paused: false,
       finishedAt: null,
     };
-    expect(enabled.turnClockEnabled).toBe(true);
-    expect(enabled.homeClock).toBe(200);
-
-    // Clocks-disabled league: the DTO carries null clocks + paused, and no
-    // clockSeconds field exists (the client can never derive a clock, LM-5).
-    const clockless: LiveMatchViewState = {
-      seq: 1,
-      status: "live",
-      half: 1,
-      turnNumber: 2,
-      activeSide: "away",
-      turnClockEnabled: false,
-      homeClock: null,
-      awayClock: null,
-      homeScore: 0,
-      awayScore: 0,
-      paused: null,
-      finishedAt: null,
-    };
-    expect(clockless.turnClockEnabled).toBe(false);
-    expect(clockless.homeClock).toBeNull();
-    expect(clockless.awayClock).toBeNull();
-    expect(clockless.paused).toBeNull();
-    // clockSeconds is intentionally absent (LM-5): TS errors on access, proving
-    // the DTO exposes no derivable clock field.
-    expect("clockSeconds" in clockless).toBe(false);
+    expect(live.homeTurnMs).toBe(5100);
+    expect(live.awayTurnMs).toBe(3000);
+    expect(live.elapsed).toBe(8100);
+    expect(live.startedAt).toBe(5000);
+    expect(live.viewerSide).toBe("away");
   });
 });
 
 describe("sendLiveCommand", () => {
-  it("POSTs a control command to the live route and returns the new view", async () => {
+  it("POSTs a consent command (two-phase lifecycle, LM-11) and returns the new view", async () => {
     const view: LiveMatchViewState = {
-      seq: 13,
-      status: "live",
+      seq: 14,
+      status: "ready",
       half: 1,
-      turnNumber: 4,
-      activeSide: "away",
-      turnClockEnabled: true,
-      homeClock: 240,
-      awayClock: 240,
-      homeScore: 1,
-      awayScore: 0,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: "home",
+      startedAt: null,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
       paused: false,
+      homeScore: 0,
+      awayScore: 0,
       finishedAt: null,
     };
     vi.stubGlobal(
@@ -620,7 +636,7 @@ describe("sendLiveCommand", () => {
       vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ view }) }),
     );
 
-    const cmd: LiveCommand = { type: "endTurn", side: "home" };
+    const cmd: LiveCommand = { type: "consent", side: "home" };
     const result = await sendLiveCommand("lg-1", "f-1", cmd);
 
     expect(fetch).toHaveBeenCalledWith("/api/leagues/lg-1/fixtures/f-1/live", {
@@ -637,6 +653,6 @@ describe("sendLiveCommand", () => {
       vi.fn().mockResolvedValue({ ok: false, status: 409, json: () => Promise.resolve({ error: "Sequence conflict" }) }),
     );
 
-    await expect(sendLiveCommand("lg-1", "f-1", { type: "endTurn", side: "away" })).rejects.toMatchObject({ status: 409 });
+    await expect(sendLiveCommand("lg-1", "f-1", { type: "begin" })).rejects.toMatchObject({ status: 409 });
   });
 });

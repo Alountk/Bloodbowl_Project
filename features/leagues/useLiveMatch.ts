@@ -45,7 +45,16 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
 
     const applyState = (data: string) => {
       try {
-        setLive(JSON.parse(data) as LiveMatchViewState);
+        const parsed = JSON.parse(data) as
+          | LiveMatchViewState
+          | { seq: number; live: null };
+        // No live row on the fixture yet → (re)mark the session as unstarted;
+        // the consent panel drives the first consent from here.
+        if ("live" in parsed && parsed.live === null) {
+          setLive(null);
+        } else if ("activeSide" in parsed) {
+          setLive(parsed as LiveMatchViewState);
+        }
         setError(null);
       } catch {
         setError("Invalid live event payload");

@@ -18,7 +18,9 @@ function renderOpen() {
 function fillNameAndSubmit(name: string) {
   fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: name } });
   fireEvent.click(screen.getByRole("button", { name: "Crear liga" }));
-}describe("CreateLeagueModal", () => {
+}
+
+describe("CreateLeagueModal", () => {
   it("requires a name before submitting", () => {
     renderOpen();
 
@@ -29,7 +31,7 @@ function fillNameAndSubmit(name: string) {
     expect(screen.getByRole("dialog", { name: "Nueva liga" })).toBeTruthy();
   });
 
-  it("POSTs the league (with the default turn-clock option enabled@240) and refreshes the list on success", async () => {
+  it("POSTs the league and refreshes the list on success", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
@@ -57,8 +59,6 @@ function fillNameAndSubmit(name: string) {
       body: JSON.stringify({
         name: "Costa League",
         description: null,
-        turnClockEnabled: true,
-        turnClockSeconds: 240,
       }),
     });
   });
@@ -91,85 +91,15 @@ function fillNameAndSubmit(name: string) {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders the turn-clock toggle enabled by default with a 240s duration select", () => {
+  it("no longer renders the turn-clock toggle or duration select (D15 deprecation)", () => {
     renderOpen();
-    const toggle = screen.getByRole("checkbox", { name: /reloj de turno/i }) as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("240");
-    // The three valid per-turn durations are offered (120/240/360).
-    expect(screen.getByRole("option", { name: "2 min" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "4 min" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "6 min" })).toBeTruthy();
-  });
-
-  it("POSTs the chosen enabled option (e.g. 360s) along with the league", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: () =>
-        Promise.resolve({
-          id: "l10",
-          name: "Base 443",
-          description: null,
-          ownerId: "u1",
-          createdAt: "2026-01-01",
-          turnClockEnabled: true,
-          turnClockSeconds: 360,
-        }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderOpen();
-    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Base 443" } });
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "360" } });
-    fireEvent.click(screen.getByRole("button", { name: "Crear liga" }));
-
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: "Base 443",
-        description: null,
-        turnClockEnabled: true,
-        turnClockSeconds: 360,
-      }),
-    });
-  });
-
-  it("POSTs the clocks-disabled option (toggle off) while retaining the chosen duration", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: () =>
-        Promise.resolve({
-          id: "l11",
-          name: "No Clock League",
-          description: null,
-          ownerId: "u1",
-          createdAt: "2026-01-01",
-          turnClockEnabled: false,
-          turnClockSeconds: 120,
-        }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderOpen();
-    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "No Clock League" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: /reloj de turno/i }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "120" } });
-    fireEvent.click(screen.getByRole("button", { name: "Crear liga" }));
-
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: "No Clock League",
-        description: null,
-        turnClockEnabled: false,
-        turnClockSeconds: 120,
-      }),
-    });
+    // The deprecated clock option is GONE from the creation UI (D15).
+    expect(screen.queryByRole("checkbox", { name: /reloj de turno/i })).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByText(/Duración por turno/i)).toBeNull();
+    // Name + description + submit remain.
+    expect(screen.getByLabelText("Nombre")).toBeTruthy();
+    expect(screen.getByLabelText("Descripción")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Crear liga" })).toBeTruthy();
   });
 });

@@ -31,6 +31,28 @@ class FakeEventSource {
   }
 }
 
+function liveSnapshot(overrides: Partial<LiveMatchViewState> = {}): LiveMatchViewState {
+  return {
+    seq: 9,
+    status: "live",
+    half: 1,
+    turnNumber: 3,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    viewerSide: "home",
+    startedAt: 1000,
+    elapsed: 0,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    homeScore: 1,
+    awayScore: 0,
+    paused: false,
+    finishedAt: null,
+    ...overrides,
+  };
+}
+
 describe("useLiveMatch — connect / snapshot-first / reconnect / control", () => {
   const instances: FakeEventSource[] = [];
 
@@ -63,10 +85,8 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
   it("applies a snapshot-first event to the live state and keeps the stream open", async () => {
     const { result } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
     const es = instances[0];
-    // Snapshot has no id (Last-Event-ID must not advance). Await the async act
-    // so React flushes the state update deterministically (no full-suite flake).
     await act(async () => {
-      es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }));
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 9, status: "live", homeTurnMs: 5000, awayTurnMs: 3000 })));
     });
 
     expect(result.current.live?.seq).toBe(9);
@@ -81,13 +101,12 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     const es = instances[0];
 
     await act(async () => {
-      es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 200, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }));
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 9, turnNumber: 3, homeTurnMs: 200, awayTurnMs: 0 })));
     });
     expect(result.current.live?.turnNumber).toBe(3);
 
-    // A later state event (seq 10) replaces the view.
     await act(async () => {
-      es.dispatch("state", JSON.stringify({ seq: 10, status: "live", half: 1, turnNumber: 4, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }), "10");
+      es.dispatch("state", JSON.stringify(liveSnapshot({ seq: 10, turnNumber: 4, activeSide: "away", homeTurnMs: 200, awayTurnMs: 0 })), "10");
     });
     expect(result.current.live?.seq).toBe(10);
     expect(result.current.live?.activeSide).toBe("away");
@@ -99,14 +118,12 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     const es = instances[0];
 
     await act(async () => {
-      es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 200, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }));
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 9, turnNumber: 3, homeTurnMs: 200, awayTurnMs: 0 })));
     });
     await waitFor(() => expect(result.current.live?.seq).toBe(9));
 
-    // A network blip: the browser EventSource auto-retries and re-sends with
-    // Last-Event-ID; the hook re-applies the resulting snapshot.
     await act(async () => {
-      es.dispatch("snapshot", JSON.stringify({ seq: 12, status: "live", half: 1, turnNumber: 5, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 1, paused: false, finishedAt: null }));
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 12, turnNumber: 5, activeSide: "away", homeTurnMs: 200, awayTurnMs: 100, awayScore: 1 })));
     });
     await waitFor(() => expect(result.current.live?.seq).toBe(12));
     await waitFor(() => expect(result.current.live?.awayScore).toBe(1));
@@ -117,13 +134,12 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () =>
-        Promise.resolve({ view: { seq: 11, status: "live", half: 1, turnNumber: 5, activeSide: "home", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null } }),
+      json: () => Promise.resolve({ view: liveSnapshot({ seq: 11, turnNumber: 5, activeSide: "away", homeTurnMs: 200, awayTurnMs: 100 }) }),
     });
     vi.stubGlobal("fetch", fetchMock);
     const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
 
-    const cmd: LiveCommand = { type: "endTurn", side: "home" };
+    const cmd: LiveCommand = { type: "consent", side: "home" };
     let view: LiveMatchViewState | undefined;
     await act(async () => {
       view = await result.current.sendCommand(cmd);
@@ -149,7 +165,7 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     );
     const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
 
-    await expect(result.current.sendCommand({ type: "endTurn", side: "away" })).rejects.toMatchObject({ status: 409 });
+    await expect(result.current.sendCommand({ type: "begin" })).rejects.toMatchObject({ status: 409 });
     unmount();
   });
 

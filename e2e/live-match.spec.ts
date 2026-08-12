@@ -4,11 +4,12 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  * Real-DB live-match E2E (auth suite only — `pnpm run test:e2e:auth` with
  * AUTH_MODE=auth + Postgres; ignored in the local `AUTH_MODE=local` suite).
  *
- * Covers the interactive 2-coach realtime slice (LM-1/LM-8):
- *   1. a league is created with the turn-clock option enabled at 240s (the
- *      create modal default); two coaches join and start a 1-jornada season;
- *   2. Coach A starts the live match on the scheduled fixture and opens the
- *      match view (live turn bar + clock + score + "Dar el turno" control);
+ * Covers the interactive 2-coach realtime slice (LM-1/LM-8/LM-11):
+ *   1. a league is created (no clock option, D15); two coaches join and start a
+ *      1-jornada season;
+ *   2. both coaches consent to start the live match (two-phase LM-11/LM-3), the
+ *      admin begins the first turn, and Coach A opens the match view (live turn
+ *      bar + unified clock + score + "Dar el turno" control);
  *   3. two contexts: Coach B (second browser context) connects via SSE and sees
  *      Coach A's "Dar el turno" flip the turn/clock live (no reload);
  *   4. new-device recovery: B reconnects from a FRESH page in a new context (same
@@ -16,10 +17,12 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  *   5. a finished live match pre-fills the result modal (scores + per-scorer
  *      TDs, LM-9) via the fixture GET live DTO.
  *
- * Control (start/td/endMatch) is driven through the API (the UI has no start
- * button); "Dar el turno" goes through the REAL match-view control. Unique
- * emails per run keep the shared Postgres idempotent. The scheduling, starting,
- * and snapshot flows reuse the same API shapes the unit/route tests cover.
+ * Control (consent/begin/td/endMatch) is driven through the API (the UI has no
+ * start button); "Dar el turno" goes through the REAL match-view control. Which
+ * coach owns HOME vs AWAY is resolved from the real round-robin fixture (home/
+ * away is randomized) so each consent goes to the correct side. Unique emails
+ * per run keep the shared Postgres idempotent. The scheduling, consenting, and
+ * snapshot flows reuse the same API shapes the unit/route tests cover.
  */
 test.setTimeout(180_000);
 
@@ -177,6 +180,28 @@ async function fixtureAndScorers(
   };
 }
 
+/**
+ * Resolves which coach owns the HOME side vs AWAY side for the real round-robin
+ * fixture (home/away is randomized by `buildRoundRobin`, so we must map the
+ * created team names against the fixture's actual home/away names — the spec
+ * helpers return names/scorers but not owner→side).
+ */
+function resolveCoachSides(
+  adminTeam: string,
+  rivalTeam: string,
+  homeTeamName: string,
+  awayTeamName: string,
+): { adminIsHome: boolean; adminSide: "home" | "away"; rivalSide: "home" | "away" } {
+  const adminIsHome = adminTeam === homeTeamName;
+  // Sanity: the two created teams are exactly the fixture's two sides.
+  expect(adminIsHome ? rivalTeam === awayTeamName : adminTeam === awayTeamName).toBe(true);
+  return {
+    adminIsHome,
+    adminSide: adminIsHome ? "home" : "away",
+    rivalSide: adminIsHome ? "away" : "home",
+  };
+}
+
 /** Schedules the fixture via API (rival proposes, admin accepts). */
 async function scheduleFixture(admin: Page, rival: Page, leagueId: string, fixtureId: string) {
   const proposal = await rival.request.post(
@@ -202,15 +227,26 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
   const tag = Date.now().toString(36);
   const league = await buildStartedLeague(browser, tag);
   try {
-    const { admin, rival, leagueId, rivalEmail } = league;
+    const { admin, rival, leagueId, rivalEmail, adminTeam, rivalTeam } = league;
     const { fixtureId, homeTeamName, awayTeamName, awayScorerId, awayScorerName } = await fixtureAndScorers(admin, leagueId);
     // Which team is home is randomized by buildRoundRobin (~50/50); the TD
     // below targets the AWAY side (valid after Coach A's turn flip), so the
     // score lands on whatever team is away. Assert side-relative below.
     await scheduleFixture(admin, rival, leagueId, fixtureId);
 
-    // Coach A (home) starts the live match, then opens the match view (live UI).
-    await liveCommand(admin, leagueId, fixtureId, { type: "start" });
+    // Resolve the REAL owner→side mapping (home/away is randomized) and run the
+    // two-phase consent → begin flow (LM-11/LM-3): each coach consents their own
+    // side, then the first turn begins. Consent is coach-only, so each consent
+    // must come from that coach's own session context.
+    const { adminSide, rivalSide } = resolveCoachSides(adminTeam, rivalTeam, homeTeamName, awayTeamName);
+    const adminConsent = await liveCommand(admin, leagueId, fixtureId, { type: "consent", side: adminSide });
+    expect(adminConsent.view.status).toBe("pending");
+    const rivalConsent = await liveCommand(rival, leagueId, fixtureId, { type: "consent", side: rivalSide });
+    expect(rivalConsent.view.status).toBe("ready");
+    const begun = await liveCommand(admin, leagueId, fixtureId, { type: "begin" });
+    expect(begun.view.status).toBe("live");
+
+    // Coach A (the admin side) opens the match view (live UI).
     const matchUrl = `/leagues/${leagueId}/fixtures/${fixtureId}`;
     await admin.goto(matchUrl);
     await expect(admin.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();

@@ -39,10 +39,10 @@ Chain strategy: stacked-to-main
 
 ## PR 1b — Client + Deprecation + e2e
 
-- [ ] 1b.1 CreateLeagueModal+api.ts drop clock option; RED tests
-- [ ] 1b.2 useLeagues+League type: deprecated-note on clock fields
-- [ ] 1b.3 MatchView consent/ready/begin+clock UI; useLiveMatch keep viewerSide (D19); RED
-- [ ] 1b.4 e2e begin: coach side from REAL fixture owner map (home/away rand.), consent both→begin→"Dar el turno" (was `start` @L213)
+- [x] 1b.1 CreateLeagueModal+api.ts drop clock option; RED tests
+- [x] 1b.2 useLeagues+League type: deprecated-note on clock fields
+- [x] 1b.3 MatchView consent/ready/begin+clock UI; useLiveMatch keep viewerSide (D19); RED
+- [x] 1b.4 e2e begin: coach side from REAL fixture owner map (home/away rand.), consent both→begin→"Dar el turno" (was `start` @L213)
 
 ## PR 2 — Permissions + Nudge
 
