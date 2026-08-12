@@ -3,6 +3,7 @@ import {
   acceptFixtureProposal,
   assignTeam,
   correctResult,
+  createLeague,
   forfeitFixture,
   getFixtureProposals,
   getMatchDetail,
@@ -44,12 +45,22 @@ describe("League lifecycle types", () => {
       startedAt: "2026-02-01",
       ownerName: "Coach",
       memberCount: 4,
+      turnClockEnabled: true,
+      turnClockSeconds: 240,
     };
     expect(league.status).toBe("started");
     expect(league.seasonLength).toBe(2);
     expect(league.startedAt).toBe("2026-02-01");
     expect(league.ownerName).toBe("Coach");
     expect(league.memberCount).toBe(4);
+    // The league carries the immutable turn-clock option (AC-10) so live
+    // matches read their per-turn duration from the League row. Also prove an
+    // option-off league surfaces disabled duration fields.
+    expect(league.turnClockEnabled).toBe(true);
+    expect(league.turnClockSeconds).toBe(240);
+    const disabled: League = { ...league, turnClockEnabled: false, turnClockSeconds: 120 };
+    expect(disabled.turnClockEnabled).toBe(false);
+    expect(disabled.turnClockSeconds).toBe(120);
   });
 
   it("LeagueDetail carries member teams plus fixtures", () => {
@@ -64,6 +75,8 @@ describe("League lifecycle types", () => {
       startedAt: "2026-02-01",
       ownerName: "Coach",
       memberCount: 2,
+      turnClockEnabled: true,
+      turnClockSeconds: 240,
       teams: [
         { id: "t1", name: "Reavers", raceId: "human", leagueId: "l1", userId: "u1", roster: [], coaching: {} },
       ],
@@ -103,6 +116,8 @@ describe("League lifecycle types", () => {
       startedAt: "2026-02-01",
       ownerName: "Coach",
       memberCount: 2,
+      turnClockEnabled: true,
+      turnClockSeconds: 240,
       teams: [],
       rounds: [],
       fixtures: [
@@ -135,6 +150,69 @@ describe("League lifecycle types", () => {
     expect(draft.fixtures[0].status).toBe("scheduled");
     expect(draft.fixtures[0].scheduledAt).toBe("2026-03-01");
     expect(draft.fixtures[0].proposals[0].acceptedAt).toBe("2026-02-03");
+  });
+});
+
+describe("createLeague", () => {
+  it("POSTs the turn-clock option through to the leagues route when provided", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okJson({
+        id: "l1",
+        name: "Clock League",
+        description: null,
+        ownerId: "u1",
+        createdAt: "2026-01-01",
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        ownerName: "Coach",
+        memberCount: 0,
+        turnClockEnabled: true,
+        turnClockSeconds: 240,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createLeague("Clock League", null, { turnClockEnabled: true, turnClockSeconds: 240 });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Clock League",
+        description: null,
+        turnClockEnabled: true,
+        turnClockSeconds: 240,
+      }),
+    });
+  });
+
+  it("omits the option from the payload when not supplied (server defaults apply)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okJson({
+        id: "l1",
+        name: "No Option",
+        description: null,
+        ownerId: "u1",
+        createdAt: "2026-01-01",
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        ownerName: "Coach",
+        memberCount: 0,
+        turnClockEnabled: true,
+        turnClockSeconds: 240,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createLeague("No Option", "just a name");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "No Option", description: "just a name" }),
+    });
   });
 });
 

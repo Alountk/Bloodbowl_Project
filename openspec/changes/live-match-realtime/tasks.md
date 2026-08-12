@@ -29,13 +29,13 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Migration + League Clock Option (PR 1)
 
-- [ ] 1.1 RED `app/api/leagues/route.test.ts`: POST with option omitted → 240 default persisted; invalid `3600` → 400 no league; enabled 240 persisted; immutable (no update path). GREEN in `app/api/leagues/route.ts`.
-- [ ] 1.2 RED `features/leagues/CreateLeagueModal.test.tsx`: toggle + 120/240/360 select, default 240. GREEN in `CreateLeagueModal.tsx`.
-- [ ] 1.3 `features/leagues/api.ts` + `useLeagues.ts`: pass option param through.
-- [ ] 1.4 `prisma/schema.prisma`: add `League.turnClockEnabled Boolean @default(true)` + `turnClockSeconds Int @default(240)`.
-- [ ] 1.5 Create `prisma/migrations/<ts>_add_live_match_realtime/migration.sql` (League columns; additive; backfills existing rows enabled@240).
-- [ ] 1.6 RED `lib/liveAccess.test.ts` role matrix (401/404/403; local parity 401). GREEN `lib/liveAccess.ts` (empty gate awaiting slice 2).
-- [ ] 1.7 `pnpm db:generate`; confirm `prisma migrate deploy` in entrypoint.
+- [x] 1.1 RED `app/api/leagues/route.test.ts`: POST with option omitted → 240 default persisted; invalid `3600` → 400 no league; enabled 240 persisted; immutable (no update path). GREEN in `app/api/leagues/route.ts`.
+- [x] 1.2 RED `features/leagues/CreateLeagueModal.test.tsx`: toggle + 120/240/360 select, default 240. GREEN in `CreateLeagueModal.tsx`.
+- [x] 1.3 `features/leagues/api.ts` + `useLeagues.ts`: pass option param through.
+- [x] 1.4 `prisma/schema.prisma`: add `League.turnClockEnabled Boolean @default(true)` + `turnClockSeconds Int @default(240)`.
+- [x] 1.5 Create `prisma/migrations/<ts>_add_live_match_realtime/migration.sql` (League columns; additive; backfills existing rows enabled@240).
+- [x] 1.6 RED `lib/liveAccess.test.ts` role matrix (401/404/403; local parity 401). GREEN `lib/liveAccess.ts` (empty gate awaiting slice 2).
+- [x] 1.7 `pnpm db:generate`; confirm `prisma migrate deploy` in entrypoint.
 
 ## Phase 2: SSE Subscribe + Hub (PR 2)
 
