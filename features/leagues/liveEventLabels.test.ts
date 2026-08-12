@@ -46,6 +46,11 @@ describe("liveEventLabel", () => {
     expect(liveEventLabel(ev("endMatch"))).toBe("Fin del partido");
   });
 
+  it("labels a turn-start notice and a request-turn nudge (LM-13)", () => {
+    expect(liveEventLabel(ev("turnStart"))).toBe("Tu turno");
+    expect(liveEventLabel(ev("requestTurn"))).toBe("Te piden el turno");
+  });
+
   it("passes through an unknown event kind unchanged", () => {
     expect(liveEventLabel(ev("interception"))).toBe("interception");
   });

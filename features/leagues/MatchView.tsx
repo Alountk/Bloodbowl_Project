@@ -311,6 +311,13 @@ function LiveActiveMatch({
         </div>
       </div>
 
+      {/* LM-12/D19: the ACTIVE coach sees "Tu turno" (viewerSide matches activeSide). */}
+      {state.status === "live" && state.viewerSide === state.activeSide ? (
+        <p className="border-t border-[#e2e8f0] px-4 py-2 text-sm font-bold text-[#d11938]" role="status">
+          Tu turno
+        </p>
+      ) : null}
+
       {error ? (
         <p role="alert" className="px-4 pb-2 text-sm text-red-600">
           {error}
@@ -318,14 +325,28 @@ function LiveActiveMatch({
       ) : null}
 
       <div className="flex flex-wrap gap-3 px-4 py-4">
-        <button
-          type="button"
-          onClick={() => void act({ type: "endTurn", side: state.activeSide })}
-          disabled={state.status !== "live" || submitting}
-          className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
-        >
-          Dar el turno
-        </button>
+        {/* The active coach may pass the turn; a non-active coach (with a side)
+            may request it (LM-13/D14). Side controls reflect the viewer's role. */}
+        {state.viewerSide === state.activeSide ? (
+          <button
+            type="button"
+            onClick={() => void act({ type: "endTurn", side: state.activeSide })}
+            disabled={state.status !== "live" || submitting}
+            className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+          >
+            Dar el turno
+          </button>
+        ) : null}
+        {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
+          <button
+            type="button"
+            onClick={() => void act({ type: "requestTurn" })}
+            disabled={state.status !== "live" || submitting}
+            className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+          >
+            Pedir turno
+          </button>
+        ) : null}
       </div>
 
       <LiveEventFeed events={live ? live.events : []} />

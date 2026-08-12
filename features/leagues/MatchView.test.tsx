@@ -351,6 +351,33 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
       ),
     );
   });
+
+  it("shows 'Tu turno' + 'Dar el turno' for the ACTIVE coach (viewerSide === activeSide, LM-12/D19)", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail()); // viewerSide home, activeSide home → active
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    // The active coach sees the "Tu turno" notice + the pass control.
+    expect(screen.getAllByText(/Tu turno/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
+    // The active coach does not see the "Pedir turno" nudge.
+    expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
+  });
+
+  it("shows 'Pedir turno' (and no 'Dar el turno') for the NON-active coach", async () => {
+    stubLiveEventSource();
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, viewerSide: "away" };
+    stubMatch(detail);
+    renderPlayed();
+
+    // viewerSide away, activeSide home → the away coach is NOT the active one.
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
 });
 
 describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {

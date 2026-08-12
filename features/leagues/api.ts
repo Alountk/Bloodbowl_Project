@@ -535,7 +535,7 @@ export interface LiveMatchEventDto {
   at: number;
 }
 
-/** Control commands the live POST route accepts (LM-4/D10/D11/LM-11). */
+/** Control commands the live POST route accepts (LM-4/D10/D11/LM-11/LM-13). */
 export type LiveCommand =
   | { type: "consent"; side: "home" | "away" }
   | { type: "retractConsent"; side: "home" | "away" }
@@ -544,6 +544,7 @@ export type LiveCommand =
   | { type: "td"; side: "home" | "away"; playerRosterId: string }
   | { type: "casualty"; side: "home" | "away"; victimRosterId: string; band?: unknown }
   | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId?: unknown }
+  | { type: "requestTurn" }
   | { type: "endMatch" };
 
 /**

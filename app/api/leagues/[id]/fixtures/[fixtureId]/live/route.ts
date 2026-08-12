@@ -16,11 +16,14 @@ import {
   applyEndTurn,
   applyTD,
   applyEndMatch,
+  applyRequestTurn,
+  REQUEST_TURN_COOLDOWN_MS,
   toLiveViewState,
   type FixtureStartState,
   type LiveMatchState,
   type TeamSide,
 } from "@/lib/liveMatch";
+import { resolveEventPermission, type EventKind } from "@/lib/livePhase";
 
 export const dynamic = "force-dynamic";
 
@@ -357,6 +360,7 @@ type ControlCommand =
   | { type: "td"; side: TeamSide; playerRosterId: string }
   | { type: "casualty"; side: TeamSide; victimRosterId: string; band?: unknown }
   | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId?: unknown }
+  | { type: "requestTurn" }
   | { type: "endMatch" };
 
 function isControlCommand(value: unknown): value is ControlCommand {
@@ -368,6 +372,7 @@ function isControlCommand(value: unknown): value is ControlCommand {
     case "retractConsent":
       return c.side === "home" || c.side === "away";
     case "begin":
+    case "requestTurn":
       return true;
     case "endTurn":
       return c.side === "home" || c.side === "away";
@@ -494,6 +499,74 @@ export async function POST(
     return Response.json({ error: "Not found" }, { status: 404 });
   }
   const current = liveMatchRowToState(row);
+
+  // requestTurn (LM-13/D17): the NON-active coach nudges the active coach. It
+  // does NOT flip the turn nor change turn/clock state — only a labeled event
+  // persists, rate-limited by the 60s cooldown.
+  if (command.type === "requestTurn") {
+    if (side === null) {
+      return Response.json({ error: "No side to request a turn" }, { status: 409 });
+    }
+    if (side === current.activeSide) {
+      // The active coach already has the turn.
+      return Response.json({ error: "Already your turn" }, { status: 409 });
+    }
+    if (current.status !== "live") {
+      return Response.json({ error: "Match not live" }, { status: 409 });
+    }
+    // Cooldown (D17): reject a nudge whose last persisted requestTurn is < 60s.
+    const lastNudge = await prisma.liveEvent.findFirst({
+      where: { liveMatchId: row.id, kind: "requestTurn" },
+      orderBy: { id: "desc" },
+    });
+    const lastNudgeAt = lastNudge ? new Date(lastNudge.createdAt).getTime() : 0;
+    if (now - lastNudgeAt < REQUEST_TURN_COOLDOWN_MS) {
+      return Response.json({ error: "Request turn cooldown" }, { status: 409 });
+    }
+
+    const next = applyRequestTurn(current, { side }, now);
+    try {
+      await applyTransition({ liveMatchId: row.id, fixtureId, current, next, now }, deps);
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Sequence conflict" }, { status: 409 });
+      }
+      throw error;
+    }
+    return Response.json({ view: toLiveViewState(next, now, { viewerSide: side }) }, { status: 200 });
+  }
+
+  // Side-aware event gate (LM-12/D14): only run the pure side matrix for the
+  // event commands (endTurn/pass, TD, casualty, foul); a deny maps to 409 (the
+  // only callers reaching here are fixture coaches or the no-team admin — a
+  // spectator member was already 403'd by the coach/admin gate above, and a
+  // foreign user 404'd by `loadFixtureGate`).
+  if (
+    command.type === "endTurn" ||
+    command.type === "td" ||
+    command.type === "casualty" ||
+    command.type === "foul"
+  ) {
+    const kind: EventKind =
+      command.type === "endTurn"
+        ? "passTurn"
+        : command.type === "td"
+          ? "td"
+          : command.type === "casualty"
+            ? "casualty"
+            : "foul";
+    const victimSide = command.type === "casualty" ? command.side : undefined;
+    if (
+      resolveEventPermission({
+        callerSide: side,
+        activeSide: current.activeSide,
+        kind,
+        victimSide,
+      }) === "deny"
+    ) {
+      return Response.json({ error: "Not your turn" }, { status: 409 });
+    }
+  }
 
   let next: LiveMatchState | null = null;
   if (command.type === "endTurn") {
