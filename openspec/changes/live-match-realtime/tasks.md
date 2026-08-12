@@ -49,6 +49,7 @@ Chain strategy: stacked-to-main
 - [x] 3.1 RED `lib/liveMatch.test.ts` pure invariants: alternation, no double-action, 8-turn/half flip, half-2-turn-8 TD finishes, TD-auto-ends-turn, `endMatch`, start guards, `clockSeconds` from state (not constant), clocks-disabled leaves clock fields inert. GREEN in `lib/liveMatch.ts`.
 - [x] 3.2 RED `live/route.test.ts` POST cases: 401/404/403/409 (out-of-turn, seq-conflict `updateMany` 0 rows→409, start on played, already finished)/200, `LiveEvent` seq order, publish-after-commit. GREEN POST handler + `lib/liveStore.ts` (`applyTransition` reads league option, optimistic `seq`, atomic `$transaction`, hub publish).
 - [x] 3.3 Grace: active-coach disconnect→10s auto-pause (`paused=true`,`clockStartedAt=null`). Resume on reconnect; recompute from persisted timestamps (restart survival).
+- [x] 3.4 D4 clock-expiry auto-end: pure `autoEndTurnOnClockZero` (active clock 0 → same transition as endTurn, half flip at 8, only when clocks enabled) + hub ticker `onClockExpired` seam wired to persist/publish via `applyTransition` (remediation of the D4 verify gap).
 
 ## Phase 4: Client + SSE Hook + DTO (PR 4)
 
