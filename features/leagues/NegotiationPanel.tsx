@@ -56,8 +56,11 @@ export function NegotiationPanel({
   submitError,
 }: NegotiationPanelProps) {
   const canNegotiate = isParticipant;
-  // Even if a participant, a scheduled/played fixture is no longer negotiable.
-  const negotiationOpen = canNegotiate && fixture.status === "pending";
+  // Re-negotiation (rejornar) stays open for a scheduled-but-not-played fixture;
+  // only a pending OR scheduled participant may propose/accept before play.
+  const negotiationOpen =
+    canNegotiate &&
+    (fixture.status === "pending" || fixture.status === "scheduled");
   const active = latestActiveProposal(fixture.proposals);
   const otherActive = active && active.userId !== currentUserId ? active : null;
   const homeName = teamNameById.get(fixture.homeTeamId) ?? "Equipo";
@@ -138,11 +141,17 @@ export function NegotiationPanel({
             )}
           </ul>
 
+          {fixture.status === "scheduled" && canNegotiate ? (
+            <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
+              Re-programar
+            </p>
+          ) : null}
+
           {negotiationOpen ? (
             <ProposeForm onPropose={onPropose} />
-          ) : fixture.status === "pending" && canNegotiate ? (
+          ) : canNegotiate ? (
             <p className="mt-3 text-xs text-slate-500">
-              La negociación quedó cerrada — la fecha ya está acordada o la jornada terminó.
+              La negociación quedó cerrada — el partido ya se jugó.
             </p>
           ) : null}
         </div>
