@@ -22,6 +22,10 @@ export function liveEventLabel(event: LiveEventLabelInput): string {
       return "Inicio del partido";
     case "turn":
       return "Fin de turno";
+    case "turnStart":
+      return "Tu turno";
+    case "requestTurn":
+      return "Te piden el turno";
     case "td":
       return "Touchdown";
     case "casualty": {
