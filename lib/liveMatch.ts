@@ -252,14 +252,34 @@ export function applyEndMatch(
   };
 }
 
+/**
+ * D4 clock-expiry auto-end: when the ACTIVE team's clock reaches 0 (and clocks
+ * are enabled, match live), the turn auto-ends with the SAME transition as
+ * `applyEndTurn` — flip to the other side, half flip at turn 8, half-2 turn-8
+ * finishes. A `turn`/`endHalf`/`endMatch` event records it (keeps the minimum
+ * taxonomy — no separate `timeout` event). No-op when the active clock has time
+ * left, when clocks are disabled (LM-5 clockless leagues never tick/auto-end),
+ * or when the match is not live.
+ */
+export function autoEndTurnOnClockZero(
+  state: LiveMatchState,
+  now: number = state.clockStartedAt ?? 0,
+): LiveMatchState {
+  if (state.status !== "live") return state;
+  if (!state.league.turnClockEnabled) return state;
+  const activeClock = state.activeSide === "home" ? state.homeClock : state.awayClock;
+  if (activeClock > 0) return state;
+  // Same transition as endTurn: advance indices, reset clocks, append the event.
+  return turnTransition(state, advanceTurnIndex(state), now);
+}
+
 /** Computes the next turn indices after `applyEndTurn` (LM-4 turn caps/half flip). */
 function advanceTurnIndex(state: LiveMatchState): {
   nextActive: TeamSide;
   nextHalf: number;
   nextTurnNumber: number;
   final: boolean;
-} {
-  const turnNumber = state.turnNumber + 1;
+} {  const turnNumber = state.turnNumber + 1;
   if (state.half === 1 && turnNumber > TURNS_PER_HALF) {
     // Half-1 turn 8 completes → half 2, away starts turn 1.
     return { nextActive: "away", nextHalf: 2, nextTurnNumber: 1, final: false };
