@@ -47,8 +47,12 @@ export function useLeagues() {
   }, []);
 
   const create = useCallback(
-    async (name: string, description: string | null) => {
-      const league = await createLeague(name, description);
+    async (
+      name: string,
+      description: string | null,
+      option?: { turnClockEnabled: boolean; turnClockSeconds: 120 | 240 | 360 },
+    ) => {
+      const league = await createLeague(name, description, option);
       await refresh();
       return league;
     },
