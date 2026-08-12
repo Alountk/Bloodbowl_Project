@@ -163,7 +163,7 @@ describe("League lifecycle types", () => {
 });
 
 describe("createLeague", () => {
-  it("POSTs the turn-clock option through to the leagues route when provided", async () => {
+  it("POSTs name + description only — the deprecated turn-clock option is never sent (D15)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       okJson({
         id: "l1",
@@ -182,26 +182,21 @@ describe("createLeague", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createLeague("Clock League", null, { turnClockEnabled: true, turnClockSeconds: 240 });
+    await createLeague("Clock League", null);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name: "Clock League",
-        description: null,
-        turnClockEnabled: true,
-        turnClockSeconds: 240,
-      }),
+      body: JSON.stringify({ name: "Clock League", description: null }),
     });
   });
 
-  it("omits the option from the payload when not supplied (server defaults apply)", async () => {
+  it("omits the (removed) option from the client — the League type still carries the deprecated columns", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       okJson({
         id: "l1",
         name: "No Option",
-        description: null,
+        description: "just a name",
         ownerId: "u1",
         createdAt: "2026-01-01",
         status: "open",
@@ -215,13 +210,16 @@ describe("createLeague", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createLeague("No Option", "just a name");
+    const league = await createLeague("No Option", "just a name");
 
     expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "No Option", description: "just a name" }),
     });
+    // The deprecated columns remain on the League type for backward compat.
+    expect(league.turnClockEnabled).toBe(true);
+    expect(league.turnClockSeconds).toBe(240);
   });
 });
 

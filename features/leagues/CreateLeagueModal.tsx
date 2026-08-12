@@ -10,21 +10,16 @@ interface CreateLeagueModalProps {
   onCreate: () => Promise<void>;
 }
 
-/** Valid per-turn clock durations (seconds), rulebook-bounded (AC-10). */
-const CLOCK_DURATIONS = [120, 240, 360] as const;
-
 /**
- * Rulebook create-league modal: name (unique globally) + optional description +
- * the turn-clock option (enabled toggle defaulting ON, per-turn duration
- * select defaulting to 240s). The option is captured at creation and immutable
- * afterwards. On POST the API returns 409 for a duplicate name, surfaced as an
- * inline error without closing the modal so the user can pick another name.
+ * Rulebook create-league modal: name (unique globally) + optional description.
+ * The per-turn clock option was REMOVED (D15): the deprecated columns remain on
+ * the League row but the creation UI no longer exposes them. On POST the API
+ * returns 409 for a duplicate name, surfaced as an inline error without closing
+ * the modal so the user can pick another name.
  */
 export function CreateLeagueModal({ open, onClose, onCreate }: CreateLeagueModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [turnClockEnabled, setTurnClockEnabled] = useState(true);
-  const [turnClockSeconds, setTurnClockSeconds] = useState<(typeof CLOCK_DURATIONS)[number]>(240);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,14 +35,9 @@ export function CreateLeagueModal({ open, onClose, onCreate }: CreateLeagueModal
     setSubmitting(true);
     setError(null);
     try {
-      await createLeague(trimmed, description.trim() === "" ? null : description.trim(), {
-        turnClockEnabled,
-        turnClockSeconds,
-      });
+      await createLeague(trimmed, description.trim() === "" ? null : description.trim());
       setName("");
       setDescription("");
-      setTurnClockEnabled(true);
-      setTurnClockSeconds(240);
       onClose();
       await onCreate();
     } catch (e) {
@@ -105,36 +95,6 @@ export function CreateLeagueModal({ open, onClose, onCreate }: CreateLeagueModal
               placeholder="Opcional"
               className={fieldClassName}
             />
-          </div>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                checked={turnClockEnabled}
-                onChange={(event) => setTurnClockEnabled(event.target.checked)}
-                className="h-4 w-4 accent-[#12225a]"
-              />
-              Reloj de turno
-            </label>
-            <div className="flex items-center gap-2">
-              <label htmlFor="league-clock" className="text-sm font-medium text-slate-700">
-                Duración por turno
-              </label>
-              <select
-                id="league-clock"
-                value={turnClockSeconds}
-                onChange={(event) =>
-                  setTurnClockSeconds(Number(event.target.value) as (typeof CLOCK_DURATIONS)[number])
-                }
-                className={fieldClassName}
-              >
-                {CLOCK_DURATIONS.map((seconds) => (
-                  <option key={seconds} value={seconds}>
-                    {seconds / 60} min
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
           {error ? (
             <p role="alert" className="text-sm text-red-600">
