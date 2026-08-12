@@ -4,6 +4,7 @@ import {
   applyEndTurn,
   applyTD,
   applyEndMatch,
+  autoEndTurnOnClockZero,
   toLiveViewState,
   canStart,
   type LiveMatchState,
@@ -140,5 +141,54 @@ describe("end-of-match + clocks behavior", () => {
     expect(view.homeClock).toBeNull();
     expect(view.awayClock).toBeNull();
     expect(view.paused).toBeNull();
+  });
+});
+
+describe("autoEndTurnOnClockZero — D4 clock expiry auto-ends the turn", () => {
+  it("auto-ends the turn when the ACTIVE clock reaches 0 (clocks enabled)", () => {
+    const next = autoEndTurnOnClockZero(state({ activeSide: "home", homeClock: 0, awayClock: 240 }), 2000);
+    // The turn flips to away (turn 2), exactly like an endTurn.
+    expect(next.activeSide).toBe("away");
+    expect(next.turnNumber).toBe(2);
+    // The new active side's clock resets to the league duration.
+    expect(next.awayClock).toBe(240);
+    expect(next.homeClock).toBe(240);
+    // A turn event records the auto-end.
+    expect(next.events.some((e) => e.kind === "turn")).toBe(true);
+  });
+
+  it("is a no-op when the ACTIVE clock is NOT 0", () => {
+    const s = state({ activeSide: "home", homeClock: 120, awayClock: 240 });
+    const next = autoEndTurnOnClockZero(s, 2000);
+    // No state change / no event when time remains.
+    expect(next).toBe(s);
+    expect(next.events).toHaveLength(0);
+  });
+
+  it("is a no-op when clocks are disabled (LM-5 clockless leagues never auto-end)", () => {
+    const s = state({ league: leagueDisabled(), activeSide: "home", homeClock: 0, awayClock: 0 });
+    const next = autoEndTurnOnClockZero(s, 2000);
+    expect(next).toBe(s);
+  });
+
+  it("respects the half flip at half-1 turn 8 (clock expiry flips to half 2, away)", () => {
+    const s = state({ activeSide: "home", half: 1, turnNumber: 8, homeClock: 0, awayClock: 120 });
+    const next = autoEndTurnOnClockZero(s, 2000);
+    expect(next.half).toBe(2);
+    expect(next.turnNumber).toBe(1);
+    expect(next.activeSide).toBe("away");
+    expect(next.events.some((e) => e.kind === "endHalf")).toBe(true);
+  });
+
+  it("finishes the match when half-2 turn 8 times out", () => {
+    const s = state({ activeSide: "away", half: 2, turnNumber: 8, homeClock: 120, awayClock: 0 });
+    const next = autoEndTurnOnClockZero(s, 2000);
+    expect(next.status).toBe("finished");
+    expect(next.finishedAt).not.toBeNull();
+  });
+
+  it("is a no-op when the match is not live (finished)", () => {
+    const s = state({ status: "finished", activeSide: "home", homeClock: 0, awayClock: 0 });
+    expect(autoEndTurnOnClockZero(s, 2000)).toBe(s);
   });
 });

@@ -59,6 +59,8 @@ interface Channel {
   config: { turnClockEnabled: boolean; turnClockSeconds: number };
   /** Fixture-level grace handler (pause persistence), set by subscribe. */
   onGraceExpired: ((fixtureId: string) => void) | null;
+  /** Fixture-level clock-expiry handler (D4 auto-end), set by startTicking. */
+  onClockExpired: ((fixtureId: string) => void) | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   tickTimer: ReturnType<typeof setInterval> | null;
   tickState: TickSnapshot | null;
@@ -73,8 +75,17 @@ export interface LiveHub {
   unsubscribe(fixtureId: string, subscriber: HubSubscriber): void;
   /** Fans out to a fixture's subscribers; no-op when none exist. */
   publish(fixtureId: string, payload: unknown): void;
-  /** Starts the 1s clock ticker for a fixture (no-op when clocks are disabled). */
-  startTicking(fixtureId: string, snapshot: TickSnapshot): void;
+  /**
+   * Starts the 1s clock ticker for a fixture (no-op when clocks are disabled).
+   * When the active clock reaches 0, `onClockExpired` fires once and the ticker
+   * STOPS — the caller (the live route) persists the auto-end (D4) via the
+   * store and restarts the ticker with the post-auto-end snapshot.
+   */
+  startTicking(
+    fixtureId: string,
+    snapshot: TickSnapshot,
+    onClockExpired?: (fixtureId: string) => void,
+  ): void;
   stopTicking(fixtureId: string): void;
 }
 
@@ -93,6 +104,7 @@ export function createLiveHub(): LiveHub {
         config: { turnClockEnabled: true, turnClockSeconds: 240 },
         onGraceExpired: null,
         graceTimer: null,
+        onClockExpired: null,
         tickTimer: null,
         tickState: null,
       };
@@ -131,7 +143,7 @@ export function createLiveHub(): LiveHub {
     }, GRACE_MS);
   }
 
-  function tick(ch: Channel) {
+  function tick(ch: Channel, fixtureId: string) {
     const state = ch.tickState;
     if (!state || state.paused) return;
     if (state.activeSide === "home") state.homeClock = Math.max(state.homeClock - 1, 0);
@@ -145,6 +157,17 @@ export function createLiveHub(): LiveHub {
         awayClock: state.awayClock,
       };
       for (const sub of ch.subs) sub.notify(payload);
+    }
+    // D4: the active clock reaching 0 auto-ends the turn. Fire the store-facing
+    // handler once and STOP ticking — the caller persists the auto-end and
+    // restarts the ticker with the reset clock snapshot.
+    const activeClock = state.activeSide === "home" ? state.homeClock : state.awayClock;
+    if (activeClock <= 0) {
+      ch.onClockExpired?.(fixtureId);
+      if (ch.tickTimer) {
+        clearInterval(ch.tickTimer);
+        ch.tickTimer = null;
+      }
     }
   }
 
@@ -184,12 +207,13 @@ export function createLiveHub(): LiveHub {
       for (const sub of ch.subs) sub.notify(payload);
     },
 
-    startTicking(fixtureId, snapshot) {
+    startTicking(fixtureId, snapshot, onClockExpired) {
       const ch = channel(fixtureId);
       if (!ch.config.turnClockEnabled) return;
       if (ch.tickTimer) return;
       ch.tickState = snapshot;
-      ch.tickTimer = setInterval(() => tick(ch), TICK_MS);
+      if (onClockExpired) ch.onClockExpired = onClockExpired;
+      ch.tickTimer = setInterval(() => tick(ch, fixtureId), TICK_MS);
     },
 
     stopTicking(fixtureId) {
