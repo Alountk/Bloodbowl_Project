@@ -366,10 +366,15 @@ function Jornadas({
     () => Array.from(new Set(fixtures.map((f) => f.round))).sort((a, b) => a - b),
     [fixtures],
   );
-  // Default to the first round (Pattern B). Jornadas only mounts once the league
-  // (and thus fixtures/rounds) have loaded, so the initializer is authoritative.
+  // Default to the first INCOMPLETE round — the current/active jornada (the old
+  // default always opened on round 1 even when it was already complete). Jornadas
+  // only mounts once the league (and thus fixtures/rounds) have loaded, so the
+  // initializer is authoritative; it is one-shot, so a refresh that completes the
+  // viewed round does NOT auto-advance the selection.
   const firstRound = roundNumbers[0] ?? null;
-  const [selectedRound, setSelectedRound] = useState<number | null>(firstRound);
+  const [selectedRound, setSelectedRound] = useState<number | null>(
+    rounds.find((round) => !round.complete)?.round ?? firstRound,
+  );
 
   const [negotiateFixture, setNegotiateFixture] = useState<FixtureDraft | null>(null);
   const [forfeitFixture, setForfeitFixture] = useState<FixtureDraft | null>(null);
@@ -401,7 +406,7 @@ function Jornadas({
 
   return (
     <div>
-      {/* Round tabs — Pattern B defaults to the first round. */}
+      {/* Round tabs — defaults to the current (first incomplete) round. */}
       <div role="tablist" aria-label="Jornadas" className="flex gap-1 overflow-x-auto border-b border-[#e2e8f0]">
         {roundNumbers.map((round) => (
           <button
