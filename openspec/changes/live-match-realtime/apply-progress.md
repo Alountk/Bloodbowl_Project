@@ -503,3 +503,54 @@ None — the 6-slice change is complete (Phase 1-6, all 22 tasks `[x]`). Next ph
 - 6 stacked PRs (all merged to main: #61 #62 #63 #64 #65 + this one), 22/22 tasks
   complete, ~1066 unit tests + 27 auth e2e green. The live-match-realtime feature is
   DONE and ready for `sdd-verify`.
+
+---
+
+## REMEDIATION (verify findings — branch feat/live-match-realtime-fix)
+
+Resolved the three named verify-failure findings; no new product defects surfaced.
+
+### 1. CRITICAL — e2e home/away nondeterminism (fixed, test-only)
+`e2e/live-match.spec.ts` hard-coded the league owner as the fixture HOME team, but
+`buildRoundRobin` shuffles home/away (~50/50). FIX: `fixtureAndScorers` now returns the
+ACTUAL home/away team names from the fixture; the TD targets the AWAY side (valid after
+the turn flip) and the prefill assertions are side-relative (`Resultado {homeTeamName}` /
+`{awayTeamName}`), so the score lands correctly regardless of shuffle. Product code UNCHANGED.
+Determinism proven: the live-match spec passed 5 independent auth runs (2 full suites + 3
+focused) with varying home/away orderings.
+
+### 2. WARNING — flaky useLiveMatch.test.tsx (fixed, test-only)
+The hook-test state assertions relied on a synchronous `act(...)` flush that raced under
+full-suite parallelism. FIX: wrapped each EventSource dispatch in `await act(async () => ...)`
++ `waitFor` for the resulting `result.current.live` — deterministic under `vitest` parallelism.
+Verified: 10/10 isolated `useLiveMatch` runs and 9+ consecutive full-suite runs green (1074/1074).
+No product code change (the hook itself has no race).
+
+### 3. WARNING — D4 clock-0 does NOT auto-end (IMPLEMENTED, product code)
+- `lib/liveMatch.ts`: added pure `autoEndTurnOnClockZero(state, now)` — when the ACTIVE clock
+  reaches 0 (clocks enabled, match live), the turn auto-ends with the SAME transition as
+  `endTurn` (`turnTransition` + `advanceTurnIndex`: flip side, half flip at 8, half-2-turn-8
+  finishes), recording a `turn`/`endHalf`/`endMatch` event. No-op when the active clock has
+  time, when clocks are disabled (LM-5 clockless leagues), or when not live. Taxonomy stays
+  minimum (no new `timeout` event).
+- `lib/liveHub.ts`: the 1s ticker accepts an `onClockExpired` seam; when a tick takes the
+  active clock to 0 it fires the handler ONCE and stops (the caller restarts with the reset
+  snapshot). `startTicking(fixtureId, snapshot, onClockExpired?)`.
+- live route (GET): starts the ticker for a live match with clocks enabled and wires
+  `onClockExpired` to persist the auto-end via `applyTransition` (optimistic seq guard) and
+  restart the ticker with the post-auto-end snapshot.
+- Tests: 6 pure (`lib/liveMatch.test.ts`) + 2 hub (`lib/liveHub.test.ts`). tasks.md gained an
+  explicit `3.4 D4 clock-expiry auto-end` task marked `[x]`.
+
+### Remediation verification
+- Focused: `pnpm vitest run lib/liveMatch.test.ts lib/liveHub.test.ts features/leagues/useLiveMatch.test.tsx app/api/leagues/[id]/fixtures/[fixtureId]/live/route.test.ts` → 54/54.
+- Full unit: **1074/1074** across 9 consecutive runs (flake confirmed resolved).
+- `pnpm lint` clean · `npx tsc --noEmit` clean.
+- Local e2e: `AUTH_MODE=local pnpm exec playwright test` → 21/21 (live-match excluded).
+- **Auth e2e: `pnpm run test:e2e:auth` → 27/27 run TWICE** (live-match deterministic under
+  home/away shuffle), plus 3 focused live-match spec passes.
+
+### Commits (remediation)
+- `d735ae9` test(live): derive fixture home/away in the e2e and stabilize hook fake-timer timing
+- `818d283` feat(live): auto-end the turn when the active clock reaches zero (D4)
+- + docs commit (this section + tasks 3.4)
