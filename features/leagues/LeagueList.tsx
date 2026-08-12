@@ -63,11 +63,13 @@ function LeagueCard({ league }: { league: League }) {
 }
 
 /**
- * Public leagues list: "Mis Ligas" (the session user's own leagues, any status)
- * plus "Ligas abiertas" (every foreign OPEN league a user can join). Both sets
- * come from the single public list endpoint — the server supplies owner name
- * and member count, so there are no per-card detail fetches. The create modal
- * lets the admin create their own league.
+ * Public leagues list: "Mis Ligas" (the session user's own leagues OR leagues
+ * where they have a member team, any status — so started member leagues stay
+ * reachable) plus "Ligas abiertas" (every foreign OPEN league the user is NOT
+ * a member of). Both sets come from the single public list endpoint — the
+ * server supplies owner name, member count and the `isMember` flag, so there
+ * are no per-card detail fetches. The create modal lets the admin create their
+ * own league.
  */
 export function LeagueList() {
   const { leagues, loading, error, refresh } = useLeagues();
@@ -79,9 +81,16 @@ export function LeagueList() {
   }, [refresh]);
 
   const userId = session?.user?.id;
-  const myLeagues = leagues.filter((league) => league.ownerId === userId);
+  // Owned OR joined (any status): a started league a member plays in must appear
+  // here — otherwise it would be unreachable once open leagues are hidden.
+  const myLeagues = leagues.filter(
+    (league) => league.ownerId === userId || league.isMember,
+  );
   const openLeagues = leagues.filter(
-    (league) => league.status === "open" && league.ownerId !== userId,
+    (league) =>
+      league.status === "open" &&
+      league.ownerId !== userId &&
+      !league.isMember,
   );
 
   return (

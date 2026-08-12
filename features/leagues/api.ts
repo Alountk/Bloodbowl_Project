@@ -65,6 +65,11 @@ export interface League {
   ownerName: string | null;
   /** Number of non-archived member teams, computed server-side (no N+1). */
   memberCount: number;
+  /**
+   * True when the session user has a non-archived member team in this league
+   * (server-computed); used to surface started member leagues in the list.
+   */
+  isMember: boolean;
   /** The immutable turn-clock option for live matches on this league. */
   turnClockEnabled: boolean;
   turnClockSeconds: 120 | 240 | 360;
