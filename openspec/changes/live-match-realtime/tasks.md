@@ -46,9 +46,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Control + Transitions + POST (PR 3)
 
-- [ ] 3.1 RED `lib/liveMatch.test.ts` pure invariants: alternation, no double-action, 8-turn/half flip, half-2-turn-8 TD finishes, TD-auto-ends-turn, `endMatch`, start guards, `clockSeconds` from state (not constant), clocks-disabled leaves clock fields inert. GREEN in `lib/liveMatch.ts`.
-- [ ] 3.2 RED `live/route.test.ts` POST cases: 401/404/403/409 (out-of-turn, seq-conflict `updateMany` 0 rows→409, start on played, already finished)/200, `LiveEvent` seq order, publish-after-commit. GREEN POST handler + `lib/liveStore.ts` (`applyTransition` reads league option, optimistic `seq`, atomic `$transaction`, hub publish).
-- [ ] 3.3 Grace: active-coach disconnect→10s auto-pause (`paused=true`,`clockStartedAt=null`). Resume on reconnect; recompute from persisted timestamps (restart survival).
+- [x] 3.1 RED `lib/liveMatch.test.ts` pure invariants: alternation, no double-action, 8-turn/half flip, half-2-turn-8 TD finishes, TD-auto-ends-turn, `endMatch`, start guards, `clockSeconds` from state (not constant), clocks-disabled leaves clock fields inert. GREEN in `lib/liveMatch.ts`.
+- [x] 3.2 RED `live/route.test.ts` POST cases: 401/404/403/409 (out-of-turn, seq-conflict `updateMany` 0 rows→409, start on played, already finished)/200, `LiveEvent` seq order, publish-after-commit. GREEN POST handler + `lib/liveStore.ts` (`applyTransition` reads league option, optimistic `seq`, atomic `$transaction`, hub publish).
+- [x] 3.3 Grace: active-coach disconnect→10s auto-pause (`paused=true`,`clockStartedAt=null`). Resume on reconnect; recompute from persisted timestamps (restart survival).
 
 ## Phase 4: Client + SSE Hook + DTO (PR 4)
 

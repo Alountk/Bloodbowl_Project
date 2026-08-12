@@ -74,6 +74,8 @@ model Fixture {
   awayScore   Int?
   /// The persisted match result record (populated by the result route).
   result      MatchResult?
+  /// The (optional) live match row governing this fixture's realtime state.
+  liveMatch   LiveMatch?
 
   homeTeam Team  @relation("FixtureHomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
   awayTeam Team  @relation("FixtureAwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
@@ -82,6 +84,67 @@ model Fixture {
   proposals ScheduleProposal[]
 
   @@index([leagueId, round])
+}
+
+/// Team side within a live match (home/away).
+enum TeamSide {
+  home
+  away
+}
+
+/// Lifecycle of a live match: pending (created), live (in progress), finished.
+enum LiveMatchStatus {
+  pending
+  live
+  finished
+}
+
+/// The authoritative, DB-baselined state of an interactive live match (LM-6).
+/// `seq` is the optimistic-concurrency guard: every transition bumps it via
+/// `updateMany({ where: { id, seq: prev } })`; 0 rows ⇒ double-action → 409.
+model LiveMatch {
+  id            String          @id @default(cuid())
+  fixtureId     String          @unique
+  fixture       Fixture         @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  status        LiveMatchStatus @default(pending)
+  half          Int             @default(1)
+  turnNumber    Int             @default(1)
+  /// Which team's coach is on the active turn (alternates per LM-4).
+  activeSide    TeamSide        @default(home)
+  homeClock     Int             @default(240)
+  awayClock     Int             @default(240)
+  homeScore     Int             @default(0)
+  awayScore     Int             @default(0)
+  /// Optimistic concurrency seq — monotonic, bump-or-409 (LM-6).
+  seq           Int             @default(0)
+  /// True when the active clock is paused by the disconnect policy (LM-7).
+  paused        Boolean         @default(false)
+  /// The single "active clock began running" timestamp; null = paused (LM-5).
+  clockStartedAt DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  events        LiveEvent[]
+
+  @@index([fixtureId])
+}
+
+/// An append-only, monotonically-sequenced live event (TD/casualty/foul/
+/// endHalf/endMatch). `seq` is authoritative via `@@unique([liveMatchId, seq])`.
+model LiveEvent {
+  id            String    @id @default(cuid())
+  liveMatchId   String
+  liveMatch     LiveMatch @relation(fields: [liveMatchId], references: [id], onDelete: Cascade)
+  seq           Int
+  kind          String
+  side          TeamSide?
+  playerRosterId String?
+  half          Int
+  turnNumber    Int
+  payload       Json      @default("{}")
+  createdAt     DateTime  @default(now())
+
+  @@unique([liveMatchId, seq])
 }
 
 /// A proposed match date for a fixture, created by one of the two participants.

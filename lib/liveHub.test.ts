@@ -79,38 +79,48 @@ describe("liveHub — active-coach tracking + 10s grace", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("arms a 10s grace pause when the active coach's last connection drops and fires on expiry", () => {
-    const coachB = subscribeFor(hub, { coachId: "coach-b" }); // member/other coach stays connected
-    const coachA = subscribeFor(hub, { coachId: "coach-a" }); // active coach disconnects
+  it("fires the fixture grace handler once when the active coach's last connection drops and the 10s window expires", () => {
+    const graceHandler = vi.fn();
+    // The fixture-level grace handler is set by the route's subscribe.
+    const spectator = subscribeFor(hub, {
+      coachId: "coach-b",
+      onGraceExpired: graceHandler,
+    });
+    const active = subscribeFor(hub, {
+      coachId: "coach-a",
+      onGraceExpired: graceHandler,
+    });
 
-    coachA.dispose();
+    active.dispose(); // active coach hangs up; spectator stays connected
 
-    expect(coachB.onGraceExpired).not.toHaveBeenCalled();
+    expect(graceHandler).not.toHaveBeenCalled();
     vi.advanceTimersByTime(9_999);
-    expect(coachB.onGraceExpired).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1); // t=10s → grace expires
-    expect(coachB.onGraceExpired).toHaveBeenCalledTimes(1);
+    expect(graceHandler).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1); // t=10s → grace expires, exactly once
+    expect(graceHandler).toHaveBeenCalledTimes(1);
+    expect(spectator.subscriber.notify).not.toHaveBeenCalled();
   });
 
   it("cancels the grace timer when the active coach reconnects within 10s", () => {
-    const coachA = subscribeFor(hub);
-    coachA.dispose();
+    const graceHandler = vi.fn();
+    const active = subscribeFor(hub, { onGraceExpired: graceHandler });
+    active.dispose();
     vi.advanceTimersByTime(5_000);
 
     // Active coach reconnects before the grace window closes.
-    subscribeFor(hub, { coachId: "coach-a" });
-    expect(coachA.onGraceExpired).not.toHaveBeenCalled();
+    subscribeFor(hub, { coachId: "coach-a", onGraceExpired: graceHandler });
     vi.advanceTimersByTime(20_000);
     // The re-arm on reconnect is cancelled: no expiry fires.
-    expect(coachA.onGraceExpired).not.toHaveBeenCalled();
+    expect(graceHandler).not.toHaveBeenCalled();
   });
 
   it("never arms a grace timer when the league option disables clocks", () => {
-    const coachA = subscribeFor(hub, { channel: configDisabled });
+    const graceHandler = vi.fn();
+    const coachA = subscribeFor(hub, { channel: configDisabled, onGraceExpired: graceHandler });
     coachA.dispose();
     vi.advanceTimersByTime(30_000);
     // On a clocks-disabled league, no grace pause applies (LM-7).
-    expect(coachA.onGraceExpired).not.toHaveBeenCalled();
+    expect(graceHandler).not.toHaveBeenCalled();
   });
 });
 

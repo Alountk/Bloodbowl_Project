@@ -1,7 +1,7 @@
-# Apply Progress — Live Match Realtime (PR 1 + PR 2 merged)
+# Apply Progress — Live Match Realtime (PR 1 + PR 2 + PR 3 merged)
 
-Phase: **apply** (slices 1–2 of 6, stacked-to-main)
-Status: **PR 1 tasks 1.1–1.7 complete · PR 2 tasks 2.1–2.4 complete**
+Phase: **apply** (slices 1–3 of 6, stacked-to-main)
+Status: **PR 1 tasks 1.1–1.7 complete · PR 2 tasks 2.1–2.4 complete · PR 3 tasks 3.1–3.3 complete**
 Mode: **Strict TDD** (test runner: `pnpm test` = `vitest run`)
 Date: 2026-08-12
 
@@ -151,3 +151,103 @@ deploy` already present, unchanged).
 
 **PR 2 (feat/live-match-realtime-pr2):** `ff181f4` (hub + tests), `5e21f14`
 (SSE GET route + tests), + docs commit (tasks.md marks).
+
+---
+
+## PR 3: Control + Transitions + POST
+
+### What shipped (PR 3)
+
+- **Prisma models + migration** (`20260812120000_add_live_match_models`): added
+  `LiveMatch` + `LiveEvent` tables, the `TeamSide`/`LiveMatchStatus` enums, and
+  `Fixture.liveMatch` (1:1 via unique `fixtureId`). The design's slice-1 row had
+  listed them but PR 1 only shipped the League columns — this slice added them
+  additively (the control route needs them). Additive only.
+- `lib/liveMatch.ts` — pure state machine (LM-3/LM-4, D4/D5/D11): `startMatch`
+  (start guard: scheduled fixture, not played, no result), `applyEndTurn`
+  (alternation, no double action, 1..8 turn cap, half flip, half-2-turn-8
+  auto-finish), `applyTD` (score++, auto-ends turn, half-2-turn-8 TD finishes),
+  `applyEndMatch`, `toLiveViewState` (clockSeconds derived from state, clocks
+  null when disabled). Zero mocks.
+- `lib/liveStore.ts` — `startLiveMatch` (create row + start event atomically,
+  409 on P2002 double-start), `applyTransition` (optimistic `updateMany` seq
+  guard → 0 rows → 409 double-action, atomic event append, publish-after-commit),
+  `pauseLiveMatch`/`resumeLiveMatch` (grace persistence), `liveMatchRowToState`.
+- `live/route.ts` — POST handler: gate via `liveAccess`(control) → fixture-coach/
+  admin check (spectator member 403, foreign 404), dispatch start/endTurn/td/
+  casualty/foul/endMatch, 200/400/403/404/409. GET refactored to read the
+  persisted `LiveMatch` row for the snapshot and to wire grace (active coach
+  reconnect → resume; grace expiry → pause).
+- `lib/liveHub.ts` — grace handler now fixture-level (a single `onGraceExpired`
+  on the channel) so a disconnect pause persists once, not per spectator sub.
+- Tests: `lib/liveMatch.test.ts` (14), `lib/liveStore.test.ts` (8), hub grace
+  update, `live/route.test.ts` (+POST gate/command/409, +grace-resume GET).
+
+### PR 3 TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1 | `lib/liveMatch.test.ts` | Unit (pure) | N/A (new) | ✅ import fails | ✅ 14/14 | ✅ 14 cases | ✅ cleaned event/seq handling |
+| 3.2 | `lib/liveStore.test.ts` | Unit (injected deps) | N/A (new) | ✅ import fails | ✅ 8/8 | ✅ 8 cases | ✅ extracted persistAndPublish |
+| 3.2 POST | `live/route.test.ts` | Unit (`vi.hoisted` + store mocks) | ✅ 3/3 | ✅ new cases RED | ✅ 15/15 | ✅ 401/404/403/409/200 | ✅ shared loadFixtureGate |
+| 3.3 | `liveStore.test.ts` + `liveHub.test.ts` + `route.test.ts` | Unit | — | ✅ RED | ✅ green | ✅ pause/resume/no-op | ✅ fixture-level grace |
+
+### PR 3 Test Summary
+
+- **PR 3 tests written**: 33 (14 liveMatch + 8 store + 2 grace-wiring route + 9 POST/tests reused) · focused 47/47 (incl. hub 10).
+- **Full suite**: 1035/1035 (89 files) — up from 1004.
+- **Layers**: Unit pure (14) + unit injected-deps (8) + unit route mocks (15) + hub unit (10).
+
+### PR 3 Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused test command & exact result | `pnpm vitest run lib/liveMatch.test.ts lib/liveStore.test.ts app/api/leagues/[id]/fixtures/[fixtureId]/live/route.test.ts` → 37/37 |
+| Runtime harness | `AUTH_MODE=local pnpm exec playwright test` → 21/21 (live POST realtime is auth-mode-only; local 401 by design — auth e2e lands in PR 6) |
+| Rollback boundary | Revert control store/state-machine/POST commits + the model migration (additive) independently of PR 1/2 SSE GET + hub; only the POST+store+grace depend on the models. |
+
+### Deviations / Risks (PR 3)
+
+- **Line budget**: PR 3 authored lines far exceed 400 (production state-machine 355
+  + store 323 + route ~467 + models/migration ≈ 796+). The control slice is the
+  largest by design. **WARNING — `size:exception` or accept the PR-3 task
+  boundary.**
+- The design's slice-1 model migration (LiveMatch/LiveEvent) was deferred to PR 3
+  since PR 1 shipped only the League columns; tasks.md Phase 3 required the
+  control route which needs the models. Added them additively.
+- `liveHub` grace reconciliation: hub's per-subscriber `onGraceExpired` → a
+  single fixture-level channel handler (so a disconnect-pause persists once).
+  This is the correct LM-7 semantics and updates the PR 2 hub test.
+- `casualty`/`foul` events are recorded (coach-reported band immutable, D10); the
+  results POST (PR 6) stays authoritative. No parallel dice path.
+
+### Remaining Tasks (not this PR)
+
+- [ ] 4.1–4.2 (client SSE hook + DTO) · 5.1–5.3 (MatchView + timeline + labels) ·
+      6.1–6.3 (result prefill + live e2e).
+
+### AC Traceability (PR 3 contribution)
+
+| AC | Covered in |
+|----|-----------|
+| AC-2 | 3.2 POST control gates (401/404/403) + transition 409s |
+| AC-3 | 3.1 pure invariants (alternation, no double, 8-turn, half flip) |
+| AC-4 | 3.2 optimistic seq (updateMany 0 → 409) + LiveEvent seq order + publish-after-commit |
+| AC-9 | 3.3 grace pause (`paused=true`/`clockStartedAt=null`) + resume on reconnect + restart recompute via persisted timestamps |
+
+### Workload / PR Boundary
+
+- Mode: **stacked PR slice (3 of 6)**, stacked-to-main
+- Boundary: PR 2 (#62) merged → PR 3 adds models/migration, state machine, store,
+  POST control route, grace. PR 4 adds the client hook + DTO.
+- Review budget impact: control slice is the largest (state machine + store +
+  POST + models). Recommend `size:exception`.
+
+## Commits (PR 3, feat/live-match-realtime-pr3)
+
+- `c8717da` feat(live): add live-match Prisma models and additive migration
+- `f5ba9fb` feat(live): add pure live-match state machine
+- `30cfa97` feat(live): add live-match store with optimistic seq persistence
+- `b765e99` feat(live): make hub grace pause fixture-level for store wiring
+- `c89189a` feat(live): add control POST handler with gates and commands
+- + docs commit (this file + tasks.md marks)
