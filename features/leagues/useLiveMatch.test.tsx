@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useLiveMatch } from "./useLiveMatch";
 import type { LiveCommand, LiveMatchViewState } from "./api";
 
@@ -60,11 +60,14 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     unmount();
   });
 
-  it("applies a snapshot-first event to the live state and keeps the stream open", () => {
+  it("applies a snapshot-first event to the live state and keeps the stream open", async () => {
     const { result } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
     const es = instances[0];
-    // Snapshot has no id (Last-Event-ID must not advance).
-    act(() => es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null })));
+    // Snapshot has no id (Last-Event-ID must not advance). Await the async act
+    // so React flushes the state update deterministically (no full-suite flake).
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }));
+    });
 
     expect(result.current.live?.seq).toBe(9);
     expect(result.current.live?.activeSide).toBe("home");
@@ -73,32 +76,40 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     expect(es.dispatch).toBeDefined();
   });
 
-  it("applies state deltas by seq and prepends/replaces on a reconnect snapshot", () => {
+  it("applies state deltas by seq and prepends/replaces on a reconnect snapshot", async () => {
     const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
     const es = instances[0];
 
-    act(() => es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 200, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null })));
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 200, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }));
+    });
     expect(result.current.live?.turnNumber).toBe(3);
 
     // A later state event (seq 10) replaces the view.
-    act(() => es.dispatch("state", JSON.stringify({ seq: 10, status: "live", half: 1, turnNumber: 4, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }), "10"));
+    await act(async () => {
+      es.dispatch("state", JSON.stringify({ seq: 10, status: "live", half: 1, turnNumber: 4, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }), "10");
+    });
     expect(result.current.live?.seq).toBe(10);
     expect(result.current.live?.activeSide).toBe("away");
     unmount();
   });
 
-  it("surfaces a reconnect by re-applying the snapshot (EventSource last-event-id converges)", () => {
+  it("surfaces a reconnect by re-applying the snapshot (EventSource last-event-id converges)", async () => {
     const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
     const es = instances[0];
 
-    act(() => es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 200, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null })));
-    expect(result.current.live?.seq).toBe(9);
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify({ seq: 9, status: "live", half: 1, turnNumber: 3, activeSide: "home", turnClockEnabled: true, homeClock: 200, awayClock: 240, homeScore: 1, awayScore: 0, paused: false, finishedAt: null }));
+    });
+    await waitFor(() => expect(result.current.live?.seq).toBe(9));
 
     // A network blip: the browser EventSource auto-retries and re-sends with
     // Last-Event-ID; the hook re-applies the resulting snapshot.
-    act(() => es.dispatch("snapshot", JSON.stringify({ seq: 12, status: "live", half: 1, turnNumber: 5, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 1, paused: false, finishedAt: null })));
-    expect(result.current.live?.seq).toBe(12);
-    expect(result.current.live?.awayScore).toBe(1);
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify({ seq: 12, status: "live", half: 1, turnNumber: 5, activeSide: "away", turnClockEnabled: true, homeClock: 240, awayClock: 240, homeScore: 1, awayScore: 1, paused: false, finishedAt: null }));
+    });
+    await waitFor(() => expect(result.current.live?.seq).toBe(12));
+    await waitFor(() => expect(result.current.live?.awayScore).toBe(1));
     unmount();
   });
 

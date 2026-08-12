@@ -169,4 +169,27 @@ describe("liveHub — 1s ticker gated on the clock option", () => {
     vi.advanceTimersByTime(3_000);
     expect(a.subscriber.notify).toHaveBeenCalledTimes(1);
   });
+
+  it("fires onClockExpired once and stops ticking when the active clock reaches 0 (D4)", () => {
+    subscribeFor(hub);
+    const onClockExpired = vi.fn();
+    // Active home clock starts at 1 → the next tick takes it to 0.
+    hub.startTicking("f-1", { seq: 0, activeSide: "home", homeClock: 1, awayClock: 240 }, onClockExpired);
+
+    vi.advanceTimersByTime(1_000);
+    // The clock hit 0 → the auto-end seam fired exactly once.
+    expect(onClockExpired).toHaveBeenCalledTimes(1);
+    expect(onClockExpired).toHaveBeenCalledWith("f-1");
+    // Further time does NOT re-fire (the ticker stopped; the caller restarts it).
+    vi.advanceTimersByTime(3_000);
+    expect(onClockExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT fire onClockExpired while the active clock still has time", () => {
+    subscribeFor(hub);
+    const onClockExpired = vi.fn();
+    hub.startTicking("f-1", { seq: 0, activeSide: "home", homeClock: 240, awayClock: 240 }, onClockExpired);
+    vi.advanceTimersByTime(1_000);
+    expect(onClockExpired).not.toHaveBeenCalled();
+  });
 });

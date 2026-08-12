@@ -141,12 +141,14 @@ async function login(page: Page, email: string) {
   await expect(page).toHaveURL("/");
 }
 
-/** Returns the fixture id + the home/away teams' first roster scorers (id + name). */
+/** Returns the fixture id + home/away team names + their first roster scorers. */
 async function fixtureAndScorers(
   page: Page,
   leagueId: string,
 ): Promise<{
   fixtureId: string;
+  homeTeamName: string;
+  awayTeamName: string;
   homeScorerId: string;
   homeScorerName: string;
   awayScorerId: string;
@@ -156,7 +158,7 @@ async function fixtureAndScorers(
   expect(res.status()).toBe(200);
   const body = (await res.json()) as {
     fixtures: { id: string; status: string; homeTeamId: string; awayTeamId: string }[];
-    teams: { id: string; roster: { id: string; name: string }[] }[];
+    teams: { id: string; name: string; roster: { id: string; name: string }[] }[];
   };
   const fixture = body.fixtures[0];
   const home = body.teams.find((t) => t.id === fixture.homeTeamId);
@@ -166,6 +168,8 @@ async function fixtureAndScorers(
   expect(away && away.roster.length).toBeGreaterThan(0);
   return {
     fixtureId: fixture.id,
+    homeTeamName: home!.name,
+    awayTeamName: away!.name,
     homeScorerId: home!.roster[0].id,
     homeScorerName: home!.roster[0].name,
     awayScorerId: away!.roster[0].id,
@@ -198,8 +202,11 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
   const tag = Date.now().toString(36);
   const league = await buildStartedLeague(browser, tag);
   try {
-    const { admin, rival, leagueId, adminTeam, rivalTeam, rivalEmail } = league;
-    const { fixtureId, awayScorerId, awayScorerName } = await fixtureAndScorers(admin, leagueId);
+    const { admin, rival, leagueId, rivalEmail } = league;
+    const { fixtureId, homeTeamName, awayTeamName, awayScorerId, awayScorerName } = await fixtureAndScorers(admin, leagueId);
+    // Which team is home is randomized by buildRoundRobin (~50/50); the TD
+    // below targets the AWAY side (valid after Coach A's turn flip), so the
+    // score lands on whatever team is away. Assert side-relative below.
     await scheduleFixture(admin, rival, leagueId, fixtureId);
 
     // Coach A (home) starts the live match, then opens the match view (live UI).
@@ -245,19 +252,20 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     expect(afterEnd.view.status).toBe("finished");
 
     // Result prefill (LM-9): opening the result modal on the finished-live
-    // fixture prefills the away score (1) and the away scorer's TD (1).
-    // MVP/casualty stay coach input.
+    // fixture prefills the AWAY team's score (1) and its scorer's TD (1) —
+    // whoever is home/away (the admin team side is randomized). MVP/casualty
+    // stay coach input.
     await admin.goto(`/leagues/${leagueId}`);
     await expect(admin.getByRole("region", { name: "Jornada 1" })).toBeVisible();
     await admin.getByRole("button", { name: "Cargar resultado" }).first().click();
     const dialog = admin.getByRole("dialog", { name: /Cargar resultado/ });
-    const adminSection = dialog.getByLabel(`Resultado ${adminTeam}`);
-    const rivalSection = dialog.getByLabel(`Resultado ${rivalTeam}`);
-    // Scores prefilled from the finished live scoreboard.
-    await expect(adminSection.getByLabel(`Goles ${adminTeam}`)).toHaveValue("0");
-    await expect(rivalSection.getByLabel(`Goles ${rivalTeam}`)).toHaveValue("1");
+    const awaySection = dialog.getByLabel(`Resultado ${awayTeamName}`);
+    const homeSection = dialog.getByLabel(`Resultado ${homeTeamName}`);
+    // The away team scored 1 (the TD), the home team 0.
+    await expect(awaySection.getByLabel(`Goles ${awayTeamName}`)).toHaveValue("1");
+    await expect(homeSection.getByLabel(`Goles ${homeTeamName}`)).toHaveValue("0");
     // The away scorer's TD (1) prefilled; no MJP nominations auto-filled.
-    await expect(rivalSection.getByLabel(`Anotaciones ${awayScorerName}`, { exact: true })).toHaveValue("1");
+    await expect(awaySection.getByLabel(`Anotaciones ${awayScorerName}`, { exact: true })).toHaveValue("1");
   } finally {
     await league.close();
   }

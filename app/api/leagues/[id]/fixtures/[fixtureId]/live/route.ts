@@ -8,6 +8,7 @@ import {
   applyEndTurn,
   applyTD,
   applyEndMatch,
+  autoEndTurnOnClockZero,
   toLiveViewState,
   type FixtureStartState,
   type LeagueClockConfig,
@@ -202,6 +203,46 @@ export async function GET(
     turnClockSeconds: ctx.league.turnClockSeconds,
   };
   const now = Date.now();
+
+  // D4 clock ticker: when a live match exists with clocks enabled, the hub's
+  // 1s ticker advances the active clock. When it reaches 0, `onClockExpired`
+  // persists the auto-end (same transition as `endTurn`) and restarts the
+  // ticker with the reset-clock snapshot.
+  if (live && live.status === "live" && ctx.league.turnClockEnabled) {
+    const snapshot = {
+      seq: live.seq,
+      activeSide: live.activeSide,
+      homeClock: live.homeClock,
+      awayClock: live.awayClock,
+    };
+    const onClockExpired = async (fid: string) => {
+      if (fid !== fixtureId) return;
+      const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
+      if (!row) return;
+      const current = liveMatchRowToState(row, clockConfig(ctx));
+      const next = autoEndTurnOnClockZero(current, Date.now());
+      if (next === current) return; // not exhausted (e.g. paused mid-tick)
+      try {
+        await applyTransition(
+          { liveMatchId: row.id, fixtureId, current, next, league: clockConfig(ctx), now: Date.now() },
+          { prisma, hub: liveHub },
+        );
+      } catch {
+        // A concurrent transition won the seq; the hub publishes the latest state.
+      }
+      // Restart the ticker with the post-auto-end snapshot (new active clock).
+      const fresh = await prisma.liveMatch.findFirst({ where: { fixtureId } });
+      if (fresh && fresh.status === "live") {
+        liveHub.startTicking(fixtureId, {
+          seq: fresh.seq,
+          activeSide: fresh.activeSide,
+          homeClock: fresh.homeClock,
+          awayClock: fresh.awayClock,
+        });
+      }
+    };
+    liveHub.startTicking(fixtureId, snapshot, onClockExpired);
+  }
 
   // Grace (LM-7): the ACTIVE coach's connection drives the 10s auto-pause. A
   // reconnect by the active coach resumes a paused clock. Identity is the user
