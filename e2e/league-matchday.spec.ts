@@ -457,7 +457,9 @@ test("rejornar: a participant re-opens negotiation on a scheduled fixture and a 
     await expect(negotiationDialog(accepter)).toBeVisible();
     await negotiationDialog(accepter).getByRole("button", { name: "Aceptar" }).click();
     await waitForFixtureStatus(accepter, league.leagueId, fixtureId, "scheduled");
-    // The card now shows the first agreed date.
+    // Proposer reloads to pick up the accepted status; the card now shows the
+    // first agreed date.
+    await proposer.reload();
     const region = proposer.getByRole("region", { name: "Jornada 1" });
     await expect(proposer.getByText(/Partido 1 · Programado/).first()).toBeVisible();
     await expect(region.getByText(slot1.esRegex)).toBeVisible();
