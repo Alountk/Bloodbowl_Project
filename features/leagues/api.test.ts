@@ -36,7 +36,7 @@ function okJson(data: unknown) {
 }
 
 describe("League lifecycle types", () => {
-  it("League shape includes status, seasonLength, startedAt, ownerName and memberCount", () => {
+  it("League shape includes status, seasonLength, startedAt, ownerName, memberCount and isMember", () => {
     const league: League = {
       id: "l1",
       name: "Liga",
@@ -48,6 +48,7 @@ describe("League lifecycle types", () => {
       startedAt: "2026-02-01",
       ownerName: "Coach",
       memberCount: 4,
+      isMember: false,
       turnClockEnabled: true,
       turnClockSeconds: 240,
     };
@@ -56,6 +57,9 @@ describe("League lifecycle types", () => {
     expect(league.startedAt).toBe("2026-02-01");
     expect(league.ownerName).toBe("Coach");
     expect(league.memberCount).toBe(4);
+    // The server-computed membership flag lets the list surface started leagues
+    // a user JOINED (not just owned) under Mis Ligas.
+    expect(league.isMember).toBe(false);
     // The league carries the immutable turn-clock option (AC-10) so live
     // matches read their per-turn duration from the League row. Also prove an
     // option-off league surfaces disabled duration fields.
@@ -78,6 +82,7 @@ describe("League lifecycle types", () => {
       startedAt: "2026-02-01",
       ownerName: "Coach",
       memberCount: 2,
+      isMember: false,
       turnClockEnabled: true,
       turnClockSeconds: 240,
       teams: [
@@ -119,6 +124,7 @@ describe("League lifecycle types", () => {
       startedAt: "2026-02-01",
       ownerName: "Coach",
       memberCount: 2,
+      isMember: false,
       turnClockEnabled: true,
       turnClockSeconds: 240,
       teams: [],

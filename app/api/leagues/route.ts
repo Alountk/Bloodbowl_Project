@@ -13,10 +13,13 @@ function isTurnClockSeconds(value: number): value is TurnClockSeconds {
 /**
  * GET /api/leagues
  * Returns ALL open leagues (any user) PLUS the session user's own leagues in
- * any status (foreign started leagues are hidden), each enriched with the
- * owner's name (falls back to the email) and a server-computed member count
- * (non-archived member teams) — the count comes from the query, not a per-item
- * detail fetch (kills the N+1). 401 unauthenticated.
+ * any status PLUS every league where the user holds a non-archived member team
+ * (so started leagues a member JOINED stay reachable — that is how they accept
+ * the match proposal). Foreign started leagues without membership are hidden.
+ * Each league is enriched with the owner's name (falls back to the email), a
+ * server-computed member count (non-archived member teams) and an `isMember`
+ * flag derived from the user's own member teams — all from the query, not a
+ * per-item detail fetch (kills the N+1). 401 unauthenticated.
  */
 export async function GET() {
   const session = await auth();
@@ -27,22 +30,30 @@ export async function GET() {
   const leagues = await prisma.league.findMany({
     where: {
       // Open leagues are public to all authenticated users; each user's own
-      // leagues (including started) always appear.
-      OR: [{ status: "open" }, { ownerId }],
+      // leagues (including started) always appear, as do leagues where the user
+      // holds a live member team (started member leagues must stay reachable).
+      OR: [
+        { status: "open" },
+        { ownerId },
+        { teams: { some: { userId: ownerId, archivedAt: null } } },
+      ],
     },
     orderBy: { createdAt: "asc" },
     include: {
       owner: { select: { id: true, email: true, name: true } },
+      // Only the session user's own member teams — used to derive `isMember`.
+      teams: { where: { userId: ownerId, archivedAt: null }, select: { id: true } },
       _count: {
         select: { teams: { where: { archivedAt: null } } },
       },
     },
   });
   return NextResponse.json(
-    leagues.map(({ owner, _count, ...league }) => ({
+    leagues.map(({ owner, _count, teams, ...league }) => ({
       ...league,
       ownerName: owner?.name ?? owner?.email ?? null,
       memberCount: _count.teams,
+      isMember: teams.length > 0,
     })),
   );
 }
