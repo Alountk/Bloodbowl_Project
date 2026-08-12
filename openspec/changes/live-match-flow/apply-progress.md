@@ -1,8 +1,8 @@
-# Apply Progress — live-match-flow (PR 1a: Server Core)
+# Apply Progress — live-match-flow (PR 1a + PR 1b)
 
-> Change: `live-match-flow` · PR slice: **1a** (stacked-to-main chain, slice 1 of 5)
+> Change: `live-match-flow` · PR slices: **1a** + **1b** (stacked-to-main chain)
 > Phase: sdd-apply · Mode: **Strict TDD** (vitest)
-> Status: **1a COMPLETE — 8/8 tasks** · Next: sdd-verify or apply → PR 1b
+> Status: **1a + 1b COMPLETE — 16/16 tasks** · Next: sdd-verify or apply → PR 2
 
 ## Scope
 
@@ -114,3 +114,94 @@ Created:
 Modified (tests): `lib/liveMatch.test.ts`, `lib/liveStore.test.ts`,
 `lib/liveHub.test.ts`, `live/route.test.ts`, `fixtures/[fixtureId]/route.test.ts`,
 `app/api/leagues/route.test.ts`.
+
+---
+
+# PR 1b — Client + Deprecation + e2e (MERGED)
+
+## Scope
+
+Implemented EXACTLY `tasks.md` PR 1b (1b.1–1b.4): client + deprecation + begin e2e.
+No permissions/nudge (PR 2), no rejornar (PR 3), no correction (PR 4). Committed in
+4 work units: 866f37e, 5a4a58d, dab240b, f594f41. Clean working tree on
+`feat/live-match-flow-1b`.
+
+## Summary of changes
+
+- **1b.1** `CreateLeagueModal.tsx` + `features/leagues/api.ts` `createLeague`: the
+  turn-clock toggle + 120/240/360 select are GONE from the modal and the API no
+  longer sends the option (D15 ignore-not-persisted). `useLeagues.create` drops
+  the option param.
+- **1b.2** `League` (and `TurnClockOption`) type: `turnClockEnabled`/
+  `turnClockSeconds` keep a `@deprecated` note (columns remain on the row,
+  never read/written). `LiveCommand` updated to the PR-1a surface:
+  `consent`/`retractConsent`/`begin` added, `start` removed. `LiveMatchViewState`
+  updated to the unified-clock DTO (consents / viewerSide / startedAt / elapsed /
+  homeTurnMs / awayTurnMs / paused:boolean; `turnClockEnabled`/`homeClock`/
+  `awayClock` removed). `useLiveMatch` now resets to `null` on a no-live-row
+  snapshot and keeps the DTO `viewerSide` (D19).
+- **1b.3** `MatchView.tsx` renders the full two-phase lifecycle: no live row →
+  "Partido programado" + "Iniciar partido" (per coach, side from session+owners);
+  one consent → "Listo, esperando al rival." + "Retirar consentimiento"; both →
+  "Listo para empezar" + "Empezar partido" (begin = first turn); live → unified
+  clock (elapsed + per-side `homeTurnMs`/`awayTurnMs` as M:SS) + "Dar el turno";
+  finished → timeline. `viewerSide` drives which controls show (D19).
+- **1b.4** `e2e/live-match.spec.ts` begin-step rewritten: resolves each coach's
+  SIDE from the real round-robin fixture (admin/rival team names vs the fixture's
+  home/away names — home/away is randomized), then consent(home/away each) →
+  ready → begin → "Dar el turno". The P2002 seq bug this surfaced is fixed
+  (below). `e2e/match-view.spec.ts` scheduled-state assertion updated to the
+  consent panel (D16).
+
+## Additional bug fixed (surfaced by the e2e begin-step)
+
+- **`lib/liveStore.ts` `persistAndPublish`**: `beginMatch` emits TWO events
+  (`start` + `turnStart`), but the shared persist advanced the row seq by only
+  `currentSeq + 1`, causing the NEXT transition's event to collide on
+  `@@unique([liveMatchId, seq])` → Prisma P2002 → 500. Fixed to advance `nextSeq`
+  past the highest delta-event seq (the `beginLiveMatch` store test now asserts
+  `seq: 4` from a ready row at seq 2). This is a PR-1a invariant bug that PR 1b's
+  e2e legitimately un-gated.
+
+## TDD Cycle Evidence (PR 1b)
+
+| Task | Test File | Layer | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|-----|-------|-------------|----------|
+| 1b.1 | `CreateLeagueModal.test.tsx`, `api.test.ts` | Unit | ✅ 2 fail | ✅ 26/26 | ✅ 3 cases | ✅ Clean |
+| 1b.2 | `api.test.ts`, `useLiveMatch.test.tsx` | Unit | ✅ tsc RED (types) | ✅ 29/29 | ✅ 2 cases | ✅ Clean |
+| 1b.3 | `MatchView.test.tsx` | Component | ✅ (via tsc + assertions) | ✅ 14/14 | ✅ 6 cases | ✅ Clean |
+| 1b.4 | `e2e/live-match.spec.ts` (auth) | E2E | ✅ (old start failed) | ✅ 29/29 | n/a | ✅ Clean |
+
+## Work Unit Evidence (PR 1b)
+
+| Evidence | Required value |
+|---|---|
+| Focused test cmd + result | `pnpm vitest run` on CreateLeagueModal/api/useLiveMatch/MatchView/resultPrefill → **53 / 53** (after additions); final full vitest **1096/1096** |
+| Full gates | `pnpm test` 1096/1096 (92 files) · `pnpm lint` clean · `npx tsc --noEmit` clean |
+| Regression (local) | `AUTH_MODE=local pnpm exec playwright test` (stale :3000 killed) → **21/21 passed** |
+| Runtime harness (auth, authoritative) | `pnpm run test:e2e:auth` → **29/29 passed** (2.5m) — the PR-1a expected-fail is gone |
+| Rollback boundary | Revert the 4 PR-1b commits + the `persistAndPublish` seq fix; the additive PR-1a migration + server core remain on main. |
+
+## Deviations from Design
+
+None blocking. Notes:
+- The `persistAndPublish` seq fix is a PR-1a invariant bug fixed within PR 1b (the
+  e2e begin-step exercised the two-event `begin` path that unit-mocked stores had
+  missed). The store test now locks the rule: row seq advances past ALL delta
+  events.
+- `match-view.spec.ts`'s scheduled-state assertion flipped from `Programado:` to
+  the consent panel — a direct, intended consequence of the D16 scheduled-UI change.
+
+## Files Changed (PR 1b)
+
+Modified:
+- `features/leagues/CreateLeagueModal.tsx` + `.test.tsx` (drop clock option)
+- `features/leagues/api.ts` + `.test.ts` (createLeague no option; League @deprecated; LiveCommand/LiveMatchViewState unified)
+- `features/leagues/useLeagues.ts` (create drops option)
+- `features/leagues/useLiveMatch.ts` + `.test.tsx` (null-snapshot reset, keep viewerSide)
+- `features/leagues/MatchView.tsx` + `.test.tsx` (consent/ready/begin + unified clock UI)
+- `features/leagues/resultPrefill.test.ts` (DTO shape)
+- `lib/liveStore.ts` + `.test.ts` (persistAndPublish seq fix + begin seq 4)
+- `e2e/live-match.spec.ts` (begin-step rewrite)
+- `e2e/match-view.spec.ts` (scheduled-state consent assertion)
+- `openspec/changes/live-match-flow/tasks.md` (1b.1–1b.4 `[x]`)
