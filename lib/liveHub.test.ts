@@ -1,16 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { createLiveHub, type HubSubscriber, type SubscribeInput } from "./liveHub";
+import { createLiveHub, type HubSubscriber, type SubscribeInput, type TickSnapshot } from "./liveHub";
 
 /**
  * Hub unit tests — subscribe/publish fan-out, active-coach tracking with a 10s
- * grace pause, 1s ticker gated on the league's turn-clock option, and "publish
- * only when subs exist". The store/persistence seam is deferred to PR 3, so the
- * hub here is the narrow fan-out + ticker + grace skeleton the slice-2 SSE
- * route consumes.
+ * grace pause (LM-7, unconditional on the removed clock option), and the 1s
+ * ticker that derives + publishes the ACTIVE side's accumulation (LM-5,
+ * informational: never auto-ends, no `onClockExpired`).
  */
-
-const configEnabled = { turnClockEnabled: true, turnClockSeconds: 240 };
-const configDisabled = { turnClockEnabled: false, turnClockSeconds: 240 };
 
 function makeSubscriber(): HubSubscriber & { notify: Mock } {
   return { notify: vi.fn() };
@@ -26,12 +22,30 @@ function subscribeFor(
     fixtureId: "f-1",
     coachId: "coach-a",
     activeCoachId: "coach-a",
-    channel: configEnabled,
     subscriber,
     onGraceExpired,
     ...overrides,
   });
   return { subscriber, onGraceExpired, dispose };
+}
+
+function liveSnapshot(overrides: Partial<TickSnapshot> = {}): TickSnapshot {
+  return {
+    seq: 10,
+    status: "live",
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    startedAt: 0,
+    homeTurnMs: 5000,
+    awayTurnMs: 3000,
+    homeScore: 0,
+    awayScore: 0,
+    finishedAt: null,
+    paused: false,
+    clockStartedAt: 1000,
+    ...overrides,
+  };
 }
 
 describe("liveHub — subscribe/publish fan-out", () => {
@@ -70,7 +84,7 @@ describe("liveHub — subscribe/publish fan-out", () => {
   });
 });
 
-describe("liveHub — active-coach tracking + 10s grace", () => {
+describe("liveHub — active-coach tracking + 10s grace (LM-7, unconditional)", () => {
   let hub: ReturnType<typeof createLiveHub>;
 
   beforeEach(() => {
@@ -81,7 +95,6 @@ describe("liveHub — active-coach tracking + 10s grace", () => {
 
   it("fires the fixture grace handler once when the active coach's last connection drops and the 10s window expires", () => {
     const graceHandler = vi.fn();
-    // The fixture-level grace handler is set by the route's subscribe.
     const spectator = subscribeFor(hub, {
       coachId: "coach-b",
       onGraceExpired: graceHandler,
@@ -107,61 +120,52 @@ describe("liveHub — active-coach tracking + 10s grace", () => {
     active.dispose();
     vi.advanceTimersByTime(5_000);
 
-    // Active coach reconnects before the grace window closes.
     subscribeFor(hub, { coachId: "coach-a", onGraceExpired: graceHandler });
     vi.advanceTimersByTime(20_000);
     // The re-arm on reconnect is cancelled: no expiry fires.
     expect(graceHandler).not.toHaveBeenCalled();
   });
-
-  it("never arms a grace timer when the league option disables clocks", () => {
-    const graceHandler = vi.fn();
-    const coachA = subscribeFor(hub, { channel: configDisabled, onGraceExpired: graceHandler });
-    coachA.dispose();
-    vi.advanceTimersByTime(30_000);
-    // On a clocks-disabled league, no grace pause applies (LM-7).
-    expect(graceHandler).not.toHaveBeenCalled();
-  });
 });
 
-describe("liveHub — 1s ticker gated on the clock option", () => {
+describe("liveHub — 1s ticker derives + publishes the active side's accumulation", () => {
   let hub: ReturnType<typeof createLiveHub>;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(10_000);
     hub = createLiveHub();
   });
   afterEach(() => vi.useRealTimers());
 
-  it("publishes a clock tick every second while the option is enabled", () => {
+  it("publishes a clock tick every second that accumulates the ACTIVE side's time, without auto-ending", () => {
     const a = subscribeFor(hub);
-    hub.startTicking("f-1", { seq: 10, activeSide: "home", homeClock: 240, awayClock: 240 });
+    // clockStartedAt = 10_000 (system time base); advancing 1s adds 1000ms in-flight.
+    hub.startTicking("f-1", liveSnapshot({ clockStartedAt: 10_000 }) as never);
 
     vi.advanceTimersByTime(1_000);
-    // Active home clock decrements; away clock is untouched. The hub emits the
-    // new server-derived clock values; the DB seq for the tick is attached by
-    // the store when it persists (PR 3), never fabricated here (LM-6).
+
     expect(a.subscriber.notify).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "tick",
         activeSide: "home",
-        homeClock: 239,
-        awayClock: 240,
+        awayTurnMs: 3000,
+        seq: 10,
       }),
     );
-    expect(a.subscriber.notify.mock.calls[0][0]?.seq).toBe(10); // unchanged input seq
+    const tick = a.subscriber.notify.mock.calls[0][0];
+    expect(tick.homeTurnMs).toBe(6000); // 5000 persisted + 1000ms in-flight
   });
 
-  it("never ticks and never advances clocks when the option is disabled", () => {
-    const a = subscribeFor(hub, { channel: configDisabled });
-    hub.startTicking("f-2", { seq: 1, activeSide: "away", homeClock: 120, awayClock: 120 });
-    vi.advanceTimersByTime(5_000);
-    expect(a.subscriber.notify).not.toHaveBeenCalled();
+  it("never stops on zero (LM-5 informational — no auto-end) and keeps publishing", () => {
+    const a = subscribeFor(hub);
+    hub.startTicking("f-1", liveSnapshot() as never);
+    vi.advanceTimersByTime(10_000); // run far beyond any former per-turn limit
+    expect(a.subscriber.notify).toHaveBeenCalledTimes(10); // still ticking, never auto-ends
   });
 
   it("stops ticking after stopTicking", () => {
     const a = subscribeFor(hub);
-    hub.startTicking("f-1", { seq: 0, activeSide: "home", homeClock: 240, awayClock: 240 });
+    hub.startTicking("f-1", liveSnapshot() as never);
     vi.advanceTimersByTime(1_000);
     expect(a.subscriber.notify).toHaveBeenCalledTimes(1);
 
@@ -170,26 +174,12 @@ describe("liveHub — 1s ticker gated on the clock option", () => {
     expect(a.subscriber.notify).toHaveBeenCalledTimes(1);
   });
 
-  it("fires onClockExpired once and stops ticking when the active clock reaches 0 (D4)", () => {
-    subscribeFor(hub);
-    const onClockExpired = vi.fn();
-    // Active home clock starts at 1 → the next tick takes it to 0.
-    hub.startTicking("f-1", { seq: 0, activeSide: "home", homeClock: 1, awayClock: 240 }, onClockExpired);
-
+  it("publishes a paused clock without accumulating in-flight time", () => {
+    const a = subscribeFor(hub);
+    hub.startTicking("f-1", liveSnapshot({ paused: true, clockStartedAt: null, homeTurnMs: 5000 }) as never);
     vi.advanceTimersByTime(1_000);
-    // The clock hit 0 → the auto-end seam fired exactly once.
-    expect(onClockExpired).toHaveBeenCalledTimes(1);
-    expect(onClockExpired).toHaveBeenCalledWith("f-1");
-    // Further time does NOT re-fire (the ticker stopped; the caller restarts it).
-    vi.advanceTimersByTime(3_000);
-    expect(onClockExpired).toHaveBeenCalledTimes(1);
-  });
-
-  it("does NOT fire onClockExpired while the active clock still has time", () => {
-    subscribeFor(hub);
-    const onClockExpired = vi.fn();
-    hub.startTicking("f-1", { seq: 0, activeSide: "home", homeClock: 240, awayClock: 240 }, onClockExpired);
-    vi.advanceTimersByTime(1_000);
-    expect(onClockExpired).not.toHaveBeenCalled();
+    const last = a.subscriber.notify.mock.calls.at(-1)?.[0];
+    expect(last.homeTurnMs).toBe(5000); // no in-flight while paused
+    expect(last.paused).toBe(true);
   });
 });
