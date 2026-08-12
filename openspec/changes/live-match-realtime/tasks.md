@@ -39,10 +39,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: SSE Subscribe + Hub (PR 2)
 
-- [ ] 2.1 RED `lib/liveHub.test.ts`: subscribe/publish fan-out; active-coach tracking; no ticker/grace via fake timers.
-- [ ] 2.2 Implement `lib/liveHub.ts` hub (narrow interface; grace/ticker gated on `turnClockEnabled`; publish only when subs exist).
-- [ ] 2.3 RED `live/route.test.ts` GET cases: 401 both auth modes; 404 foreign; 200 snapshot-first; gap replay (`seq > snapshot.seq`); abort cleanup. GREEN GET handler `live/route.ts` (`force-dynamic`).
-- [ ] 2.4 Subscribe race interleave test: subscribe→DB read→drain; dupes dropped by `seq` (fake hub, controlled prisma seqs).
+- [x] 2.1 RED `lib/liveHub.test.ts`: subscribe/publish fan-out; active-coach tracking; no ticker/grace via fake timers.
+- [x] 2.2 Implement `lib/liveHub.ts` hub (narrow interface; grace/ticker gated on `turnClockEnabled`; publish only when subs exist).
+- [x] 2.3 RED `live/route.test.ts` GET cases: 401 both auth modes; 404 foreign; 200 snapshot-first; gap replay (`seq > snapshot.seq`); abort cleanup. GREEN GET handler `live/route.ts` (`force-dynamic`).
+- [x] 2.4 Subscribe race interleave test: subscribe→DB read→drain; dupes dropped by `seq` (fake hub, controlled prisma seqs).
 
 ## Phase 3: Control + Transitions + POST (PR 3)
 
