@@ -43,9 +43,13 @@ export interface FixtureDraft {
   proposals: ScheduleProposal[];
 }
 
-/** The league-level turn-clock option (AC-10): enabled toggle + per-turn
- * duration. The duration is meaningful only when enabled. Immutable after
- * creation — no update path exists. */
+/**
+ * The (deprecated) league-level turn-clock option (D15). The columns REMAIN on
+ * the League row for backward compatibility but are no longer read or written
+ * anywhere: the creation UI/API dropped the option, and live matches never
+ * consult it. Kept only to type the persisted columns.
+ * @deprecated The turn-clock option was removed from creation and never read.
+ */
 export interface TurnClockOption {
   turnClockEnabled: boolean;
   turnClockSeconds: 120 | 240 | 360;
@@ -70,8 +74,16 @@ export interface League {
    * (server-computed); used to surface started member leagues in the list.
    */
   isMember: boolean;
-  /** The immutable turn-clock option for live matches on this league. */
+  /**
+   * DEPRECATED (D15): the per-turn clock columns remain on the row for backward
+   * compatibility but are never read or written by the current app.
+   * @deprecated The turn-clock option no longer constrains live matches.
+   */
   turnClockEnabled: boolean;
+  /**
+   * DEPRECATED (D15): the legacy per-turn clock duration.
+   * @deprecated Superseded by the unified server-owned match clock.
+   */
   turnClockSeconds: 120 | 240 | 360;
 }
 
@@ -118,19 +130,19 @@ export async function listLeagues(): Promise<League[]> {
   return readJson<League[]>(res);
 }
 
+/**
+ * Creates a league. The deprecated turn-clock option is GONE from the client
+ * (D15): the payload carries name + description only, and the server ignores
+ * any legacy clock fields (columns keep their DB defaults).
+ */
 export async function createLeague(
   name: string,
   description: string | null,
-  option?: { turnClockEnabled: boolean; turnClockSeconds: 120 | 240 | 360 },
 ): Promise<League> {
   const res = await fetch("/api/leagues", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(
-      option
-        ? { name, description, ...option }
-        : { name, description },
-    ),
+    body: JSON.stringify({ name, description }),
   });
   return readJson<League>(res);
 }
