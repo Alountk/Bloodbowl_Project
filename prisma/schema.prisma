@@ -38,6 +38,12 @@ model League {
   status       LeagueStatus @default(open)
   seasonLength Int?
   startedAt    DateTime?
+  /// League-level turn-clock option (AC-10). Enabled toggle + per-turn duration
+  /// in seconds (120|240|360; 240 default). Immutable after creation — the
+  /// league creation API has no update path for it. When disabled, live matches
+  /// run clockless (no ticking, no grace pause).
+  turnClockEnabled Boolean @default(true)
+  turnClockSeconds Int    @default(240)
   teams        Team[]       @relation("LeagueMembers")
   fixtures     Fixture[]
 
