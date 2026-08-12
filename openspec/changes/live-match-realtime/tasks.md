@@ -63,9 +63,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 6: Prefill (PR 6)
 
-- [ ] 6.1 RED `ResultModal.test.tsx`: prefill scores + per-scorer TD from live DTO only; MJP/casualty/actions untouched. GREEN `resultPrefill.ts` + `ResultModal.tsx`/`LeagueDetail.tsx` (LM-9).
-- [ ] 6.2 RED `e2e/live-match.spec.ts` (auth only): league created clocks enabled@240; two contexts — A "Dar el turno" → B sees flip/clock/score via SSE; new-device recovery (fresh context, same creds → snapshot + control restored).
-- [ ] 6.3 `playwright.config.auth.ts` match / `playwright.config.ts` ignore `live-match.spec.ts` (local suite stays green).
+- [x] 6.1 RED `ResultModal.test.tsx`: prefill scores + per-scorer TD from live DTO only; MJP/casualty/actions untouched. GREEN `resultPrefill.ts` + `ResultModal.tsx`/`LeagueDetail.tsx` (LM-9).
+- [x] 6.2 RED `e2e/live-match.spec.ts` (auth only): league created clocks enabled@240; two contexts — A "Dar el turno" → B sees flip/clock/score via SSE; new-device recovery (fresh context, same creds → snapshot + control restored).
+- [x] 6.3 `playwright.config.auth.ts` match / `playwright.config.ts` ignore `live-match.spec.ts` (local suite stays green).
 
 ## AC Traceability
 
