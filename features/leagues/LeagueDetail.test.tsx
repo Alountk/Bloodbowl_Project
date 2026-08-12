@@ -404,6 +404,9 @@ describe("LeagueDetail — STARTED league", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Cargar resultado" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Cargar resultado" }));
 
+    // The ResultModal resolves the fixture's live prefill before it opens; a
+    // fixture detail GET with no live match yields an empty draft (LM-9).
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Cargar resultado/ })).toBeTruthy());
     const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
     // Score 1 for Reavers, Hugo scores 1 TD → match. Score 0 for Orcs.
     fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "1" } });
@@ -430,6 +433,92 @@ describe("LeagueDetail — STARTED league", () => {
       expect(body.home.score).toBe(1);
       expect(body.home.players[0].tds).toBe(1);
     });
+  });
+
+  it("prefills the result modal scores and per-scorer TDs from a finished live match (LM-9)", async () => {
+    // A scheduled fixture that had a live match (finished): opening the result
+    // modal fetches its live DTO and prefills scores + TD counts.
+    const scheduledStarted = {
+      ...startedLeague,
+      ownerId: "u2",
+      ownerName: "Coach B",
+      teams: [
+        { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: me, roster: Array.from({ length: 6 }, (_, i) => ({ id: `h${i + 1}`, name: `H${i + 1}` })) },
+        { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u8", roster: Array.from({ length: 6 }, (_, i) => ({ id: `a${i + 1}`, name: `A${i + 1}` })) },
+      ],
+      rounds: [{ round: 1, fixtures: ["fs"], complete: false }],
+      fixtures: [
+        {
+          id: "fs",
+          leagueId: "l3",
+          round: 1,
+          homeTeamId: "t1",
+          awayTeamId: "t2",
+          createdAt: "2026-02-01",
+          scheduledAt: "2026-03-01",
+          winnerId: null,
+          homeScore: null,
+          awayScore: null,
+          status: "scheduled",
+          homeOwner: { id: me, name: "Coach Me" },
+          awayOwner: { id: "u8", name: "Coach B" },
+          proposals: [],
+        },
+      ],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      if (url === `/api/leagues/l3`) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(scheduledStarted) });
+      if (url === "/api/leagues/l3/fixtures/fs") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              fixture: scheduledStarted.fixtures[0],
+              result: null,
+              homeTeam: { id: "t1", roster: [] },
+              awayTeam: { id: "t2", roster: [] },
+              live: {
+                seq: 12,
+                status: "finished",
+                half: 2,
+                turnNumber: 8,
+                activeSide: "away",
+                turnClockEnabled: true,
+                homeClock: 0,
+                awayClock: 0,
+                homeScore: 2,
+                awayScore: 1,
+                paused: false,
+                finishedAt: 5000,
+                events: [
+                  { seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 2, payload: {}, at: 2000 },
+                  { seq: 3, kind: "td", side: "home", playerRosterId: "h1", half: 2, turnNumber: 1, payload: {}, at: 3000 },
+                  { seq: 4, kind: "td", side: "away", playerRosterId: "a2", half: 2, turnNumber: 6, payload: {}, at: 4000 },
+                ],
+              },
+            }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cargar resultado" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Cargar resultado" }));
+
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Cargar resultado/ })).toBeTruthy());
+    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+
+    // Scores prefilled from the finished live scoreboard.
+    expect((within(dialog).getByLabelText(/Goles Reavers/) as HTMLInputElement).value).toBe("2");
+    expect((within(dialog).getByLabelText(/Goles Orcs/) as HTMLInputElement).value).toBe("1");
+    // Per-scorer TDs: H1 scored twice, A2 once.
+    expect((within(dialog).getByLabelText(/Anotaciones H1/) as HTMLInputElement).value).toBe("2");
+    expect((within(dialog).getByLabelText(/Anotaciones A2/) as HTMLInputElement).value).toBe("1");
   });
 
   it("renders the not-found page for a foreign non-member started league (404)", async () => {

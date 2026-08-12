@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getRaceById } from "@/features/teams/data/races";
 import { StartLeagueModal } from "./StartLeagueModal";
 import { useLeagueDetail } from "./useLeagueDetail";
 import { MatchCard } from "./MatchCard";
 import { NegotiationPanel } from "./NegotiationPanel";
 import { ForfeitModal } from "./ForfeitModal";
-import { ResultModal } from "./ResultModal";
+import { ResultModal, type ResultTeamDraft } from "./ResultModal";
+import { buildResultPrefill } from "./resultPrefill";
+import { getMatchDetail } from "./api";
 import type { FixtureDraft, FixtureRound, ResultPayload } from "./api";
 
 interface LeagueDetailProps {
@@ -535,6 +537,33 @@ function ResultModalFor({
   onClose: () => void;
 }) {
   const [homeRoster, awayRoster] = rostersFor(fixture);
+  // Resolve the finished-live-match prefill (scores + ΣTD) from the fixture GET
+  // before mounting the modal, so ResultModal reads it as INITIAL state (the
+  // parent keys the modal per fixture — initial only, no reset effect). A
+  // fixture without a finished live match opens with an empty draft.
+  const [prefill, setPrefill] = useState<{ home: ResultTeamDraft; away: ResultTeamDraft } | undefined>(undefined);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMatchDetail(fixture.leagueId, fixture.id)
+      .then((match) => {
+        if (cancelled) return;
+        if (match.live && match.live.status === "finished") {
+          setPrefill(buildResultPrefill(match.live));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fixture.leagueId, fixture.id]);
+
+  if (!ready) return null;
+
   return (
     <ResultModal
       open
@@ -543,6 +572,7 @@ function ResultModalFor({
       homeRoster={homeRoster}
       awayRoster={awayRoster}
       mode={mode}
+      initial={prefill}
       onSubmit={onSubmit}
       onClose={onClose}
     />
