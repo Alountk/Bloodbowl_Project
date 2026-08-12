@@ -1,24 +1,21 @@
 /**
- * In-memory SSE fan-out hub (LM-6, D2).
+ * Process-wide SSE hub (LM-1/D1 fan-out, LM-5 unified-clock ticker, LM-7 grace).
  *
- * A narrow, coalesced interface the SSE route and the store use, swappable for
- * a multi-instance pub/sub adapter later. The DB stays the source of truth; the
- * hub is a fast fan-out for live connections plus the per-match clock ticker
- * and the active-coach disconnect grace (LM-7).
+ * Fan-out is per-fixture: each publish is delivered to every live SSE subscriber
+ * of that fixture. The hub also tracks the ACTIVE coach so it can arm a 10s grace
+ * window when that coach's last connection drops (LM-7) and run the 1s
+ * info-only ticker that derives + publishes the active side's accumulated time
+ * (LM-5). The unified clock is always running once live (no league clock option
+ * gate — the deprecated option never constrained live matches).
  *
- * Slice-2 scope notes:
- * - `publish(fixtureId, payload)` fans out to that fixture's subscribers and is
- *   a no-op when none exist.
- * - The 1s ticker runs ONLY when the league's turn-clock option is enabled
- *   (LM-5: clockless leagues never tick). It advances the active coach's
- *   remaining clock and emits a `tick` with the server-derived clock values;
- *   the DB `seq` of the tick is attached by the store when it persists (PR 3),
- *   never fabricated here (LM-6 seq stays DB-authoritative).
- * - The 10s grace pause is keyed to the ACTIVE coach's SSE connection and is
- *   armed only when clocks are enabled (LM-7). When the active coach's last
- *   connection drops, a 10s timer fires `onGraceExpired` unless a reconnect
- *   cancels it first. PR 3 wires `onGraceExpired` to persist `paused=true`.
+ * The ticker is informational: it computes `deriveLiveClock` at each 1s tick from
+ * the persisted-anchored snapshot (accumulators + `clockStartedAt` running segment
+ * start) and publishes derived values ONLY — there is NO per-tick DB write and NO
+ * auto-end at zero (`onClockExpired` removed, D4). `seq` on the tick frame is the
+ * snapshot's seq (the store owns the authoritative `seq`).
  */
+
+import { deriveLiveClock, type ClockRowFields } from "./liveMatch";
 
 export interface HubSubscriber {
   notify(payload: unknown): void;
@@ -31,22 +28,25 @@ export interface SubscribeInput {
   coachId: string | null;
   /** The coach whose team is on the active turn, if the hub knows it. */
   activeCoachId: string | null;
-  /** Clock config straight from the League row (LM-5). */
-  channel: {
-    turnClockEnabled: boolean;
-    turnClockSeconds: number;
-  };
   /** Called once when the active coach's grace window expires without reconnect. */
   onGraceExpired?: (fixtureId: string) => void;
 }
 
-/** The clock snapshot the ticker advances; the store owns the authoritative `seq`. */
+/** The persisted-anchored clock snapshot the ticker derives from (LM-5). */
 export interface TickSnapshot {
   seq: number;
+  status: ClockRowFields["status"];
   activeSide: "home" | "away";
-  homeClock: number;
-  awayClock: number;
-  paused?: boolean;
+  homeConsented: boolean;
+  awayConsented: boolean;
+  startedAt: number | null;
+  homeTurnMs: number;
+  awayTurnMs: number;
+  homeScore: number;
+  awayScore: number;
+  finishedAt: number | null;
+  paused: boolean;
+  clockStartedAt: number | null;
 }
 
 type SubscriberEntry = HubSubscriber & {
@@ -56,11 +56,8 @@ type SubscriberEntry = HubSubscriber & {
 interface Channel {
   subs: Set<SubscriberEntry>;
   activeCoachId: string | null;
-  config: { turnClockEnabled: boolean; turnClockSeconds: number };
   /** Fixture-level grace handler (pause persistence), set by subscribe. */
   onGraceExpired: ((fixtureId: string) => void) | null;
-  /** Fixture-level clock-expiry handler (D4 auto-end), set by startTicking. */
-  onClockExpired: ((fixtureId: string) => void) | null;
   graceTimer: ReturnType<typeof setTimeout> | null;
   tickTimer: ReturnType<typeof setInterval> | null;
   tickState: TickSnapshot | null;
@@ -76,16 +73,12 @@ export interface LiveHub {
   /** Fans out to a fixture's subscribers; no-op when none exist. */
   publish(fixtureId: string, payload: unknown): void;
   /**
-   * Starts the 1s clock ticker for a fixture (no-op when clocks are disabled).
-   * When the active clock reaches 0, `onClockExpired` fires once and the ticker
-   * STOPS — the caller (the live route) persists the auto-end (D4) via the
-   * store and restarts the ticker with the post-auto-end snapshot.
+   * Starts the 1s info-only ticker for a fixture (always runs once live — the
+   * unified clock has no option gate). Each tick derives the active side's
+   * accumulated time and fans it out; the ticker NEVER stops on zero (no
+   * auto-end, D4 removed).
    */
-  startTicking(
-    fixtureId: string,
-    snapshot: TickSnapshot,
-    onClockExpired?: (fixtureId: string) => void,
-  ): void;
+  startTicking(fixtureId: string, snapshot: TickSnapshot): void;
   stopTicking(fixtureId: string): void;
 }
 
@@ -97,14 +90,12 @@ export function createLiveHub(): LiveHub {
 
   function channel(fixtureId: string): Channel {
     let ch = channels.get(fixtureId);
-      if (!ch) {
+    if (!ch) {
       ch = {
         subs: new Set(),
         activeCoachId: null,
-        config: { turnClockEnabled: true, turnClockSeconds: 240 },
         onGraceExpired: null,
         graceTimer: null,
-        onClockExpired: null,
         tickTimer: null,
         tickState: null,
       };
@@ -131,8 +122,6 @@ export function createLiveHub(): LiveHub {
 
   function armGrace(ch: Channel, fixtureId: string) {
     clearGrace(ch);
-    // LM-7: no grace pause on clockless leagues.
-    if (!ch.config.turnClockEnabled) return;
     ch.graceTimer = setTimeout(() => {
       ch.graceTimer = null;
       // Fire the match-level pause handler ONLY if the active coach is still
@@ -143,42 +132,50 @@ export function createLiveHub(): LiveHub {
     }, GRACE_MS);
   }
 
-  function tick(ch: Channel, fixtureId: string) {
+  function tick(ch: Channel) {
     const state = ch.tickState;
-    if (!state || state.paused) return;
-    if (state.activeSide === "home") state.homeClock = Math.max(state.homeClock - 1, 0);
-    else state.awayClock = Math.max(state.awayClock - 1, 0);
+    if (!state) return;
     if (ch.subs.size > 0) {
+      // Derive the active side's accumulated time at this instant (LM-5). No
+      // state mutation, no DB write — the ticker is purely informational.
+      const clock = deriveLiveClock(
+        {
+          status: state.status,
+          activeSide: state.activeSide,
+          paused: state.paused,
+          clockStartedAt: state.clockStartedAt,
+          homeTurnMs: state.homeTurnMs,
+          awayTurnMs: state.awayTurnMs,
+        },
+        Date.now(),
+      );
       const payload = {
         kind: "tick",
         seq: state.seq,
+        status: state.status,
         activeSide: state.activeSide,
-        homeClock: state.homeClock,
-        awayClock: state.awayClock,
+        homeConsented: state.homeConsented,
+        awayConsented: state.awayConsented,
+        startedAt: state.startedAt,
+        homeTurnMs: clock.homeTurnMs,
+        awayTurnMs: clock.awayTurnMs,
+        elapsed: clock.elapsed,
+        paused: clock.paused,
+        homeScore: state.homeScore,
+        awayScore: state.awayScore,
+        finishedAt: state.finishedAt,
       };
       for (const sub of ch.subs) sub.notify(payload);
-    }
-    // D4: the active clock reaching 0 auto-ends the turn. Fire the store-facing
-    // handler once and STOP ticking — the caller persists the auto-end and
-    // restarts the ticker with the reset clock snapshot.
-    const activeClock = state.activeSide === "home" ? state.homeClock : state.awayClock;
-    if (activeClock <= 0) {
-      ch.onClockExpired?.(fixtureId);
-      if (ch.tickTimer) {
-        clearInterval(ch.tickTimer);
-        ch.tickTimer = null;
-      }
     }
   }
 
   return {
-    subscribe({ fixtureId, subscriber, coachId, activeCoachId, channel: config, onGraceExpired }) {
+    subscribe({ fixtureId, subscriber, coachId, activeCoachId, onGraceExpired }) {
       const ch = channel(fixtureId);
       const entry = subscriber as SubscriberEntry;
       entry.coachId = coachId;
       ch.subs.add(entry);
       ch.activeCoachId = activeCoachId ?? ch.activeCoachId;
-      ch.config = config;
       // The (single) fixture-level grace handler is (re)set by this subscribe.
       if (onGraceExpired) ch.onGraceExpired = onGraceExpired;
 
@@ -207,13 +204,11 @@ export function createLiveHub(): LiveHub {
       for (const sub of ch.subs) sub.notify(payload);
     },
 
-    startTicking(fixtureId, snapshot, onClockExpired) {
+    startTicking(fixtureId, snapshot) {
       const ch = channel(fixtureId);
-      if (!ch.config.turnClockEnabled) return;
       if (ch.tickTimer) return;
       ch.tickState = snapshot;
-      if (onClockExpired) ch.onClockExpired = onClockExpired;
-      ch.tickTimer = setInterval(() => tick(ch, fixtureId), TICK_MS);
+      ch.tickTimer = setInterval(() => tick(ch), TICK_MS);
     },
 
     stopTicking(fixtureId) {

@@ -1,22 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
-  startMatch,
+  consentStart,
+  retractConsent,
+  beginMatch,
   applyEndTurn,
   applyTD,
   applyEndMatch,
-  autoEndTurnOnClockZero,
   toLiveViewState,
-  canStart,
+  deriveLiveClock,
   type LiveMatchState,
 } from "./liveMatch";
 
 /**
- * Pure-transition tests for the live-match state machine (LM-3/LM-4, D4/D5/D11).
- * `lib/result.test.ts` precedent — zero mocks, deterministic `now` values.
+ * Pure-transition tests for the live-match state machine with the two-phase
+ * consent→ready→begin lifecycle (LM-11/LM-3) and the unified server-owned clock
+ * (LM-5). `lib/result.test.ts` precedent: zero mocks, deterministic `now`.
  */
-
-const leagueEnabled = () => ({ turnClockEnabled: true, turnClockSeconds: 240 as const });
-const leagueDisabled = () => ({ turnClockEnabled: false, turnClockSeconds: 240 as const });
 
 function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
   return {
@@ -25,62 +24,147 @@ function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     half: 1,
     turnNumber: 1,
     activeSide: "home",
-    homeClock: 240,
-    awayClock: 240,
+    homeConsented: true,
+    awayConsented: true,
+    startedAt: 1000,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
     homeScore: 0,
     awayScore: 0,
     paused: false,
     clockStartedAt: 1000,
     finishedAt: null,
-    league: leagueEnabled(),
     events: [],
     ...overrides,
   };
 }
 
-const scheduledFixture = { scheduled: true, played: false, result: false };
-const playedFixture = { scheduled: true, played: true, result: false };
-const pendingFixture = { scheduled: false, played: false, result: false };
-const resultedFixture = { scheduled: true, played: true, result: true };
+function pending(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
+  return {
+    seq: 0,
+    status: "pending",
+    half: 1,
+    turnNumber: 1,
+    activeSide: "home",
+    homeConsented: false,
+    awayConsented: false,
+    startedAt: null,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    homeScore: 0,
+    awayScore: 0,
+    paused: false,
+    clockStartedAt: null,
+    finishedAt: null,
+    events: [],
+    ...overrides,
+  };
+}
 
-describe("startMatch / canStart — lifecycle guard (LM-3)", () => {
-  it("starts a match only from a scheduled fixture with no result", () => {
-    const started = startMatch(state({ status: "pending" }), scheduledFixture);
-    expect(started.status).toBe("live");
-    expect(started.half).toBe(1);
-    expect(started.turnNumber).toBe(1);
-    expect(started.activeSide).toBe("home");
+describe("consentStart — first consent creates a pending row (LM-11/LM-3)", () => {
+  it("records the home consent and stays pending awaiting the away coach", () => {
+    const next = consentStart(pending(), { side: "home" });
+    expect(next.status).toBe("pending");
+    expect(next.homeConsented).toBe(true);
+    expect(next.awayConsented).toBe(false);
+    // No clock runs before the first turn (LM-5).
+    expect(next.startedAt).toBeNull();
+    expect(next.clockStartedAt).toBeNull();
   });
 
-  it("rejects starting from a pending (unscheduled) fixture", () => {
-    expect(() => startMatch(state({ status: "pending" }), pendingFixture)).toThrow("start");
+  it("rejects consent on a played/result-loaded fixture (LM-3 replay rejected)", () => {
+    expect(() => consentStart(pending({ status: "finished" }), { side: "home" })).toThrow("consent");
   });
 
-  it("rejects starting a played fixture or one carrying a result (409 semantics)", () => {
-    expect(() => startMatch(state({ status: "pending" }), playedFixture)).toThrow("start");
-    expect(() => startMatch(state({ status: "pending" }), resultedFixture)).toThrow("start");
+  it("rejects consent on an already-live match (consent only pre-live)", () => {
+    expect(() => consentStart(state(), { side: "away" })).toThrow("consent");
   });
 
-  it("rejects starting an already-live or finished match", () => {
-    expect(canStart("live", scheduledFixture, leagueEnabled())).toBe(false);
-    expect(canStart("finished", scheduledFixture, leagueEnabled())).toBe(false);
+  it("is a no-op when the same side already consented (idempotent)", () => {
+    const base = pending({ homeConsented: true });
+    const next = consentStart(base, { side: "home" });
+    expect(next).toBe(base);
+  });
+});
+
+describe("consentStart — second consent reaches ready (LM-11)", () => {
+  it("becomes ready when both coaches have consented", () => {
+    const next = consentStart(pending({ homeConsented: true }), { side: "away" });
+    expect(next.status).toBe("ready");
+    expect(next.homeConsented).toBe(true);
+    expect(next.awayConsented).toBe(true);
+  });
+
+  it("waits indefinitely with no clock while exactly one coach consented", () => {
+    const next = consentStart(pending(), { side: "home" });
+    expect(next.status).toBe("pending");
+    expect(next.startedAt).toBeNull();
+  });
+});
+
+describe("retractConsent — clears the boolean and returns to pending (LM-11)", () => {
+  it("clears a consented side's boolean and drops back to pending", () => {
+    const next = retractConsent(pending({ homeConsented: true, status: "ready" }), { side: "home" });
+    expect(next.homeConsented).toBe(false);
+    expect(next.status).toBe("pending");
+  });
+
+  it("is a no-op when the side never consented", () => {
+    const base = pending();
+    const next = retractConsent(base, { side: "home" });
+    expect(next).toBe(base);
+  });
+});
+
+describe("beginMatch — ready→live ONLY via the first turn (LM-3/LM-11)", () => {
+  it("requires ready + both consents before going live", () => {
+    expect(() => beginMatch(pending(), 1000)).toThrow("ready");
+    expect(() => beginMatch(pending({ homeConsented: true }), 1000)).toThrow("ready");
+  });
+
+  it("starts the first turn: live, half 1 turn 1 home active, kickoff anchor + segment start set", () => {
+    const ready = pending({ homeConsented: true, awayConsented: true, status: "ready" });
+    const next = beginMatch(ready, 1000);
+    expect(next.status).toBe("live");
+    expect(next.half).toBe(1);
+    expect(next.turnNumber).toBe(1);
+    expect(next.activeSide).toBe("home");
+    expect(next.startedAt).toBe(1000);
+    expect(next.clockStartedAt).toBe(1000);
+    // The unified clock starts at the first-turn kickoff (LM-5).
+    expect(next.homeTurnMs).toBe(0);
+    expect(next.awayTurnMs).toBe(0);
+  });
+
+  it("appends a start event and a turnStart('home') event", () => {
+    const ready = pending({ homeConsented: true, awayConsented: true, status: "ready" });
+    const next = beginMatch(ready, 1000);
+    const kinds = next.events.map((e) => e.kind);
+    expect(kinds).toContain("start");
+    expect(kinds).toContain("turnStart");
+    const turnStart = next.events.find((e) => e.kind === "turnStart");
+    expect(turnStart?.side).toBe("home");
+  });
+
+  it("rejects a begin on an already-live match", () => {
+    expect(() => beginMatch(state(), 1000)).toThrow("begin");
   });
 });
 
 describe("applyEndTurn — alternation + turn cap + half flip (LM-4)", () => {
   it("flips the active side and increments the turn", () => {
-    const next = applyEndTurn(state(), { side: "home" });
+    const next = applyEndTurn(state(), { side: "home" }, 1100);
     expect(next.activeSide).toBe("away");
     expect(next.turnNumber).toBe(2);
   });
 
   it("rejects a double action (out-of-turn end)", () => {
-    expect(() => applyEndTurn(state(), { side: "away" })).toThrow("out");
+    expect(() => applyEndTurn(state(), { side: "away" }, 1100)).toThrow("out");
   });
 
   it("flips to half 2 and away starts when half-1 turn 8 completes", () => {
     const atHalf1Turn8 = state({ activeSide: "home", half: 1, turnNumber: 8 });
-    const next = applyEndTurn(atHalf1Turn8, { side: "home" });
+    const next = applyEndTurn(atHalf1Turn8, { side: "home" }, 1100);
     expect(next.half).toBe(2);
     expect(next.turnNumber).toBe(1);
     expect(next.activeSide).toBe("away");
@@ -88,7 +172,7 @@ describe("applyEndTurn — alternation + turn cap + half flip (LM-4)", () => {
 
   it("auto-finishes the match when half-2 turn 8 completes", () => {
     const atHalf2Turn8 = state({ activeSide: "away", half: 2, turnNumber: 8 });
-    const next = applyEndTurn(atHalf2Turn8, { side: "away" });
+    const next = applyEndTurn(atHalf2Turn8, { side: "away" }, 1100);
     expect(next.status).toBe("finished");
     expect(next.finishedAt).not.toBeNull();
   });
@@ -96,99 +180,90 @@ describe("applyEndTurn — alternation + turn cap + half flip (LM-4)", () => {
 
 describe("applyTD — records event, scores, and auto-ends the turn (D11)", () => {
   it("increments the scoring side's score and auto-ends the turn", () => {
-    const next = applyTD(state(), { side: "home", playerRosterId: "p-1" });
+    const next = applyTD(state(), { side: "home", playerRosterId: "p-1" }, 1100);
     expect(next.homeScore).toBe(1);
     expect(next.awayScore).toBe(0);
     expect(next.activeSide).toBe("away");
-    // A turn event follows the TD (auto turn end per D11).
     expect(next.events.some((e) => e.kind === "td")).toBe(true);
   });
 
   it("finishes the match immediately when a TD is scored in half-2 turn 8 (D5)", () => {
     const atHalf2Turn8 = state({ half: 2, turnNumber: 8, activeSide: "away" });
-    const next = applyTD(atHalf2Turn8, { side: "away", playerRosterId: "p-9" });
+    const next = applyTD(atHalf2Turn8, { side: "away", playerRosterId: "p-9" }, 1100);
     expect(next.awayScore).toBe(1);
     expect(next.status).toBe("finished");
   });
 
   it("rejects an out-of-turn TD", () => {
-    expect(() => applyTD(state(), { side: "away", playerRosterId: "p-2" })).toThrow("out");
+    expect(() => applyTD(state(), { side: "away", playerRosterId: "p-2" }, 1100)).toThrow("out");
   });
 });
 
-describe("end-of-match + clocks behavior", () => {
+describe("end-of-match", () => {
   it("applyEndMatch finishes the match with the current scoreboard", () => {
-    const next = applyEndMatch(state({ homeScore: 1, awayScore: 0 }));
+    const next = applyEndMatch(state({ homeScore: 1, awayScore: 0 }), 1100);
     expect(next.status).toBe("finished");
     expect(next.finishedAt).not.toBeNull();
-  });
-
-  it("toLiveViewState derives clockSeconds from state, not a constant (LM-5)", () => {
-    // Home is active at clockStartedAt=1000. At now=1010, 10s elapsed → 230 left.
-    const view = toLiveViewState(state({ homeClock: 240, awayClock: 240, clockStartedAt: 1000 }), 1010);
-    expect(view.turnClockEnabled).toBe(true);
-    expect(view.homeClock).toBe(230);
-    expect(view.awayClock).toBe(240); // non-active clock never changes
-    expect(view.paused).toBe(false);
-  });
-
-  it("leaves clock fields inert/null when the league disables clocks (LM-5)", () => {
-    const view = toLiveViewState(
-      state({ league: leagueDisabled(), homeClock: 120, awayClock: 120 }),
-      1010,
-    );
-    expect(view.turnClockEnabled).toBe(false);
-    expect(view.homeClock).toBeNull();
-    expect(view.awayClock).toBeNull();
-    expect(view.paused).toBeNull();
   });
 });
 
-describe("autoEndTurnOnClockZero — D4 clock expiry auto-ends the turn", () => {
-  it("auto-ends the turn when the ACTIVE clock reaches 0 (clocks enabled)", () => {
-    const next = autoEndTurnOnClockZero(state({ activeSide: "home", homeClock: 0, awayClock: 240 }), 2000);
-    // The turn flips to away (turn 2), exactly like an endTurn.
-    expect(next.activeSide).toBe("away");
-    expect(next.turnNumber).toBe(2);
-    // The new active side's clock resets to the league duration.
-    expect(next.awayClock).toBe(240);
-    expect(next.homeClock).toBe(240);
-    // A turn event records the auto-end.
-    expect(next.events.some((e) => e.kind === "turn")).toBe(true);
+describe("unified clock — deriveLiveClock recomputes server-side (LM-5)", () => {
+  it("derives inFlight for the active side only since the segment start", () => {
+    const clock = deriveLiveClock(
+      { status: "live", activeSide: "home", paused: false, clockStartedAt: 1000, homeTurnMs: 5000, awayTurnMs: 3000 },
+      1100,
+    );
+    expect(clock.homeTurnMs).toBe(5100); // 5000 + 100ms in-flight
+    expect(clock.awayTurnMs).toBe(3000); // non-active untouched
   });
 
-  it("is a no-op when the ACTIVE clock is NOT 0", () => {
-    const s = state({ activeSide: "home", homeClock: 120, awayClock: 240 });
-    const next = autoEndTurnOnClockZero(s, 2000);
-    // No state change / no event when time remains.
-    expect(next).toBe(s);
-    expect(next.events).toHaveLength(0);
+  it("excludes pause time (no in-flight while paused); recomputes from persisted values", () => {
+    const clock = deriveLiveClock(
+      { status: "live", activeSide: "home", paused: true, clockStartedAt: 1000, homeTurnMs: 5000, awayTurnMs: 3000 },
+      1200,
+    );
+    expect(clock.paused).toBe(true);
+    expect(clock.homeTurnMs).toBe(5000);
+    expect(clock.awayTurnMs).toBe(3000);
   });
 
-  it("is a no-op when clocks are disabled (LM-5 clockless leagues never auto-end)", () => {
-    const s = state({ league: leagueDisabled(), activeSide: "home", homeClock: 0, awayClock: 0 });
-    const next = autoEndTurnOnClockZero(s, 2000);
-    expect(next).toBe(s);
+  it("computes elapsed as the sum of both accumulated sides", () => {
+    const clock = deriveLiveClock(
+      { status: "live", activeSide: "away", paused: false, clockStartedAt: 1000, homeTurnMs: 5000, awayTurnMs: 3000 },
+      1100,
+    );
+    expect(clock.homeTurnMs).toBe(5000);
+    expect(clock.awayTurnMs).toBe(3100);
+    expect(clock.elapsed).toBe(8100);
+  });
+});
+
+describe("toLiveViewState — unified-clock DTO (LM-5, D19)", () => {
+  it("exposes per-side accumulators, elapsed, consents, startedAt — no per-turn clock fields", () => {
+    const view = toLiveViewState(
+      state({ status: "pending", activeSide: "home", homeConsented: true, awayConsented: false, startedAt: null, paused: false, clockStartedAt: null }),
+      Date.now(),
+    );
+    expect(view.homeTurnMs).toBe(0);
+    expect(view.awayTurnMs).toBe(0);
+    expect(view.elapsed).toBe(0);
+    expect(view.homeConsented).toBe(true);
+    expect(view.awayConsented).toBe(false);
+    expect(view.status).toBe("pending");
+    // The deprecated per-turn fields are gone from the DTO.
+    expect("turnClockEnabled" in view).toBe(false);
+    expect("homeClock" in view).toBe(false);
+    expect("awayClock" in view).toBe(false);
   });
 
-  it("respects the half flip at half-1 turn 8 (clock expiry flips to half 2, away)", () => {
-    const s = state({ activeSide: "home", half: 1, turnNumber: 8, homeClock: 0, awayClock: 120 });
-    const next = autoEndTurnOnClockZero(s, 2000);
-    expect(next.half).toBe(2);
-    expect(next.turnNumber).toBe(1);
-    expect(next.activeSide).toBe("away");
-    expect(next.events.some((e) => e.kind === "endHalf")).toBe(true);
-  });
-
-  it("finishes the match when half-2 turn 8 times out", () => {
-    const s = state({ activeSide: "away", half: 2, turnNumber: 8, homeClock: 120, awayClock: 0 });
-    const next = autoEndTurnOnClockZero(s, 2000);
-    expect(next.status).toBe("finished");
-    expect(next.finishedAt).not.toBeNull();
-  });
-
-  it("is a no-op when the match is not live (finished)", () => {
-    const s = state({ status: "finished", activeSide: "home", homeClock: 0, awayClock: 0 });
-    expect(autoEndTurnOnClockZero(s, 2000)).toBe(s);
+  it("propagates a per-viewer viewerSide and derived accumulators at time of read", () => {
+    const view = toLiveViewState(
+      state({ status: "live", activeSide: "home", homeConsented: true, awayConsented: true, startedAt: 1000, clockStartedAt: 1000, homeTurnMs: 5000, awayTurnMs: 3000, paused: false }),
+      1100,
+      { viewerSide: "home" },
+    );
+    expect(view.viewerSide).toBe("home");
+    expect(view.homeTurnMs).toBe(5100);
+    expect(view.awayTurnMs).toBe(3000);
   });
 });

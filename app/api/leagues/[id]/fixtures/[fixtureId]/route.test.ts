@@ -161,8 +161,8 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.awayTeam).not.toHaveProperty("awayTeam");
   });
 
-  it("serializes an active LiveMatch into the live DTO (state + chronological events)", async () => {
-    authMock.mockResolvedValue({ user: { id: "user-1" } });
+  it("serializes an active LiveMatch into the unified-clock live DTO + viewer's side (D19)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } }); // home team owner → viewerSide "home"
     prismaMock.fixture.findFirst.mockResolvedValue(
       buildFixture({
         homeScore: null,
@@ -183,8 +183,11 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
           half: 1,
           turnNumber: 3,
           activeSide: "home",
-          homeClock: 200,
-          awayClock: 240,
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 5000,
+          awayTurnMs: 3000,
           homeScore: 1,
           awayScore: 0,
           seq: 6,
@@ -208,9 +211,18 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.live.half).toBe(1);
     expect(body.live.turnNumber).toBe(3);
     expect(body.live.activeSide).toBe("home");
-    expect(body.live.homeClock).toBe(200);
-    expect(body.live.homeScore).toBe(1);
-    expect(body.live.turnClockEnabled).toBe(true);
+    // Unified-clock DTO: accumulators + consents + startedAt + per-viewer side.
+    expect(body.live.homeConsented).toBe(true);
+    expect(body.live.awayConsented).toBe(true);
+    expect(body.live.startedAt).toBe(new Date("2026-03-01T20:00:00").getTime());
+    expect(body.live.homeTurnMs).toBeGreaterThanOrEqual(5000);
+    expect(body.live.awayTurnMs).toBe(3000);
+    // D19: the home team owner gets viewerSide "home".
+    expect(body.live.viewerSide).toBe("home");
+    // The deprecated per-turn clock fields are gone from the DTO (D15).
+    expect("turnClockEnabled" in body.live).toBe(false);
+    expect("homeClock" in body.live).toBe(false);
+    expect("awayClock" in body.live).toBe(false);
     // The chronological event feed is serialized for the timeline (LM-10).
     expect(body.live.events).toHaveLength(2);
     expect(body.live.events[0].seq).toBe(5);
@@ -218,6 +230,64 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.live.events[1].seq).toBe(6);
     expect(body.live.events[1].kind).toBe("td");
     expect(body.live.events[1].side).toBe("home");
+  });
+
+  it("has field-set parity between serializeLive and toLiveViewState for the same state", async () => {
+    const { serializeLive } = await import("./route");
+    const { toLiveViewState } = await import("@/lib/liveMatch");
+    const row = {
+      id: "lm-1",
+      fixtureId: "f1",
+      status: "live" as const,
+      half: 1,
+      turnNumber: 3,
+      activeSide: "home" as const,
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date("2026-03-01T20:00:00"),
+      homeTurnMs: 5000,
+      awayTurnMs: 3000,
+      homeScore: 1,
+      awayScore: 0,
+      seq: 6,
+      paused: false,
+      clockStartedAt: new Date("2026-03-01T20:00:10"),
+      finishedAt: null,
+      events: [],
+    };
+    const now = new Date("2026-03-01T20:00:15").getTime();
+    const liveDto = serializeLive(row as never, "home", now);
+    const stateView = toLiveViewState(
+      {
+        seq: 6,
+        status: "live" as const,
+        half: 1,
+        turnNumber: 3,
+        activeSide: "home" as const,
+        homeConsented: true,
+        awayConsented: true,
+        startedAt: new Date("2026-03-01T20:00:00").getTime(),
+        homeTurnMs: 5000,
+        awayTurnMs: 3000,
+        homeScore: 1,
+        awayScore: 0,
+        paused: false,
+        clockStartedAt: new Date("2026-03-01T20:00:10").getTime(),
+        finishedAt: null,
+        events: [],
+      },
+      now,
+      { viewerSide: "home" },
+    );
+    // Both serializers derive the same unified-clock field set (no drift).
+    expect(liveDto.homeTurnMs).toBe(stateView.homeTurnMs);
+    expect(liveDto.awayTurnMs).toBe(stateView.awayTurnMs);
+    expect(liveDto.elapsed).toBe(stateView.elapsed);
+    expect(liveDto.homeConsented).toBe(stateView.homeConsented);
+    expect(liveDto.awayConsented).toBe(stateView.awayConsented);
+    expect(liveDto.startedAt).toBe(stateView.startedAt);
+    expect(liveDto.viewerSide).toBe(stateView.viewerSide);
+    expect(liveDto.paused).toBe(stateView.paused);
   });
 
   it("returns 200 for a member-team owner (not league owner)", async () => {

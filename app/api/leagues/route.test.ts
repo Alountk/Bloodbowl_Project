@@ -259,7 +259,7 @@ describe("POST /api/leagues", () => {
     expect(prismaMock.league.create).not.toHaveBeenCalled();
   });
 
-  it("defaults the turn-clock option to enabled at 240 seconds when omitted", async () => {
+  it("creates a league and lets the deprecated clock columns persist at DB defaults (D15)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.create.mockResolvedValue({
       id: "league-1",
@@ -280,19 +280,24 @@ describe("POST /api/leagues", () => {
     );
 
     expect(res.status).toBe(201);
-    // The omitted option persists the League defaults (enabled @ 240), so the
-    // create call passes through the DB defaults and the response carries them.
+    // The route never reads or writes the deprecated fields — the create call
+    // carries no clock fields, so the DB applies its schema defaults.
     expect(prismaMock.league.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ ownerId: "user-1", name: "Coast League" }),
+        data: expect.objectContaining({
+          ownerId: "user-1",
+          name: "Coast League",
+        }),
       }),
     );
+    expect(prismaMock.league.create.mock.calls[0][0].data).not.toHaveProperty("turnClockEnabled");
+    expect(prismaMock.league.create.mock.calls[0][0].data).not.toHaveProperty("turnClockSeconds");
     const body = await res.json();
     expect(body.turnClockEnabled).toBe(true);
     expect(body.turnClockSeconds).toBe(240);
   });
 
-  it("persists an explicit enabled option at 240 seconds", async () => {
+  it("ignores a legacy turn-clock payload (not validated, not persisted) — D15 ignore-not-persisted", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.create.mockResolvedValue({
       id: "league-2",
@@ -313,18 +318,23 @@ describe("POST /api/leagues", () => {
     );
 
     expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.turnClockEnabled).toBe(true);
-    expect(body.turnClockSeconds).toBe(240);
-    expect(prismaMock.league.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ turnClockEnabled: true, turnClockSeconds: 240 }),
-      }),
-    );
+    // The legacy fields are carried in the body but IGNORED on the way to the DB.
+    expect(prismaMock.league.create.mock.calls[0][0].data).not.toHaveProperty("turnClockEnabled");
+    expect(prismaMock.league.create.mock.calls[0][0].data).not.toHaveProperty("turnClockSeconds");
   });
 
-  it("returns 400 and creates no league for an invalid clock duration", async () => {
+  it("does NOT reject an out-of-range legacy clock duration and does not persist it (D15)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.create.mockResolvedValue({
+      id: "league-3",
+      name: "Invalid Clock",
+      description: null,
+      ownerId: "user-1",
+      turnClockEnabled: true,
+      turnClockSeconds: 240,
+      createdAt: new Date().toISOString(),
+    });
+
     const res = await POST(
       new Request("http://localhost:3000/api/leagues", {
         method: "POST",
@@ -332,27 +342,17 @@ describe("POST /api/leagues", () => {
         headers: { "content-type": "application/json" },
       }),
     );
-    expect(res.status).toBe(400);
-    expect(prismaMock.league.create).not.toHaveBeenCalled();
+
+    // Legacy clock fields no longer trigger a 400 — they are ignored entirely.
+    expect(res.status).toBe(201);
+    expect(prismaMock.league.create).toHaveBeenCalled();
+    expect(prismaMock.league.create.mock.calls[0][0].data).not.toHaveProperty("turnClockSeconds");
   });
 
-  it("rejects a 120|240|360-invalid duration even when the explicit value is not 3600", async () => {
-    authMock.mockResolvedValue({ user: { id: "user-1" } });
-    const res = await POST(
-      new Request("http://localhost:3000/api/leagues", {
-        method: "POST",
-        body: JSON.stringify({ name: "Bad Duration", turnClockEnabled: true, turnClockSeconds: 90 }),
-        headers: { "content-type": "application/json" },
-      }),
-    );
-    expect(res.status).toBe(400);
-    expect(prismaMock.league.create).not.toHaveBeenCalled();
-  });
-
-  it("only ever CREATES leagues — no update path exists for the immutable option", async () => {
+  it("no update path exists for the deprecated clock fields (immutable by 401/or lack thereof)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.create.mockResolvedValue({
-      id: "league-3",
+      id: "league-4",
       name: "Immutable",
       description: null,
       ownerId: "user-1",
@@ -370,12 +370,7 @@ describe("POST /api/leagues", () => {
     );
     expect(res.status).toBe(201);
     expect(prismaMock.league.update).not.toHaveBeenCalled();
-    // The create call carries the chosen values straight through; POST never
-    // exposes a league-update path, so the option is immutable by construction.
-    expect(prismaMock.league.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ turnClockEnabled: false, turnClockSeconds: 120 }),
-      }),
-    );
+    // POST still only ever creates; the deprecated option is never written.
+    expect(prismaMock.league.create.mock.calls[0][0].data).not.toHaveProperty("turnClockEnabled");
   });
 });
