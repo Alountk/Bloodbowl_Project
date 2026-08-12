@@ -44,6 +44,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Migración localStorage duplicaba equipos (StrictMode) | Flag de módulo + dedupe por nombre |
 | Equipo archivado se podía inscribir en una liga | Guard 409 en assign + tests de regresión |
 | Dueño de liga no podía proponer/aceptar fechas si era participante; Jornadas siempre abría en la Jornada 1 aunque estuviera completa; errores de propuesta/aceptación silenciosos | Regla de participante en negociación + jornada activa por defecto + alertas de error (#68) |
+| Miembros de una liga STARTED no veían la liga en su lista (no podían aceptar el VS) | Visibilidad de miembro en GET /api/leagues + flag `isMember` y partición en "Mis Ligas" (#69) |
 
 ## Pendiente / Roadmap futuro
 
