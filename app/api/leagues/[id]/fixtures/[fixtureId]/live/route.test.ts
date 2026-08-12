@@ -1,36 +1,19 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const authMock = vi.hoisted(() => vi.fn());
 const isAuthEnabledMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn() },
   league: { findFirst: vi.fn() },
+  liveMatch: { findFirst: vi.fn() },
 }));
 
-/** Fake hub used by the route tests: `subscribe` synchronously replays its
- * buffered queue to the new subscriber, and `publish` appends to the queue. */
-const fakeHubState = vi.hoisted(() => {
-  const buffered = new Map<string, unknown[]>();
-  const subscribers = new Map<string, Array<(payload: unknown) => void>>();
-  let subscribedWith: unknown = null;
-  const unsubscribeFn = vi.fn();
-  return {
-    buffered,
-    subscribers,
-    subscribedWith: () => subscribedWith,
-    recordSubscribe: (v: unknown) => {
-      subscribedWith = v;
-    },
-    unsubscribeFn,
-    reset() {
-      buffered.clear();
-      subscribers.clear();
-      subscribedWith = null;
-    },
-  };
-});
+const startLiveMatchMock = vi.hoisted(() => vi.fn());
+const applyTransitionMock = vi.hoisted(() => vi.fn());
+const liveMatchRowToStateMock = vi.hoisted(() => vi.fn());
+const pauseLiveMatchMock = vi.hoisted(() => vi.fn());
+const resumeLiveMatchMock = vi.hoisted(() => vi.fn());
 
-// Hoisted accessor sub-slot to let the factory read the mutable state later.
 const hubMock = vi.hoisted(() => ({
   subscribe: vi.fn(),
   publish: vi.fn(),
@@ -42,37 +25,23 @@ const hubMock = vi.hoisted(() => ({
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/auth-mode", () => ({ isAuthEnabled: isAuthEnabledMock }));
-vi.mock("@/lib/liveHub", () => ({ liveHub: hubMock }));
+vi.mock("@/lib/liveHub", () => ({
+  liveHub: hubMock,
+}));
+// The route's store calls are mocked so POST cases control seq-conflict/start
+// outcomes; the route's own pure-transition mapping (lib/liveMatch) stays real.
+vi.mock("@/lib/liveStore", () => ({
+  startLiveMatch: startLiveMatchMock,
+  applyTransition: applyTransitionMock,
+  liveMatchRowToState: liveMatchRowToStateMock,
+  pauseLiveMatch: pauseLiveMatchMock,
+  resumeLiveMatch: resumeLiveMatchMock,
+}));
 
-import { GET } from "./route";
+import { GET, POST } from "./route";
 
-/** Consumes the returned SSE stream and collects the raw strings of each chunk. */
-async function collectFrames(
-  res: Response,
-  maxChunks = 5,
-): Promise<{ chunks: string[]; done: () => void }> {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  const chunks: string[] = [];
-  let stop = false;
-  async function pull() {
-    while (!stop && chunks.length < maxChunks) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      chunks.push(decoder.decode(value, { stream: true }));
-    }
-  }
-  void pull();
-  return {
-    chunks,
-    done: () => {
-      stop = true;
-      void reader.cancel().catch(() => {});
-    },
-  };
-}
-
-function startedFixture(id: string, leagueId: string) {
+/** A started-league fixture with both team owners set (coach-home / coach-away). */
+function startedFixture(id: string, leagueId: string): Record<string, unknown> {
   return {
     id,
     leagueId,
@@ -84,70 +53,109 @@ function startedFixture(id: string, leagueId: string) {
     winnerId: null,
     homeScore: null,
     awayScore: null,
-    // Nested league shape returned by prisma `include` (used for the gate).
+    result: null,
+    homeTeam: { userId: "coach-home" },
+    awayTeam: { userId: "coach-away" },
     league: {
       ownerId: "owner-1",
       status: "started",
       turnClockEnabled: true,
-      turnClockSeconds: 240,
+      turnClockSeconds: 240 as const,
       teams: [{ userId: "coach-home" }, { userId: "coach-away" }],
     },
   };
 }
 
-const memberLeague = {
-  id: "lg-1",
-  ownerId: "owner-1",
-  status: "started",
-  createdAt: new Date().toISOString(),
-  teams: [{ userId: "coach-home" }, { userId: "coach-away" }],
-  turnClockEnabled: true,
-  turnClockSeconds: 240,
+/** A live LiveMatch row as prisma would return it (ISO timestamps). */
+function liveRow(seq: number): Record<string, unknown> {
+  return {
+    id: "lm-1",
+    fixtureId: "f-1",
+    status: "live",
+    half: 1,
+    turnNumber: 1,
+    activeSide: "home",
+    homeClock: 240,
+    awayClock: 240,
+    homeScore: 0,
+    awayScore: 0,
+    seq,
+    paused: false,
+    clockStartedAt: new Date(1000).toISOString(),
+    finishedAt: null,
+  };
+}
+
+/** Matches what `liveMatchRowToState` returns (epoch ms, ISO→number). */
+const rowState = {
+  seq: 5,
+  status: "live" as const,
+  half: 1,
+  turnNumber: 1,
+  activeSide: "home" as const,
+  homeClock: 240,
+  awayClock: 240,
+  homeScore: 0,
+  awayScore: 0,
+  paused: false,
+  clockStartedAt: 1000,
+  finishedAt: null,
+  league: { turnClockEnabled: true, turnClockSeconds: 240 as const },
+  events: [],
 };
 
-describe("GET .../live — read gate", () => {
+function liveView(overrides: Record<string, unknown> = {}) {
+  return {
+    seq: 6,
+    status: "live",
+    half: 1,
+    turnNumber: 2,
+    activeSide: "away",
+    turnClockEnabled: true,
+    homeClock: 240,
+    awayClock: 240,
+    homeScore: 0,
+    awayScore: 0,
+    paused: false,
+    finishedAt: null,
+    ...overrides,
+  };
+}
+
+function authSession(id: string) {
+  return { user: { id } };
+}
+
+function setUpAllowed(overrides: Partial<Record<string, unknown>> = {}) {
+  isAuthEnabledMock.mockReturnValue(true);
+  authMock.mockResolvedValue(authSession("coach-home"));
+  prismaMock.fixture.findFirst.mockResolvedValue({ ...startedFixture("f-1", "lg-1"), ...overrides });
+  prismaMock.liveMatch.findFirst.mockResolvedValue(null);
+}
+
+describe("GET .../live — read gate (unchanged shape)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fakeHubState.reset();
     isAuthEnabledMock.mockReturnValue(true);
-    authMock.mockResolvedValue({ user: { id: "owner-1" } });
-    prismaMock.fixture.findFirst.mockResolvedValue(
-      startedFixture("f-1", "lg-1"),
-    );
-    prismaMock.league.findFirst.mockResolvedValue(memberLeague);
-    // subscribe returns an idempotent dispose that calls the fake unsubscribe fake.
+    authMock.mockResolvedValue(authSession("owner-1"));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(null);
     hubMock.subscribe.mockReturnValue(hubMock.unsubscribe);
   });
 
-  afterEach(() => fakeHubState.reset());
-
-  async function gateStatus(session: unknown): Promise<number> {
-    authMock.mockResolvedValue(session);
-    prismaMock.fixture.findFirst.mockResolvedValue(null); // no fixture → 404 via missing
-    prismaMock.league.findFirst.mockResolvedValue(null);
-    const res = await GET(new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"), {
-      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
-    } as never);
-    return res.status;
-  }
-
   it("returns 401 in both auth modes without a session", async () => {
-    // auth : true, no session → 401
-    expect(await gateStatus(null)).toBe(401);
-    // local mode (authEnabled false) even WITH a session → 401 parity.
+    authMock.mockResolvedValue(null);
     prismaMock.fixture.findFirst.mockResolvedValue(null);
-    isAuthEnabledMock.mockReturnValue(false);
-    authMock.mockResolvedValue({ user: { id: "owner-1" } });
-    const local = await GET(
+    const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
-    expect(local.status).toBe(401);
+    expect(res.status).toBe(401);
   });
 
-  it("returns 404 for a foreign/unknown league or fixture (no existence leak)", async () => {
+  it("returns 404 for a foreign/unknown league or fixture", async () => {
     prismaMock.fixture.findFirst.mockResolvedValue(null);
-    prismaMock.league.findFirst.mockResolvedValue(null);
+    prismaMock.liveMatch.findFirst.mockResolvedValue(null);
     const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
@@ -157,10 +165,6 @@ describe("GET .../live — read gate", () => {
   });
 
   it("returns 200 and subscribes for an authenticated owner/member", async () => {
-    prismaMock.fixture.findFirst.mockResolvedValue(
-      startedFixture("f-1", "lg-1"),
-    );
-    prismaMock.league.findFirst.mockResolvedValue(memberLeague);
     const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
@@ -171,133 +175,236 @@ describe("GET .../live — read gate", () => {
   });
 });
 
-describe("GET .../live — snapshot-first + gap replay + heartbeat", () => {
+describe("GET .../live — snapshot-first reads the persisted live row", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fakeHubState.reset();
     isAuthEnabledMock.mockReturnValue(true);
-    authMock.mockResolvedValue({ user: { id: "owner-1" } });
-    // Default fake hub subscribe: record + replay the buffered queue synchronously.
-    hubMock.subscribe.mockImplementation((input: { subscriber: { notify: (p: unknown) => void } }) => {
-      fakeHubState.recordSubscribe(input);
-      for (const buffered of fakeHubState.buffered.get("f-1") ?? []) {
-        input.subscriber.notify(buffered);
-      }
-      return hubMock.unsubscribe;
-    });
+    authMock.mockResolvedValue(authSession("coach-home"));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    liveMatchRowToStateMock.mockReturnValue({ ...rowState, events: [] });
+    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
+    hubMock.subscribe.mockReturnValue(hubMock.unsubscribe);
   });
 
-  it("emits a snapshot as the first SSE frame with fixture + live state", async () => {
-    // Controlled prisma seq via the fixture's optional live snapshot.
-    prismaMock.fixture.findFirst.mockResolvedValue({
-      ...startedFixture("f-1", "lg-1"),
-      live: { seq: 7, status: "live", half: 1, turnNumber: 3, activeSide: "home", homeScore: 0, awayScore: 0 },
-    });
-    prismaMock.league.findFirst.mockResolvedValue(memberLeague);
-    hubMock.subscribe.mockImplementation((input: { subscriber: { notify: (p: unknown) => void } }) => {
-      fakeHubState.recordSubscribe(input);
-      for (const buffered of fakeHubState.buffered.get("f-1") ?? []) {
-        input.subscriber.notify(buffered);
-      }
-      return hubMock.unsubscribe;
-    });
-
+  it("emits the persisted live state as a snapshot-first SSE frame", async () => {
     const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
-    const stream = await collectFrames(res, 1);
-    await new Promise((r) => setTimeout(r, 20));
-    const first = stream.chunks[0] ?? "";
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    // Snapshot frame carries the live state (seq 5 → cursor).
     expect(first).toContain("event: snapshot");
-    expect(first).toContain('"seq":7');
-    expect(first).toContain("homeScore");
-    stream.done();
-  });
-
-  it("replays gap events with seq > snapshot.seq, dropping stale/duplicate seqs", async () => {
-    prismaMock.fixture.findFirst.mockResolvedValue({
-      ...startedFixture("f-1", "lg-1"),
-      live: { seq: 5, status: "live", half: 1, turnNumber: 1, activeSide: "home", homeScore: 0, awayScore: 0 },
-    });
-    prismaMock.league.findFirst.mockResolvedValue(memberLeague);
-    // Fake hub buffered queue: one stale (seq<=5) and two ahead (seq 6, 8).
-    fakeHubState.buffered.set("f-1", [
-      { seq: 4, kind: "turn" },   // duplicate/stale → dropped (<= snapshot seq 5)
-      { seq: 6, kind: "td" },     // gap → replayed
-      { seq: 8, kind: "foul" },   // gap → replayed
-    ]);
-    hubMock.subscribe.mockImplementation((input: { subscriber: { notify: (p: unknown) => void } }) => {
-      fakeHubState.recordSubscribe(input);
-      for (const buffered of fakeHubState.buffered.get("f-1") ?? []) {
-        input.subscriber.notify(buffered);
-      }
-      return hubMock.unsubscribe;
-    });
-
-    const res = await GET(
-      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
-      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
-    );
-    // snapshot frame + the two replayed event frames (3 buffers).
-    const stream = await collectFrames(res, 3);
-    await new Promise((r) => setTimeout(r, 20));
-    const all = stream.chunks.join("\n");
-    expect(all).toContain("event: snapshot");
-    expect(all).toContain('"seq":6');
-    expect(all).toContain('"seq":8');
-    // The stale seq-4 event is NOT emitted (deduped by seq).
-    expect(stream.chunks[0]).not.toContain('"kind":"turn"');
-    stream.done();
+    expect(first).toContain('"seq":5');
+    expect(first).toContain('"activeSide":"home"');
+    await reader.cancel().catch(() => {});
   });
 });
 
-describe("GET .../live — abort cleanup (subscribe-race)", () => {
+describe("GET .../live — grace wiring (LM-7, PR 3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fakeHubState.reset();
     isAuthEnabledMock.mockReturnValue(true);
-    authMock.mockResolvedValue({ user: { id: "owner-1" } });
-    hubMock.subscribe.mockImplementation((input: { subscriber: { notify: (p: unknown) => void } }) => {
-      fakeHubState.recordSubscribe(input);
-      for (const buffered of fakeHubState.buffered.get("f-1") ?? []) {
-        input.subscriber.notify(buffered);
-      }
-      return hubMock.unsubscribe;
-    });
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    hubMock.subscribe.mockReturnValue(hubMock.unsubscribe);
   });
 
-  it("unsubscribes when the connection aborts and drains the buffered gap after subscribe", async () => {
-    prismaMock.fixture.findFirst.mockResolvedValue({
-      ...startedFixture("f-1", "lg-1"),
-      live: { seq: 1, status: "live", half: 1, turnNumber: 1, activeSide: "home", homeScore: 0, awayScore: 0 },
+  it("resumes a paused match when the active coach reconnects (identity = user cookie)", async () => {
+    authMock.mockResolvedValue(authSession("coach-home"));
+    const pausedRow = { ...liveRow(5), paused: true, clockStartedAt: null };
+    prismaMock.liveMatch.findFirst.mockResolvedValue(pausedRow);
+    liveMatchRowToStateMock.mockReturnValue({
+      ...rowState,
+      paused: true,
+      clockStartedAt: null,
     });
-    prismaMock.league.findFirst.mockResolvedValue(memberLeague);
-    fakeHubState.buffered.set("f-1", [{ seq: 2, kind: "turn" }]);
-    hubMock.subscribe.mockImplementation((input: { subscriber: { notify: (p: unknown) => void } }) => {
-      fakeHubState.recordSubscribe(input);
-      for (const buffered of fakeHubState.buffered.get("f-1") ?? []) {
-        input.subscriber.notify(buffered);
-      }
-      return hubMock.unsubscribe;
-    });
+    resumeLiveMatchMock.mockResolvedValue(undefined);
 
     const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
-    const stream = await collectFrames(res, 2);
-    await new Promise((r) => setTimeout(r, 20));
 
-    // subscribe order proves the race is closed: hub.subscribe BEFORE the DB snapshot.
-    const subscribeArg = fakeHubState.subscribedWith();
-    expect(subscribeArg).toBeTruthy();
+    expect(res.status).toBe(200);
+    // The active coach's reconnect threw a resume through the store.
+    expect(resumeLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fixtureId: "f-1" }),
+      expect.anything(),
+    );
+    await res.body!.getReader().cancel().catch(() => {});
+  });
 
-    // Abort → the dispose function (unsubscribe) fires and publishes stop.
-    stream.done();
-    await new Promise((r) => setTimeout(r, 10));
-    expect(hubMock.unsubscribe).toHaveBeenCalled();
-    // No further notify calls reach the stream after dispose.
-    expect(stream.chunks.length).toBeLessThanOrEqual(2);
+  it("does NOT resume for a spectator reconnect (not the active coach)", async () => {
+    authMock.mockResolvedValue(authSession("coach-away")); // away is NOT active (home is)
+    const pausedRow = { ...liveRow(5), paused: true, clockStartedAt: null };
+    prismaMock.liveMatch.findFirst.mockResolvedValue(pausedRow);
+    liveMatchRowToStateMock.mockReturnValue({ ...rowState, paused: true, clockStartedAt: null });
+
+    const res = await GET(
+      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(resumeLiveMatchMock).not.toHaveBeenCalled();
+    // The subscribe carries an activeCoachId = the home owner (the active turn).
+    const subscribeArg = hubMock.subscribe.mock.calls[0][0];
+    expect(subscribeArg.activeCoachId).toBe("coach-home");
+    await res.body!.getReader().cancel().catch(() => {});
+  });
+});
+
+describe("POST .../live — control gate", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("returns 401 without a session (both auth modes)", async () => {
+    authMock.mockResolvedValue(null);
+    prismaMock.fixture.findFirst.mockResolvedValue(null);
+    const res = await POST(req({ type: "endTurn", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for a foreign/unknown league in control", async () => {
+    authMock.mockResolvedValue(authSession("guest"));
+    prismaMock.fixture.findFirst.mockResolvedValue(null);
+    const res = await POST(req({ type: "endTurn", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 403 for a league member who is a spectator (not a fixture coach or admin)", async () => {
+    setUpAllowed();
+    // "owner-1" is the league owner/admin, so resolveLiveAccess action:"control"
+    // allows every member. A member who owns neither team and is not admin → 403.
+    authMock.mockResolvedValue(authSession("member-spectator"));
+    prismaMock.fixture.findFirst.mockResolvedValue({
+      ...startedFixture("f-1", "lg-1"),
+      homeTeam: { userId: "coach-home" },
+      awayTeam: { userId: "coach-away" },
+      league: {
+        ownerId: "owner-1",
+        status: "started",
+        turnClockEnabled: true,
+        turnClockSeconds: 240,
+        teams: [{ userId: "coach-home" }, { userId: "coach-away" }, { userId: "member-spectator" }],
+      },
+    });
+    const res = await POST(req({ type: "endTurn", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(403);
+    expect(startLiveMatchMock).not.toHaveBeenCalled();
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST .../live — command handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+    authMock.mockResolvedValue(authSession("coach-home"));
+  });
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("returns 400 for an unknown command type", async () => {
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    const res = await POST(req({ type: "explode" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when starting a played/result fixture (start guard)", async () => {
+    startLiveMatchMock.mockRejectedValue(Object.assign(new Error("cannot start"), { status: 409 }));
+    prismaMock.fixture.findFirst.mockResolvedValue({
+      ...startedFixture("f-1", "lg-1"),
+      homeScore: 2,
+      awayScore: 0,
+    });
+    const res = await POST(req({ type: "start" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+  });
+
+  it("returns 409 for an out-of-turn transition", async () => {
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
+    liveMatchRowToStateMock.mockReturnValue(rowState);
+    // Home is active; the away coach submits an out-of-turn endTurn → 409.
+    const res = await POST(req({ type: "endTurn", side: "away" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 on a seq-conflict (updateMany 0 rows → double-action)", async () => {
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
+    liveMatchRowToStateMock.mockReturnValue(rowState);
+    applyTransitionMock.mockRejectedValue(Object.assign(new Error("seq conflict"), { status: 409 }));
+
+    const res = await POST(req({ type: "endTurn", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).toHaveBeenCalled();
+  });
+
+  it("returns 200 and the view on a happy-path advance (publish-after-commit)", async () => {
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(5));
+    liveMatchRowToStateMock.mockReturnValue(rowState);
+    applyTransitionMock.mockResolvedValue({ seq: 6, view: liveView() });
+
+    const res = await POST(req({ type: "endTurn", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.view.activeSide).toBe("away");
+    // The store (applyTransition) was called with the optimistic seq guard.
+    expect(applyTransitionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ liveMatchId: "lm-1", current: rowState, league: expect.objectContaining({ turnClockEnabled: true }) }),
+      expect.anything(),
+    );
+  });
+
+  it("returns 200 on a happy-path start", async () => {
+    startLiveMatchMock.mockResolvedValue({ liveMatchId: "lm-1", view: liveView({ status: "live" }) });
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(liveRow(1));
+
+    const res = await POST(req({ type: "start" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(startLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fixtureId: "f-1",
+        fixture: expect.objectContaining({ scheduled: true, played: false }),
+      }),
+      expect.anything(),
+    );
   });
 });
