@@ -501,6 +501,7 @@ describe("getMatchDetail", () => {
         user: { id: "u2", name: "Coach B", email: "b@x", avatar: null },
         players: [],
       },
+      live: null,
     };
     const fetchMock = vi.fn().mockResolvedValue(okJson(match));
     vi.stubGlobal("fetch", fetchMock);
@@ -534,6 +535,7 @@ describe("getMatchDetail", () => {
       result: null,
       homeTeam: { id: "t1", name: "Reavers", raceId: "human", user: null, players: [] },
       awayTeam: { id: "t2", name: "Dwarves", raceId: "dwarf", user: null, players: [] },
+      live: null,
     };
     const fetchMock = vi.fn().mockResolvedValue(okJson(walkover));
     vi.stubGlobal("fetch", fetchMock);

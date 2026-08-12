@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PE_MVP } from "@/lib/rules";
-import { getMatchDetail, type MatchDetail } from "./api";
+import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail } from "./api";
 import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
+import { liveEventLabel } from "./liveEventLabels";
+import { useLiveMatch } from "./useLiveMatch";
 import { formatMatchDate } from "./MatchCard";
 
 /**
@@ -63,22 +65,152 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
 }
 
 /**
- * Inert live shells (MV-5): receive `live` but never render a visible
- * placeholder — for static fixtures the parent passes `null` and these render
- * nothing, so no turn/clock/event UI ever appears until a future live change
- * feeds real data.
+ * Live match UI (MV-5): rendered ONLY when the fixture has a `LiveMatch`
+ * (`detail.live !== null`). A running match (`status: "live"`) is fed by the
+ * `useLiveMatch` SSE hook (controls call `sendCommand`); a finished live match
+ * renders the chronological timeline from persisted events. Static fixtures
+ * pass `live: null` and render nothing here, so no turn/clock/event UI ever
+ * appears for them (MV-5/AC-5). Clocks are hidden when the league turns the
+ * option off (LM-5).
  */
-function LiveTurnBar({ live }: { live: null }) {
+
+function teamName(side: "home" | "away", live: LiveMatchViewState, names: { home: string; away: string }): string {
   void live;
-  return null;
+  return side === "home" ? names.home : names.away;
 }
-function LiveClock({ live }: { live: null }) {
-  void live;
-  return null;
+
+function FormatClock({ seconds }: { seconds: number }) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return (
+    <span>
+      {m}
+      <span aria-hidden="true">:</span>
+      {String(s).padStart(2, "0")}
+    </span>
+  );
 }
-function LiveEventFeed({ live }: { live: null }) {
-  void live;
-  return null;
+
+/** The running-match shells: turn bar + clocks + score + event feed + controls. */
+function LiveActiveMatch({
+  live,
+  leagueId,
+  fixtureId,
+  names,
+}: {
+  live: LiveMatchView;
+  leagueId: string;
+  fixtureId: string;
+  names: { home: string; away: string };
+}) {
+  const { live: hookLive, sendCommand } = useLiveMatch({ leagueId, fixtureId });
+  // Start from the persisted snapshot, then adopt the real-time overrides.
+  const state: LiveMatchViewState = hookLive ?? live;
+  const [error, setError] = useState<string | null>(null);
+
+  const act = async (cmd: LiveCommand) => {
+    setError(null);
+    try {
+      await sendCommand(cmd);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo ejecutar.");
+    }
+  };
+
+  return (
+    <div className="bg-white border border-[#e2e8f0]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2e8f0] px-4 py-3">
+        <p className="text-sm font-bold text-[#12225a]">
+          Mitad {state.half} · Turno {state.turnNumber}
+        </p>
+        <p className="text-sm font-semibold text-slate-600">
+          {state.turnClockEnabled && state.homeClock != null && state.awayClock != null ? (
+            <>
+              <span className="text-[#12225a]">{teamName("home", state, names)}</span>{" "}
+              <FormatClock seconds={state.activeSide === "home" ? state.homeClock : state.awayClock} />
+            </>
+          ) : null}
+        </p>
+        <p className="text-2xl font-black text-[#12225a]">
+          {state.homeScore} <span className="text-[#d11938]">–</span> {state.awayScore}
+        </p>
+      </div>
+
+      {state.turnClockEnabled ? (
+        <div className="grid grid-cols-2 gap-3 px-4 py-3">
+          <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
+            <p className="text-xs text-slate-500">{names.home}</p>
+            <p className="text-xl font-black text-[#12225a]">
+              <FormatClock seconds={state.homeClock ?? 0} />
+            </p>
+          </div>
+          <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
+            <p className="text-xs text-slate-500">{names.away}</p>
+            <p className="text-xl font-black text-[#12225a]">
+              <FormatClock seconds={state.awayClock ?? 0} />
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <p role="alert" className="px-4 pb-2 text-sm text-red-600">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-3 px-4 py-4">
+        <button
+          type="button"
+          onClick={() => void act({ type: "endTurn", side: state.activeSide })}
+          disabled={state.status !== "live"}
+          className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+        >
+          Dar el turno
+        </button>
+      </div>
+
+      <LiveEventFeed events={live.events} />
+    </div>
+  );
+}
+
+/** The persisted timeline for a finished live match (LM-10, live + played). */
+function FinishedLiveTimeline({
+  live,
+  names,
+}: {
+  live: LiveMatchView;
+  names: { home: string; away: string };
+}) {
+  void names;
+  return (
+    <div className="bg-white border border-[#e2e8f0]">
+      <div className="px-4 py-4 text-center">
+        <p className="text-3xl font-black text-[#12225a]">
+          {live.homeScore} <span className="text-[#d11938]">–</span> {live.awayScore}
+        </p>
+      </div>
+      <LiveEventFeed events={live.events} />
+    </div>
+  );
+}
+
+/** The chronological event feed rendered from a list of live events. */
+function LiveEventFeed({ events }: { events: LiveMatchView["events"] }) {
+  if (events.length === 0) return null;
+  return (
+    <ol aria-label="Cronología del partido" className="border-t border-[#e2e8f0] px-4 py-3">
+      {events.map((event) => (
+        <li key={event.seq} className="flex items-baseline justify-between gap-3 border-b border-[#eef2f7] py-1.5 text-sm last:border-b-0">
+          <span className="text-slate-700">{liveEventLabel(event)}</span>
+          <span className="text-xs text-slate-400">
+            Mitad {event.half} · Turno {event.turnNumber}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function Coins({ value }: { value: number | null | undefined }) {
@@ -203,9 +335,6 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
 export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId: string }) {
   const { detail, loading, error, notFound } = useMatchDetail(leagueId, fixtureId);
 
-  // Inert shells receive live:null → render nothing (MV-5/MV-6).
-  const live: null = null;
-
   if (notFound) {
     return (
       <div className="border border-[#e2e8f0] bg-white p-8 text-center">
@@ -239,9 +368,20 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
   }
 
   const summary = buildMatchSummary(detail);
+  const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
 
   let body: React.ReactNode;
-  if (summary.walkover) {
+  if (detail.live) {
+    // A LiveMatch exists for this fixture (MV-5): render the live UI — the
+    // running-match shells + controls, or the finished timeline — regardless of
+    // the fixture's schedule/played status.
+    body =
+      detail.live.status === "live" ? (
+        <LiveActiveMatch live={detail.live} leagueId={leagueId} fixtureId={fixtureId} names={names} />
+      ) : (
+        <FinishedLiveTimeline live={detail.live} names={names} />
+      );
+  } else if (summary.walkover) {
     body = (
       <div className="border border-[#e2e8f0] bg-white px-4 py-4 text-center">
         <p className="text-3xl font-black text-[#12225a]">
@@ -290,10 +430,6 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       </header>
 
       {body}
-
-      <LiveTurnBar live={live} />
-      <LiveClock live={live} />
-      <LiveEventFeed live={live} />
     </section>
   );
 }
