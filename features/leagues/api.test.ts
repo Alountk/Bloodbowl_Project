@@ -11,10 +11,13 @@ import {
   listUnassignedTeams,
   proposeFixtureDate,
   selfLeave,
+  sendLiveCommand,
   startLeague,
   submitResult,
   type League,
   type LeagueDetail,
+  type LiveCommand,
+  type LiveMatchViewState,
   type MatchDetail,
 } from "./api";
 
@@ -540,5 +543,92 @@ describe("getMatchDetail", () => {
     expect(detail.result).toBeNull();
     expect(detail.fixture.homeScore).toBe(2);
     expect(detail.fixture.status).toBe("played");
+  });
+});
+
+describe("LiveMatchViewState DTO (LM-5/LM-8)", () => {
+  it("exposes turnClockEnabled and nullable clocks when the league option is off", () => {
+    const enabled: LiveMatchViewState = {
+      seq: 12,
+      status: "live",
+      half: 1,
+      turnNumber: 3,
+      activeSide: "home",
+      turnClockEnabled: true,
+      homeClock: 200,
+      awayClock: 240,
+      homeScore: 1,
+      awayScore: 0,
+      paused: false,
+      finishedAt: null,
+    };
+    expect(enabled.turnClockEnabled).toBe(true);
+    expect(enabled.homeClock).toBe(200);
+
+    // Clocks-disabled league: the DTO carries null clocks + paused, and no
+    // clockSeconds field exists (the client can never derive a clock, LM-5).
+    const clockless: LiveMatchViewState = {
+      seq: 1,
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "away",
+      turnClockEnabled: false,
+      homeClock: null,
+      awayClock: null,
+      homeScore: 0,
+      awayScore: 0,
+      paused: null,
+      finishedAt: null,
+    };
+    expect(clockless.turnClockEnabled).toBe(false);
+    expect(clockless.homeClock).toBeNull();
+    expect(clockless.awayClock).toBeNull();
+    expect(clockless.paused).toBeNull();
+    // clockSeconds is intentionally absent (LM-5): TS errors on access, proving
+    // the DTO exposes no derivable clock field.
+    expect("clockSeconds" in clockless).toBe(false);
+  });
+});
+
+describe("sendLiveCommand", () => {
+  it("POSTs a control command to the live route and returns the new view", async () => {
+    const view: LiveMatchViewState = {
+      seq: 13,
+      status: "live",
+      half: 1,
+      turnNumber: 4,
+      activeSide: "away",
+      turnClockEnabled: true,
+      homeClock: 240,
+      awayClock: 240,
+      homeScore: 1,
+      awayScore: 0,
+      paused: false,
+      finishedAt: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ view }) }),
+    );
+
+    const cmd: LiveCommand = { type: "endTurn", side: "home" };
+    const result = await sendLiveCommand("lg-1", "f-1", cmd);
+
+    expect(fetch).toHaveBeenCalledWith("/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(cmd),
+    });
+    expect(result).toEqual(view);
+  });
+
+  it("throws with the route's status on a 409 control rejection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 409, json: () => Promise.resolve({ error: "Sequence conflict" }) }),
+    );
+
+    await expect(sendLiveCommand("lg-1", "f-1", { type: "endTurn", side: "away" })).rejects.toMatchObject({ status: 409 });
   });
 });
