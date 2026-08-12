@@ -2,18 +2,23 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isAuthEnabled } from "@/lib/auth-mode";
 import { resolveLiveAccess } from "@/lib/liveAccess";
-import { liveHub, type HubSubscriber } from "@/lib/liveHub";
-import { liveMatchRowToState, startLiveMatch, applyTransition, pauseLiveMatch, resumeLiveMatch } from "@/lib/liveStore";
+import { liveHub, type HubSubscriber, type TickSnapshot } from "@/lib/liveHub";
+import {
+  liveMatchRowToState,
+  consentLiveMatch,
+  retractLiveConsent,
+  beginLiveMatch,
+  applyTransition,
+  pauseLiveMatch,
+  resumeLiveMatch,
+} from "@/lib/liveStore";
 import {
   applyEndTurn,
   applyTD,
   applyEndMatch,
-  autoEndTurnOnClockZero,
   toLiveViewState,
   type FixtureStartState,
-  type LeagueClockConfig,
   type LiveMatchState,
-  type LiveMatchViewState,
   type TeamSide,
 } from "@/lib/liveMatch";
 
@@ -37,8 +42,6 @@ export interface FixtureContext {
   league: {
     ownerId: string;
     status: "open" | "started";
-    turnClockEnabled: boolean;
-    turnClockSeconds: 120 | 240 | 360;
     memberUserIds: string[];
   };
 }
@@ -80,8 +83,6 @@ async function loadFixtureGate(
         select: {
           ownerId: true,
           status: true,
-          turnClockEnabled: true,
-          turnClockSeconds: true,
           teams: { select: { userId: true }, where: { archivedAt: null } },
         },
       },
@@ -125,8 +126,6 @@ async function loadFixtureGate(
       league: {
         ownerId: league.ownerId,
         status: league.status,
-        turnClockEnabled: league.turnClockEnabled,
-        turnClockSeconds: league.turnClockSeconds as 120 | 240 | 360,
         memberUserIds: league.teams.map((t) => t.userId),
       },
     },
@@ -139,11 +138,12 @@ function fixtureStartState(ctx: FixtureContext): FixtureStartState {
   return { scheduled: ctx.scheduledAt != null, played, result: ctx.result != null };
 }
 
-function clockConfig(ctx: FixtureContext): LeagueClockConfig {
-  return {
-    turnClockEnabled: ctx.league.turnClockEnabled,
-    turnClockSeconds: ctx.league.turnClockSeconds,
-  };
+/** Per-viewer side (D19): the session user's team in this fixture, if any. */
+function viewerSide(ctx: FixtureContext, userId: string | null): "home" | "away" | null {
+  if (userId === null) return null;
+  if (userId === ctx.homeOwnerId) return "home";
+  if (userId === ctx.awayOwnerId) return "away";
+  return null;
 }
 
 /**
@@ -178,7 +178,7 @@ export async function GET(
   // Rewind to the persisted live row (if any) so reconnects see the current
   // server-derived clocks and replay the gap since their cursor.
   const liveRow = await prisma.liveMatch.findFirst({ where: { fixtureId } });
-  const live = liveRow ? liveMatchRowToState(liveRow, clockConfig(ctx)) : null;
+  const live = liveRow ? liveMatchRowToState(liveRow) : null;
   const snapshotSeq = live?.seq ?? 0;
 
   // The closure the hub calls for every publish. It queues gap events (> the
@@ -198,50 +198,32 @@ export async function GET(
   };
 
   const subscriber: HubSubscriber = { notify };
-  const channel = {
-    turnClockEnabled: ctx.league.turnClockEnabled,
-    turnClockSeconds: ctx.league.turnClockSeconds,
-  };
   const now = Date.now();
 
-  // D4 clock ticker: when a live match exists with clocks enabled, the hub's
-  // 1s ticker advances the active clock. When it reaches 0, `onClockExpired`
-  // persists the auto-end (same transition as `endTurn`) and restarts the
-  // ticker with the reset-clock snapshot.
-  if (live && live.status === "live" && ctx.league.turnClockEnabled) {
-    const snapshot = {
-      seq: live.seq,
-      activeSide: live.activeSide,
-      homeClock: live.homeClock,
-      awayClock: live.awayClock,
-    };
-    const onClockExpired = async (fid: string) => {
-      if (fid !== fixtureId) return;
-      const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
-      if (!row) return;
-      const current = liveMatchRowToState(row, clockConfig(ctx));
-      const next = autoEndTurnOnClockZero(current, Date.now());
-      if (next === current) return; // not exhausted (e.g. paused mid-tick)
-      try {
-        await applyTransition(
-          { liveMatchId: row.id, fixtureId, current, next, league: clockConfig(ctx), now: Date.now() },
-          { prisma, hub: liveHub },
-        );
-      } catch {
-        // A concurrent transition won the seq; the hub publishes the latest state.
-      }
-      // Restart the ticker with the post-auto-end snapshot (new active clock).
-      const fresh = await prisma.liveMatch.findFirst({ where: { fixtureId } });
-      if (fresh && fresh.status === "live") {
-        liveHub.startTicking(fixtureId, {
-          seq: fresh.seq,
-          activeSide: fresh.activeSide,
-          homeClock: fresh.homeClock,
-          awayClock: fresh.awayClock,
-        });
-      }
-    };
-    liveHub.startTicking(fixtureId, snapshot, onClockExpired);
+  // LM-5 unified-clock ticker: when a live match exists, start the hub's 1s
+  // info-only ticker that derives + publishes the ACTIVE side's accumulated
+  // time. There is NO auto-end at zero and NO `onClockExpired` seam (D4 removed);
+  // the ticker only recomputes the derived values from the persisted anchor.
+  const snapshot: TickSnapshot | null =
+    live && live.status === "live"
+      ? {
+          seq: live.seq,
+          status: live.status,
+          activeSide: live.activeSide,
+          homeConsented: live.homeConsented,
+          awayConsented: live.awayConsented,
+          startedAt: live.startedAt,
+          homeTurnMs: live.homeTurnMs,
+          awayTurnMs: live.awayTurnMs,
+          homeScore: live.homeScore,
+          awayScore: live.awayScore,
+          finishedAt: live.finishedAt,
+          paused: live.paused,
+          clockStartedAt: live.clockStartedAt,
+        }
+      : null;
+  if (snapshot) {
+    liveHub.startTicking(fixtureId, snapshot);
   }
 
   // Grace (LM-7): the ACTIVE coach's connection drives the 10s auto-pause. A
@@ -259,7 +241,7 @@ export async function GET(
     if (rowForResume) {
       try {
         await resumeLiveMatch(
-          { liveMatchId: rowForResume.id, fixtureId, current: live, league: clockConfig(ctx), now },
+          { liveMatchId: rowForResume.id, fixtureId, current: live, now },
           { prisma, hub: liveHub },
         );
       } catch {
@@ -272,11 +254,11 @@ export async function GET(
     if (fixtureIdArg !== fixtureId) return;
     const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
     if (!row) return;
-    const current = liveMatchRowToState(row, clockConfig(ctx));
+    const current = liveMatchRowToState(row);
     if (current.status !== "live") return;
     try {
       await pauseLiveMatch(
-        { liveMatchId: row.id, fixtureId, current, league: clockConfig(ctx), now: Date.now() },
+        { liveMatchId: row.id, fixtureId, current, now: Date.now() },
         { prisma, hub: liveHub },
       );
     } catch {
@@ -290,7 +272,6 @@ export async function GET(
     subscriber,
     coachId: userId,
     activeCoachId,
-    channel,
     onGraceExpired: graceHandler,
   });
 
@@ -314,7 +295,8 @@ export async function GET(
 
       const snapshotPayload = live
         ? {
-            ...toLiveViewState(live, Date.now()),
+            // D19: the snapshot carries the per-viewer side (computed server-side).
+            ...toLiveViewState(live, Date.now(), { viewerSide: viewerSide(ctx, userId) }),
             seq: snapshotSeq,
             events: [],
           }
@@ -366,9 +348,11 @@ export async function GET(
   });
 }
 
-/** Control command payloads (LM-4/D10/D11). */
+/** Control command payloads (LM-4/D10/D11/LM-11). */
 type ControlCommand =
-  | { type: "start" }
+  | { type: "consent"; side: TeamSide }
+  | { type: "retractConsent"; side: TeamSide }
+  | { type: "begin" }
   | { type: "endTurn"; side: TeamSide }
   | { type: "td"; side: TeamSide; playerRosterId: string }
   | { type: "casualty"; side: TeamSide; victimRosterId: string; band?: unknown }
@@ -380,7 +364,10 @@ function isControlCommand(value: unknown): value is ControlCommand {
   const c = value as Record<string, unknown>;
   if (typeof c.type !== "string") return false;
   switch (c.type) {
-    case "start":
+    case "consent":
+    case "retractConsent":
+      return c.side === "home" || c.side === "away";
+    case "begin":
       return true;
     case "endTurn":
       return c.side === "home" || c.side === "away";
@@ -406,8 +393,8 @@ function isControlCommand(value: unknown): value is ControlCommand {
  * leak). Runs the pure transition through the store (optimistic `seq` guard →
  * 409 on double-action) and fans the new view state out via the hub after
  * commit. Responses: 200 {view}, 400 (bad command), 403 (spectator), 404
- * (foreign), 409 (invalid transition / seq conflict / start on played / already
- * started).
+ * (foreign), 409 (invalid transition / seq conflict / consent on played /
+ * begin-not-ready).
  */
 export async function POST(
   req: Request,
@@ -448,18 +435,57 @@ export async function POST(
     return Response.json({ error: "Unsupported command" }, { status: 400 });
   }
 
-  const league = clockConfig(ctx);
   const now = Date.now();
   const deps = { prisma, hub: liveHub };
+  const side = viewerSide(ctx, userId);
 
-  // START inserts the live match (LM-3 start guard; 409 on invalid/duplicate).
-  if (command.type === "start") {
+  // Lifecycle commands (LM-11/LM-3): consent creates/updates the row, retract
+  // clears the boolean, begin takes a ready match live via the first turn.
+  if (command.type === "consent") {
     try {
-      await startLiveMatch({ fixtureId, fixture: fixtureStartState(ctx), league, now }, deps);
-    } catch {
-      return Response.json({ error: "Cannot start match" }, { status: 409 });
+      const result = await consentLiveMatch(
+        { fixtureId, fixture: fixtureStartState(ctx), side: command.side, now },
+        deps,
+      );
+      // D19: the POST response carries the per-viewer side (hub frames don't).
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Cannot consent on played/result fixture" }, { status: 409 });
+      }
+      throw error;
     }
-    return Response.json({ view: await currentView(fixtureId, league, now) }, { status: 200 });
+  }
+
+  if (command.type === "retractConsent") {
+    const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
+    if (!row) return Response.json({ error: "Not found" }, { status: 404 });
+    try {
+      const result = await retractLiveConsent(
+        { liveMatchId: row.id, fixtureId, side: command.side, now },
+        deps,
+      );
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Sequence conflict" }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
+  if (command.type === "begin") {
+    const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
+    if (!row) return Response.json({ error: "Not found" }, { status: 404 });
+    try {
+      const result = await beginLiveMatch({ liveMatchId: row.id, fixtureId, now }, deps);
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Sequence conflict" }, { status: 409 });
+      }
+      throw error;
+    }
   }
 
   // Advance / record / end require an existing live match row.
@@ -467,7 +493,7 @@ export async function POST(
   if (!row) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
-  const current = liveMatchRowToState(row, league);
+  const current = liveMatchRowToState(row);
 
   let next: LiveMatchState | null = null;
   if (command.type === "endTurn") {
@@ -501,7 +527,7 @@ export async function POST(
   }
 
   try {
-    await applyTransition({ liveMatchId: row.id, fixtureId, current, next, league, now }, deps);
+    await applyTransition({ liveMatchId: row.id, fixtureId, current, next, now }, deps);
   } catch (error) {
     if ((error as { status?: number }).status === 409) {
       return Response.json({ error: "Sequence conflict" }, { status: 409 });
@@ -509,18 +535,7 @@ export async function POST(
     throw error;
   }
 
-  return Response.json({ view: toLiveViewState(next, now) }, { status: 200 });
-}
-
-/** Reads the persisted live row back and maps it to the view state (used after a start). */
-async function currentView(
-  fixtureId: string,
-  league: LeagueClockConfig,
-  now: number,
-): Promise<LiveMatchViewState> {
-  const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
-  if (!row) return { seq: 0, status: "pending", half: 1, turnNumber: 1, activeSide: "home", turnClockEnabled: league.turnClockEnabled, homeClock: null, awayClock: null, homeScore: 0, awayScore: 0, paused: null, finishedAt: null };
-  return toLiveViewState(liveMatchRowToState(row, league), now);
+  return Response.json({ view: toLiveViewState(next, now, { viewerSide: side }) }, { status: 200 });
 }
 
 /** Records a coach-reported casualty with its (immutable) injury band (D10). */
