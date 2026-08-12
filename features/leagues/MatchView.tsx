@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { PE_MVP } from "@/lib/rules";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail } from "./api";
 import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
 import { liveEventLabel } from "./liveEventLabels";
 import { useLiveMatch } from "./useLiveMatch";
-import { formatMatchDate } from "./MatchCard";
 
 /**
  * Internal single-match fetch hook mirroring `useLeagueDetail`: loads the match
@@ -72,16 +72,13 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
  * pass `live: null` and render nothing here, so no turn/clock/event UI ever
  * appears for them (MV-5/AC-5). Clocks are hidden when the league turns the
  * option off (LM-5).
- */
+  */
 
-function teamName(side: "home" | "away", live: LiveMatchViewState, names: { home: string; away: string }): string {
-  void live;
-  return side === "home" ? names.home : names.away;
-}
-
-function FormatClock({ seconds }: { seconds: number }) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+/** Formats a millisecond value as M:SS (informational unified clock). */
+function FormatMs({ ms }: { ms: number }) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
   return (
     <span>
       {m}
@@ -91,31 +88,199 @@ function FormatClock({ seconds }: { seconds: number }) {
   );
 }
 
-/** The running-match shells: turn bar + clocks + score + event feed + controls. */
+/** An empty pending live-state shell used before the first consent (D16). */
+function emptyPendingView(): LiveMatchViewState {
+  return {
+    seq: 0,
+    status: "pending",
+    half: 1,
+    turnNumber: 1,
+    activeSide: "home",
+    homeConsented: false,
+    awayConsented: false,
+    viewerSide: null,
+    startedAt: null,
+    elapsed: 0,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    paused: false,
+    homeScore: 0,
+    awayScore: 0,
+    finishedAt: null,
+  };
+}
+
+/**
+ * Two-phase consent / ready / begin panel (LM-11/LM-3/D19). Rendered when a
+ * scheduled fixture has no live row yet (`live: null` → "Iniciar partido") or a
+ * `pending`/`ready` row (retract / "Empezar partido"). The viewer's side comes
+ * from the DTO's `viewerSide` (D19); the panel only shows the controls for the
+ * current viewer's side.
+ */
+function LiveConsentPanel({
+  state,
+  names,
+  onConsent,
+  onRetract,
+  onBegin,
+  submitting,
+}: {
+  state: LiveMatchViewState | null;
+  names: { home: string; away: string };
+  onConsent: (side: "home" | "away") => void;
+  onRetract: (side: "home" | "away") => void;
+  onBegin: () => void;
+  submitting: boolean;
+}) {
+  const side = state?.viewerSide ?? null;
+  const pending = state == null || state.status === "pending";
+  const ready = state?.status === "ready";
+
+  if (pending && side === null) {
+    return (
+      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+        <p className="text-sm font-semibold text-slate-600">
+          Esperando a los entrenadores para iniciar el partido.
+        </p>
+      </div>
+    );
+  }
+
+  if (pending && side !== null) {
+    const meConsented = side === "home" ? state?.homeConsented : state?.awayConsented;
+    return (
+      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#12225a]">
+          Partido programado
+        </p>
+        <p className="mt-2 text-sm text-slate-700">
+          {names[side]} quiere empezar. {side === "home" ? names.away : names.home} aún no ha confirmado.
+        </p>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          {meConsented ? (
+            <button
+              type="button"
+              onClick={() => onRetract(side)}
+              disabled={submitting}
+              className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+            >
+              Retirar consentimiento
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onConsent(side)}
+              disabled={submitting}
+              className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+            >
+              Iniciar partido
+            </button>
+          )}
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          {meConsented ? "Listo, esperando al rival." : "El partido comenzará cuando ambos entrenadores confirmen."}
+        </p>
+      </div>
+    );
+  }
+
+  if (ready && side !== null) {
+    return (
+      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#12225a]">Listo para empezar</p>
+        <p className="mt-2 text-sm text-slate-700">Ambos entrenadores han confirmado.</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <button
+            type="button"
+            onClick={onBegin}
+            disabled={submitting}
+            className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+          >
+            Empezar partido
+          </button>
+          <button
+            type="button"
+            onClick={() => onRetract(side)}
+            disabled={submitting}
+            className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+          >
+            Retirar consentimiento
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (ready && side === null) {
+    return (
+      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+        <p className="text-sm font-bold text-[#12225a]">Listos para empezar</p>
+        <p className="mt-2 text-xs text-slate-500">Ambos entrenadores han confirmado.</p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/** The live-session control: consent → ready → begin → live clock + controls. */
 function LiveActiveMatch({
   live,
   leagueId,
   fixtureId,
   names,
+  viewerSide,
 }: {
-  live: LiveMatchView;
+  live: LiveMatchView | null;
   leagueId: string;
   fixtureId: string;
   names: { home: string; away: string };
+  viewerSide: "home" | "away" | null;
 }) {
   const { live: hookLive, sendCommand } = useLiveMatch({ leagueId, fixtureId });
-  // Start from the persisted snapshot, then adopt the real-time overrides.
-  const state: LiveMatchViewState = hookLive ?? live;
+  // Start from the persisted snapshot (or an empty pending shell when no row
+  // exists yet, D16), then adopt the real-time SSE overrides. `viewerSide`
+  // falls back to the session-derived side when no live row carries it (D19).
+  const state: LiveMatchViewState =
+    hookLive != null && "activeSide" in hookLive
+      ? hookLive
+      : live ??
+        { ...emptyPendingView(), viewerSide };
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const act = async (cmd: LiveCommand) => {
     setError(null);
+    setSubmitting(true);
     try {
       await sendCommand(cmd);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo ejecutar.");
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  // Pre-live states (no row / pending / ready): the two-phase consent panel.
+  if (state.status === "pending" || state.status === "ready") {
+    return (
+      <div className="bg-white border border-[#e2e8f0]">
+        <LiveConsentPanel
+          state={state}
+          names={names}
+          onConsent={(side) => void act({ type: "consent", side })}
+          onRetract={(side) => void act({ type: "retractConsent", side })}
+          onBegin={() => void act({ type: "begin" })}
+          submitting={submitting}
+        />
+        {error ? (
+          <p role="alert" className="px-4 pb-3 text-sm text-red-600">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white border border-[#e2e8f0]">
@@ -124,34 +289,27 @@ function LiveActiveMatch({
           Mitad {state.half} · Turno {state.turnNumber}
         </p>
         <p className="text-sm font-semibold text-slate-600">
-          {state.turnClockEnabled && state.homeClock != null && state.awayClock != null ? (
-            <>
-              <span className="text-[#12225a]">{teamName("home", state, names)}</span>{" "}
-              <FormatClock seconds={state.activeSide === "home" ? state.homeClock : state.awayClock} />
-            </>
-          ) : null}
+          Tiempo <FormatMs ms={state.elapsed} />
         </p>
         <p className="text-2xl font-black text-[#12225a]">
           {state.homeScore} <span className="text-[#d11938]">–</span> {state.awayScore}
         </p>
       </div>
 
-      {state.turnClockEnabled ? (
-        <div className="grid grid-cols-2 gap-3 px-4 py-3">
-          <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
-            <p className="text-xs text-slate-500">{names.home}</p>
-            <p className="text-xl font-black text-[#12225a]">
-              <FormatClock seconds={state.homeClock ?? 0} />
-            </p>
-          </div>
-          <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
-            <p className="text-xs text-slate-500">{names.away}</p>
-            <p className="text-xl font-black text-[#12225a]">
-              <FormatClock seconds={state.awayClock ?? 0} />
-            </p>
-          </div>
+      <div className="grid grid-cols-2 gap-3 px-4 py-3">
+        <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
+          <p className="text-xs text-slate-500">{names.home}</p>
+          <p className="text-xl font-black text-[#12225a]">
+            <FormatMs ms={state.homeTurnMs} />
+          </p>
         </div>
-      ) : null}
+        <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
+          <p className="text-xs text-slate-500">{names.away}</p>
+          <p className="text-xl font-black text-[#12225a]">
+            <FormatMs ms={state.awayTurnMs} />
+          </p>
+        </div>
+      </div>
 
       {error ? (
         <p role="alert" className="px-4 pb-2 text-sm text-red-600">
@@ -163,14 +321,14 @@ function LiveActiveMatch({
         <button
           type="button"
           onClick={() => void act({ type: "endTurn", side: state.activeSide })}
-          disabled={state.status !== "live"}
+          disabled={state.status !== "live" || submitting}
           className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
         >
           Dar el turno
         </button>
       </div>
 
-      <LiveEventFeed events={live.events} />
+      <LiveEventFeed events={live ? live.events : []} />
     </div>
   );
 }
@@ -334,6 +492,17 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
  */
 export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId: string }) {
   const { detail, loading, error, notFound } = useMatchDetail(leagueId, fixtureId);
+  // D19: when no LiveMatch row exists yet, the per-viewer side is deduced from
+  // the session user against the two team owners (the DTO carries it otherwise).
+  const { data: session } = useSession();
+  const viewerSide: "home" | "away" | null =
+    session?.user?.id == null
+      ? null
+      : detail?.homeTeam?.user?.id === session.user.id
+        ? "home"
+        : detail?.awayTeam?.user?.id === session.user.id
+          ? "away"
+          : null;
 
   if (notFound) {
     return (
@@ -372,14 +541,19 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
 
   let body: React.ReactNode;
   if (detail.live) {
-    // A LiveMatch exists for this fixture (MV-5): render the live UI — the
-    // running-match shells + controls, or the finished timeline — regardless of
-    // the fixture's schedule/played status.
+    // A LiveMatch exists for this fixture (MV-5): render the consent/ready/live
+    // panel, or the finished timeline.
     body =
-      detail.live.status === "live" ? (
-        <LiveActiveMatch live={detail.live} leagueId={leagueId} fixtureId={fixtureId} names={names} />
-      ) : (
+      detail.live.status === "finished" ? (
         <FinishedLiveTimeline live={detail.live} names={names} />
+      ) : (
+        <LiveActiveMatch
+          live={detail.live}
+          leagueId={leagueId}
+          fixtureId={fixtureId}
+          names={names}
+          viewerSide={viewerSide}
+        />
       );
   } else if (summary.walkover) {
     body = (
@@ -391,12 +565,16 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       </div>
     );
   } else if (detail.fixture.status === "scheduled") {
+    // A scheduled fixture with no LiveMatch yet (MV-5/D16): the two-phase
+    // consent start panel ("Iniciar partido" per coach).
     body = (
-      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
-        <p className="text-sm font-semibold text-slate-600">
-          Programado: {formatMatchDate(detail.fixture.scheduledAt)}
-        </p>
-      </div>
+      <LiveActiveMatch
+        live={null}
+        leagueId={leagueId}
+        fixtureId={fixtureId}
+        names={names}
+        viewerSide={viewerSide}
+      />
     );
   } else if (detail.fixture.status === "pending") {
     body = (
