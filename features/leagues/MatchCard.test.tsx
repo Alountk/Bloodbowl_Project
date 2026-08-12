@@ -328,3 +328,60 @@ describe("MatchCard — Ver partido navigation (MV-4)", () => {
     expect(links[links.length - 1].text).toBe("Ver partido");
   });
 });
+
+describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () => {
+  it("shows 'Corregir resultado' to a participant captain on a played fixture", () => {
+    renderCard({
+      fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }),
+      currentUserId: "u1", // home team owner (participant captain)
+      isLeagueOwner: false,
+      onCorrectResult: vi.fn(),
+    });
+    expect(screen.getByRole("button", { name: /Corregir resultado/ })).toBeTruthy();
+  });
+
+  it("shows 'Corregir resultado' to the league admin on a played fixture", () => {
+    renderCard({
+      fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }),
+      currentUserId: "u3",
+      isLeagueOwner: true,
+      onCorrectResult: vi.fn(),
+    });
+    expect(screen.getByRole("button", { name: /Corregir resultado/ })).toBeTruthy();
+  });
+
+  it("keeps the forfeit button admin-only (a participant captain does NOT see 'Otorgar victoria')", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T18:00:00.000Z" }),
+      currentUserId: "u1", // participant, not admin
+      isLeagueOwner: false,
+    });
+    expect(screen.queryByRole("button", { name: /Otorgar victoria/ })).toBeNull();
+    // The admin DOES see it.
+    const { unmount } = render(
+      <MatchCard
+        fixture={fixture({ status: "scheduled", scheduledAt: "2026-03-01T18:00:00.000Z" })}
+        teamNameById={new Map([
+          ["th", "Reavers"],
+          ["ta", "Orcboyz"],
+        ])}
+        currentUserId="u3"
+        isLeagueOwner
+        onNegotiate={vi.fn()}
+        onForfeit={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByRole("button", { name: /Otorgar victoria/ }).length).toBeGreaterThan(0);
+    unmount();
+  });
+
+  it("hides 'Corregir resultado' on a non-played (scheduled) fixture for a participant", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T18:00:00.000Z" }),
+      currentUserId: "u1",
+      isLeagueOwner: false,
+      onCorrectResult: vi.fn(),
+    });
+    expect(screen.queryByRole("button", { name: /Corregir resultado/ })).toBeNull();
+  });
+});
