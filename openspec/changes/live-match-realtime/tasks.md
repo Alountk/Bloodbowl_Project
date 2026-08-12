@@ -52,8 +52,8 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: Client + SSE Hook + DTO (PR 4)
 
-- [ ] 4.1 RED `useLiveMatch.test.ts`: connect, snapshot-first, reconnect via Last-Event-ID, control restored. GREEN `features/leagues/useLiveMatch.ts`.
-- [ ] 4.2 `features/leagues/api.ts`: DTO `turnClockEnabled` + nullable `homeClock`/`awayClock`/`paused` on disabled; `clockSeconds` absent.
+- [x] 4.1 RED `useLiveMatch.test.ts`: connect, snapshot-first, reconnect via Last-Event-ID, control restored. GREEN `features/leagues/useLiveMatch.ts`.
+- [x] 4.2 `features/leagues/api.ts`: DTO `turnClockEnabled` + nullable `homeClock`/`awayClock`/`paused` on disabled; `clockSeconds` absent.
 
 ## Phase 5: MatchView + Timeline + Labels (PR 5)
 

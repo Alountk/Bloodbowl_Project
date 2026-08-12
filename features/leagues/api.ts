@@ -469,3 +469,64 @@ export async function getMatchDetail(
   );
   return readJson<MatchDetail>(res);
 }
+
+/** Live-match lifecycle state (LM-8 DTO, shared by MatchView/timeline/prefill).
+ * Clocks are `null` when the league's turn-clock option is disabled (LM-5), and
+ * `clockSeconds` is absent so the client can never derive a clock. */
+export interface LiveMatchViewState {
+  seq: number;
+  status: "pending" | "live" | "finished";
+  half: number;
+  turnNumber: number;
+  activeSide: "home" | "away";
+  turnClockEnabled: boolean;
+  homeClock: number | null;
+  awayClock: number | null;
+  homeScore: number;
+  awayScore: number;
+  paused: boolean | null;
+  finishedAt: number | null;
+}
+
+/** A chronological live event delivered by the hub (LM-6). */
+export interface LiveMatchEventDto {
+  seq: number;
+  kind: string;
+  side: "home" | "away" | null;
+  playerRosterId: string | null;
+  half: number;
+  turnNumber: number;
+  payload: Record<string, unknown>;
+  at: number;
+}
+
+/** Control commands the live POST route accepts (LM-4/D10/D11). */
+export type LiveCommand =
+  | { type: "start" }
+  | { type: "endTurn"; side: "home" | "away" }
+  | { type: "td"; side: "home" | "away"; playerRosterId: string }
+  | { type: "casualty"; side: "home" | "away"; victimRosterId: string; band?: unknown }
+  | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId?: unknown }
+  | { type: "endMatch" };
+
+/**
+ * Sends a live control command via POST .../live. On success returns the new
+ * view state (`200 { view }`). On 400/403/404/409 `readJson` throws an Error
+ * with a matching `status` for the hook/caller to surface.
+ */
+export async function sendLiveCommand(
+  leagueId: string,
+  fixtureId: string,
+  command: LiveCommand,
+): Promise<LiveMatchViewState> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+    },
+  );
+  const body = await readJson<{ view: LiveMatchViewState }>(res);
+  return body.view;
+}

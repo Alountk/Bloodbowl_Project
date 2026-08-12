@@ -1,7 +1,7 @@
-# Apply Progress — Live Match Realtime (PR 1 + PR 2 + PR 3 merged)
+# Apply Progress — Live Match Realtime (PR 1–4 merged)
 
-Phase: **apply** (slices 1–3 of 6, stacked-to-main)
-Status: **PR 1 tasks 1.1–1.7 complete · PR 2 tasks 2.1–2.4 complete · PR 3 tasks 3.1–3.3 complete**
+Phase: **apply** (slices 1–4 of 6, stacked-to-main)
+Status: **PR 1 tasks 1.1–1.7 · PR 2 tasks 2.1–2.4 · PR 3 tasks 3.1–3.3 · PR 4 tasks 4.1–4.2 complete**
 Mode: **Strict TDD** (test runner: `pnpm test` = `vitest run`)
 Date: 2026-08-12
 
@@ -250,4 +250,79 @@ deploy` already present, unchanged).
 - `30cfa97` feat(live): add live-match store with optimistic seq persistence
 - `b765e99` feat(live): make hub grace pause fixture-level for store wiring
 - `c89189a` feat(live): add control POST handler with gates and commands
+- + docs commit (this file + tasks.md marks)
+
+---
+
+## PR 4: Client + SSE Hook + DTO
+
+### What shipped (PR 4)
+
+- `features/leagues/api.ts`: `LiveMatchViewState` DTO (seq, status, half,
+  turnNumber, activeSide, `turnClockEnabled`, **nullable** `homeClock`/`awayClock`/
+  `paused` when the league option is off, `homeScore`/`awayScore`, `finishedAt`);
+  `LiveMatchEventDto`; `LiveCommand` union; `sendLiveCommand(leagueId, fixtureId,
+  cmd)` using the `readJson` fetch pattern (returns the POST response `view`;
+  maps 400/403/404/409 to thrown Errors with `.status`).
+- `features/leagues/useLiveMatch.ts`: SSE hook. Opens an `EventSource` to the live
+  route (same-origin cookie, no custom headers, LM-1), applies `snapshot`/`state`
+  events to a client view (snapshot has no `id` so it never advances the
+  Last-Event-ID cursor), surfaces `live`/`connected`/`error` + `sendCommand`.
+  EventSource auto-reconnects with `Last-Event-ID` set from the last `state`
+  `id:<seq>`; the server gap-replays past that cursor so a new device/reconnecting
+  coach converges (LM-8/AC-8). Unmount closes the stream. The `sendCommand`
+  optimistically reflects the returned view for the issuing coach (the hub pushes
+  the authoritative `state` back to all coaches).
+- Tests: `useLiveMatch.test.tsx` (7 — fake EventSource + fetch stubs) and api.test.ts
+  live DTO/command coverage (3: enabled/disabled DTO, sendLiveCommand 200, 409).
+
+### PR 4 TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1 | `features/leagues/useLiveMatch.test.tsx` | Integration (hook, fake ES + fetch) | N/A (new) | ✅ import fails | ✅ 7/7 | ✅ connect/snapshot/delta/reconnect/control/409/cleanup | ✅ removed unused ref & FakeESCtor |
+| 4.2 | `features/leagues/api.test.ts` | Unit (api wrapper) | ✅ 18/18 | ✅ RED | ✅ 21/21 | ✅ enabled/disabled DTO + command 200/409 | ✅ `clockSeconds` absence asserted via `in` |
+
+### PR 4 Test Summary
+
+- **PR 4 tests**: 10 (7 hook + 3 api DTO/command) · focused 28/28 (incl. existing api 21).
+- **Full suite**: 1045/1045 (90 files) — up from 1035.
+- **Layers**: Integration hook (7) + unit api (3).
+
+### PR 4 Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused test command & exact result | `pnpm vitest run features/leagues/useLiveMatch.test.tsx features/leagues/api.test.ts` → 28/28 |
+| Runtime harness | `AUTH_MODE=local pnpm exec playwright test` → 21/21 (SSE/control are auth-mode-only; local 401 by design — live e2e lands in PR 6) |
+| Rollback boundary | Revert the two client commits (`useLiveMatch` + api DTO/`sendLiveCommand`) — purely client; server GET/POST unchanged. |
+
+### Deviations / Risks (PR 4)
+
+- **Line budget**: PR 4 ≈ 393 authored lines — within the 400-line guide (production ~150). No `size:exception` needed.
+- **Design rebalance**: tasks.md Phase 4 lists only the hook + DTO (no deferred slice-2/3 unit tests in Phase 4 — those shipped already in PR 2/3). Followed tasks.md exactly.
+- Reconnect: EventSource auto-reconnects internal (the hook does NOT recreate the EventSource on error); the hook just re-applies the post-reconnect snapshot. `Last-Event-ID` is the browser's cursor; the server gap-replays.
+- DTO keeps clocks nullable + no `clockSeconds` (LM-5: client can't derive a clock). `LiveMatchEventDto` defined for the future timeline (PR 5) — not yet consumed.
+
+### Remaining Tasks (not this PR)
+
+- [ ] 5.1–5.3 (MatchView live wiring + timeline + `liveEventLabels`) · 6.1–6.3 (result prefill + live e2e).
+
+### AC Traceability (PR 4 contribution)
+
+| AC | Covered in |
+|----|-----------|
+| AC-8 | 4.1 hook reconnect + snapshot-first (EventSource Last-Event-ID; server gap replay) |
+| AC-9 | 4.2 DTO nullable clocks + pause (client never derives a clock) |
+
+### Workload / PR Boundary
+
+- Mode: **stacked PR slice (4 of 6)**, stacked-to-main
+- Boundary: PR 3 (#63) merged → PR 4 client hook + DTO + `sendLiveCommand`. PR 5 wires MatchView + timeline.
+- Review budget: fits the 400-line guide (~393).
+
+## Commits (PR 4, feat/live-match-realtime-pr4)
+
+- `676d513` feat(leagues): add live match DTO types and sendLiveCommand client
+- `50bf592` feat(leagues): add useLiveMatch SSE hook with snapshot-first and reconnect
 - + docs commit (this file + tasks.md marks)
