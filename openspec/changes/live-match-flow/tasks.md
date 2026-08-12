@@ -28,14 +28,14 @@ Chain strategy: stacked-to-main
 
 ## PR 1a — Server Core
 
-- [ ] 1.1 RED mig `<ts>_add_live_match_flow`: ALTER TYPE +'ready' (**note**: confirm PG≥12 or isolate); +consents/startedAt/turnMs (schema+SQL)
-- [ ] 1.2 RED consentStart/retractConsent/beginMatch `liveMatch.ts`+test (LM-11/LM-3; ready→live via begin)
-- [ ] 1.3 unified clock: bump outgoing acc `(now-clockStartedAt)`; deriveLiveClock; delete D4+DTO clock fields (LM-5)
-- [ ] 1.4 `liveStore.ts` consent/retract/begin + pause/resume repurpose (LM-7); RED test
-- [ ] 1.5 `liveHub.ts` ticker accumulates; **RED** grace-gate (WARNING-2): drop `if(!turnClockEnabled)return` L135; del onClockExpired+2 tests
-- [ ] 1.6 live/route: wire consent/retract/begin, del D4 seam, POST viewerSide (D16/D19); RED 401/403/404/409
-- [ ] 1.7 serializeLive+viewerSide+DTO-parity vs toLiveViewState; api/leagues drop turn-clock (D15); RED
-- [ ] 1.8 delete 6 D4 tests in liveMatch.test; grep 5 D4 sites clean
+- [x] 1.1 RED mig `<ts>_add_live_match_flow`: ALTER TYPE +'ready' (**note**: confirm PG≥12 or isolate); +consents/startedAt/turnMs (schema+SQL)
+- [x] 1.2 RED consentStart/retractConsent/beginMatch `liveMatch.ts`+test (LM-11/LM-3; ready→live via begin)
+- [x] 1.3 unified clock: bump outgoing acc `(now-clockStartedAt)`; deriveLiveClock; delete D4+DTO clock fields (LM-5)
+- [x] 1.4 `liveStore.ts` consent/retract/begin + pause/resume repurpose (LM-7); RED test
+- [x] 1.5 `liveHub.ts` ticker accumulates; **RED** grace-gate (WARNING-2): drop `if(!turnClockEnabled)return` L135; del onClockExpired+2 tests
+- [x] 1.6 live/route: wire consent/retract/begin, del D4 seam, POST viewerSide (D16/D19); RED 401/403/404/409
+- [x] 1.7 serializeLive+viewerSide+DTO-parity vs toLiveViewState; api/leagues drop turn-clock (D15); RED
+- [x] 1.8 delete 6 D4 tests in liveMatch.test; grep 5 D4 sites clean
 
 ## PR 1b — Client + Deprecation + e2e
 
