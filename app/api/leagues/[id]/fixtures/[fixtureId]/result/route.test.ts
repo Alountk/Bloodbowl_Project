@@ -473,12 +473,21 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     };
   }
 
-  it("returns 403 for a captain attempting a correction", async () => {
+  it("accepts a correction from a participant captain (admin OR captain, 200)", async () => {
+    // user-1 owns the home team → a participant captain correcting a played result.
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
+    stubFixedRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
     const res = await callRoute("PUT", validBody);
-    expect(res.status).toBe(403);
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    // The correction commits with the captain as the audited actor.
+    expect(prismaMock.matchResultCorrection.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ correctedBy: "user-1" }),
+      }),
+    );
   });
 
   it("returns 404 for a foreign admin request without leak", async () => {

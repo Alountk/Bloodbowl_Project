@@ -59,9 +59,9 @@ Chain strategy: stacked-to-main
 
 ## PR 4 — Correction
 
-- [ ] 4.1 result/route PUT gate admin∪both captains 200; forfeit admin-only; RED flip route.test:476 403→200 (forfeit 403 stays)
-- [ ] 4.2 MatchCard `(owner||participant)&&played`; LeagueDetail pass onCorrectResult; RED MatchCard.test
-- [ ] 4.3 **net-new** e2e match-report participant-correction (SUGGESTION-4: add)
+- [x] 4.1 result/route PUT gate admin∪both captains 200; forfeit admin-only; RED flip route.test:476 403→200 (forfeit 403 stays)
+- [x] 4.2 MatchCard `(owner||participant)&&played`; LeagueDetail pass onCorrectResult; RED MatchCard.test
+- [x] 4.3 **net-new** e2e match-report participant-correction (SUGGESTION-4: add)
 
 ## Traceability
 

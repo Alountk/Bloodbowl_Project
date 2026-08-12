@@ -650,10 +650,8 @@ test("forfeit walkover: admin forfeits a scheduled fixture → Jugado 2–0 → 
   }
 });
 
-// --- Journey 5: a captain CAN load a result but cannot correct it --------------
-test("a captain loads a result but cannot correct it (no UI control; PUT is 403)", async ({
-  browser,
-}) => {
+// --- Journey 5: a captain CAN load a result AND correct it (PR 4 widening) -----
+test("a captain loads a result and corrects it (UI control + PUT 200)", async ({ browser }) => {
   const league = await buildTwoMemberStartedLeague(browser, "captain");
   try {
     const fixtureId = await scheduleFixture(league.admin, league.rival, league.leagueId);
@@ -673,17 +671,20 @@ test("a captain loads a result but cannot correct it (no UI control; PUT is 403)
     expect(loaded.status()).toBe(200);
     await waitForFixtureStatus(league.rival, league.leagueId, fixtureId, "played");
 
-    // The captain's card shows the played result but NO correction control.
+    // The captain's card shows the played result AND a correction control (PR 4).
     await league.rival.reload();
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    await expect(region.getByRole("button", { name: "Corregir resultado" })).toHaveCount(0);
+    await expect(region.getByRole("button", { name: "Corregir resultado" })).toBeVisible();
 
-    // The captain's PUT (correction) is 403.
+    // The captain's PUT (correction) is 200 — the correction commits.
     const corrected = await league.rival.request.put(
       `/api/leagues/${league.leagueId}/fixtures/${fixtureId}/result`,
-      { data: resultPayloadFor(snap, { homeScore: bHome ? 1 : 0, awayScore: bHome ? 0 : 1 }) },
+      { data: resultPayloadFor(snap, { homeScore: bHome ? 2 : 0, awayScore: bHome ? 0 : 2 }) },
     );
-    expect(corrected.status()).toBe(403);
+    expect(corrected.status()).toBe(200);
+    // The corrected score reflects on the card (2–0 or 0–2).
+    await league.rival.reload();
+    await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
   } finally {
     await league.close();
   }

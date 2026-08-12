@@ -109,7 +109,7 @@ export function MatchCard({
               Cargar resultado
             </button>
           ) : null}
-          {isLeagueOwner && fixture.status === "played" ? (
+          {(isLeagueOwner || isParticipant) && fixture.status === "played" ? (
             <button
               type="button"
               onClick={openCorrectResult}
