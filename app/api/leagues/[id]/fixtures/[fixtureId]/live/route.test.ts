@@ -6,6 +6,7 @@ const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn() },
   league: { findFirst: vi.fn() },
   liveMatch: { findFirst: vi.fn() },
+  liveEvent: { findFirst: vi.fn() },
 }));
 
 const consentLiveMatchMock = vi.hoisted(() => vi.fn());
@@ -484,6 +485,170 @@ describe("POST .../live — consent/retract/begin command handling", () => {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(409);
+    expect(applyTransitionMock).toHaveBeenCalled();
+  });
+});
+
+describe("POST .../live — side-aware event permission (LM-12, D14)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active (liveState.activeSide = home). coach-home = active. */
+  function liveSetup(sessionId: string) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("returns 200 and persists when the ACTIVE coach records a TD", async () => {
+    liveSetup("coach-home");
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "td", side: "home", playerRosterId: "p-1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(applyTransitionMock).toHaveBeenCalled();
+  });
+
+  it("returns 409 (no mutation) when a NON-active coach records a TD", async () => {
+    // home active; the away coach (non-active) submits a TD → 409.
+    liveSetup("coach-away");
+    const res = await POST(req({ type: "td", side: "away", playerRosterId: "p-9" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 and persists when a NON-active coach records a casualty to their OWN player", async () => {
+    // home active; the away coach records a casualty to an AWAY (own) player.
+    liveSetup("coach-away");
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "casualty", side: "away", victimRosterId: "p-9" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(applyTransitionMock).toHaveBeenCalled();
+  });
+
+  it("returns 409 (no mutation) when a NON-active coach records an OPPONENT casualty", async () => {
+    // home active; the away coach records a casualty to a HOME (opponent) player.
+    liveSetup("coach-away");
+    const res = await POST(req({ type: "casualty", side: "home", victimRosterId: "p-1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when the league admin (no side) records an event (D14 lifecycle-only)", async () => {
+    // league owner owns no team → side null → no event recording.
+    liveSetup("owner-1");
+    const res = await POST(req({ type: "foul", side: "home", playerRosterId: "p-1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST .../live — requestTurn nudge + 60s cooldown (LM-13, D17)", () => {
+  const now = Date.now();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active (liveState.activeSide = home). */
+  function liveSetup(sessionId: string) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("persists a requestTurn event from the NON-active coach and does NOT flip the turn", async () => {
+    // home active; the away coach requests the turn.
+    liveSetup("coach-away");
+    prismaMock.liveEvent.findFirst.mockResolvedValue(null); // no recent requestTurn
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView({ status: "live", activeSide: "home", homeTurnMs: 1000 }) });
+
+    const res = await POST(req({ type: "requestTurn" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    // The transition persists a labeled event but activeSide stays home (no flip).
+    expect(applyTransitionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        current: expect.objectContaining({ activeSide: "home" }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("rejects a requestTurn from the ACTIVE coach (already their turn) with 409", async () => {
+    liveSetup("coach-home"); // active
+    const res = await POST(req({ type: "requestTurn" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a requestTurn within the 60s cooldown window with 409 (D17)", async () => {
+    liveSetup("coach-away");
+    // A recent requestTurn was persisted (within the cooldown window).
+    prismaMock.liveEvent.findFirst.mockResolvedValue({ createdAt: new Date(now - 10_000) });
+    const res = await POST(req({ type: "requestTurn" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("allows a requestTurn once the cooldown window has elapsed (D17)", async () => {
+    liveSetup("coach-away");
+    // The last requestTurn was 90s ago → outside the 60s window.
+    prismaMock.liveEvent.findFirst.mockResolvedValue({ createdAt: new Date(now - 90_000) });
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "requestTurn" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
     expect(applyTransitionMock).toHaveBeenCalled();
   });
 });
