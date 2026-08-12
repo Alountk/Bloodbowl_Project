@@ -93,6 +93,18 @@ export function sumDraftedTds(players: Record<string, ResultPlayerDraft>): numbe
   return Object.values(players).reduce((total, a) => total + a.tds, 0);
 }
 
+/**
+ * Maps an API rejection to a Spanish message for the in-modal alert. The API
+ * throws an `Error` carrying a `.status` (see `readJson` in `./api`); a 409 is
+ * the captain-loads-while-admin-corrects race, 403 a permission error.
+ */
+function serverMessage(e: unknown): string {
+  const status = (e as { status?: number }).status;
+  if (status === 409) return "Ya hay un resultado cargado para este partido.";
+  if (status === 403) return "No tenés permisos para esta acción.";
+  return e instanceof Error ? e.message : "No se pudo guardar el resultado.";
+}
+
 export interface ResultModalProps {
   open: boolean;
   fixture: FixtureDraft;
@@ -104,7 +116,7 @@ export interface ResultModalProps {
   /** "load" (captain/admin on a scheduled fixture) or "correct" (admin on a played result). */
   mode: "load" | "correct";
   /** Fires with the assembled payload to POST (load) or PUT (correct). */
-  onSubmit: (payload: ResultPayload) => void;
+  onSubmit: (payload: ResultPayload) => Promise<void>;
   onClose: () => void;
 }
 
@@ -147,15 +159,29 @@ export function ResultModal({
 
   if (!open) return null;
 
-  const submit = () => {
+  const submit = async () => {
     const tdsHome = sumDraftedTds(home.players);
     const tdsAway = sumDraftedTds(away.players);
     if (tdsHome !== home.score || tdsAway !== away.score) {
       setError("La suma de anotaciones de cada equipo debe coincidir con su marcador final.");
       return;
     }
+    // The route requires exactly six MJP nominations per team (deduplicated),
+    // so mirror that contract client-side instead of silently hitting a 400.
+    const nominationsOf = (list: string[]) => new Set(list.filter(Boolean)).size;
+    if (nominationsOf(home.mvpNominations) !== 6 || nominationsOf(away.mvpNominations) !== 6) {
+      setError("Cada equipo debe nominar exactamente 6 jugadores para el MVP.");
+      return;
+    }
     setError(null);
-    onSubmit(buildResultPayload(home, away));
+    // Surface server-side rejections (network failure, 5xx, or a 409 race such
+    // as the captain loading a result while the admin corrects it) in the modal
+    // instead of letting the parent close it silently on a failed submit.
+    try {
+      await onSubmit(buildResultPayload(home, away));
+    } catch (e) {
+      setError(serverMessage(e));
+    }
   };
 
   return (

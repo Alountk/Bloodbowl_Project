@@ -21,6 +21,7 @@ export default defineConfig({
     "**/league-matchday.spec.ts",
     "**/avatar.spec.ts",
     "**/match-report.spec.ts",
+    "**/full-league-flow.spec.ts",
     "**/match-view.spec.ts",
   ],
   fullyParallel: false,
