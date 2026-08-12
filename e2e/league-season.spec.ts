@@ -163,3 +163,80 @@ test("multi-user journey: join open league, start season, jornadas, post-start l
     await contextC.close();
   }
 });
+
+/**
+ * Locks the member-league visibility bug: a NON-OWNER member of a STARTED league
+ * must see the league in their OWN /leagues list (under "Mis Ligas") so they can
+ * navigate back and accept the match proposal (the "VS"). Before the fix the
+ * list API only returned open leagues + the user's OWN leagues, so a started
+ * league a member had JOINED was invisible and unreachable.
+ */
+test("started-league member sees the league in their own /leagues list", async ({ browser }) => {
+  const contextA = await browser.newContext();
+  const contextB = await browser.newContext();
+  const pageA = await contextA.newPage();
+  const pageB = await contextB.newPage();
+
+  try {
+    // --- Admin A: signup, team (11), league, joins with their own team ---
+    await signup(pageA, uniqueEmail("mv-admin"));
+    const teamAName = `A-Visores ${Date.now()}`;
+    await createTeam(pageA, teamAName);
+    const leagueName = `Liga Visible ${Date.now()}`;
+    await createLeague(pageA, leagueName);
+    await openLeagueCard(pageA, leagueName);
+    await pageA.getByLabel("Tu equipo").selectOption({ label: teamAName });
+    await pageA.getByRole("button", { name: "Apuntarse" }).click();
+    await expect(pageA.getByText(teamAName)).toBeVisible();
+
+    // --- User B (member, NOT owner): signup, team (11), joins A's OPEN league ---
+    await signup(pageB, uniqueEmail("mv-rival"));
+    const teamBName = `B-Contempladores ${Date.now()}`;
+    await createTeam(pageB, teamBName);
+    await pageB.goto("/leagues");
+    await expect(pageB.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await openLeagueCard(pageB, leagueName);
+    await pageB.getByLabel("Tu equipo").selectOption({ label: teamBName });
+    await pageB.getByRole("button", { name: "Apuntarse" }).click();
+    await expect(pageB.getByText(teamBName)).toBeVisible();
+
+    // --- Admin A starts the league (2 teams → seasonLength 1) ---
+    await pageA.reload();
+    const startButton = pageA.getByRole("button", { name: "Iniciar liga" });
+    await expect(startButton).toBeEnabled();
+    await startButton.click();
+    await expect(pageA.getByRole("dialog", { name: "Iniciar liga" })).toBeVisible();
+    await pageA.getByLabel("¿Cuántas jornadas?").fill("1");
+    await pageA
+      .getByRole("dialog", { name: "Iniciar liga" })
+      .getByRole("button", { name: "Iniciar liga" })
+      .click();
+    await expect(pageA.getByText("Iniciada")).toBeVisible();
+
+    // --- THE BUG: B's OWN /leagues list must surface the started league ---
+    // B is a member, not the owner — the started league belongs under "Mis
+    // Ligas" and must be openable (that is how B accepts the match proposal).
+    await pageB.goto("/leagues");
+    await expect(pageB.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    const mySection = pageB
+      .getByRole("heading", { level: 2, name: "Mis Ligas" })
+      .locator("..");
+    await expect(mySection.getByText(leagueName)).toBeVisible();
+    await expect(mySection.getByText("Iniciada")).toBeVisible();
+    // The started league must not masquerade as a joinable open league.
+    const openSection = pageB
+      .getByRole("heading", { level: 2, name: "Ligas abiertas" })
+      .locator("..");
+    await expect(openSection.getByText(leagueName)).not.toBeVisible();
+
+    // B can open the league and reach the matchup where the VS is accepted.
+    await openLeagueCard(pageB, leagueName);
+    await expect(pageB.getByRole("region", { name: "Jornada 1" })).toBeVisible();
+    await expect(
+      pageB.getByRole("region", { name: "Jornada 1" }).getByText("vs"),
+    ).toHaveCount(1);
+  } finally {
+    await contextA.close();
+    await contextB.close();
+  }
+});
