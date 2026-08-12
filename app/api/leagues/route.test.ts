@@ -41,6 +41,7 @@ describe("GET /api/leagues", () => {
         seasonLength: null,
         startedAt: null,
         createdAt: new Date().toISOString(),
+        teams: [],
         _count: { teams: 3 },
       },
       {
@@ -52,6 +53,7 @@ describe("GET /api/leagues", () => {
         seasonLength: 2,
         startedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
+        teams: [],
         _count: { teams: 2 },
       },
     ];
@@ -66,12 +68,21 @@ describe("GET /api/leagues", () => {
     expect(body[0].memberCount).toBe(3);
     expect(body[1].ownerName).toBe("me@test.local"); // falls back to email when name is null
     expect(body[1].memberCount).toBe(2);
+    // Neither league has a member team for the session user.
+    expect(body.every((league: { isMember: boolean }) => league.isMember === false)).toBe(true);
 
-    // Query is the union: all open + own (any status), with owner + _count
-    // memberCount computed in the query (no per-league N+1 detail fetch).
+    // Query is the union: all open + own (any status) + leagues where the user
+    // holds a non-archived member team, with owner + _count memberCount computed
+    // in the query (no per-league N+1 detail fetch).
     expect(prismaMock.league.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ status: "open" }, { ownerId: "user-1" }] },
+        where: {
+          OR: [
+            { status: "open" },
+            { ownerId: "user-1" },
+            { teams: { some: { userId: "user-1", archivedAt: null } } },
+          ],
+        },
         include: expect.objectContaining({
           owner: expect.objectContaining({
             select: expect.objectContaining({ email: true }),
@@ -84,6 +95,84 @@ describe("GET /api/leagues", () => {
             }),
           }),
         }),
+      }),
+    );
+  });
+
+  it("returns a STARTED league where the session user is a member, flagged isMember", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const leagues = [
+      {
+        id: "member-started",
+        name: "Joined Started League",
+        ownerId: "user-2",
+        owner: { id: "user-2", email: "owner@test.local", name: "League Owner" },
+        status: "started",
+        seasonLength: 1,
+        startedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        // The session user holds one non-archived member team in this league.
+        teams: [{ id: "team-1" }],
+        _count: { teams: 2 },
+      },
+    ];
+    prismaMock.league.findMany.mockResolvedValue(leagues);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].id).toBe("member-started");
+    expect(body[0].isMember).toBe(true);
+    // memberCount still computed in the query — no N+1 regression.
+    expect(body[0].memberCount).toBe(2);
+    // The member-team ids used to derive isMember never leak to the client.
+    expect(body[0].teams).toBeUndefined();
+
+    // The query unions leagues where the user has a live member team and includes
+    // only that scoped team list to derive the flag.
+    expect(prismaMock.league.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { status: "open" },
+            { ownerId: "user-1" },
+            { teams: { some: { userId: "user-1", archivedAt: null } } },
+          ],
+        },
+        include: expect.objectContaining({
+          teams: {
+            where: { userId: "user-1", archivedAt: null },
+            select: { id: true },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("keeps foreign STARTED leagues without membership hidden (WHERE excludes them)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    // No league matches: the user owns nothing, is a member of nothing, and the
+    // only leagues present are foreign started ones — the WHERE never selects them.
+    prismaMock.league.findMany.mockResolvedValue([]);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(0);
+
+    // Hiding is enforced at the query level: the member-team branch is scoped to
+    // the SESSION user's own teams, so a foreign started league where the user
+    // has no member team can never match the OR.
+    expect(prismaMock.league.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { status: "open" },
+            { ownerId: "user-1" },
+            { teams: { some: { userId: "user-1", archivedAt: null } } },
+          ],
+        },
       }),
     );
   });
