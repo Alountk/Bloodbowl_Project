@@ -46,9 +46,13 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  if (fixture.scheduledAt != null || fixture.winnerId != null) {
+  // A PLAYED (or result-loaded) fixture is locked — 409. A merely SCHEDULED
+  // fixture may be re-accepted (rejornar): accept updates scheduledAt.
+  const played =
+    fixture.winnerId != null || fixture.homeScore != null || fixture.awayScore != null;
+  if (played) {
     return NextResponse.json(
-      { error: "This fixture is already scheduled or played" },
+      { error: "This fixture is already played" },
       { status: 409 },
     );
   }
@@ -82,10 +86,16 @@ export async function POST(
     if (proposal.userId === userId) {
       return { error: "You cannot accept your own proposal" as const, status: 409 as const };
     }
-    // Re-check the fixture is still schedulable inside the transaction.
+    // Re-check the fixture is still schedulable inside the transaction (only a
+    // PLAYED fixture is blocked — a scheduled one may be re-scheduled).
     const current = await tx.fixture.findFirst({ where: { id: fixtureId } });
-    if (current && (current.scheduledAt != null || current.winnerId != null)) {
-      return { error: "This fixture is already scheduled or played" as const, status: 409 as const };
+    if (
+      current &&
+      (current.winnerId != null ||
+        current.homeScore != null ||
+        current.awayScore != null)
+    ) {
+      return { error: "This fixture is already played" as const, status: 409 as const };
     }
 
     await tx.scheduleProposal.update({
