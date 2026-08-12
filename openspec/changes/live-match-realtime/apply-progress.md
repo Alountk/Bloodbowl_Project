@@ -326,3 +326,81 @@ deploy` already present, unchanged).
 - `676d513` feat(leagues): add live match DTO types and sendLiveCommand client
 - `50bf592` feat(leagues): add useLiveMatch SSE hook with snapshot-first and reconnect
 - + docs commit (this file + tasks.md marks)
+
+---
+
+## PR 5: MatchView + Timeline + Labels
+
+### What shipped (PR 5)
+
+- `features/leagues/liveEventLabels.ts` (+ test): pure Spanish label fn for the
+  minimum event taxonomy — start, turn, touchdown, casualty (reuses the rulebook
+  `casualtyKindLabel` band: "Herida grave"/"Permanente"/"Muerto"), foul, end of
+  half, end of match. Unknown kinds pass through (matchSummary precedent).
+- `app/api/leagues/[id]/fixtures/[fixtureId]/route.ts` (+2 tests): returns the
+  shared `live` DTO (`LiveMatchViewState` + chronological `events`) via the
+  fixture GET. The fixture include now pulls `liveMatch { events orderBy seq }`
+  and the league's turn-clock fields; `live` is `null` when no LiveMatch exists
+  (MV-5 static inert). `api.ts` `MatchDetail` + `LiveMatchView` typed accordingly.
+- `features/leagues/MatchView.tsx` (+4 unit tests): a LiveMatch for a fixture
+  renders the live UI — `LiveActiveMatch` (running match: `useLiveMatch` SSE
+  feeds the turn bar/clocks/score/feed + "Dar el turno" control via `sendCommand`)
+  or `FinishedLiveTimeline` (played live match: final score + persisted timeline).
+  Clocks are hidden when `turnClockEnabled` is false (LM-5). Static fixtures
+  (`detail.live === null`) render exactly as before, so the MV-5 guard
+  `not.toContainText(/turno|minuto|½/i)` holds.
+
+### PR 5 TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 5.1 | `features/leagues/MatchView.test.tsx` | Integration (fake ES + fetch) | ✅ 7/7 | ✅ 4 fail | ✅ 11/11 | ✅ live turn/score/feed, clocks-hidden, control, finished timeline | ✅ static-state regression preserved |
+| 5.2 | `features/leagues/liveEventLabels.test.ts` | Unit (pure) | N/A (new) | ✅ import fails | ✅ 8/8 | ✅ 8 kinds + band + unknown | ➖ None |
+| 5.3 | `.../fixtures/[fixtureId]/route.test.ts` | Unit (route, mocks) | ✅ 7/7 | ✅ 2 fail | ✅ 9/9 | ✅ live-null + live-serialize | ✅ shared serializeLive |
+| DTO | `features/leagues/api.test.ts` + matchSummary.test | Unit | ✅ 21/21, ✅ 12/12 | — | ✅ green | ✅ MatchDetail `live` field | ➖ |
+
+### PR 5 Test Summary
+
+- **PR 5 tests**: 13 new (4 MatchView live/timeline + 8 labels + 2 route live) · focused 49/49.
+- **Full suite**: 1058/1058 (91 files) — up from 1045.
+- **Layers**: Integration component (4 + 7 static regression) + unit pure (8) + unit route (2) + unit DTO.
+
+### PR 5 Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused test command & exact result | `pnpm vitest run features/leagues/MatchView.test.tsx features/leagues/liveEventLabels.test.ts app/api/leagues/[id]/fixtures/[fixtureId]/route.test.ts features/leagues/api.test.ts` → 49/49 |
+| Runtime harness | `AUTH_MODE=local pnpm exec playwright test` → 21/21 (local suite ignores auth-only match-view/live specs; static-state guard covered by the MatchView unit test and the auth e2e in PR 6) |
+| Rollback boundary | Revert MatchView/labels/fixture-GET commits independently of PRs 1-4; the fixture GET `live` field is additive (null default) and removable without breaking static MatchView. |
+
+### Deviations / Risks (PR 5)
+
+- **Line budget**: PR 5 ≈ 690 authored lines (MatchView UI + route + labels + tests). The UI wiring is the dominant weight; the orchestrator's task boundary (5.1-5.3) is one coherent slate. **WARNING — `size:exception` or accept the UI-slice boundary.**
+- Live vs finished: a running match (`live.status === "live"`) is fed by `useLiveMatch`; a finished live match renders the persisted timeline from the fixture GET `live` (no SSE). This matches MV-5 (live + played timeline) and D8.
+- The static-state guard (`/turno|minuto|½/i` absent) is preserved: `detail.live === null` renders no live UI. Covered by the "no visible live/timeline/clock shells" unit test and the auth `e2e/match-view.spec.ts` (PR 6 runs it).
+- `matchSummary.test` fixture updated with the required `MatchDetail.live` field (additive TS).
+
+### Remaining Tasks (not this PR)
+
+- [ ] 6.1–6.3 (result prefill `resultPrefill.ts` + ResultModal/LeagueDetail + auth-suite live e2e + config exclusion).
+
+### AC Traceability (PR 5 contribution)
+
+| AC | Covered in |
+|----|-----------|
+| AC-5 | 5.1 live UI only for live/played; static guard preserved; tokens/copy Spanish (MV-7) |
+| AC-9 | 5.1 clocks hidden when `turnClockEnabled` false (LM-5) |
+| LM-10 | 5.1/5.3 timeline for live (SSE) + played (persisted events via fixture GET `live`); no replay/public/out-of-taxonomy |
+
+### Workload / PR Boundary
+
+- Mode: **stacked PR slice (5 of 6)**, stacked-to-main
+- Boundary: PR 4 (#64) merged → PR 5 wires MatchView live/timeline + labels + fixture GET `live`. PR 6 adds result prefill + live e2e.
+- Review budget: ≈ 690 authored lines (UI slate); recommend `size:exception`.
+
+## Commits (PR 5, feat/live-match-realtime-pr5)
+
+- `a89ce30` feat(leagues): add Spanish live-event labels
+- `8eecf4f` feat(leagues): return the shared live DTO from fixture GET
+- `fc97806` feat(leagues): wire MatchView live shells and timeline
+- + docs commit (this file + tasks.md marks)
