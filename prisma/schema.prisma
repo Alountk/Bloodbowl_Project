@@ -92,9 +92,11 @@ enum TeamSide {
   away
 }
 
-/// Lifecycle of a live match: pending (created), live (in progress), finished.
+/// Lifecycle of a live match: pending (created), ready (both coaches
+/// consented, awaiting the first turn), live (in progress), finished.
 enum LiveMatchStatus {
   pending
+  ready
   live
   finished
 }
@@ -115,11 +117,19 @@ model LiveMatch {
   awayClock     Int             @default(240)
   homeScore     Int             @default(0)
   awayScore     Int             @default(0)
+  /// Whether each coach has consented to start (LM-11). Both true → ready.
+  homeConsented Boolean         @default(false)
+  awayConsented Boolean         @default(false)
+  /// Kickoff anchor: set once when the first turn begins (LM-5), informational.
+  startedAt     DateTime?
+  /// Unified clock accumulators in ms — server-derived, active side only (LM-5).
+  homeTurnMs    Int             @default(0)
+  awayTurnMs    Int             @default(0)
   /// Optimistic concurrency seq — monotonic, bump-or-409 (LM-6).
   seq           Int             @default(0)
   /// True when the active clock is paused by the disconnect policy (LM-7).
   paused        Boolean         @default(false)
-  /// The single "active clock began running" timestamp; null = paused (LM-5).
+  /// Re-purposed unified-clock running-segment start; null = paused/pre-live.
   clockStartedAt DateTime?
   finishedAt    DateTime?
   createdAt     DateTime        @default(now())

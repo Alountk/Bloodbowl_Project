@@ -1,28 +1,36 @@
 /**
- * Live-match persistence + fan-out store (LM-6, D4/D6).
+ * Live-match persistence + fan-out store (LM-6, D16/D18).
  *
  * The control POST uses these functions to run the pure transition (from
  * `lib/liveMatch.ts`) and persist it atomically under an optimistic `seq`
  * guard, then publish to the hub AFTER commit:
  *
- * - `startLiveMatch` inserts the initial LiveMatch row + first `start` event and
- *   publishes the initial view state (LM-3 start guard lives here: rejects a
- *   played/result fixture or an already-existing live match).
+ * - `consentLiveMatch` creates the LiveMatch row on FIRST consent (D16) or
+ *   applies a subsequent consent as a transition; when both booleans are true
+ *   the persisted status becomes `ready` (LM-11).
+ * - `retractLiveConsent` clears a side's boolean and returns the row to
+ *   `pending`.
+ * - `beginLiveMatch` runs `ready → live` ONLY via the first turn (LM-3).
  * - `applyTransition` bumps an existing LiveMatch row via `updateMany({ where: {
  *   id, seq: prev } })`; a 0-row result ⇒ double action / seq conflict → 409. The
  *   delta LiveEvent(s) are created in the same transaction so the guard and the
  *   append are atomic. Publish happens only after the transaction commits.
  *
- * `league` is the clock config from the League row (LM-5); the DB stays the
- * source of truth and `seq` remains monotonically increasing (LM-6).
+ * The unified clock (LM-5) makes the DB the source of truth: the active side's
+ * accumulator is bumped at boundaries (`applyTransition` callers already folded
+ * in-flight via `accumulate`; `pauseLiveMatch` bumps it on grace expiry per LM-7/
+ * D18) and `clockStartedAt` is the running segment start (null while paused or
+ * pre-live). `seq` remains monotonically increasing (LM-6).
  */
 
 import type { LiveMatch, LiveEvent, Prisma } from "@prisma/client";
 import {
-  startMatch,
+  beginMatch,
+  consentStart,
+  retractConsent,
   toLiveViewState,
+  isStartableFixture,
   type FixtureStartState,
-  type LeagueClockConfig,
   type LiveMatchState,
   type TeamSide,
 } from "./liveMatch";
@@ -42,32 +50,40 @@ export interface StoreTx {
 export interface StoreDeps {
   prisma: {
     $transaction<T>(fn: (tx: StoreTx) => Promise<T>): Promise<T>;
-    liveMatch: Pick<StoreTx["liveMatch"], "create">;
+    liveMatch: {
+      create(args: Prisma.LiveMatchCreateArgs): Promise<LiveMatch>;
+      findFirst(args: Prisma.LiveMatchFindFirstArgs): Promise<LiveMatch | null>;
+    };
   };
   hub: {
     publish(fixtureId: string, payload: unknown): void;
   };
 }
 
+/** The persisted row fields the store maps to/from a pure state. */
+interface LiveMatchRowFields {
+  id: string;
+  fixtureId: string;
+  status: LiveMatch["status"];
+  half: number;
+  turnNumber: number;
+  activeSide: TeamSide;
+  homeConsented: boolean;
+  awayConsented: boolean;
+  startedAt: Date | string | null;
+  homeTurnMs: number;
+  awayTurnMs: number;
+  homeScore: number;
+  awayScore: number;
+  seq: number;
+  paused: boolean;
+  clockStartedAt: Date | string | null;
+  finishedAt: Date | string | null;
+}
+
 /** Converts a persisted LiveMatch row (ISO statuses/timestamps) into a pure state. */
 export function liveMatchRowToState(
-  row: Partial<LiveMatch> & {
-    id: string;
-    fixtureId: string;
-    status: LiveMatch["status"];
-    half: number;
-    turnNumber: number;
-    activeSide: TeamSide;
-    homeClock: number;
-    awayClock: number;
-    homeScore: number;
-    awayScore: number;
-    seq: number;
-    paused: boolean;
-    clockStartedAt: Date | string | null;
-    finishedAt: Date | string | null;
-  },
-  league: LeagueClockConfig,
+  row: Partial<LiveMatch> & LiveMatchRowFields,
 ): LiveMatchState {
   return {
     seq: row.seq,
@@ -75,14 +91,16 @@ export function liveMatchRowToState(
     half: row.half,
     turnNumber: row.turnNumber,
     activeSide: row.activeSide,
-    homeClock: row.homeClock,
-    awayClock: row.awayClock,
+    homeConsented: row.homeConsented,
+    awayConsented: row.awayConsented,
+    startedAt: row.startedAt ? new Date(row.startedAt).getTime() : null,
+    homeTurnMs: row.homeTurnMs,
+    awayTurnMs: row.awayTurnMs,
     homeScore: row.homeScore,
     awayScore: row.awayScore,
     paused: row.paused,
     clockStartedAt: row.clockStartedAt ? new Date(row.clockStartedAt).getTime() : null,
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
-    league,
     events: [],
   };
 }
@@ -93,23 +111,17 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
     half: next.half,
     turnNumber: next.turnNumber,
     activeSide: next.activeSide,
-    homeClock: next.homeClock,
-    awayClock: next.awayClock,
+    homeConsented: next.homeConsented,
+    awayConsented: next.awayConsented,
+    startedAt: next.startedAt != null ? new Date(next.startedAt) : null,
+    homeTurnMs: next.homeTurnMs,
+    awayTurnMs: next.awayTurnMs,
     homeScore: next.homeScore,
     awayScore: next.awayScore,
     paused: next.paused,
     clockStartedAt: next.clockStartedAt != null ? new Date(next.clockStartedAt) : null,
     finishedAt: next.finishedAt != null ? new Date(next.finishedAt) : null,
   };
-}
-
-export interface ApplyTransitionInput {
-  liveMatchId: string;
-  fixtureId: string;
-  current: LiveMatchState;
-  next: LiveMatchState;
-  league: LeagueClockConfig;
-  now: number;
 }
 
 /** Shared optimistic-guard persistence: bump seq, write fields, append delta events. */
@@ -149,6 +161,14 @@ async function persistAndPublish(
   return nextSeq;
 }
 
+export interface ApplyTransitionInput {
+  liveMatchId: string;
+  fixtureId: string;
+  current: LiveMatchState;
+  next: LiveMatchState;
+  now: number;
+}
+
 /**
  * Persists one transition: optimistic `updateMany` on the previous `seq` (a
  * 0-row result → seq conflict / double action), appends the delta event rows in
@@ -172,24 +192,176 @@ export async function applyTransition(
   return { seq: nextSeq, view: toLiveViewState({ ...input.next, seq: nextSeq }, input.now) };
 }
 
-export interface PauseResumeInput {
-  liveMatchId: string;
+/**
+ * Creates an initial pending LiveMatch row whose ONE consented boolean is set
+ * (D16: the row exists only once a coach consents). Used by `consentLiveMatch`
+ * when no row exists yet. Publishes the pending view.
+ */
+async function createFirstConsent(
+  input: { fixtureId: string; side: TeamSide; now: number },
+  deps: StoreDeps,
+): Promise<{ liveMatchId: string; view: ReturnType<typeof toLiveViewState> }> {
+  const homeConsented = input.side === "home";
+  const awayConsented = input.side === "away";
+  const state: LiveMatchState = {
+    seq: 0,
+    status: "pending",
+    half: 1,
+    turnNumber: 1,
+    activeSide: "home",
+    homeConsented,
+    awayConsented,
+    startedAt: null,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    homeScore: 0,
+    awayScore: 0,
+    paused: false,
+    clockStartedAt: null,
+    finishedAt: null,
+    events: [],
+  };
+
+  const liveMatchId = await deps.prisma.$transaction(async (tx) => {
+    const created = await tx.liveMatch.create!({
+      data: {
+        fixtureId: input.fixtureId,
+        status: "pending" as const,
+        half: 1,
+        turnNumber: 1,
+        activeSide: "home" as const,
+        homeConsented,
+        awayConsented,
+        startedAt: null,
+        homeTurnMs: 0,
+        awayTurnMs: 0,
+        homeScore: 0,
+        awayScore: 0,
+        seq: 0,
+        paused: false,
+        clockStartedAt: null,
+      },
+    });
+    return created.id;
+  });
+
+  const view = toLiveViewState(state, input.now);
+  deps.hub.publish(input.fixtureId, view);
+  return { liveMatchId, view };
+}
+
+export interface ConsentLiveMatchInput {
   fixtureId: string;
-  current: LiveMatchState;
-  league: LeagueClockConfig;
+  fixture: FixtureStartState;
+  side: TeamSide;
   now: number;
 }
 
 /**
- * Hub-driven internal pause (LM-7/D6): sets `paused=true` and `clockStartedAt=null`
- * (the active clock stops consuming time) under the optimistic seq guard, then
- * publishes. Repeating a pause when already paused is a no-op acceptance (no
- * seq bump, no mutation).
+ * Records a coach's consent (LM-11, D16): the LiveMatch row is created on the
+ * FIRST consent (create-on-first-consent); a subsequent consent transitions an
+ * existing row. Both consents → `ready`. Doubly-consenting the same side is an
+ * idempotent no-op. Rejects a played/result-loaded fixture with 409 before any
+ * write. P2002 race on create → re-read + apply the transition.
+ */
+export async function consentLiveMatch(
+  input: ConsentLiveMatchInput,
+  deps: StoreDeps,
+): Promise<{ liveMatchId: string; view: ReturnType<typeof toLiveViewState> }> {
+  if (!isStartableFixture(input.fixture)) {
+    throw Object.assign(new Error("consent not allowed on played/result fixture"), { status: 409 });
+  }
+
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) {
+    return createFirstConsent({ fixtureId: input.fixtureId, side: input.side, now: input.now }, deps);
+  }
+
+  const current = liveMatchRowToState(row);
+  const next = consentStart(current, { side: input.side });
+  if (next === current) {
+    return { liveMatchId: row.id, view: toLiveViewState(current, input.now) };
+  }
+  const nextSeq = await persistAndPublish(
+    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    deps,
+  );
+  return { liveMatchId: row.id, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+export interface RetractLiveConsentInput {
+  liveMatchId: string;
+  fixtureId: string;
+  side: TeamSide;
+  now: number;
+}
+
+/**
+ * Clears a coach's consent, returning the match to `pending` (LM-11). No-op when
+ * that side never consented.
+ */
+export async function retractLiveConsent(
+  input: RetractLiveConsentInput,
+  deps: StoreDeps,
+): Promise<{ view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const current = liveMatchRowToState(row);
+  const next = retractConsent(current, { side: input.side });
+  if (next === current) {
+    return { view: toLiveViewState(current, input.now) };
+  }
+  const nextSeq = await persistAndPublish(
+    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    deps,
+  );
+  return { view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+export interface BeginLiveMatchInput {
+  liveMatchId: string;
+  fixtureId: string;
+  now: number;
+}
+
+/**
+ * Begins the first turn: `ready → live` ONLY via `beginMatch` (LM-3/LM-11).
+ * Persists the live state + the `start`/`turnStart` events atomically.
+ */
+export async function beginLiveMatch(
+  input: BeginLiveMatchInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const current = liveMatchRowToState(row);
+  const next = beginMatch(current, input.now);
+  const nextSeq = await persistAndPublish(
+    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    deps,
+  );
+  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+export interface PauseResumeInput {
+  liveMatchId: string;
+  fixtureId: string;
+  current: LiveMatchState;
+  now: number;
+}
+
+/**
+ * Hub-driven internal pause (LM-7/D18): bumps the ACTIVE accumulator by the
+ * in-flight segment `(now - clockStartedAt)`, then sets `paused=true` and
+ * `clockStartedAt=null` (the active clock consumes no further time) under the
+ * optimistic seq guard, then publishes. Repeating a pause when already paused is
+ * a no-op acceptance (no seq bump, no mutation). Survives restarts (persisted).
  */
 export async function pauseLiveMatch(input: PauseResumeInput, deps: StoreDeps): Promise<void> {
   if (input.current.paused) return;
+  const bumped = bumpActiveAccumulator(input.current, input.now);
   const paused: LiveMatchState = {
-    ...input.current,
+    ...bumped,
     paused: true,
     clockStartedAt: null,
     events: [],
@@ -207,9 +379,9 @@ export async function pauseLiveMatch(input: PauseResumeInput, deps: StoreDeps): 
 }
 
 /**
- * Hub-driven resume (LM-7): clears the pause and restarts the active clock at
- * `now` (`paused=false`, `clockStartedAt=now`) so the remaining time recomputes
- * from the persisted reset timestamp.
+ * Hub-driven resume (LM-7): clears the pause and restarts the running segment at
+ * `now` (`paused=false`, `clockStartedAt=now`) so accumulation resumes from the
+ * persisted accumulators (never zero). Repurposed unified-clock segment resume.
  */
 export async function resumeLiveMatch(input: PauseResumeInput, deps: StoreDeps): Promise<void> {
   if (!input.current.paused) return;
@@ -231,93 +403,12 @@ export async function resumeLiveMatch(input: PauseResumeInput, deps: StoreDeps):
   );
 }
 
-export interface StartLiveMatchInput {
-  fixtureId: string;
-  fixture: FixtureStartState;
-  league: LeagueClockConfig;
-  now: number;
-}
-
-/**
- * Starts a live match from a scheduled fixture (LM-3). Rejects a played/result
- * fixture; the unique `fixtureId` guard turns a double-start into 409 (P2002).
- * Creates the LiveMatch row + `start` event atomically and publishes the initial
- * view state (start guard enforced via `startMatch`'s canStart).
- */
-export async function startLiveMatch(
-  input: StartLiveMatchInput,
-  deps: StoreDeps,
-): Promise<{ liveMatchId: string; view: ReturnType<typeof toLiveViewState> }> {
-  const pending: LiveMatchState = {
-    seq: 0,
-    status: "pending",
-    half: 1,
-    turnNumber: 1,
-    activeSide: "home",
-    homeClock: 0,
-    awayClock: 0,
-    homeScore: 0,
-    awayScore: 0,
-    paused: false,
-    clockStartedAt: null,
-    finishedAt: null,
-    league: input.league,
-    events: [],
-  };
-
-  let started: LiveMatchState;
-  try {
-    started = startMatch(pending, input.fixture, input.now);
-  } catch {
-    throw Object.assign(new Error("match cannot start"), { status: 409 });
-  }
-
-  const startEvents = started.events.filter((e) => e.seq > 0);
-
-  let liveMatchId = "";
-  try {
-    liveMatchId = await deps.prisma.$transaction(async (tx) => {
-      const created = await tx.liveMatch.create!({
-        data: {
-          fixtureId: input.fixtureId,
-          status: started.status,
-          half: started.half,
-          turnNumber: started.turnNumber,
-          activeSide: started.activeSide,
-          homeClock: started.homeClock,
-          awayClock: started.awayClock,
-          homeScore: started.homeScore,
-          awayScore: started.awayScore,
-          seq: started.events.length > 0 ? 1 : 0,
-          paused: false,
-          clockStartedAt: started.clockStartedAt != null ? new Date(started.clockStartedAt) : null,
-        },
-      });
-      for (const event of startEvents) {
-        await tx.liveEvent.create({
-          data: {
-            liveMatchId: created.id,
-            seq: event.seq,
-            kind: event.kind,
-            side: event.side,
-            playerRosterId: event.playerRosterId,
-            half: event.half,
-            turnNumber: event.turnNumber,
-            payload: event.payload as never,
-          },
-        });
-      }
-      return created.id;
-    });
-  } catch (error) {
-    // P2002 on unique fixtureId → a live match is already started.
-    if ((error as { code?: string }).code === "P2002") {
-      throw Object.assign(new Error("already started"), { status: 409 });
-    }
-    throw error;
-  }
-
-  const view = toLiveViewState(started, input.now);
-  deps.hub.publish(input.fixtureId, view);
-  return { liveMatchId, view };
+/** Bumps the ACTIVE side's accumulator by the live in-flight segment elapsed (LM-5). */
+function bumpActiveAccumulator(state: LiveMatchState, now: number): LiveMatchState {
+  if (state.status !== "live" || state.clockStartedAt == null) return state;
+  const inFlight = Math.max(now - state.clockStartedAt, 0);
+  if (inFlight === 0) return state;
+  return state.activeSide === "home"
+    ? { ...state, homeTurnMs: state.homeTurnMs + inFlight }
+    : { ...state, awayTurnMs: state.awayTurnMs + inFlight };
 }
