@@ -143,6 +143,37 @@ describe("NegotiationPanel — participant", () => {
     expect(screen.getByLabelText(/Fecha propuesta/)).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Aceptar" }).length).toBeGreaterThanOrEqual(1);
   });
+
+  it("re-opens negotiation on a SCHEDULED (not played) fixture — rejornar re-propose", () => {
+    // A scheduled fixture still offers propose/accept to a participant (rejornar).
+    const fixture = fixtureWith([acceptedProposal, open2, open1]);
+    fixture.status = "scheduled";
+    fixture.scheduledAt = "2026-03-01T18:00:00.000Z";
+    renderPanel({ fixture });
+    expect(screen.getByRole("button", { name: "Proponer" })).toBeTruthy();
+    expect(screen.getByLabelText(/Fecha propuesta/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Aceptar" }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps the history (old + new proposals) on a re-negotiated scheduled fixture", () => {
+    const fixture = fixtureWith([acceptedProposal, open2, open1]);
+    fixture.status = "scheduled";
+    renderPanel({ fixture });
+    // History retains all prior cycles alongside the new schedule.
+    expect(screen.getAllByText("raul").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("maria").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Acordado/)).toBeTruthy();
+  });
+
+  it("locks negotiate controls on a PLAYED fixture", () => {
+    const fixture = fixtureWith([acceptedProposal]);
+    fixture.status = "played";
+    fixture.winnerId = "th";
+    renderPanel({ fixture, isParticipant: true });
+    expect(screen.queryByRole("button", { name: "Proponer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
+    expect(screen.queryByLabelText(/Fecha/)).toBeNull();
+  });
 });
 
 describe("NegotiationPanel — non-participant / admin", () => {

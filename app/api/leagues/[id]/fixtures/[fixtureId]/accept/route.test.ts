@@ -137,11 +137,36 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/accept", () => {
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
 
-  it("returns 409 when the fixture is already scheduled", async () => {
+  it("returns 200 and updates scheduledAt when the OTHER participant accepts a re-negotiation on a SCHEDULED fixture (rejornar)", async () => {
+    // Fixture is already scheduled to 03-01; the away coach accepts a re-date to 03-08.
     authMock.mockResolvedValue({ user: { id: "user-2" } });
     prismaMock.fixture.findFirst.mockResolvedValue(
       buildFixture({ scheduledAt: new Date("2026-03-01T10:00:00.000Z") }),
     );
+    prismaMock.scheduleProposal.findFirst.mockResolvedValue(
+      buildProposal({ userId: "user-1", date: new Date("2026-03-08T10:00:00.000Z") }),
+    );
+    prismaMock.scheduleProposal.update.mockResolvedValue(buildProposal({ acceptedAt: new Date() }));
+    prismaMock.fixture.update.mockResolvedValue({
+      ...buildFixture(),
+      scheduledAt: new Date("2026-03-08T10:00:00.000Z"),
+    });
+
+    const res = await accept({ proposalId: "p1" });
+    expect(res.status).toBe(200);
+    // Accept updates scheduledAt to the NEW proposed date (not the old one).
+    expect(prismaMock.fixture.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "f1" },
+        data: { scheduledAt: new Date("2026-03-08T10:00:00.000Z") },
+      }),
+    );
+  });
+
+  it("returns 409 when the fixture is PLAYED (winner set)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-2" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture({ winnerId: "t1", homeScore: 2, awayScore: 0 }));
+    prismaMock.scheduleProposal.findFirst.mockResolvedValue(buildProposal({ userId: "user-1" }));
     const res = await accept({ proposalId: "p1" });
     expect(res.status).toBe(409);
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();

@@ -67,9 +67,12 @@ export async function POST(
     return NextResponse.json({ error: "A valid date is required" }, { status: 400 });
   }
 
-  if (fixture.scheduledAt != null || fixture.winnerId != null) {
+  // A PLAYED (or result-loaded) fixture is locked — 409, no proposal stored. A
+  // merely SCHEDULED fixture may be re-negotiated (rejornar) before play.
+  const played = fixture.winnerId != null || fixture.homeScore != null || fixture.awayScore != null;
+  if (played) {
     return NextResponse.json(
-      { error: "This fixture is already scheduled or played" },
+      { error: "This fixture is already played" },
       { status: 409 },
     );
   }
