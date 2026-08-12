@@ -53,9 +53,9 @@ Chain strategy: stacked-to-main
 
 ## PR 3 — Rejornar
 
-- [ ] 3.1 propose+accept: relax 409 (scheduled ok; played 409), accept updates scheduledAt; **name** route.test flips (L70/49/87)
-- [ ] 3.2 NegotiationPanel gate pending|scheduled; LeagueDetail+MatchCard notes; RED
-- [ ] 3.3 e2e rejornar: propose+accept updates date; history intact
+- [x] 3.1 propose+accept: relax 409 (scheduled ok; played 409), accept updates scheduledAt; **name** route.test flips (L70/49/87)
+- [x] 3.2 NegotiationPanel gate pending|scheduled; LeagueDetail+MatchCard notes; RED
+- [x] 3.3 e2e rejornar: propose+accept updates date; history intact
 
 ## PR 4 — Correction
 

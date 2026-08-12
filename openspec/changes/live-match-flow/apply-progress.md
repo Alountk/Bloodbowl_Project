@@ -1,4 +1,4 @@
-# Apply Progress — live-match-flow (PR 1a + 1b + 2)
+# Apply Progress — live-match-flow (PR 1a + 1b + 2 + 3)
 
 > Change: `live-match-flow` · PR slices: **1a** + **1b** + **2** (stacked-to-main chain)
 > Phase: sdd-apply · Mode: **Strict TDD** (vitest)
@@ -282,3 +282,72 @@ f7402f2, f2393ae, 79e9ef4. Clean working tree on `feat/live-match-flow-2`.
   `live/route.ts` + `.test.ts`, `features/leagues/MatchView.tsx` + `.test.tsx`,
   `features/leagues/liveEventLabels.ts` + `.test.ts`, `features/leagues/api.ts`,
   `e2e/live-match.spec.ts`, `tasks.md`
+
+---
+
+# PR 3 — Rejornar (MERGED)
+
+## Scope
+
+Implemented EXACTLY `tasks.md` PR 3 (3.1–3.3): rejornar — re-open negotiation
+before play. No correction (PR 4), no migration, no live-match changes.
+Committed in 4 work units: 3f56baf, e36ed8c, de39e10, 9593e35. Clean working
+tree on `feat/live-match-flow-3`.
+
+## Summary of changes
+
+- **3.1** `propose/route.ts` and `accept/route.ts` relaxed their pre-play lock:
+  a SCHEDULED-but-not-played fixture now accepts a new propose (200) and a new
+  accept updates `scheduledAt` (200). The guards 409 only when the fixture is
+  PLAYED (winnerId set or scores set — the `deriveFixtureStatus` played markers).
+  The accept transaction's re-check mirrors this. RED tests flipped (propose L70,
+  accept L49 outer + L87 tx re-check) and added a kept 409-on-played for each.
+- **3.2** `NegotiationPanel.tsx`: `negotiationOpen` widens from
+  `status === "pending"` to `pending` OR `scheduled`. A scheduled-not-played
+  fixture re-opens propose/accept for a participant; history retains all old
+  proposals alongside the new cycle; a "Re-programar" cue labels the re-opened
+  scheduled state. Played fixtures stay locked (no controls). RED tests.
+- **3.3** e2e rejornar journey in `e2e/league-matchday.spec.ts`: after a first
+  schedule, a participant re-opens negotiation on the scheduled fixture, proposes
+  a NEW date, the other participant accepts, `scheduledAt` updates, and the card
+  + negotiation history show the new date (old agreed proposal intact).
+
+## Work-unit commits
+
+1. `3f56baf` feat(leagues): relax propose/accept locks for rejornar (re-schedule before play)
+2. `e36ed8c` feat(leagues): widen negotiation gate to scheduled fixtures (rejornar)
+3. `de39e10` test(e2e): add rejornar journey — re-negotiate a scheduled fixture date
+4. `9593e35` test(e2e): reload before asserting scheduled status in rejornar journey
+
+## TDD Cycle Evidence (PR 3)
+
+| Task | Test File | Layer | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|-----|-------|-------------|----------|
+| 3.1 | `propose/route.test.ts`, `accept/route.test.ts` | Integr. | ✅ 2 fail | ✅ 15/15 | ✅ 4 cases | ✅ |
+| 3.2 | `NegotiationPanel.test.tsx` | Component | ✅ 1 fail | ✅ 15/15 | ✅ 3 cases | ✅ |
+| 3.3 | `e2e/league-matchday.spec.ts` | E2E | ✅ (n/a) | ✅ 5/5 matchday | n/a | ✅ |
+
+## Work Unit Evidence (PR 3)
+
+| Evidence | Required value |
+|---|---|
+| Focused vitest | 30/30 across propose/accept routes + NegotiationPanel |
+| Full gates | `pnpm test` 1120/1120 (93 files) · `pnpm lint` clean · `npx tsc --noEmit` clean |
+| Local e2e | `AUTH_MODE=local pnpm exec playwright test` → **21/21** (matchday is auth-only) |
+| Auth e2e (authoritative) | `pnpm run test:e2e:auth` → **30/30 passed** (2.4m) — 29 pre-existing + the new rejornar journey |
+| Rollback boundary | Revert the 4 PR-3 commits; PR 1a/1b/2 (server core + client + permissions) stay on main |
+
+## Deviations / Issues
+
+- The rejornar e2e initially failed because the first-accept assertion read the
+  proposer page without a reload (it still held the pre-accept snapshot). Fixed
+  with a `proposer.reload()` before asserting the scheduled card — deterministic.
+- The played guard uses `winnerId != null || homeScore != null || awayScore !=
+  null` (matching `deriveFixtureStatus`), not `scheduledAt` — a scheduled fixture
+  is explicitly allow-listed for rejornar.
+
+## Files Changed (PR 3)
+
+- Modified: `propose/route.ts` + `.test.ts`, `accept/route.ts` + `.test.ts`,
+  `features/leagues/NegotiationPanel.tsx` + `.test.tsx`,
+  `e2e/league-matchday.spec.ts`, `tasks.md`
