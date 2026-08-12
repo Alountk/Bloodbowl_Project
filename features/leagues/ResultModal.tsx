@@ -118,6 +118,13 @@ export interface ResultModalProps {
   /** Fires with the assembled payload to POST (load) or PUT (correct). */
   onSubmit: (payload: ResultPayload) => Promise<void>;
   onClose: () => void;
+  /**
+   * (LM-9) Initial per-team draft for a finished live match — scores + per-scorer
+   * TDs prefilled from live state. Read ONCE at mount (the parent keys the modal
+   * per fixture, so this is the initial state, not a reset effect). MJP/casualty/
+   * other actions stay coach input.
+   */
+  initial?: { home: ResultTeamDraft; away: ResultTeamDraft };
 }
 
 /**
@@ -138,12 +145,13 @@ export function ResultModal({
   mode,
   onSubmit,
   onClose,
+  initial,
 }: ResultModalProps) {
   const [home, setHome] = useState<ResultTeamDraft>(() =>
-    emptyTeamDraft(),
+    initial?.home ?? emptyTeamDraft(),
   );
   const [away, setAway] = useState<ResultTeamDraft>(() =>
-    emptyTeamDraft(),
+    initial?.away ?? emptyTeamDraft(),
   );
   const [error, setError] = useState<string | null>(null);
 
