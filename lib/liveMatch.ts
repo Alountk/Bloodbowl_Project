@@ -29,7 +29,15 @@ export type LiveEventKind =
   | "foul"
   | "endHalf"
   | "endMatch"
-  | "turnStart";
+  | "turnStart"
+  | "requestTurn";
+
+/**
+ * Nudge cooldown (D17): a `requestTurn` nudge is persisted at most once per
+ * window, keyed on the last persisted `requestTurn` event's timestamp. Extras
+ * within the window → the route rejects with 409, no mutation.
+ */
+export const REQUEST_TURN_COOLDOWN_MS = 60_000;
 
 /** Whether a fixture is a valid start target (LM-3): scheduled, not played, no result. */
 export interface FixtureStartState {
@@ -338,6 +346,45 @@ function turnTransition(
   now: number,
 ): LiveMatchState {
   const kind: LiveEventKind = n.final ? "endMatch" : n.nextHalf !== state.half ? "endHalf" : "turn";
+  // LM-13: whenever a turn begins (the flip lands), persist an explicit labeled
+  // `turnStart(nextActive)` event so the OTHER coach's client shows "Tu turno".
+  const events: LiveEventRecord[] = n.final
+    ? [
+        ...state.events,
+        {
+          seq: state.seq + 1,
+          kind,
+          side: null,
+          playerRosterId: null,
+          half: n.nextHalf,
+          turnNumber: n.nextTurnNumber,
+          payload: {},
+          at: now,
+        },
+      ]
+    : [
+        ...state.events,
+        {
+          seq: state.seq + 1,
+          kind,
+          side: null,
+          playerRosterId: null,
+          half: n.nextHalf,
+          turnNumber: n.nextTurnNumber,
+          payload: {},
+          at: now,
+        },
+        {
+          seq: state.seq + 2,
+          kind: "turnStart",
+          side: n.nextActive,
+          playerRosterId: null,
+          half: n.nextHalf,
+          turnNumber: n.nextTurnNumber,
+          payload: {},
+          at: now,
+        },
+      ];
   return {
     ...state,
     activeSide: n.nextActive,
@@ -347,15 +394,33 @@ function turnTransition(
     finishedAt: n.final ? now : null,
     paused: false,
     clockStartedAt: n.final ? null : now,
+    events,
+  };
+}
+
+/**
+ * Records a `requestTurn` nudge (LM-13): the NON-active coach asks for the turn.
+ * Appends a labeled `requestTurn` event for the requesting `side` WITHOUT
+ * flipping the turn or changing any turn/clock state (activeSide, clock, and
+ * scores all stay identical). The route enforces the non-active caller + the
+ * 60s cooldown (D17) before calling this.
+ */
+export function applyRequestTurn(
+  state: LiveMatchState,
+  cmd: { side: TeamSide },
+  now: number,
+): LiveMatchState {
+  return {
+    ...state,
     events: [
       ...state.events,
       {
         seq: state.seq + 1,
-        kind,
-        side: null,
+        kind: "requestTurn",
+        side: cmd.side,
         playerRosterId: null,
-        half: n.nextHalf,
-        turnNumber: n.nextTurnNumber,
+        half: state.half,
+        turnNumber: state.turnNumber,
         payload: {},
         at: now,
       },

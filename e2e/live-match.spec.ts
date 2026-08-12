@@ -238,7 +238,9 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // two-phase consent → begin flow (LM-11/LM-3): each coach consents their own
     // side, then the first turn begins. Consent is coach-only, so each consent
     // must come from that coach's own session context.
-    const { adminSide, rivalSide } = resolveCoachSides(adminTeam, rivalTeam, homeTeamName, awayTeamName);
+    const { adminIsHome, adminSide, rivalSide } = resolveCoachSides(adminTeam, rivalTeam, homeTeamName, awayTeamName);
+    // The AWAY coach is who owns the away side (the active side after the flip).
+    const awayCoach = adminIsHome ? rival : admin;
     const adminConsent = await liveCommand(admin, leagueId, fixtureId, { type: "consent", side: adminSide });
     expect(adminConsent.view.status).toBe("pending");
     const rivalConsent = await liveCommand(rival, leagueId, fixtureId, { type: "consent", side: rivalSide });
@@ -246,19 +248,23 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const begun = await liveCommand(admin, leagueId, fixtureId, { type: "begin" });
     expect(begun.view.status).toBe("live");
 
-    // Coach A (the admin side) opens the match view (live UI).
+    // The HOME coach is the first ACTIVE side after begin (LM-3: half 1 turn 1
+    // home). Only the active coach sees "Dar el turno" (LM-12/D19), so the home
+    // coach — whoever that is — drives the first pass.
+    const homeCoach = adminIsHome ? admin : rival;
     const matchUrl = `/leagues/${leagueId}/fixtures/${fixtureId}`;
-    await admin.goto(matchUrl);
-    await expect(admin.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
-    await expect(admin.getByRole("button", { name: "Dar el turno" })).toBeVisible();
+    await homeCoach.goto(matchUrl);
+    await expect(homeCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
+    await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
 
-    // Coach B (second context) connects → the same live UI from state.
+    // The other coach (second context) connects → the same live UI from state.
     await rival.goto(matchUrl);
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
-    // Coach A clicks "Dar el turno" → the turn flips and the DB persists it.
-    await admin.getByRole("button", { name: "Dar el turno" }).click();
-    await expect(admin.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    // The active (home) coach clicks "Dar el turno" → the turn flips, the DB
+    // persists it, and the new ACTIVE side becomes away (turn 2).
+    await homeCoach.getByRole("button", { name: "Dar el turno" }).click();
+    await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
 
     // Coach B converges to the flip. In `next dev` the in-memory hub is
     // re-instantiated per request, so a live SSE push between two co-tested
@@ -280,10 +286,12 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(freshB.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
     await freshContext.close();
 
-    // Finish the match: the AWAY team is now on the active turn (Turn 2), so
-    // Coach A — the league admin — records an away TD (away scores 1), then the
-    // match ends. The finished live DTO then pre-fills the result modal.
-    await liveCommand(admin, leagueId, fixtureId, { type: "td", side: "away", playerRosterId: awayScorerId });
+    // Finish the match: the AWAY team is now on the active turn (Turn 2). Under
+    // LM-12 the ACTIVE (away) coach may record the TD — route it through that
+    // coach's own context so the side-matrix guard allows it — then the match
+    // ends (lifecycle, admin MayEnd). The finished live DTO then pre-fills the
+    // result modal.
+    await liveCommand(awayCoach, leagueId, fixtureId, { type: "td", side: "away", playerRosterId: awayScorerId });
     const afterEnd = await liveCommand(admin, leagueId, fixtureId, { type: "endMatch" });
     expect(afterEnd.view.status).toBe("finished");
 
