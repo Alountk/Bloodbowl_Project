@@ -8,12 +8,17 @@ Lets the two owners of a scheduled fixture agree a match date (`scheduledAt`). O
 
 ### Requirement: Participant-Only Negotiation
 
-Only the owner of the fixture's home or away team SHALL propose or accept a date. The league owner, non-member users, and other members MUST NOT negotiate. A non-participant request MUST return 404 (no existence leak); absent session MUST return 401.
+Only the owner of the fixture's home or away team SHALL propose or accept a date (participant rule); a league owner who is NOT a participant, non-member users, and other members MUST NOT negotiate. A non-participant request MUST return 404 (no existence leak); absent session MUST return 401.
 
 #### Scenario: Participant proposes
 - GIVEN a started-league fixture in `pending` and the session user owns home or away team
 - WHEN they POST a `date` to the propose route
 - THEN a new open `ScheduleProposal` is stored and no other proposal remains active
+
+#### Scenario: Owner participant negotiates
+- GIVEN a started-league fixture in `pending` and the session user is the league owner whose team is in the fixture
+- WHEN they open the negotiation panel
+- THEN the propose/accept controls are available (participant rule)
 
 #### Scenario: Non-participant forbidden
 - GIVEN a started-league fixture owned by two other users

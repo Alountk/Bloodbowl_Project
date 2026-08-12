@@ -43,6 +43,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Se podía crear equipos con < 11 jugadores (backend) | Validación server-side `MIN_PLAYERS=11` |
 | Migración localStorage duplicaba equipos (StrictMode) | Flag de módulo + dedupe por nombre |
 | Equipo archivado se podía inscribir en una liga | Guard 409 en assign + tests de regresión |
+| Dueño de liga no podía proponer/aceptar fechas si era participante; Jornadas siempre abría en la Jornada 1 aunque estuviera completa; errores de propuesta/aceptación silenciosos | Regla de participante en negociación + jornada activa por defecto + alertas de error (#68) |
 
 ## Pendiente / Roadmap futuro
 
