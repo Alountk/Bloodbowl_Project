@@ -358,11 +358,12 @@ export async function POST(
 
 /**
  * PUT /api/leagues/[id]/fixtures/[fixtureId]/result
- * Admin-only correction of a played fixture. A captain or a foreign user is
- * rejected (403 captain, 404 foreign, no mutation). The correction records an
- * audit `MatchResultCorrection` row (before/after snapshot, actor, correctedAt)
- * and re-runs the PE rules against the corrected payload, applying only the
- * positive `max(0, new - old)` deltas so PE already spent is never revoked.
+ * Correction of a played fixture, accepted from the league admin OR either
+ * participant coach; a foreign actor is rejected with 404 (no existence leak).
+ * The correction records an audit `MatchResultCorrection` row (before/after
+ * snapshot, actor, correctedAt) and re-runs the PE rules against the corrected
+ * payload, applying only the positive `max(0, new - old)` deltas so PE already
+ * spent is never revoked.
  */
 export async function PUT(
   req: Request,
@@ -407,15 +408,11 @@ export async function PUT(
   }
 
   const isAdmin = fixture.league.ownerId === userId;
-  if (!isAdmin) {
-    const isCaptain =
-      fixture.homeTeam.userId === userId || fixture.awayTeam.userId === userId;
-    if (isCaptain) {
-      return NextResponse.json(
-        { error: "Only the league owner can correct a result" },
-        { status: 403 },
-      );
-    }
+  const isCaptain =
+    fixture.homeTeam.userId === userId || fixture.awayTeam.userId === userId;
+  // A correction is accepted from the league admin OR either participant coach.
+  if (!isAdmin && !isCaptain) {
+    // Foreign user (not a captain, not the admin) → 404, no existence leak.
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
