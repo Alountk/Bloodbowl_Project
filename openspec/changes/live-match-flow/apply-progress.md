@@ -1,4 +1,4 @@
-# Apply Progress — live-match-flow (PR 1a + 1b + 2 + 3)
+# Apply Progress — live-match-flow (FINAL — PR 1a + 1b + 2 + 3 + 4)
 
 > Change: `live-match-flow` · PR slices: **1a** + **1b** + **2** (stacked-to-main chain)
 > Phase: sdd-apply · Mode: **Strict TDD** (vitest)
@@ -351,3 +351,74 @@ tree on `feat/live-match-flow-3`.
 - Modified: `propose/route.ts` + `.test.ts`, `accept/route.ts` + `.test.ts`,
   `features/leagues/NegotiationPanel.tsx` + `.test.tsx`,
   `e2e/league-matchday.spec.ts`, `tasks.md`
+
+---
+
+# PR 4 — Correction (FINAL) — change complete at 4/4
+
+## Scope
+
+Implemented EXACTLY `tasks.md` PR 4 (4.1–4.3): correction widening. This is the
+FINAL slice of the 5-PR chain (1a/1b/2/3/4) — the live-match-flow change is
+complete at 26/26 tasks. No rejornar/live changes; forfeit stays admin-only;
+no migration. Committed in 3 work units: 0c4f644, d8d2a7a, 82a0917. Clean
+working tree on `feat/live-match-flow-4`.
+
+## Summary of changes
+
+- **4.1** `result/route.ts` PUT gate widened from `isAdmin` to `isAdmin || isCaptain`
+  (league admin OR either participant coach may correct). A foreign actor still
+  gets 404 (no leak). Forfeit is a SEPARATE route that stays admin-only (403 for
+  non-admin — untouched). The result route test flipped the captain-403 case to
+  captain-200 (audit recorded with the captain as actor).
+- **4.2** `MatchCard.tsx` "Corregir resultado" gate widened from `isLeagueOwner &&
+  played` to `(isLeagueOwner || isParticipant) && played`; the forfeit button
+  ("Otorgar victoria") stays `isLeagueOwner`. `LeagueDetail` already passes
+  `onCorrectResult` to every card unconditionally, so the same correction path
+  (ResultModalFor) works for participants — no LeagueDetail change. RED
+  MatchCard tests (participant sees it, admin sees it, forfeit admin-only,
+  non-played hidden).
+- **4.3** e2e: `full-league-flow.spec.ts:654` flipped from captain-403 to
+  captain-200 (card shows the correction control, PUT 200, played persists);
+  added a NET-NEW participant-correction journey in `match-report.spec.ts`
+  where a participant captain (rival) corrects a played result via the modal and
+  the card updates to 1–1. The admin-correction journey stays green.
+
+## Work-unit commits
+
+1. `0c4f644` feat(leagues): accept result corrections from admin or either captain
+2. `d8d2a7a` feat(leagues): show result correction to participant captains on played fixtures
+3. `82a0917` test(e2e): widen correction to participants — captain PUT 200 + participant correction journey
+
+## TDD Cycle Evidence (PR 4)
+
+| Task | Test File | Layer | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|-----|-------|-------------|----------|
+| 4.1 | `result/route.test.ts` | Integr. | ✅ 1 fail | ✅ 24/24 | ✅ caption/admin/foreign | ✅ |
+| 4.2 | `MatchCard.test.tsx` | Component | ✅ 1 fail | ✅ 29/29 | ✅ 4 cases | ✅ |
+| 4.3 | `e2e/full-league-flow.spec.ts`, `e2e/match-report.spec.ts` | E2E | ✅ (403→200 flip) | ✅ 31/31 auth | n/a | ✅ |
+
+## Work Unit Evidence (PR 4)
+
+| Evidence | Required value |
+|---|---|
+| Focused vitest | 71/71 across result route + MatchCard + LeagueDetail |
+| Full gates | `pnpm test` 1124/1124 (93 files) · `pnpm lint` clean · `npx tsc --noEmit` clean |
+| Local e2e | `AUTH_MODE=local pnpm exec playwright test` → **21/21** |
+| Auth e2e (authoritative) | `pnpm run test:e2e:auth` → **31/31 passed** (2.8m) — 30 pre-existing (incl. the full-league-flow captain flip) + the new match-report participant-correction journey |
+| Rollback boundary | Revert the 3 PR-4 commits; PR 1a/1b/2/3 stay on main |
+
+## Deviations / Issues
+
+- The forfeit route is a SEPARATE route (`.../forfeit`) that was already
+  admin-only; the result PUT widening does not touch it, satisfying "forfeit
+  stays admin-only (403)".
+- The result-route ledger test flip reflected the correction gate; the forfeit
+  admin-only 403 cases stay in the forfeit route tests (unchanged).
+- The chain is now fully implemented: PR 1a (server core), 1b (client/begin e2e),
+  2 (permissions/nudge), 3 (rejornar), 4 (correction).
+
+## Files Changed (PR 4)
+
+- Modified: `result/route.ts` + `.test.ts`, `features/leagues/MatchCard.tsx` + `.test.tsx`,
+  `e2e/full-league-flow.spec.ts`, `e2e/match-report.spec.ts`, `tasks.md`
