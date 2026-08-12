@@ -17,7 +17,8 @@ export interface NegotiationPanelProps {
   currentUserId: string;
   /** True when the viewer owns the fixture's home or away team. */
   isParticipant: boolean;
-  /** True when the viewer owns the league (admin). Participants false. */
+  /** True when the viewer owns the league (admin). Retained for the caller's
+   * role contract; the participant rule alone decides the controls. */
   isLeagueOwner: boolean;
   /** Fires with an ISO timestamp to POST propose. */
   onPropose: (date: string) => void;
@@ -36,21 +37,22 @@ function latestActiveProposal(proposals: ScheduleProposal[]): ScheduleProposal |
 
 /**
  * Negotiation panel (modal) for agreeing a match date. Only the two match
- * participants get the propose/accept controls; non-participants and the league
- * owner (admin) see the history read-only with no controls. History shows the
- * author, the proposed date/time and — on an accepted proposal — "✓ Acordado".
+ * participants get the propose/accept controls (a league owner who owns one of
+ * the fixture's teams counts as a participant); non-participants, including a
+ * league owner who does NOT play the fixture, see the history read-only with no
+ * controls. History shows the author, the proposed date/time and — on an
+ * accepted proposal — "✓ Acordado".
  */
 export function NegotiationPanel({
   fixture,
   teamNameById,
   currentUserId,
   isParticipant,
-  isLeagueOwner,
   onPropose,
   onAccept,
   onClose,
 }: NegotiationPanelProps) {
-  const canNegotiate = isParticipant && !isLeagueOwner;
+  const canNegotiate = isParticipant;
   // Even if a participant, a scheduled/played fixture is no longer negotiable.
   const negotiationOpen = canNegotiate && fixture.status === "pending";
   const active = latestActiveProposal(fixture.proposals);
