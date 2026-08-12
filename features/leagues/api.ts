@@ -43,6 +43,14 @@ export interface FixtureDraft {
   proposals: ScheduleProposal[];
 }
 
+/** The league-level turn-clock option (AC-10): enabled toggle + per-turn
+ * duration. The duration is meaningful only when enabled. Immutable after
+ * creation — no update path exists. */
+export interface TurnClockOption {
+  turnClockEnabled: boolean;
+  turnClockSeconds: 120 | 240 | 360;
+}
+
 /** A League as returned by the `/api/leagues` list routes. */
 export interface League {
   id: string;
@@ -57,6 +65,9 @@ export interface League {
   ownerName: string | null;
   /** Number of non-archived member teams, computed server-side (no N+1). */
   memberCount: number;
+  /** The immutable turn-clock option for live matches on this league. */
+  turnClockEnabled: boolean;
+  turnClockSeconds: 120 | 240 | 360;
 }
 
 /** A member team as returned inside the league detail (Prisma Team shape). */
@@ -105,11 +116,16 @@ export async function listLeagues(): Promise<League[]> {
 export async function createLeague(
   name: string,
   description: string | null,
+  option?: { turnClockEnabled: boolean; turnClockSeconds: 120 | 240 | 360 },
 ): Promise<League> {
   const res = await fetch("/api/leagues", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify(
+      option
+        ? { name, description, ...option }
+        : { name, description },
+    ),
   });
   return readJson<League>(res);
 }
