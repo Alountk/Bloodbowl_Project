@@ -155,17 +155,21 @@ export function MatchCard({
           href={`/teams/${fixture.awayTeamId}`}
         />
       </div>
-      {fixture.status === "scheduled" || fixture.status === "played" ? (
-        <footer className="border-t border-[#e2e8f0] px-3 py-1.5 text-center text-[11px] text-slate-500">
-          {fixture.status === "scheduled" ? (
-            <>Programado: {formatMatchDate(fixture.scheduledAt)}</>
-          ) : (
-            <>
-              Jugado{score ? ` · ${score}` : ""} · Ganador: {winnerName}
-            </>
-          )}
-        </footer>
-      ) : null}
+      <footer className="border-t border-[#e2e8f0] px-3 py-1.5 text-center text-[11px] text-slate-500">
+        {fixture.status === "scheduled" ? (
+          <>Programado: {formatMatchDate(fixture.scheduledAt)}</>
+        ) : fixture.status === "played" ? (
+          <>
+            Jugado{score ? ` · ${score}` : ""} · Ganador: {winnerName}
+          </>
+        ) : null}
+        <Link
+          href={`/leagues/${fixture.leagueId}/fixtures/${fixture.id}`}
+          className="ml-2 inline-block font-semibold text-[#d11938] no-underline hover:opacity-70"
+        >
+          Ver partido
+        </Link>
+      </footer>
     </article>
   );
 }
