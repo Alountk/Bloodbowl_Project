@@ -5,6 +5,7 @@ import {
   correctResult,
   forfeitFixture,
   getFixtureProposals,
+  getMatchDetail,
   getScoutedTeam,
   listUnassignedTeams,
   proposeFixtureDate,
@@ -13,6 +14,7 @@ import {
   submitResult,
   type League,
   type LeagueDetail,
+  type MatchDetail,
 } from "./api";
 
 /**
@@ -355,5 +357,110 @@ describe("matchday negotiation helpers", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/teams/t1");
     expect(scouted.leagueId).toBe("l1");
+  });
+});
+
+describe("getMatchDetail", () => {
+  it("GETs the per-fixture route and returns the normalized match payload", async () => {
+    const match: MatchDetail = {
+      fixture: {
+        id: "f1",
+        leagueId: "l1",
+        round: 1,
+        homeTeamId: "t1",
+        awayTeamId: "t2",
+        createdAt: "2026-02-01",
+        scheduledAt: "2026-03-01",
+        winnerId: "t1",
+        homeScore: 2,
+        awayScore: 1,
+        status: "played",
+        homeOwner: { id: "u1", name: "Coach A" },
+        awayOwner: { id: "u2", name: "Coach B" },
+        proposals: [],
+      },
+      result: {
+        id: "mr1",
+        fixtureId: "f1",
+        weather: "perfect",
+        scores: {
+          home: {
+            score: 2,
+            postFf: 4,
+            winnings: 45_000,
+            casualties: [],
+            pe: [{ rosterPlayerId: "p1", pe: 7 }],
+          },
+          away: {
+            score: 1,
+            postFf: 2,
+            winnings: 35_000,
+            casualties: [],
+            pe: [{ rosterPlayerId: "p3", pe: 3 }],
+          },
+          winnerId: "t1",
+          mvp: { home: "p1", away: "p5" },
+        },
+        pettyCash: 150_000,
+        loadedBy: "u1",
+      },
+      homeTeam: {
+        id: "t1",
+        name: "Reavers",
+        raceId: "human",
+        user: { id: "u1", name: "Coach A", email: "a@x", avatar: null },
+        players: [
+          { rosterPlayerId: "p1", name: "Blitzer", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, valueBonus: 0 },
+        ],
+      },
+      awayTeam: {
+        id: "t2",
+        name: "Dwarves",
+        raceId: "dwarf",
+        user: { id: "u2", name: "Coach B", email: "b@x", avatar: null },
+        players: [],
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okJson(match));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const detail = await getMatchDetail("l1", "f1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l1/fixtures/f1");
+    expect(detail.fixture.status).toBe("played");
+    expect(detail.result?.scores.mvp).toEqual({ home: "p1", away: "p5" });
+    expect(detail.homeTeam.players[0].rosterPlayerId).toBe("p1");
+  });
+
+  it("surfaces a walkover with result null (scores set, no snapshot)", async () => {
+    const walkover = {
+      fixture: {
+        id: "f1",
+        leagueId: "l1",
+        round: 1,
+        homeTeamId: "t1",
+        awayTeamId: "t2",
+        createdAt: "2026-02-01",
+        scheduledAt: null,
+        winnerId: "t1",
+        homeScore: 2,
+        awayScore: 0,
+        status: "played",
+        homeOwner: null,
+        awayOwner: null,
+        proposals: [],
+      },
+      result: null,
+      homeTeam: { id: "t1", name: "Reavers", raceId: "human", user: null, players: [] },
+      awayTeam: { id: "t2", name: "Dwarves", raceId: "dwarf", user: null, players: [] },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okJson(walkover));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const detail = await getMatchDetail("l1", "f1");
+
+    expect(detail.result).toBeNull();
+    expect(detail.fixture.homeScore).toBe(2);
+    expect(detail.fixture.status).toBe("played");
   });
 });

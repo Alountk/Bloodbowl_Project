@@ -29,6 +29,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Campeonatos: jornadas automáticas (round-robin sin repetir, equipos impares) | #34, #37, #38 |
 | Matchday: negociación de fechas (toma y daca), forfeit del admin, scouting, completitud de jornada | #39, #42, #43 |
 | Match report: carga y corrección de resultados (marcador, ganador derivado, tesorería, FF, PE, lesiones, bote), progresión de jugadores (PE → mejoras, skill élite, recalculo de valor) y e2e de los flujos completos | #49–#54 |
+| **Partido en vivo** (vista MVP): página de detalle del partido con los 3 estados (jugado/sin programar/pendiente), resumen del snapshot (marcador, equipos, FF, ganancias, bajas, clima, MVP), acceso "Ver partido" en MatchCard y shells inertes de turno/reloj/eventos listos para el modo en vivo | #57–#60 |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -47,7 +48,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 ### Features planificadas
 | Feature | Notas |
 |---|---|
-| **Partido en vivo** (interacción entre dos clientes) | La feature más grande: sincronización en tiempo real, marcador, turnos. Requiere WebSockets/SSE o similar. |
+| **Partido en vivo** (sincronización en tiempo real) | El MVP (vista de detalle, 3 estados, shells inertes) ya está en Completado (#57–#60); lo que falta es el modo en vivo real: sincronización en tiempo real de turnos, reloj, mitad y feed de eventos entre clientes. Requiere WebSockets/SSE o similar. |
 | **Tabla de posiciones / standings** | La carga de resultados y marcadores ya está implementada; falta calcular y mostrar las standings por jornada. |
 | **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
 

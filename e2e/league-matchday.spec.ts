@@ -309,10 +309,13 @@ async function buildOneStartedLeague(
     ]);
 
     // Constraint guard: when the caller needs the admin as the non-participant,
-    // the round's fixture must NOT include the admin's team.
+    // the round's fixture must NOT include the admin's team. The round-1 pairing
+    // is shuffled, so retry whenever the admin appears on EITHER side (previously
+    // only the first team was checked, letting an admin-as-second-team league
+    // leak through and fail the caller's `not.toContain(admin)` assertion).
     if (opts.adminAsBye) {
-      const [t1] = await fixturesTeamNames(pageA);
-      if (t1 === teamAName) {
+      const [t1, t2] = await fixturesTeamNames(pageA);
+      if (t1 === teamAName || t2 === teamAName) {
         await close();
         return null as unknown as StartedLeague;
       }

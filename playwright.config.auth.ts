@@ -22,6 +22,7 @@ export default defineConfig({
     "**/avatar.spec.ts",
     "**/match-report.spec.ts",
     "**/full-league-flow.spec.ts",
+    "**/match-view.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
