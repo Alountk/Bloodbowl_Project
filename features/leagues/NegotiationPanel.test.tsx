@@ -134,6 +134,15 @@ describe("NegotiationPanel — participant", () => {
     // (Covered by the case above; here we also confirm Aceptar still appears for the rival's.)
     expect(screen.queryAllByRole("button", { name: "Aceptar" }).length).toBeGreaterThanOrEqual(1);
   });
+
+  it("shows negotiate controls for a league owner who is also a participant", () => {
+    // Bug fix: an admin who owns one of the fixture's teams is a PARTICIPANT and
+    // may negotiate (participant rule). Only a non-participant admin is read-only.
+    renderPanel({ isParticipant: true, isLeagueOwner: true });
+    expect(screen.getByRole("button", { name: "Proponer" })).toBeTruthy();
+    expect(screen.getByLabelText(/Fecha propuesta/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Aceptar" }).length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe("NegotiationPanel — non-participant / admin", () => {
