@@ -7,9 +7,10 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  * Covers the interactive 2-coach realtime slice (LM-1/LM-8/LM-11):
  *   1. a league is created (no clock option, D15); two coaches join and start a
  *      1-jornada season;
- *   2. both coaches consent to start the live match (two-phase LM-11/LM-3), the
- *      admin begins the first turn, and Coach A opens the match view (live turn
- *      bar + unified clock + score + "Dar el turno" control);
+ *   2. both coaches consent through the REAL match-view buttons ("Iniciar
+ *      partido" per coach), the admin begins via "Empezar partido" (two-phase
+ *      LM-11/LM-3), and Coach A opens the match view (live turn bar + unified
+ *      clock + score + "Dar el turno" control);
  *   3. two contexts: Coach B (second browser context) connects via SSE and sees
  *      Coach A's "Dar el turno" flip the turn/clock live (no reload);
  *   4. new-device recovery: B reconnects from a FRESH page in a new context (same
@@ -17,12 +18,12 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  *   5. a finished live match pre-fills the result modal (scores + per-scorer
  *      TDs, LM-9) via the fixture GET live DTO.
  *
- * Control (consent/begin/td/endMatch) is driven through the API (the UI has no
- * start button); "Dar el turno" goes through the REAL match-view control. Which
- * coach owns HOME vs AWAY is resolved from the real round-robin fixture (home/
- * away is randomized) so each consent goes to the correct side. Unique emails
- * per run keep the shared Postgres idempotent. The scheduling, consenting, and
- * snapshot flows reuse the same API shapes the unit/route tests cover.
+ * The two-phase consent → begin flow is driven through the REAL match-view
+ * controls ("Iniciar partido" per coach, then "Empezar partido"); td/endMatch
+ * stay API-driven (lifecycle + side-matrix guards are server-side). Which coach
+ * owns HOME vs AWAY is resolved from the real round-robin fixture (home/away is
+ * randomized) so each consent goes to the correct side. Unique emails per run
+ * keep the shared Postgres idempotent.
  */
 test.setTimeout(180_000);
 
@@ -235,31 +236,60 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await scheduleFixture(admin, rival, leagueId, fixtureId);
 
     // Resolve the REAL owner→side mapping (home/away is randomized) and run the
-    // two-phase consent → begin flow (LM-11/LM-3): each coach consents their own
-    // side, then the first turn begins. Consent is coach-only, so each consent
-    // must come from that coach's own session context.
-    const { adminIsHome, adminSide, rivalSide } = resolveCoachSides(adminTeam, rivalTeam, homeTeamName, awayTeamName);
-    // The AWAY coach is who owns the away side (the active side after the flip).
-    const awayCoach = adminIsHome ? rival : admin;
-    const adminConsent = await liveCommand(admin, leagueId, fixtureId, { type: "consent", side: adminSide });
-    expect(adminConsent.view.status).toBe("pending");
-    const rivalConsent = await liveCommand(rival, leagueId, fixtureId, { type: "consent", side: rivalSide });
-    expect(rivalConsent.view.status).toBe("ready");
-    const begun = await liveCommand(admin, leagueId, fixtureId, { type: "begin" });
-    expect(begun.view.status).toBe("live");
-
-    // The HOME coach is the first ACTIVE side after begin (LM-3: half 1 turn 1
-    // home). Only the active coach sees "Dar el turno" (LM-12/D19), so the home
-    // coach — whoever that is — drives the first pass.
-    const homeCoach = adminIsHome ? admin : rival;
+    // two-phase consent → begin flow (LM-11/LM-3) through the REAL match-view
+    // controls: each coach clicks "Iniciar partido" on their own page, then the
+    // admin clicks "Empezar partido" to begin the first turn.
+    const { adminIsHome } = resolveCoachSides(adminTeam, rivalTeam, homeTeamName, awayTeamName);
     const matchUrl = `/leagues/${leagueId}/fixtures/${fixtureId}`;
-    await homeCoach.goto(matchUrl);
-    await expect(homeCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
-    await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
+    const homeCoach = adminIsHome ? admin : rival;
+    const awayCoach = adminIsHome ? rival : admin;
 
-    // The other coach (second context) connects → the same live UI from state.
+    // Coach A (admin) opens the match page — the consent panel must know the
+    // viewer's side and show "Iniciar partido" (D19; the regression this flow
+    // guards) — and consents via the REAL button.
+    await admin.goto(matchUrl);
+    await expect(admin.getByText(/Partido programado/).first()).toBeVisible();
+    const consentButton = admin.getByRole("button", { name: "Iniciar partido" });
+    await expect(consentButton).toBeVisible();
+    await consentButton.click();
+    // The coach's own consent is reflected: waiting for the rival (LM-11).
+    await expect(admin.getByText(/Listo, esperando al rival/).first()).toBeVisible();
+
+    // Coach B opens a FRESH page — the live row exists but B has not consented —
+    // and consents via the REAL button (two-phase LM-11).
     await rival.goto(matchUrl);
+    const rivalConsentButton = rival.getByRole("button", { name: "Iniciar partido" });
+    await expect(rivalConsentButton).toBeVisible();
+    await rivalConsentButton.click();
+    // B's consent is the SECOND one, so the match becomes ready immediately and
+    // B's own POST response already shows "Listo para empezar" + "Empezar partido".
+    await expect(rival.getByText(/Listo para empezar/).first()).toBeVisible();
+    await expect(rival.getByRole("button", { name: "Empezar partido" })).toBeVisible();
+
+    // Coach A converges to the ready state (snapshot-first, LM-8) and begins the
+    // match via the REAL "Empezar partido" control.
+    await admin.reload();
+    const beginButton = admin.getByRole("button", { name: "Empezar partido" });
+    await expect(beginButton).toBeVisible();
+    await beginButton.click();
+    await expect(admin.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
+
+    // Coach B converges to the live state (snapshot-first, LM-8).
+    await rival.reload();
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
+
+    // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
+    // home). Only the ACTIVE coach sees the "Tu turno" STATUS + "Dar el turno";
+    // the non-active coach sees "Pedir turno" and never "Dar el turno". The
+    // timeline ALSO labels the home turn-start "Tu turno", so target the
+    // role=status element (Chromium does not expose a name for live-region
+    // roles, hence no `name:` filter).
+    await expect(homeCoach.getByRole("status")).toHaveText("Tu turno");
+    await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
+    await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
+    await expect(awayCoach.getByRole("status")).toHaveCount(0);
+    await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
+    await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
     // The active (home) coach clicks "Dar el turno" → the turn flips, the DB
     // persists it, and the new ACTIVE side becomes away (turn 2).

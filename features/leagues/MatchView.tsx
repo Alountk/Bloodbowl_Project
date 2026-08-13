@@ -239,13 +239,16 @@ function LiveActiveMatch({
 }) {
   const { live: hookLive, sendCommand } = useLiveMatch({ leagueId, fixtureId });
   // Start from the persisted snapshot (or an empty pending shell when no row
-  // exists yet, D16), then adopt the real-time SSE overrides. `viewerSide`
-  // falls back to the session-derived side when no live row carries it (D19).
-  const state: LiveMatchViewState =
-    hookLive != null && "activeSide" in hookLive
+  // exists yet, D16), then adopt the real-time SSE overrides. `viewerSide` is
+  // per-viewer (D19): hub fan-out frames carry null, so ALWAYS merge the
+  // session-derived side over whatever the SSE pushed — the server stays the
+  // authority for everything else (LM-8/D19).
+  const state: LiveMatchViewState = {
+    ...(hookLive != null && "activeSide" in hookLive
       ? hookLive
-      : live ??
-        { ...emptyPendingView(), viewerSide };
+      : live ?? { ...emptyPendingView(), viewerSide }),
+    viewerSide,
+  };
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
