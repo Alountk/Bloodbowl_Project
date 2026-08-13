@@ -261,7 +261,10 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const rivalConsentButton = rival.getByRole("button", { name: "Iniciar partido" });
     await expect(rivalConsentButton).toBeVisible();
     await rivalConsentButton.click();
-    await expect(rival.getByText(/Listo, esperando al rival/).first()).toBeVisible();
+    // B's consent is the SECOND one, so the match becomes ready immediately and
+    // B's own POST response already shows "Listo para empezar" + "Empezar partido".
+    await expect(rival.getByText(/Listo para empezar/).first()).toBeVisible();
+    await expect(rival.getByRole("button", { name: "Empezar partido" })).toBeVisible();
 
     // Coach A converges to the ready state (snapshot-first, LM-8) and begins the
     // match via the REAL "Empezar partido" control.
@@ -276,12 +279,15 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
     // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
-    // home). Only the ACTIVE coach sees "Tu turno" + "Dar el turno"; the
-    // non-active coach sees "Pedir turno" and never "Dar el turno".
-    await expect(homeCoach.getByText(/Tu turno/).first()).toBeVisible();
+    // home). Only the ACTIVE coach sees the "Tu turno" STATUS + "Dar el turno";
+    // the non-active coach sees "Pedir turno" and never "Dar el turno". The
+    // timeline ALSO labels the home turn-start "Tu turno", so target the
+    // role=status element (Chromium does not expose a name for live-region
+    // roles, hence no `name:` filter).
+    await expect(homeCoach.getByRole("status")).toHaveText("Tu turno");
     await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
-    await expect(awayCoach.getByText(/Tu turno/)).toHaveCount(0);
+    await expect(awayCoach.getByRole("status")).toHaveCount(0);
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
     await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
