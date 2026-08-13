@@ -82,8 +82,16 @@ export interface LiveHub {
   stopTicking(fixtureId: string): void;
 }
 
-/** Process-wide hub singleton the SSE route consumes (swappable for multi-instance later). */
-export const liveHub: LiveHub = createLiveHub();
+/**
+ * Process-wide hub singleton the SSE route consumes. Under `next dev`
+ * (Turbopack) the module is re-evaluated per request, so a plain module-level
+ * export would give the SSE subscriber and the POST publisher DIFFERENT hub
+ * instances — fan-out would never reach the other coach. Attaching the instance
+ * to `globalThis` makes it stable for the whole process (standard Next dev
+ * workaround). `createLiveHub` stays exported so tests build isolated hubs.
+ */
+const g = globalThis as unknown as { __liveHub?: LiveHub };
+export const liveHub: LiveHub = g.__liveHub ?? (g.__liveHub = createLiveHub());
 
 export function createLiveHub(): LiveHub {
   const channels = new Map<string, Channel>();
