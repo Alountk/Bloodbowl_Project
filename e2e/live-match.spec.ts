@@ -9,21 +9,25 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  *      1-jornada season;
  *   2. both coaches consent through the REAL match-view buttons ("Iniciar
  *      partido" per coach), the admin begins via "Empezar partido" (two-phase
- *      LM-11/LM-3), and Coach A opens the match view (live turn bar + unified
- *      clock + score + "Dar el turno" control);
- *   3. two contexts: Coach B (second browser context) connects via SSE and sees
- *      Coach A's "Dar el turno" flip the turn/clock live (no reload);
+ *      LM-11/LM-3), and the live turn bar + unified clock + score render;
+ *   3. the take-and-give flow is LIVE via SSE: Coach B sees Coach A's
+ *      "Dar el turno" flip the turn WITHOUT any reload, and the ACTIVE coach
+ *      sees the "Tu rival pide el turno" banner when the other coach clicks
+ *      "Pedir turno" — the process-wide shared hub + the drained SSE gap queue
+ *      make cross-context fan-out observable in `next dev`;
  *   4. new-device recovery: B reconnects from a FRESH page in a new context (same
  *      user — a new device equivalent) and gets a snapshot-first live view;
  *   5. a finished live match pre-fills the result modal (scores + per-scorer
  *      TDs, LM-9) via the fixture GET live DTO.
  *
  * The two-phase consent → begin flow is driven through the REAL match-view
- * controls ("Iniciar partido" per coach, then "Empezar partido"); td/endMatch
- * stay API-driven (lifecycle + side-matrix guards are server-side). Which coach
- * owns HOME vs AWAY is resolved from the real round-robin fixture (home/away is
- * randomized) so each consent goes to the correct side. Unique emails per run
- * keep the shared Postgres idempotent.
+ * controls ("Iniciar partido" per coach, then "Empezar partido") and converges
+ * via SSE too — reloads are kept only where they test genuine snapshot/recovery
+ * semantics (the fresh-context step); the fan-out itself is asserted live.
+ * td/endMatch stay API-driven (lifecycle + side-matrix guards are server-side).
+ * Which coach owns HOME vs AWAY is resolved from the real round-robin fixture
+ * (home/away is randomized) so each consent goes to the correct side. Unique
+ * emails per run keep the shared Postgres idempotent.
  */
 test.setTimeout(180_000);
 
@@ -266,16 +270,15 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(rival.getByText(/Listo para empezar/).first()).toBeVisible();
     await expect(rival.getByRole("button", { name: "Empezar partido" })).toBeVisible();
 
-    // Coach A converges to the ready state (snapshot-first, LM-8) and begins the
-    // match via the REAL "Empezar partido" control.
-    await admin.reload();
+    // Coach A converges to the ready state via SSE (no reload — the shared hub
+    // fans the rival's second consent out live) and begins the match via the
+    // REAL "Empezar partido" control.
     const beginButton = admin.getByRole("button", { name: "Empezar partido" });
     await expect(beginButton).toBeVisible();
     await beginButton.click();
     await expect(admin.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
-    // Coach B converges to the live state (snapshot-first, LM-8).
-    await rival.reload();
+    // Coach B converges to the live state via SSE (no reload).
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
     // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
@@ -291,20 +294,23 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
     await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
-    // The active (home) coach clicks "Dar el turno" → the turn flips, the DB
-    // persists it, and the new ACTIVE side becomes away (turn 2).
+    // The ACTIVE (home) coach clicks "Dar el turno" → the turn flips and the
+    // process-wide hub fans the new state out over SSE: the OTHER coach's page
+    // converges WITHOUT any reload — the live `event` frame (turn + turnStart
+    // deltas) applies the flipped state and "Tu turno" appears.
     await homeCoach.getByRole("button", { name: "Dar el turno" }).click();
     await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    await expect(awayCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    await expect(awayCoach.getByRole("status")).toHaveText("Tu turno");
 
-    // Coach B converges to the flip. In `next dev` the in-memory hub is
-    // re-instantiated per request, so a live SSE push between two co-tested
-    // contexts is not observable there; in production (single `next start`
-    // process) the shared hub broadcasts it live. The convergence below is the
-    // snapshot-first LM-8 path (DB-backed), which holds in both modes and is
-    // the guarantee a `useLiveMatch` reconnect relies on. The live SSE fan-out
-    // itself is covered by the unit/route tests.
-    await rival.reload();
-    await expect(rival.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    // LM-13: the now-NON-active coach (home) clicks "Pedir turno" → the
+    // requestTurn delta event streams to the ACTIVE (away) coach's page and the
+    // "Tu rival pide el turno" banner appears live — no reload. The requester's
+    // own page never shows it (it stays non-active).
+    await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
+    await homeCoach.getByRole("button", { name: "Pedir turno" }).click();
+    await expect(awayCoach.getByText("Tu rival pide el turno")).toBeVisible();
+    await expect(homeCoach.getByText("Tu rival pide el turno")).toHaveCount(0);
 
     // New-device recovery: B logs in from a FRESH context (same user, a new
     // device equivalent) and gets a snapshot-first live view (turn 2 persisted).
