@@ -288,6 +288,27 @@ function LiveConsentPanel({
   return null;
 }
 
+/**
+ * Pure: each team's OWN turn count within the current half (isolated per team,
+ * BB rulebook). The global `turnNumber` (1..8 per half) alternates between the
+ * teams, so it must NOT be shown on both tracks — each team's track advances
+ * only when THAT team plays. Half 1 starts with home, half 2 with away
+ * (advanceTurnIndex): the starting side has ceil(n/2) turns played/in-progress,
+ * the other side floor(n/2). The ACTIVE side (derivable from half + odd/even
+ * turn) carries its in-progress turn; the non-active side its completed turns.
+ */
+export function teamTurnCounts(
+  half: number,
+  turnNumber: number,
+): { home: number; away: number } {
+  const starter: "home" | "away" = half === 1 ? "home" : "away";
+  const starterCount = Math.ceil(turnNumber / 2);
+  const otherCount = Math.floor(turnNumber / 2);
+  return starter === "home"
+    ? { home: starterCount, away: otherCount }
+    : { home: otherCount, away: starterCount };
+}
+
 /** One team's 1..8-per-half turn track; the current turn is highlighted. */
 function TurnTrack({
   sideName,
@@ -301,7 +322,10 @@ function TurnTrack({
   return (
     <div aria-label={`Turnos de ${sideName}`} className="flex items-center gap-1">
       {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => {
-        const done = n < current;
+        // Active side: turns below the current one are done, the current one is
+        // highlighted. Non-active side: its `current` is its COMPLETED count, so
+        // `n <= current` marks every finished turn as done (isolated counters).
+        const done = isActive ? n < current : n <= current;
         const active = isActive && n === current;
         return (
           <span
@@ -355,7 +379,11 @@ function LiveTopBar({
       <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold uppercase text-[#12225a]">{names.home}</span>
-          <TurnTrack sideName={names.home} current={state.turnNumber} isActive={state.activeSide === "home"} />
+          <TurnTrack
+            sideName={names.home}
+            current={teamTurnCounts(state.half, state.turnNumber).home}
+            isActive={state.activeSide === "home"}
+          />
           <span className="text-sm font-black text-[#12225a] tabular-nums">
             <FormatHms ms={clock.homeTurnMs} />
           </span>
@@ -367,7 +395,11 @@ function LiveTopBar({
           <span className="text-sm font-black text-[#12225a] tabular-nums">
             <FormatHms ms={clock.awayTurnMs} />
           </span>
-          <TurnTrack sideName={names.away} current={state.turnNumber} isActive={state.activeSide === "away"} />
+          <TurnTrack
+            sideName={names.away}
+            current={teamTurnCounts(state.half, state.turnNumber).away}
+            isActive={state.activeSide === "away"}
+          />
           <span className="text-xs font-bold uppercase text-[#12225a]">{names.away}</span>
         </div>
       </div>
