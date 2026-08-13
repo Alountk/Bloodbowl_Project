@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { PE_MVP } from "@/lib/rules";
+import { getRaceById } from "@/features/teams/data/races";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail } from "./api";
 import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
 import { liveEventLabel } from "./liveEventLabels";
 import { useLiveMatch } from "./useLiveMatch";
+import { useLiveClock, type DisplayClock } from "./useLiveClock";
+import { useLeagueName } from "./useLeagueName";
 
 /**
  * Internal single-match fetch hook mirroring `useLeagueDetail`: loads the match
@@ -88,6 +91,23 @@ function FormatMs({ ms }: { ms: number }) {
   );
 }
 
+/** Formats a millisecond value as H:MM:SS (per-coach clocks, mockup format). */
+function FormatHms({ ms }: { ms: number }) {
+  const totalSeconds = Math.floor(Math.max(ms, 0) / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return (
+    <span>
+      {h}
+      <span aria-hidden="true">:</span>
+      {String(m).padStart(2, "0")}
+      <span aria-hidden="true">:</span>
+      {String(s).padStart(2, "0")}
+    </span>
+  );
+}
+
 /** An empty pending live-state shell used before the first consent (D16). */
 function emptyPendingView(): LiveMatchViewState {
   return {
@@ -108,6 +128,15 @@ function emptyPendingView(): LiveMatchViewState {
     awayScore: 0,
     finishedAt: null,
   };
+}
+
+/** The two-team matchup header shown in the centered consent panel. */
+function MatchupLine({ names }: { names: { home: string; away: string } }) {
+  return (
+    <p className="text-sm font-black uppercase tracking-wide text-[#12225a]">
+      {names.home} <span className="text-[#d11938]">·</span> {names.away}
+    </p>
+  );
 }
 
 /**
@@ -139,7 +168,8 @@ function LiveConsentPanel({
   if (pending && side === null) {
     return (
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
-        <p className="text-sm font-semibold text-slate-600">
+        <MatchupLine names={names} />
+        <p className="mt-3 text-sm font-semibold text-slate-600">
           Esperando a los entrenadores para iniciar el partido.
         </p>
       </div>
@@ -150,7 +180,8 @@ function LiveConsentPanel({
     const meConsented = side === "home" ? state?.homeConsented : state?.awayConsented;
     return (
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#12225a]">
+        <MatchupLine names={names} />
+        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
           Partido programado
         </p>
         <p className="mt-2 text-sm text-slate-700">
@@ -187,7 +218,8 @@ function LiveConsentPanel({
   if (ready && side !== null) {
     return (
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#12225a]">Listo para empezar</p>
+        <MatchupLine names={names} />
+        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">Listo para empezar</p>
         <p className="mt-2 text-sm text-slate-700">Ambos entrenadores han confirmado.</p>
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           <button
@@ -214,13 +246,251 @@ function LiveConsentPanel({
   if (ready && side === null) {
     return (
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
-        <p className="text-sm font-bold text-[#12225a]">Listos para empezar</p>
+        <MatchupLine names={names} />
+        <p className="mt-3 text-sm font-bold text-[#12225a]">Listos para empezar</p>
         <p className="mt-2 text-xs text-slate-500">Ambos entrenadores han confirmado.</p>
       </div>
     );
   }
 
   return null;
+}
+
+/** One team's 1..8-per-half turn track; the current turn is highlighted. */
+function TurnTrack({
+  sideName,
+  current,
+  isActive,
+}: {
+  sideName: string;
+  current: number;
+  isActive: boolean;
+}) {
+  return (
+    <div aria-label={`Turnos de ${sideName}`} className="flex items-center gap-1">
+      {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => {
+        const done = n < current;
+        const active = isActive && n === current;
+        return (
+          <span
+            key={n}
+            aria-label={`Turno ${n}`}
+            aria-current={active ? "true" : undefined}
+            className={`flex h-6 w-6 items-center justify-center rounded-sm text-[11px] font-bold ${
+              active
+                ? "bg-[#d11938] text-white"
+                : done
+                  ? "bg-[#12225a] text-white"
+                  : "border border-[#e2e8f0] bg-[#f8fafc] text-slate-400"
+            }`}
+          >
+            {n}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The mockup top bar: league/jornada label, half indicator, the unified
+ * "Tiempo", the two per-coach turn tracks (1-8, current highlighted) and the
+ * two per-coach H:MM:SS clocks. The compact "Mitad H · Turno N" line keeps the
+ * exact string the e2e/unit suites assert.
+ */
+function LiveTopBar({
+  state,
+  clock,
+  label,
+  names,
+}: {
+  state: LiveMatchViewState;
+  clock: DisplayClock;
+  label: string;
+  names: { home: string; away: string };
+}) {
+  return (
+    <div className="border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#12225a]">{label}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+          {state.half === 2 ? "2ª PARTE" : "1ª PARTE"}
+        </p>
+        <p className="text-sm font-semibold text-slate-600">
+          Tiempo <FormatMs ms={clock.elapsed} />
+        </p>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase text-[#12225a]">{names.home}</span>
+          <TurnTrack sideName={names.home} current={state.turnNumber} isActive={state.activeSide === "home"} />
+          <span className="text-sm font-black text-[#12225a] tabular-nums">
+            <FormatHms ms={clock.homeTurnMs} />
+          </span>
+        </div>
+        <p className="text-sm font-semibold text-slate-500">
+          Mitad {state.half} · Turno {state.turnNumber}
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-black text-[#12225a] tabular-nums">
+            <FormatHms ms={clock.awayTurnMs} />
+          </span>
+          <TurnTrack sideName={names.away} current={state.turnNumber} isActive={state.activeSide === "away"} />
+          <span className="text-xs font-bold uppercase text-[#12225a]">{names.away}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One team column of the hero banner (name uppercase + race · coach subtitle). */
+function LiveTeamBlock({
+  name,
+  subtitle,
+  align,
+}: {
+  name: string;
+  subtitle: string;
+  align: "left" | "right";
+}) {
+  return (
+    <div className={`min-w-0 ${align === "right" ? "text-right" : "text-left"}`}>
+      <p className="truncate text-xl font-black uppercase tracking-wide text-[#12225a]">{name}</p>
+      <p className="mt-1 truncate text-xs text-slate-500">{subtitle}</p>
+    </div>
+  );
+}
+
+/**
+ * The center scoreboard: BIG "home : away" digits (navy/red) + a compact
+ * stats grid derived from the event feed. Only the rows we actually track
+ * (TD from `td`, CAS from `casualty`) render, and only when there is data.
+ */
+function LiveScoreboard({
+  state,
+  events,
+}: {
+  state: LiveMatchViewState;
+  events: LiveMatchView["events"];
+}) {
+  const tdHome = events.filter((e) => e.kind === "td" && e.side === "home").length;
+  const tdAway = events.filter((e) => e.kind === "td" && e.side === "away").length;
+  const casHome = events.filter((e) => e.kind === "casualty" && e.side === "home").length;
+  const casAway = events.filter((e) => e.kind === "casualty" && e.side === "away").length;
+  const hasTd = tdHome + tdAway > 0;
+  const hasCas = casHome + casAway > 0;
+  return (
+    <div className="px-2 text-center">
+      <p
+        data-testid="live-score"
+        aria-label="Marcador"
+        className="text-5xl font-black leading-none text-[#12225a] tabular-nums"
+      >
+        {state.homeScore}
+        <span className="mx-2 text-[#d11938]">:</span>
+        {state.awayScore}
+      </p>
+      <dl
+        data-testid="live-stats"
+        className="mt-3 grid grid-cols-2 items-baseline justify-items-center gap-x-4 gap-y-1 text-xs"
+      >
+        {hasTd ? (
+          <>
+            <dt className="font-bold uppercase text-slate-500">TD</dt>
+            <dd className="font-bold text-[#12225a] tabular-nums">
+              {tdHome} · {tdAway}
+            </dd>
+          </>
+        ) : null}
+        {hasCas ? (
+          <>
+            <dt className="font-bold uppercase text-slate-500">CAS</dt>
+            <dd className="font-bold text-[#12225a] tabular-nums">
+              {casHome} · {casAway}
+            </dd>
+          </>
+        ) : null}
+      </dl>
+    </div>
+  );
+}
+
+/** Hero banner: `1fr auto 1fr` — teams mirrored around the center scoreboard. */
+function LiveHero({
+  state,
+  names,
+  homeSubtitle,
+  awaySubtitle,
+  events,
+}: {
+  state: LiveMatchViewState;
+  names: { home: string; away: string };
+  homeSubtitle: string;
+  awaySubtitle: string;
+  events: LiveMatchView["events"];
+}) {
+  return (
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-[#e2e8f0] px-4 py-5">
+      <LiveTeamBlock name={names.home} subtitle={homeSubtitle} align="right" />
+      <LiveScoreboard state={state} events={events} />
+      <LiveTeamBlock name={names.away} subtitle={awaySubtitle} align="left" />
+    </div>
+  );
+}
+
+/**
+ * Event-dot colors for the timeline track. Rulebook-light palette only: the
+ * mockup's gold/amber become the brand red/navy and the slate neutrals already
+ * in use (no new color variants, MV-7).
+ */
+const EVENT_DOT_COLORS: Record<string, string> = {
+  td: "bg-[#d11938]",
+  casualty: "bg-[#12225a]",
+  foul: "bg-slate-500",
+  turn: "bg-slate-400",
+  turnStart: "bg-slate-400",
+  requestTurn: "bg-slate-300",
+  start: "bg-[#12225a]",
+  endHalf: "bg-[#12225a]",
+  endMatch: "bg-[#12225a]",
+};
+
+/**
+ * The live horizontal event track (mockup): chronological events as small
+ * colored dots along a line + a compact legend below reusing the Spanish
+ * `liveEventLabel` strings. Rendered only when there are events.
+ */
+function LiveTimelineTrack({ events }: { events: LiveMatchView["events"] }) {
+  if (events.length === 0) return null;
+  const kinds = [...new Set(events.map((e) => e.kind))];
+  return (
+    <div className="border-b border-[#e2e8f0] px-4 py-3">
+      <ol aria-label="Cronología del partido" className="flex items-center">
+        {events.map((event, i) => (
+          <li key={event.seq} className="flex flex-1 items-center last:flex-none">
+            <span
+              data-testid="event-dot"
+              aria-label={liveEventLabel(event)}
+              title={liveEventLabel(event)}
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${EVENT_DOT_COLORS[event.kind] ?? "bg-slate-400"}`}
+            />
+            {i < events.length - 1 ? <span className="mx-1 h-px flex-1 bg-[#e2e8f0]" /> : null}
+          </li>
+        ))}
+      </ol>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+        {kinds.map((kind) => (
+          <li key={kind} className="flex items-center gap-1.5">
+            <span
+              className={`h-2 w-2 rounded-full ${EVENT_DOT_COLORS[kind] ?? "bg-slate-400"}`}
+              aria-hidden="true"
+            />
+            {liveEventLabel({ kind, half: 1, turnNumber: 1, payload: {} })}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** The live-session control: consent → ready → begin → live clock + controls. */
@@ -230,25 +500,36 @@ function LiveActiveMatch({
   fixtureId,
   names,
   viewerSide,
+  leagueLabel,
+  homeSubtitle,
+  awaySubtitle,
 }: {
   live: LiveMatchView | null;
   leagueId: string;
   fixtureId: string;
   names: { home: string; away: string };
   viewerSide: "home" | "away" | null;
+  leagueLabel: string;
+  homeSubtitle: string;
+  awaySubtitle: string;
 }) {
   const { live: hookLive, sendCommand } = useLiveMatch({ leagueId, fixtureId });
   // Start from the persisted snapshot (or an empty pending shell when no row
   // exists yet, D16), then adopt the real-time SSE overrides. `viewerSide` is
   // per-viewer (D19): hub fan-out frames carry null, so ALWAYS merge the
   // session-derived side over whatever the SSE pushed — the server stays the
-  // authority for everything else (LM-8/D19).
-  const state: LiveMatchViewState = {
-    ...(hookLive != null && "activeSide" in hookLive
-      ? hookLive
-      : live ?? { ...emptyPendingView(), viewerSide }),
-    viewerSide,
-  };
+  // authority for everything else (LM-8/D19). Memoized so the ticking clock
+  // re-renders don't churn the SSE frame reference.
+  const state = useMemo<LiveMatchViewState>(
+    () => ({
+      ...(hookLive != null && "activeSide" in hookLive
+        ? hookLive
+        : live ?? { ...emptyPendingView(), viewerSide }),
+      viewerSide,
+    }),
+    [hookLive, live, viewerSide],
+  );
+  const clock = useLiveClock(state);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -285,74 +566,59 @@ function LiveActiveMatch({
     );
   }
 
+  const events = live ? live.events : [];
+
   return (
     <div className="bg-white border border-[#e2e8f0]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2e8f0] px-4 py-3">
-        <p className="text-sm font-bold text-[#12225a]">
-          Mitad {state.half} · Turno {state.turnNumber}
-        </p>
-        <p className="text-sm font-semibold text-slate-600">
-          Tiempo <FormatMs ms={state.elapsed} />
-        </p>
-        <p className="text-2xl font-black text-[#12225a]">
-          {state.homeScore} <span className="text-[#d11938]">–</span> {state.awayScore}
-        </p>
-      </div>
+      <LiveTopBar state={state} clock={clock} label={leagueLabel} names={names} />
+      <LiveHero
+        state={state}
+        names={names}
+        homeSubtitle={homeSubtitle}
+        awaySubtitle={awaySubtitle}
+        events={events}
+      />
+      <LiveTimelineTrack events={events} />
 
-      <div className="grid grid-cols-2 gap-3 px-4 py-3">
-        <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
-          <p className="text-xs text-slate-500">{names.home}</p>
-          <p className="text-xl font-black text-[#12225a]">
-            <FormatMs ms={state.homeTurnMs} />
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+        <div className="min-w-0">
+          {/* LM-12/D19: the ACTIVE coach sees "Tu turno" (viewerSide matches activeSide). */}
+          {state.viewerSide === state.activeSide ? (
+            <p className="text-sm font-bold text-[#d11938]" role="status">
+              Tu turno
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="mt-1 text-sm text-red-600">
+              {error}
+            </p>
+          ) : null}
         </div>
-        <div className="border border-[#e2e8f0] bg-[#f8fafc] p-3 text-center">
-          <p className="text-xs text-slate-500">{names.away}</p>
-          <p className="text-xl font-black text-[#12225a]">
-            <FormatMs ms={state.awayTurnMs} />
-          </p>
+        <div className="flex flex-wrap gap-3">
+          {/* The active coach may pass the turn; a non-active coach (with a side)
+              may request it (LM-13/D14). Side controls reflect the viewer's role. */}
+          {state.viewerSide === state.activeSide ? (
+            <button
+              type="button"
+              onClick={() => void act({ type: "endTurn", side: state.activeSide })}
+              disabled={state.status !== "live" || submitting}
+              className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+            >
+              Dar el turno
+            </button>
+          ) : null}
+          {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
+            <button
+              type="button"
+              onClick={() => void act({ type: "requestTurn" })}
+              disabled={state.status !== "live" || submitting}
+              className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+            >
+              Pedir turno
+            </button>
+          ) : null}
         </div>
       </div>
-
-      {/* LM-12/D19: the ACTIVE coach sees "Tu turno" (viewerSide matches activeSide). */}
-      {state.status === "live" && state.viewerSide === state.activeSide ? (
-        <p className="border-t border-[#e2e8f0] px-4 py-2 text-sm font-bold text-[#d11938]" role="status">
-          Tu turno
-        </p>
-      ) : null}
-
-      {error ? (
-        <p role="alert" className="px-4 pb-2 text-sm text-red-600">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap gap-3 px-4 py-4">
-        {/* The active coach may pass the turn; a non-active coach (with a side)
-            may request it (LM-13/D14). Side controls reflect the viewer's role. */}
-        {state.viewerSide === state.activeSide ? (
-          <button
-            type="button"
-            onClick={() => void act({ type: "endTurn", side: state.activeSide })}
-            disabled={state.status !== "live" || submitting}
-            className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
-          >
-            Dar el turno
-          </button>
-        ) : null}
-        {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
-          <button
-            type="button"
-            onClick={() => void act({ type: "requestTurn" })}
-            disabled={state.status !== "live" || submitting}
-            className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
-          >
-            Pedir turno
-          </button>
-        ) : null}
-      </div>
-
-      <LiveEventFeed events={live ? live.events : []} />
     </div>
   );
 }
@@ -516,6 +782,7 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
  */
 export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId: string }) {
   const { detail, loading, error, notFound } = useMatchDetail(leagueId, fixtureId);
+  const leagueName = useLeagueName(leagueId);
   // D19: when no LiveMatch row exists yet, the per-viewer side is deduced from
   // the session user against the two team owners (the DTO carries it otherwise).
   const { data: session } = useSession();
@@ -562,6 +829,12 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
 
   const summary = buildMatchSummary(detail);
   const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
+  // Mockup top-bar label: "{league} · Jornada {round}" (league name resolved
+  // client-side; falls back to "Jornada {round}" when unavailable).
+  const leagueLabel = `${leagueName ? `${leagueName} · ` : ""}Jornada ${detail.fixture.round}`;
+  // Hero team subtitles: race name · coach name (matchSummary's teams-line).
+  const homeSubtitle = `${getRaceById(detail.homeTeam.raceId)?.name ?? "—"} · ${detail.homeTeam.user?.name ?? "—"}`;
+  const awaySubtitle = `${getRaceById(detail.awayTeam.raceId)?.name ?? "—"} · ${detail.awayTeam.user?.name ?? "—"}`;
 
   let body: React.ReactNode;
   if (detail.live) {
@@ -577,6 +850,9 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
           fixtureId={fixtureId}
           names={names}
           viewerSide={viewerSide}
+          leagueLabel={leagueLabel}
+          homeSubtitle={homeSubtitle}
+          awaySubtitle={awaySubtitle}
         />
       );
   } else if (summary.walkover) {
@@ -598,6 +874,9 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         fixtureId={fixtureId}
         names={names}
         viewerSide={viewerSide}
+        leagueLabel={leagueLabel}
+        homeSubtitle={homeSubtitle}
+        awaySubtitle={awaySubtitle}
       />
     );
   } else if (detail.fixture.status === "pending") {

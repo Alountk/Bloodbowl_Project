@@ -321,10 +321,12 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
 
     // The live section shows real server state: header (half/turn), score.
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    expect(container.textContent).toMatch(/1\s*–\s*0/);
-    // Unified-clock per-side accumulators render (homeTurnMs=2100 → 0:02).
-    expect(container.textContent).toMatch(/0:02/);
-    // The feed labels the persisted TD + start events.
+    // Hero scoreboard: big "1 : 0" digits (mockup format).
+    expect(screen.getByTestId("live-score").textContent).toMatch(/1\s*:\s*0/);
+    // Per-coach clock (homeTurnMs=2100 → H:MM:SS 0:00:02) + the unified Tiempo.
+    expect(container.textContent).toMatch(/0:00:02/);
+    expect(container.textContent).toMatch(/Tiempo/);
+    // The timeline legend reuses the Spanish labels for the TD + start events.
     expect(screen.getAllByText(/Touchdown/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Inicio del partido/).length).toBeGreaterThan(0);
   });
@@ -383,6 +385,67 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
+});
+
+describe("MatchView — mockup layout + client ticking clock", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("renders the mockup structure: turn tracks with the current turn highlighted, hero blocks and timeline dots", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail());
+    const { container } = renderPlayed();
+    await screen.findAllByText(/Mitad 1 · Turno 3/);
+
+    // Top bar: league/jornada label + half indicator.
+    expect(container.textContent).toMatch(/Jornada 1/);
+    expect(container.textContent).toMatch(/1ª PARTE/);
+
+    // Turn tracks: 8 cells per team (16 total), exactly ONE current turn is
+    // highlighted (the active side's turn number).
+    const cells = screen.getAllByLabelText(/Turno \d/);
+    expect(cells).toHaveLength(16);
+    const highlighted = cells.filter((c) => c.getAttribute("aria-current") === "true");
+    expect(highlighted).toHaveLength(1);
+    expect(highlighted[0].textContent).toBe("3");
+
+    // Hero: the team blocks mirror the center scoreboard (race · coach line).
+    expect(screen.getAllByText(/Reavers/).length).toBeGreaterThan(0);
+    expect(container.textContent).toMatch(/Human · Coach A/);
+    expect(container.textContent).toMatch(/Dwarf · Coach B/);
+
+    // Stats grid derived from the event feed: only the rows we have data for.
+    expect(screen.getByText("TD")).toBeTruthy();
+    expect(screen.queryByText("CAS")).toBeNull();
+
+    // Timeline: one dot per event (start + td) + a compact Spanish legend.
+    expect(container.querySelectorAll("[data-testid='event-dot']").length).toBe(2);
+    expect(screen.getByText(/Inicio del partido/)).toBeTruthy();
+    expect(screen.getByText(/Touchdown/)).toBeTruthy();
+  });
+
+  it("ticks the unified clock and the ACTIVE coach's clock every second while live", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-08-13T10:00:00Z"));
+    stubLiveEventSource();
+    stubMatch(liveDetail());
+    const { container } = renderPlayed();
+
+    // Flush the detail/league fetches so LiveActiveMatch mounts and anchors the
+    // clock; the per-coach clock starts at homeTurnMs 2100 → 0:00:02.
+    await act(async () => {});
+    expect(container.textContent).toMatch(/0:00:02/);
+
+    // After 3s of ticks the ACTIVE side's clock + the unified Tiempo advance.
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(container.textContent).toMatch(/0:00:05/);
+    // The NON-active (away) side stays frozen at 0:00:00.
+    expect(container.textContent).toMatch(/0:00:00/);
   });
 });
 
