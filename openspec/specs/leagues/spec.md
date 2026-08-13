@@ -8,8 +8,8 @@ Introduce the League model to group teams into per-user leagues. Leagues are per
 
 ### Requirement: League Model
 
-The system MUST persist leagues via Prisma on PostgreSQL. The League model MUST have id (cuid), name (unique global), description (String?, optional free text), ownerId (FK to User), createdAt, `status` (enum "open"|"started", default "open"), `seasonLength Int?`, `startedAt DateTime?`, `turnClockEnabled Boolean` (default true), and `turnClockSeconds Int` (default 240, meaningful only when enabled). A `Fixture` model MUST exist with id (cuid), leagueId (cascade), round Int, homeTeamId, awayTeamId and MUST be indexed on `[leagueId, round]`. Deleting a User MUST cascade-delete their Leagues. Deleting an OPEN League MUST set each member team's `leagueId` to null (onDelete SetNull) and MUST fail with 409 when the league is STARTED; deleting a started league MUST NOT run the SetNull-clearing and MUST leave teams and fixtures intact.
-(Previously: the League model carried no turn-clock fields.)
+The system MUST persist leagues via Prisma on PostgreSQL. The League model MUST have id (cuid), name (unique global), description (String?, optional free text), ownerId (FK to User), createdAt, `status` (enum "open"|"started", default "open"), `seasonLength Int?`, `startedAt DateTime?`, `turnClockEnabled Boolean` (default true), and `turnClockSeconds Int` (default 240) — the two turn-clock columns are DEPRECATED and MUST remain only for backward compatibility (no destructive migration drops them). A `Fixture` model MUST exist with id (cuid), leagueId (cascade), round Int, homeTeamId, awayTeamId and MUST be indexed on `[leagueId, round]`. Deleting a User MUST cascade-delete their Leagues. Deleting an OPEN League MUST set each member team's `leagueId` to null (onDelete SetNull) and MUST fail with 409 when the league is STARTED; deleting a started league MUST NOT run the SetNull-clearing and MUST leave teams and fixtures intact.
+(Previously: the turn-clock fields were the active per-turn clock configuration; this delta deprecates them without dropping the columns.)
 
 #### Scenario: League persisted (unchanged)
 
@@ -23,11 +23,11 @@ The system MUST persist leagues via Prisma on PostgreSQL. The League model MUST 
 - WHEN any user creates a league with the same name
 - THEN creation fails with 409 and no league row is created
 
-#### Scenario: Turn-clock option persisted
+#### Scenario: Deprecated clock columns retained
 
-- GIVEN a league created with the turn-clock option
-- WHEN the League row is stored
-- THEN `turnClockEnabled` and `turnClockSeconds` carry the creation values
+- GIVEN a league whose creation predates the deprecation
+- WHEN its League row is read
+- THEN `turnClockEnabled` and `turnClockSeconds` remain stored unchanged; new leagues persist them at schema defaults
 
 #### Scenario: Open league delete clears members (unchanged)
 
@@ -43,8 +43,8 @@ The system MUST persist leagues via Prisma on PostgreSQL. The League model MUST 
 
 ### Requirement: League User-Scoped API
 
-The system MUST expose `/api/leagues` (GET list, POST create) and `/api/leagues/[id]` (GET detail, DELETE) that require a valid session (401 unauthenticated). GET list returns open leagues of all users plus the session user's own leagues (all status), each with owner name and member count. GET detail returns the league to any authenticated user when OPEN, or to the owner/members when STARTED (foreign non-member started id → 404). POST create is owner-injected and MUST accept the turn-clock option (enabled toggle + per-turn duration); when enabled, the duration MUST be exactly 120, 240, or 360 seconds (any other value → 400, no league created) and 240 MUST be the default when omitted. The option MUST be immutable after creation: no update path exists for it. DELETE MUST be owner-only and MUST return 409 when the league is STARTED.
-(Previously: POST create accepted no turn-clock option.)
+The system MUST expose `/api/leagues` (GET list, POST create) and `/api/leagues/[id]` (GET detail, DELETE) that require a valid session (401 unauthenticated). GET list returns open leagues of all users plus the session user's own leagues (all status), each with owner name and member count. GET detail returns the league to any authenticated user when OPEN, or to the owner/members when STARTED (foreign non-member started id → 404). POST create is owner-injected and MUST NOT accept, require, or validate turn-clock fields: the creation UI/API no longer expose the toggle or duration select, and a payload that still carries the fields MUST NOT persist them (columns keep schema defaults). The fields MUST be immutable: no update path exists for them. DELETE MUST be owner-only and MUST return 409 when the league is STARTED.
+(Previously: POST create accepted an enabled toggle plus a per-turn duration validated to exactly 120/240/360 seconds.)
 
 #### Scenario: Unauthenticated API call (unchanged)
 
@@ -58,25 +58,31 @@ The system MUST expose `/api/leagues` (GET list, POST create) and `/api/leagues/
 - WHEN the user calls GET `/api/leagues`
 - THEN the response is the union of their own leagues and all open leagues, each with ownerName and memberCount
 
-#### Scenario: Creation accepts the clock option
+#### Scenario: Creation without the clock option
 
-- GIVEN a user creating a league with clocks enabled at 240 seconds
-- WHEN POST `/api/leagues` validates the payload
-- THEN the league is created with the option persisted on the League row
+- GIVEN a user creating a league
+- WHEN POST `/api/leagues` carries no turn-clock fields
+- THEN the league is created and the deprecated columns persist at schema defaults
 
-#### Scenario: Invalid duration rejected
+#### Scenario: Legacy turn-clock payload ignored
 
-- GIVEN the clock toggle enabled
-- WHEN the creation payload carries a duration outside 120/240/360
-- THEN it returns 400 and no league row is created
+- GIVEN a creation payload that still carries turn-clock fields
+- WHEN POST `/api/leagues` validates it
+- THEN the fields are ignored (not persisted) and the league is created with schema defaults
 
-#### Scenario: Option immutable after creation
+#### Scenario: Creation UI drops the clock option
 
-- GIVEN a league created with the turn-clock option
-- WHEN any later request attempts to alter it
-- THEN the League row keeps the creation values (no update path exists)
+- GIVEN the league creation modal
+- WHEN it renders
+- THEN no turn-clock toggle or duration select appears
 
-#### Scenario: Foreign member started detail allowed
+#### Scenario: Deprecated fields immutable after creation
+
+- GIVEN a league created before or after the deprecation
+- WHEN any later request attempts to alter the fields
+- THEN the League row keeps its values (no update path exists)
+
+#### Scenario: Foreign member started detail allowed (unchanged)
 
 - GIVEN a STARTED league owned by another user
 - WHEN a current member of that league requests its detail
