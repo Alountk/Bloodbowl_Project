@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { useSession } from "next-auth/react";
 import { MatchView } from "./MatchView";
-import type { LiveMatchView, MatchDetail } from "./api";
+import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
 
 // `MatchView` uses the session to derive the viewer's side when no live row
 // exists (D19). Default the viewer to the home coach (u1).
@@ -51,6 +52,9 @@ function stubLiveEventSource() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // Restore the default home-coach viewer (u1) — a test-local `mockReturnValue`
+  // for u2 (away coach) would otherwise leak into subsequent tests.
+  vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u1" } } } as never);
 });
 
 function playedDetail(): MatchDetail {
@@ -367,6 +371,8 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
 
   it("shows 'Pedir turno' (and no 'Dar el turno') for the NON-active coach", async () => {
     stubLiveEventSource();
+    // The away coach (u2) is the viewer; the active side is home → NOT the active one.
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
     const detail = liveDetail();
     detail.live = { ...detail.live!, viewerSide: "away" };
     stubMatch(detail);
@@ -508,6 +514,206 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
     expect(livePost).toBeDefined();
     const init = (livePost as unknown[])[1] as { body: string };
     expect((JSON.parse(init.body) as { type: string }).type).toBe("begin");
+  });
+});
+
+describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A hub fan-out `state` frame: authoritative live fields, viewerSide null (D19). */
+  function hubFrame(overrides: Partial<LiveMatchViewState> = {}): string {
+    return JSON.stringify({
+      seq: 1,
+      status: "pending",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: false,
+      awayConsented: false,
+      viewerSide: null,
+      startedAt: null,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      paused: false,
+      homeScore: 0,
+      awayScore: 0,
+      finishedAt: null,
+      ...overrides,
+    });
+  }
+
+  it("keeps the consent button for the home coach when a hub frame (no viewerSide) applies", async () => {
+    stubLiveEventSource();
+    stubMatch(scheduledDetail());
+    renderPlayed();
+
+    expect(await screen.findByText(/Partido programado/)).toBeTruthy();
+    // The coach has not yet consented — the "Iniciar partido" button is live.
+    expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
+
+    // The hub's fan-out `state` frame carries NO viewerSide (D19) and overwrites
+    // hookLive → viewerSide must survive via the session-derived prop.
+    act(() => {
+      liveInstances[0]?.dispatch("state", hubFrame());
+    });
+
+    // Regression: the frame previously blanked the side → "Esperando a los
+    // entrenadores..." with no button.
+    expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
+  });
+
+  it("keeps 'Listo, esperando al rival.' after the consent POST is overwritten by a hub frame", async () => {
+    stubLiveEventSource();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? {
+              ok: true,
+              status: 200,
+              json: () =>
+                Promise.resolve({
+                  view: {
+                    seq: 1,
+                    status: "pending",
+                    half: 1,
+                    turnNumber: 1,
+                    activeSide: "home",
+                    homeConsented: true,
+                    awayConsented: false,
+                    viewerSide: "home",
+                    startedAt: null,
+                    elapsed: 0,
+                    homeTurnMs: 0,
+                    awayTurnMs: 0,
+                    paused: false,
+                    homeScore: 0,
+                    awayScore: 0,
+                    finishedAt: null,
+                  },
+                }),
+            }
+          : { ok: true, status: 200, json: () => Promise.resolve(scheduledDetail()) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+    renderPlayed();
+
+    const button = await screen.findByRole("button", { name: /Iniciar partido/i });
+    act(() => {
+      button.click();
+    });
+    // The consent POST response (viewerSide home) shows the waiting state.
+    expect(await screen.findByText(/Listo, esperando al rival/)).toBeTruthy();
+
+    // The hub's fan-out frame (viewerSide null) arrives right after the POST.
+    act(() => {
+      liveInstances[0]?.dispatch("state", hubFrame({ homeConsented: true, awayConsented: false }));
+    });
+
+    // The viewer still knows their side → the waiting state (and retract) persists.
+    expect(screen.getByText(/Listo, esperando al rival/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Retirar consentimiento/i })).toBeTruthy();
+  });
+
+  it("renders 'Empezar partido' from a ready hub frame and drives begin on click", async () => {
+    stubLiveEventSource();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? {
+              ok: true,
+              status: 200,
+              json: () =>
+                Promise.resolve({
+                  view: {
+                    seq: 3,
+                    status: "live",
+                    half: 1,
+                    turnNumber: 1,
+                    activeSide: "home",
+                    homeConsented: true,
+                    awayConsented: true,
+                    viewerSide: "home",
+                    startedAt: 1000,
+                    elapsed: 0,
+                    homeTurnMs: 0,
+                    awayTurnMs: 0,
+                    paused: false,
+                    homeScore: 0,
+                    awayScore: 0,
+                    finishedAt: null,
+                  },
+                }),
+            }
+          : { ok: true, status: 200, json: () => Promise.resolve(scheduledDetail()) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+    renderPlayed();
+
+    expect(await screen.findByText(/Partido programado/)).toBeTruthy();
+    // Both coaches consented → the ready state arrives via the hub frame (no viewerSide).
+    act(() => {
+      liveInstances[0]?.dispatch(
+        "state",
+        hubFrame({ seq: 2, status: "ready", homeConsented: true, awayConsented: true }),
+      );
+    });
+
+    expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
+    act(() => {
+      screen.getByRole("button", { name: /Empezar partido/i }).click();
+    });
+
+    await waitFor(() => {
+      const livePost = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/live"));
+      expect(livePost).toBeDefined();
+      const init = (livePost as unknown[])[1] as { body: string };
+      expect((JSON.parse(init.body) as { type: string }).type).toBe("begin");
+    });
+  });
+
+  it("keeps 'Pedir turno' for the NON-active coach after a live hub frame (LM-12)", async () => {
+    stubLiveEventSource();
+    // The away coach (u2) is the viewer — the prop, not the DTO, is authoritative.
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, viewerSide: "away" };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+
+    // Live-phase hub frame (viewerSide null) — the away coach keeps the control.
+    act(() => {
+      liveInstances[0]?.dispatch(
+        "state",
+        hubFrame({
+          seq: 7,
+          status: "live",
+          half: 1,
+          turnNumber: 3,
+          activeSide: "home",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: 8000,
+          elapsed: 2400,
+          homeTurnMs: 2100,
+          awayTurnMs: 300,
+          homeScore: 1,
+          awayScore: 0,
+        }),
+      );
+    });
+
+    expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryByText(/Tu turno/)).toBeNull();
   });
 });
 
