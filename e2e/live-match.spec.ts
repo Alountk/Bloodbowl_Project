@@ -294,14 +294,24 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
     await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
-    // The ACTIVE (home) coach clicks "Dar el turno" → the turn flips and the
-    // process-wide hub fans the new state out over SSE: the OTHER coach's page
-    // converges WITHOUT any reload — the live `event` frame (turn + turnStart
-    // deltas) applies the flipped state and "Tu turno" appears.
-    await homeCoach.getByRole("button", { name: "Dar el turno" }).click();
+    // The ACTIVE (home) coach DOUBLE-CLICKS "Dar el turno" → the in-flight lock
+    // drops the second invocation, so the turn flips by EXACTLY ONE. A raw
+    // pointer dblclick lands the second click while the first endTurn is still
+    // in flight (no actionability waits) — the pre-lock bug sent a second
+    // endTurn and jumped the turn by two. The hub then fans the new state out
+    // over SSE: the OTHER coach's page converges WITHOUT any reload — the live
+    // `event` frame (turn + turnStart deltas) applies the flipped state.
+    const passButton = homeCoach.getByRole("button", { name: "Dar el turno" });
+    await expect(passButton).toBeVisible();
+    const box = (await passButton.boundingBox())!;
+    await homeCoach.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
     await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
     await expect(awayCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    // Regression: exactly one flip — turn 3 never appears, the away coach is
+    // the one now active ("Tu turno"), and the home coach's status is gone.
     await expect(awayCoach.getByRole("status")).toHaveText("Tu turno");
+    await expect(homeCoach.getByText(/Mitad 1 · Turno 3/)).toHaveCount(0);
+    await expect(homeCoach.getByRole("status")).toHaveCount(0);
 
     // LM-13: the now-NON-active coach (home) clicks "Pedir turno" → the
     // requestTurn delta event streams to the ACTIVE (away) coach's page and the
