@@ -54,7 +54,11 @@ function liveSnapshot(overrides: Partial<LiveMatchViewState> = {}): LiveMatchVie
 }
 
 /** A hub fan-out frame: the full view + the transition's delta events (LM-8). */
-function liveFrame(seq: number, overrides: Partial<LiveMatchViewState> = {}, events: unknown[] = []) {
+function liveFrame(
+  seq: number,
+  overrides: Partial<LiveMatchViewState> & { kind?: string } = {},
+  events: unknown[] = [],
+) {
   return JSON.stringify({ ...liveSnapshot({ seq, ...overrides }), events });
 }
 
