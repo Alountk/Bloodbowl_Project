@@ -28,6 +28,8 @@ import { resolveEventPermission, type EventKind } from "@/lib/livePhase";
 export const dynamic = "force-dynamic";
 
 const HEARTBEAT_MS = 15_000;
+/** How often the pending gap-queue is drained after the snapshot (live fan-out). */
+const FLUSH_MS = 250;
 
 export interface FixtureContext {
   id: string;
@@ -52,6 +54,47 @@ export interface FixtureContext {
 type Gateway =
   | { kind: "deny"; status: 401 | 403 | 404; error: string }
   | { kind: "allow"; context: FixtureContext };
+
+/** A persisted LiveEvent row as loaded for the snapshot timeline. */
+interface PersistedLiveEventRow {
+  seq: number;
+  kind: string;
+  side: "home" | "away" | null;
+  playerRosterId: string | null;
+  half: number;
+  turnNumber: number;
+  payload: unknown;
+  createdAt: Date;
+}
+
+/** The client DTO shape for a live event (mirrors `serializeLive` + `LiveMatchEventDto`). */
+interface LiveEventDto {
+  seq: number;
+  kind: string;
+  side: "home" | "away" | null;
+  playerRosterId: string | null;
+  half: number;
+  turnNumber: number;
+  payload: Record<string, unknown>;
+  at: number;
+}
+
+/** Maps persisted LiveEvent rows to the DTO shape (LM-6/`serializeLive` parity). */
+function toEventDtos(rows: PersistedLiveEventRow[]): LiveEventDto[] {
+  return rows.map((e) => ({
+    seq: e.seq,
+    kind: e.kind,
+    side: e.side,
+    playerRosterId: e.playerRosterId,
+    half: e.half,
+    turnNumber: e.turnNumber,
+    payload:
+      typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
+        ? (e.payload as Record<string, unknown>)
+        : {},
+    at: new Date(e.createdAt).getTime(),
+  }));
+}
 
 /**
  * Loads a fixture (scoped to the league) with its league membership + clock
@@ -154,7 +197,9 @@ function viewerSide(ctx: FixtureContext, userId: string | null): "home" | "away"
  *
  * SSE subscribe stream (LM-1, D1): same-origin JWT cookie, no separate token.
  * Stream lifecycle (D7 snapshot-first, LM-8):
- *   1. `event: snapshot` (no id) first — current live state, or nil.
+ *   1. `event: snapshot` (no id) first — current live state, or nil. The
+ *      snapshot carries the persisted events (full timeline) so a fresh or
+ *      reloading client sees the nudges/TDs/casualties without a reconnect.
  *   2. `event: event id:<seq>` for every gap event with seq > snapshot.seq,
  *      deduped by seq so reconnects never replay stale events.
  *   3. `event: heartbeat` every 15s (never advances the Last-Event-ID cursor).
@@ -183,6 +228,16 @@ export async function GET(
   const liveRow = await prisma.liveMatch.findFirst({ where: { fixtureId } });
   const live = liveRow ? liveMatchRowToState(liveRow) : null;
   const snapshotSeq = live?.seq ?? 0;
+
+  // Load the persisted events so a fresh/reloading client receives the full
+  // timeline (requestTurn nudges, TDs, casualties) in the snapshot instead of an
+  // empty feed — the timeline must survive a reload.
+  const persistedEvents = liveRow
+    ? await prisma.liveEvent.findMany({
+        where: { liveMatchId: liveRow.id },
+        orderBy: { seq: "asc" },
+      })
+    : [];
 
   // The closure the hub calls for every publish. It queues gap events (> the
   // snapshot seq) for the stream to flush AFTER the snapshot frame, and drops
@@ -301,7 +356,7 @@ export async function GET(
             // D19: the snapshot carries the per-viewer side (computed server-side).
             ...toLiveViewState(live, Date.now(), { viewerSide: viewerSide(ctx, userId) }),
             seq: snapshotSeq,
-            events: [],
+            events: toEventDtos(persistedEvents),
           }
         : { seq: 0, live: null };
 
@@ -323,6 +378,16 @@ export async function GET(
 
       flush();
 
+      // Live fan-out (LM-8): hub publishes that arrive AFTER the snapshot are
+      // buffered in `pending` and drained on a short interval so a live
+      // transition (turn flip, nudge) reaches every connected coach WITHOUT a
+      // reload. Flushing only once at start meant the queue never drained and
+      // live frames were silently lost.
+      const flushTimer = setInterval(() => {
+        if (closed) return;
+        flush();
+      }, FLUSH_MS);
+
       const heartbeat = setInterval(() => {
         if (closed) return;
         controller.enqueue(encoder.encode("event: heartbeat\ndata: {}\n\n"));
@@ -331,6 +396,7 @@ export async function GET(
       onCancel = () => {
         if (closed) return;
         closed = true;
+        clearInterval(flushTimer);
         clearInterval(heartbeat);
         dispose?.();
         dispose = null;
