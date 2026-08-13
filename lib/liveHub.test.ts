@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { createLiveHub, type HubSubscriber, type SubscribeInput, type TickSnapshot } from "./liveHub";
+import { createLiveHub, liveHub, type HubSubscriber, type SubscribeInput, type TickSnapshot } from "./liveHub";
 
 /**
  * Hub unit tests — subscribe/publish fan-out, active-coach tracking with a 10s
@@ -47,6 +47,22 @@ function liveSnapshot(overrides: Partial<TickSnapshot> = {}): TickSnapshot {
     ...overrides,
   };
 }
+
+describe("liveHub — process-wide singleton (Turbopack re-instantiates modules per request)", () => {
+  it("exposes ONE hub attached to globalThis so every request shares it", () => {
+    const g = globalThis as unknown as { __liveHub?: unknown };
+    // The exported singleton IS the globalThis-backed instance.
+    expect(liveHub).toBe(g.__liveHub);
+    // A re-evaluation of the module (what `next dev` does per request) returns
+    // the SAME instance — the SSE subscriber and POST publisher share it.
+    expect(g.__liveHub).toBe(liveHub);
+  });
+
+  it("keeps createLiveHub as an independent factory for tests", () => {
+    expect(createLiveHub()).not.toBe(liveHub);
+    expect(createLiveHub()).not.toBe(createLiveHub());
+  });
+});
 
 describe("liveHub — subscribe/publish fan-out", () => {
   const hub = createLiveHub();
