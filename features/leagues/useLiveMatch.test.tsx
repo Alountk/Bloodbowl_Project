@@ -53,6 +53,15 @@ function liveSnapshot(overrides: Partial<LiveMatchViewState> = {}): LiveMatchVie
   };
 }
 
+/** A hub fan-out frame: the full view + the transition's delta events (LM-8). */
+function liveFrame(seq: number, overrides: Partial<LiveMatchViewState> = {}, events: unknown[] = []) {
+  return JSON.stringify({ ...liveSnapshot({ seq, ...overrides }), events });
+}
+
+function liveEvent(seq: number, kind = "turn"): Record<string, unknown> {
+  return { seq, kind, side: null, playerRosterId: null, half: 1, turnNumber: 2, payload: {}, at: 2000 };
+}
+
 describe("useLiveMatch — connect / snapshot-first / reconnect / control", () => {
   const instances: FakeEventSource[] = [];
 
@@ -130,8 +139,101 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     unmount();
   });
 
-  it("sends a control command via POST and returns the new view (control restored)", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
+  it("applies the view from an `event` frame so the OTHER coach sees the turn flip live", async () => {
+    const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
+    const es = instances[0];
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 9, activeSide: "home" })));
+    });
+    expect(result.current.live?.activeSide).toBe("home");
+
+    // The active coach passes the turn → the hub publishes an `event` frame.
+    await act(async () => {
+      es.dispatch(
+        "event",
+        liveFrame(10, { activeSide: "away", turnNumber: 4 }, [liveEvent(10), liveEvent(11, "turnStart")]),
+        "10",
+      );
+    });
+
+    expect(result.current.live?.seq).toBe(10);
+    expect(result.current.live?.activeSide).toBe("away");
+    unmount();
+  });
+
+  it("appends the frame's delta events to the timeline, deduped by seq and ordered", async () => {
+    const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
+    const es = instances[0];
+    await act(async () => {
+      es.dispatch(
+        "snapshot",
+        JSON.stringify({
+          ...liveSnapshot({ seq: 9 }),
+          events: [liveEvent(1, "start"), liveEvent(5, "td")],
+        }),
+      );
+    });
+    expect(result.current.live?.events.map((e) => e.seq)).toEqual([1, 5]);
+
+    // The next frame carries delta events; a stale seq (5) is deduped.
+    await act(async () => {
+      es.dispatch("event", liveFrame(11, {}, [liveEvent(5, "td"), liveEvent(11, "requestTurn")]));
+    });
+    expect(result.current.live?.events.map((e) => e.seq)).toEqual([1, 5, 11]);
+    expect(result.current.live?.events[2].kind).toBe("requestTurn");
+    unmount();
+  });
+
+  it("never wipes the accumulated events when a `state` frame applies", async () => {
+    const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
+    const es = instances[0];
+    await act(async () => {
+      es.dispatch("event", liveFrame(9, {}, [liveEvent(9, "requestTurn")]));
+    });
+    expect(result.current.live?.events.map((e) => e.seq)).toEqual([9]);
+
+    // A hub `state` frame (view only, no events) must not blank the timeline.
+    await act(async () => {
+      es.dispatch("state", JSON.stringify(liveSnapshot({ seq: 10, activeSide: "away", turnNumber: 4 })));
+    });
+    expect(result.current.live?.seq).toBe(10);
+    expect(result.current.live?.events.map((e) => e.seq)).toEqual([9]);
+    unmount();
+  });
+
+  it("caps the accumulated events at 200 to bound client growth", async () => {
+    const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
+    const es = instances[0];
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify({ ...liveSnapshot({ seq: 9 }), events: [] }));
+      for (let i = 1; i <= 250; i++) {
+        es.dispatch("event", liveFrame(i, {}, [liveEvent(i, i % 2 === 0 ? "turn" : "requestTurn")]));
+      }
+    });
+
+    const events = result.current.live?.events ?? [];
+    expect(events).toHaveLength(200);
+    expect(events[0].seq).toBe(51);
+    expect(events[199].seq).toBe(250);
+    unmount();
+  });
+
+  it("ignores 1s tick frames (clock is derived locally by useLiveClock)", async () => {
+    const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
+    const es = instances[0];
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 9, homeTurnMs: 1000, awayTurnMs: 0 })));
+    });
+    await act(async () => {
+      es.dispatch("event", liveFrame(9, { kind: "tick", homeTurnMs: 2000, awayTurnMs: 0 }, []));
+    });
+    // The tick frame neither rewrites the state nor appends events.
+    expect(result.current.live?.homeTurnMs).toBe(1000);
+    expect(result.current.live?.events).toHaveLength(0);
+    unmount();
+  });
+
+  it("sends a control command via POST and returns the new view (control restored)", async () => {    const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: () => Promise.resolve({ view: liveSnapshot({ seq: 11, turnNumber: 5, activeSide: "away", homeTurnMs: 200, awayTurnMs: 100 }) }),
