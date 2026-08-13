@@ -130,6 +130,38 @@ function emptyPendingView(): LiveMatchViewState {
   };
 }
 
+/**
+ * LM-13: true when the ACTIVE coach's page must show the "Tu rival pide el
+ * turno" nudge — the viewer is active AND the opponent sent a requestTurn that
+ * no later turn flip (turnStart/turn/endHalf/endMatch) has superseded. Deriving
+ * from the timeline makes the banner survive a reload (the snapshot carries the
+ * persisted nudge) and self-clear on the next turn flip.
+ */
+function rivalRequestsTurn(
+  events: LiveMatchView["events"],
+  viewerSide: "home" | "away" | null,
+  activeSide: "home" | "away",
+): boolean {
+  if (viewerSide == null || viewerSide !== activeSide) return false;
+  let lastNudgeSeq = -1;
+  let lastTurnFlipSeq = -1;
+  for (const event of events) {
+    if (event.kind === "requestTurn") {
+      lastNudgeSeq = event.seq;
+    } else if (
+      event.kind === "turnStart" ||
+      event.kind === "turn" ||
+      event.kind === "endHalf" ||
+      event.kind === "endMatch"
+    ) {
+      lastTurnFlipSeq = event.seq;
+    }
+  }
+  if (lastNudgeSeq < 0 || lastNudgeSeq <= lastTurnFlipSeq) return false;
+  const nudge = events.find((e) => e.seq === lastNudgeSeq);
+  return nudge?.side != null && nudge.side !== viewerSide;
+}
+
 /** The two-team matchup header shown in the centered consent panel. */
 function MatchupLine({ names }: { names: { home: string; away: string } }) {
   return (
@@ -566,10 +598,23 @@ function LiveActiveMatch({
     );
   }
 
-  const events = live ? live.events : [];
+  // The event timeline comes from the SSE hook's accumulated frames once it has
+  // converged (the snapshot carries the persisted timeline); until then the
+  // fixture detail's persisted events stand in. This keeps the timeline, the
+  // hero stats and the nudge banner LIVE without a reload.
+  const events = hookLive != null && hookLive.events.length > 0 ? hookLive.events : live?.events ?? [];
+  const showNudgeBanner = rivalRequestsTurn(events, state.viewerSide, state.activeSide);
 
   return (
     <div className="bg-white border border-[#e2e8f0]">
+      {showNudgeBanner ? (
+        <p
+          role="status"
+          className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
+        >
+          Tu rival pide el turno
+        </p>
+      ) : null}
       <LiveTopBar state={state} clock={clock} label={leagueLabel} names={names} />
       <LiveHero
         state={state}

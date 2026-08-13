@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { useSession } from "next-auth/react";
 import { MatchView } from "./MatchView";
-import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
+import type { LiveMatchEventDto, LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
 
 // `MatchView` uses the session to derive the viewer's side when no live row
 // exists (D19). Default the viewer to the home coach (u1).
@@ -777,6 +777,118 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
+});
+
+describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A hub fan-out frame carrying delta events (viewerSide null per D19). */
+  function liveFrameWithEvents(
+    seq: number,
+    overrides: Partial<LiveMatchViewState>,
+    events: Record<string, unknown>[],
+  ): string {
+    const base = liveDetail().live!;
+    return JSON.stringify({
+      seq,
+      status: "live",
+      half: base.half,
+      turnNumber: base.turnNumber,
+      activeSide: base.activeSide,
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: null,
+      startedAt: base.startedAt,
+      elapsed: base.elapsed,
+      homeTurnMs: base.homeTurnMs,
+      awayTurnMs: base.awayTurnMs,
+      paused: false,
+      homeScore: base.homeScore,
+      awayScore: base.awayScore,
+      finishedAt: null,
+      ...overrides,
+      events,
+    });
+  }
+
+  const requestTurn = (seq: number, side: "home" | "away") => ({
+    seq,
+    kind: "requestTurn",
+    side,
+    playerRosterId: null,
+    half: 1,
+    turnNumber: 3,
+    payload: {},
+    at: 5000,
+  });
+
+  it("shows the banner on the ACTIVE coach's page when the opponent's requestTurn arrives live", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail()); // home coach (u1) viewer, activeSide home → active
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
+
+    // The away (opponent) coach nudges → a requestTurn event frame arrives.
+    act(() => {
+      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
+    });
+    expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
+  });
+
+  it("keeps the banner after a reload because the snapshot carries the persisted nudge", async () => {
+    stubLiveEventSource();
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, events: [requestTurn(7, "away") as LiveMatchEventDto] };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    // The reloaded view carries the opponent's nudge → banner shows.
+    expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
+  });
+
+  it("clears the banner when the turn flips (a turnStart event arrives)", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail());
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => {
+      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
+    });
+    expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
+
+    // The active coach passes the turn → the opponent's turnStart lands.
+    act(() => {
+      liveInstances[0]?.dispatch(
+        "state",
+        liveFrameWithEvents(8, { activeSide: "away", turnNumber: 4 }, [
+          { seq: 8, kind: "turn", side: null, playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
+          { seq: 9, kind: "turnStart", side: "away", playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
+        ]),
+      );
+    });
+    expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
+  });
+
+  it("does NOT show the banner to the requester (non-active coach)", async () => {
+    stubLiveEventSource();
+    // The away coach (u2) is the viewer; the active side is home → requester view.
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, viewerSide: "away" };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => {
+      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
+    });
+    expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
   });
 });
 
