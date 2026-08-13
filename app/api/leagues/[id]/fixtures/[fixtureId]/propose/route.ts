@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/propose
  * Lets either participant (owner of the fixture's home or away team) propose a
- * match date for a STARTED-league, `pending` fixture.
+ * match date for a STARTED-league fixture that is `pending` OR `scheduled` but
+ * not yet played (rejornar: a scheduled date can be re-negotiated before play).
  *
  * Authorization guards (no existence leak):
  *   - unauthenticated  → 401
@@ -17,8 +18,8 @@ import { prisma } from "@/lib/prisma";
  * `$transaction`, re-checking the active state inside the transaction so
  * concurrent proposes still yield exactly one active proposal.
  *
- * A fixture that is already `scheduled` (scheduledAt set) or `played`
- * (winnerId set) is locked → 409, no proposal stored.
+ * A fixture that is already `played` (winnerId/scores set) is locked → 409,
+ * no proposal stored (no double-result drift).
  */
 export async function POST(
   req: Request,
