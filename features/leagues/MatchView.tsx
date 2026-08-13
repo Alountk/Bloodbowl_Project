@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { PE_MVP } from "@/lib/rules";
@@ -565,7 +565,15 @@ function LiveActiveMatch({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Synchronous in-flight lock: a second invocation while a command is pending
+  // (e.g. the second click of a double-click) is dropped — the `submitting`
+  // state alone re-renders too late to guard it, and the stale closure would
+  // otherwise send `endTurn` with the already-flipped side (double turn jump).
+  const busyRef = useRef(false);
+
   const act = async (cmd: LiveCommand) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError(null);
     setSubmitting(true);
     try {
@@ -573,6 +581,7 @@ function LiveActiveMatch({
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo ejecutar.");
     } finally {
+      busyRef.current = false;
       setSubmitting(false);
     }
   };

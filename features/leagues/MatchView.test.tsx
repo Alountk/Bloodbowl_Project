@@ -388,6 +388,108 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
   });
 });
 
+/** A promise whose resolution the test controls (a pending fetch response). */
+function deferredResponse(): { promise: Promise<unknown>; resolve: (value: unknown) => void } {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise<unknown>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+/** The view the server returns after the home coach's endTurn (one flip). */
+const turnFlippedView = () => ({
+  seq: 7,
+  status: "live",
+  half: 1,
+  turnNumber: 4,
+  activeSide: "away",
+  homeConsented: true,
+  awayConsented: true,
+  viewerSide: "home",
+  startedAt: 8000,
+  elapsed: 2400,
+  homeTurnMs: 2100,
+  awayTurnMs: 300,
+  paused: false,
+  homeScore: 1,
+  awayScore: 0,
+  finishedAt: null,
+});
+
+describe("MatchView — double-click guard on live commands (in-flight lock)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("advances the turn by exactly one on a normal single 'Dar el turno' click", async () => {
+    stubLiveEventSource();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: turnFlippedView() }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(liveDetail()) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => {
+      screen.getByRole("button", { name: /Dar el turno/i }).click();
+    });
+
+    // Exactly ONE live POST, and the turn advances by one (3 → 4, no jump to 5).
+    await waitFor(() => {
+      const livePosts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+      expect(livePosts).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText(/Mitad 1 · Turno 4/).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText(/Mitad 1 · Turno 5/)).toBeNull();
+  });
+
+  it("drops a rapid second 'Dar el turno' while the first command is in flight (one flip, not two)", async () => {
+    stubLiveEventSource();
+    const { promise, resolve } = deferredResponse();
+    let livePostCount = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (/\/live$/.test(url)) {
+        livePostCount += 1;
+        return promise;
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(liveDetail()) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    const button = screen.getByRole("button", { name: /Dar el turno/i });
+
+    // Two synchronous clicks while the first POST is still pending (a double-click).
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    // The in-flight ref lock drops the second invocation — ONE command.
+    expect(livePostCount).toBe(1);
+
+    // The server resolves → the optimistic view applies: one flip to turn 4.
+    act(() => {
+      resolve({ ok: true, status: 200, json: () => Promise.resolve({ view: turnFlippedView() }) });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Mitad 1 · Turno 4/).length).toBeGreaterThan(0);
+    });
+    // No second flip: turn 5 never renders and no extra command was sent.
+    expect(livePostCount).toBe(1);
+    expect(screen.queryByText(/Mitad 1 · Turno 5/)).toBeNull();
+  });
+});
+
 describe("MatchView — mockup layout + client ticking clock", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
