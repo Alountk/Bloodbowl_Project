@@ -373,6 +373,71 @@ describe("GET .../live — grace wiring (LM-7)", () => {
   });
 });
 
+describe("GET .../live — live fan-out streams post-snapshot hub publishes (no reload)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    isAuthEnabledMock.mockReturnValue(true);
+    authMock.mockResolvedValue(authSession("coach-home"));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...pendingRow(5),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, seq: 5, events: [] });
+    prismaMock.liveEvent.findMany.mockResolvedValue([]);
+    hubMock.subscribe.mockReturnValue(hubMock.unsubscribe);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("drains the pending queue on a flush interval so a live turn flip reaches the client", async () => {
+    const res = await GET(
+      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(first).toContain("event: snapshot");
+
+    // A hub publish arrives AFTER the snapshot (the other coach's "Dar el turno").
+    const subscriber = hubMock.subscribe.mock.calls[0][0].subscriber;
+    subscriber.notify({
+      seq: 6,
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "away",
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: null,
+      startedAt: 1000,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      paused: false,
+      homeScore: 0,
+      awayScore: 0,
+      finishedAt: null,
+      events: [
+        { seq: 6, kind: "turn", side: null, playerRosterId: null, half: 1, turnNumber: 2, payload: {}, at: 2000 },
+        { seq: 7, kind: "turnStart", side: "away", playerRosterId: null, half: 1, turnNumber: 2, payload: {}, at: 2000 },
+      ],
+    });
+
+    // The periodic flush drains the gap queue → the OTHER coach sees the flip.
+    await vi.advanceTimersByTimeAsync(250);
+    const second = new TextDecoder().decode((await reader.read()).value);
+    expect(second).toContain("event: event");
+    expect(second).toContain('"activeSide":"away"');
+    expect(second).toContain('"turnNumber":2');
+    await reader.cancel();
+  });
+});
+
 describe("POST .../live — control gate", () => {
   beforeEach(() => vi.clearAllMocks());
 

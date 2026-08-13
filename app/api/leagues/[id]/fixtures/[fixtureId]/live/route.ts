@@ -28,6 +28,8 @@ import { resolveEventPermission, type EventKind } from "@/lib/livePhase";
 export const dynamic = "force-dynamic";
 
 const HEARTBEAT_MS = 15_000;
+/** How often the pending gap-queue is drained after the snapshot (live fan-out). */
+const FLUSH_MS = 250;
 
 export interface FixtureContext {
   id: string;
@@ -376,6 +378,16 @@ export async function GET(
 
       flush();
 
+      // Live fan-out (LM-8): hub publishes that arrive AFTER the snapshot are
+      // buffered in `pending` and drained on a short interval so a live
+      // transition (turn flip, nudge) reaches every connected coach WITHOUT a
+      // reload. Flushing only once at start meant the queue never drained and
+      // live frames were silently lost.
+      const flushTimer = setInterval(() => {
+        if (closed) return;
+        flush();
+      }, FLUSH_MS);
+
       const heartbeat = setInterval(() => {
         if (closed) return;
         controller.enqueue(encoder.encode("event: heartbeat\ndata: {}\n\n"));
@@ -384,6 +396,7 @@ export async function GET(
       onCancel = () => {
         if (closed) return;
         closed = true;
+        clearInterval(flushTimer);
         clearInterval(heartbeat);
         dispose?.();
         dispose = null;
