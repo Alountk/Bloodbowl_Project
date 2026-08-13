@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { useSession } from "next-auth/react";
-import { MatchView } from "./MatchView";
+import { MatchView, teamTurnCounts } from "./MatchView";
 import type { LiveMatchEventDto, LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
 
 // `MatchView` uses the session to derive the viewer's side when no live row
@@ -507,12 +507,25 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/1ª PARTE/);
 
     // Turn tracks: 8 cells per team (16 total), exactly ONE current turn is
-    // highlighted (the active side's turn number).
+    // highlighted — the ACTIVE side's OWN isolated turn count (per-team, not the
+    // global number): half 1 turn 3 (home active) → home is on its 2nd turn,
+    // away has completed its 1st.
     const cells = screen.getAllByLabelText(/Turno \d/);
     expect(cells).toHaveLength(16);
     const highlighted = cells.filter((c) => c.getAttribute("aria-current") === "true");
     expect(highlighted).toHaveLength(1);
-    expect(highlighted[0].textContent).toBe("3");
+    expect(highlighted[0].textContent).toBe("2");
+
+    // Isolation: the AWAY track shows its own completed count (1) as done and
+    // has NO aria-current; the HOME track marks only its own done turns (1).
+    const homeTrack = screen.getByLabelText(/Turnos de Reavers/);
+    const awayTrack = screen.getByLabelText(/Turnos de Dwarves/);
+    expect(homeTrack.querySelector('[aria-current="true"]')?.textContent).toBe("2");
+    expect(awayTrack.querySelector('[aria-current="true"]')).toBeNull();
+    expect(within(awayTrack).getByLabelText("Turno 1").textContent).toBe("1");
+    expect(within(awayTrack).getByLabelText("Turno 1").className).toContain("bg-[#12225a]");
+    expect(within(awayTrack).getByLabelText("Turno 2").className).not.toContain("bg-[#12225a]");
+    expect(within(homeTrack).getByLabelText("Turno 2").className).toContain("bg-[#d11938]");
 
     // Hero: the team blocks mirror the center scoreboard (race · coach line).
     expect(screen.getAllByText(/Reavers/).length).toBeGreaterThan(0);
@@ -548,6 +561,28 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/0:00:05/);
     // The NON-active (away) side stays frozen at 0:00:00.
     expect(container.textContent).toMatch(/0:00:00/);
+  });
+});
+
+describe("teamTurnCounts — isolated per-team turn counters (BB rulebook)", () => {
+  it("half 1 starts with home: each team's track advances only on ITS turns", () => {
+    // turn 1 (home active): home on its 1st, away none yet.
+    expect(teamTurnCounts(1, 1)).toEqual({ home: 1, away: 0 });
+    // turn 2 (away active): home done 1, away on its 1st.
+    expect(teamTurnCounts(1, 2)).toEqual({ home: 1, away: 1 });
+    // turn 3 (home active): home on its 2nd, away done 1.
+    expect(teamTurnCounts(1, 3)).toEqual({ home: 2, away: 1 });
+    // turn 4 (away active): home done 2, away on its 2nd.
+    expect(teamTurnCounts(1, 4)).toEqual({ home: 2, away: 2 });
+    // end of half 1: each team played 4 turns.
+    expect(teamTurnCounts(1, 8)).toEqual({ home: 4, away: 4 });
+  });
+
+  it("half 2 starts with away (advanceTurnIndex): the roles swap", () => {
+    expect(teamTurnCounts(2, 1)).toEqual({ home: 0, away: 1 });
+    expect(teamTurnCounts(2, 2)).toEqual({ home: 1, away: 1 });
+    expect(teamTurnCounts(2, 5)).toEqual({ home: 2, away: 3 });
+    expect(teamTurnCounts(2, 8)).toEqual({ home: 4, away: 4 });
   });
 });
 
