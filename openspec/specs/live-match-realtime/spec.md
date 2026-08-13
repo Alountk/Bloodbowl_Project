@@ -58,19 +58,26 @@ SSE read MUST mirror the fixture-GET matrix: 401 without a session (both auth mo
 
 ### Requirement: LM-3 · Match Lifecycle and Start Guard
 
-A live match MUST start only from a `scheduled` fixture with no result; start on a played or result-loaded fixture MUST return 409 and create no LiveMatch. Second-half end MUST mark the LiveMatch finished without creating a MatchResult.
+A live match MUST enter the lifecycle only from a `scheduled` fixture with no result; consent on a played or result-loaded fixture MUST return 409 and create no LiveMatch. The match MUST NOT become `live` until the first turn begins. Second-half end MUST mark the LiveMatch finished without creating a MatchResult.
+(Previously: a single start command immediately set the match `live` and started the clock.)
 
-#### Scenario: Start from scheduled fixture
+#### Scenario: Consent on scheduled fixture
 
 - GIVEN a scheduled fixture without a result
-- WHEN a coach starts the live match
-- THEN a LiveMatch is created and subscribers receive it
+- WHEN a coach consents
+- THEN a LiveMatch is created awaiting the second consent and subscribers receive it
 
 #### Scenario: Replay rejected
 
 - GIVEN a played fixture or one with a result
-- WHEN start is attempted
+- WHEN consent is attempted
 - THEN it returns 409 and no LiveMatch is created
+
+#### Scenario: Live only via the first turn
+
+- GIVEN a `ready` match with both consents
+- WHEN the first turn begins
+- THEN the status becomes `live`; until then no clock runs
 
 ### Requirement: LM-4 · Turn Model and Invariants
 
@@ -94,40 +101,36 @@ Pure transition functions MUST enforce: only the active side may act (out-of-tur
 - WHEN the half completes
 - THEN half becomes 2, turnNumber resets, away starts, and an endHalf event persists
 
-### Requirement: LM-5 · League-Configured Server-Owned Clocks
+### Requirement: LM-5 · Unified Match Clock and Per-Side Accumulation
 
-Clocks MUST be league-configured: with the league's turn-clock option enabled, the per-turn duration MUST come from the League row (120/240/360 seconds), never a constant; with the option disabled, live matches MUST have no clocks — no ticking and no 10-second grace pause — while the turn and event flow stay unchanged. Where clocks exist they MUST be server-owned: only the active team's clock runs while the other pauses; values MUST derive from persisted timestamps, never client timers, and recompute correctly after a server restart.
+The match clock MUST be unified and server-owned: a persisted `startedAt` marks the first-turn kickoff, and `homeTurnMs`/`awayTurnMs` MUST accumulate server-side only while the active side's turn runs. Values MUST derive from persisted timestamps, never client timers, and recompute correctly after a server restart or reconnect. The clock MUST be informational with no per-turn limit: the turn MUST NOT auto-end at zero (`autoEndTurnOnClockZero`/`onClockExpired` removed). No clock MUST run before the first turn. The deprecated league turn-clock option MUST NOT constrain live matches nor appear in the live DTO.
+(Previously: league-configured per-turn clocks with a hard limit that auto-ended the turn at zero.)
 
-#### Scenario: League creation accepts the clock option
+> **Rename note** (from RENAMED requirement): `LM-5 · League-Configured Server-Owned Clocks` → `LM-5 · Unified Match Clock and Per-Side Accumulation`. Reason: per-turn league-configured clocks are replaced by a unified server-owned clock with per-side accumulation; the league option is deprecated-not-removed. Migration: references to LM-5 (AC-9/AC-10, unit tests) adopt the unified-clock semantics; the full updated block is this one.
 
-- GIVEN a user creates a league with the clock toggle enabled
-- WHEN they submit a per-turn duration of 120, 240, or 360 seconds
-- THEN the option is persisted on the League row
-- AND any other duration is rejected server-side with no league created
+#### Scenario: Clock starts at first-turn kickoff
 
-#### Scenario: Duration comes from league config
+- GIVEN a `ready` match with no clock running
+- WHEN the first turn begins
+- THEN `startedAt` is set and the unified clock starts; before that no clock runs
 
-- GIVEN a league with clocks enabled at 360 seconds
-- WHEN a live match runs in it
-- THEN the per-turn clock uses 360 seconds from the League row, not a constant
-
-#### Scenario: Clocks disabled league
-
-- GIVEN a league created with the turn-clock option off
-- WHEN a live match runs in it
-- THEN no clock ticks, no grace pause applies, and the turn/event flow is unchanged
-
-#### Scenario: Active clock runs, other pauses
+#### Scenario: Active side accumulates
 
 - GIVEN home's turn active
 - WHEN time passes
-- THEN home's clock decreases while away's clock is unchanged
+- THEN `homeTurnMs` increases while `awayTurnMs` is unchanged; on turn flip the accumulator swaps
 
-#### Scenario: Restart recompute
+#### Scenario: Informational, no auto-end
 
-- GIVEN a LiveMatch with persisted timestamps
-- WHEN the server restarts
-- THEN clocks resume from the persisted remaining time, not from zero
+- GIVEN a turn running beyond any former limit
+- WHEN the accumulated time passes zero
+- THEN the turn continues and no event is emitted
+
+#### Scenario: Restart and reconnect recompute
+
+- GIVEN persisted `startedAt`/`homeTurnMs`/`awayTurnMs`
+- WHEN the server restarts or a client reconnects
+- THEN elapsed time and per-side accumulators resume from the persisted values, not zero
 
 ### Requirement: LM-6 · Event Persistence and Sequence
 
@@ -147,19 +150,20 @@ Every TD, casualty (with injury band), foul, end-of-half, and end-of-match MUST 
 
 ### Requirement: LM-7 · Disconnect Policy
 
-With clocks enabled, the active coach's clock MUST auto-pause 10 seconds after their SSE connection drops and MUST resume on reconnect; the pause MUST survive server restarts. Leagues with clocks disabled MUST NOT apply any grace pause.
+The unified match clock MUST auto-pause 10 seconds after the ACTIVE coach's SSE connection drops and MUST resume on reconnect; the pause MUST survive server restarts.
+(Previously: the grace applied only to league-configured clocks, and leagues with the option off had no grace. The grace now pauses the unified clock via the persisted `paused` flag.)
 
-#### Scenario: Grace pause after disconnect
+#### Scenario: Grace pauses the unified clock
 
 - GIVEN the active coach disconnects
 - WHEN 10 seconds pass without reconnect
-- THEN their clock pauses and consumes no further time
+- THEN the unified clock pauses via the persisted `paused` flag and consumes no further time
 
 #### Scenario: Resume on reconnect
 
-- GIVEN a paused active clock
+- GIVEN a paused unified clock
 - WHEN the coach reconnects
-- THEN the clock resumes from the paused remaining time
+- THEN accumulation resumes from the persisted state
 
 ### Requirement: LM-8 · New-Device Recovery
 
@@ -220,6 +224,114 @@ Live events MUST persist from day one so played matches render the historical ti
 - GIVEN the Playwright configuration
 - WHEN live-match specs execute
 - THEN they run under the auth suite and are ignored in local mode
+
+### Requirement: LM-11 · Consent and Ready Phase
+
+`LiveMatchStatus` MUST add `ready`. A live match MUST NOT become `live` until BOTH coaches have consented; each consent MUST persist as a separate boolean on the LiveMatch row. The match SHALL wait indefinitely for the second consent. A coach SHALL retract their consent, clearing their boolean and returning the match to `pending`. Only a fixture coach MAY consent: a spectator member or league admin MUST receive 403, a foreign user 404. `ready → live` MUST occur ONLY via the first turn (begin).
+
+#### Scenario: Second consent reaches ready
+
+- GIVEN a scheduled fixture with home's consent already persisted
+- WHEN away consents
+- THEN the LiveMatch status becomes `ready` and subscribers receive it
+
+#### Scenario: Consent waits indefinitely
+
+- GIVEN exactly one coach consented
+- WHEN the other coach never consents
+- THEN the match awaits consent indefinitely with no timeout and no clock
+
+#### Scenario: Consent retracted back to pending
+
+- GIVEN a consented coach
+- WHEN they retract
+- THEN their consent boolean clears and the match returns to `pending`
+
+#### Scenario: Spectator or admin cannot consent for a coach
+
+- GIVEN a member who is not a coach, or the league admin
+- WHEN they POST a consent command
+- THEN it returns 403 and no consent boolean changes
+
+#### Scenario: Foreign user consent hidden
+
+- GIVEN an authenticated non-member
+- WHEN they POST a consent command
+- THEN it returns 404 with no existence leak
+
+#### Scenario: E2E begin step
+
+- GIVEN the auth-suite live-match e2e
+- WHEN it drives a live match
+- THEN it consents as both coaches and begins via the first turn before asserting "Dar el turno"
+
+### Requirement: LM-12 · Turn-Phase Event Permissions
+
+Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be allowed to record TDs, fouls, casualties, and pass-turn; the NON-ACTIVE coach MUST be allowed ONLY to record a casualty to one of their OWN players. Any other non-active event command MUST return 409 with no mutation; spectator members 403 and foreign users 404 (per LM-2). The live DTO MUST expose the viewer's side so the client renders the correct controls.
+
+#### Scenario: Active coach records events
+
+- GIVEN home's turn active and the home coach
+- WHEN they record a TD, foul, casualty, or pass-turn
+- THEN it returns 200 and the event persists
+
+#### Scenario: Non-active TD or foul rejected
+
+- GIVEN away's turn active
+- WHEN the home coach records a TD or foul
+- THEN it returns 409 and no state changes
+
+#### Scenario: Own-injury exception
+
+- GIVEN away's turn active
+- WHEN the home coach records a casualty to a home player
+- THEN it returns 200 and the casualty persists
+
+#### Scenario: Opponent injury denied
+
+- GIVEN away's turn active
+- WHEN the home coach records a casualty to an away player
+- THEN it returns 409 and no state changes
+
+#### Scenario: Spectator and foreign actors denied
+
+- GIVEN a spectator member, or a foreign user
+- WHEN they record an event
+- THEN the member gets 403 and the foreign user 404, with no mutation
+
+#### Scenario: Viewer-side DTO
+
+- GIVEN a viewer whose side matches `activeSide`
+- WHEN the DTO is received
+- THEN it carries the viewer's side so the UI renders "Tu turno"
+
+### Requirement: LM-13 · Turn Start Notification and Request Turn Nudge
+
+The system MUST emit an explicit, persisted, labeled `turnStart` event whenever a turn begins, notifying the other coach. A `requestTurn` command from the NON-active coach MUST persist a labeled `requestTurn` event and notify the ACTIVE coach ("te piden el turno"); it MUST NOT flip the turn nor change any turn/clock state. The nudge SHOULD be rate-limited (cooldown) when cheap to implement.
+
+#### Scenario: Turn-start notice
+
+- GIVEN a turn begins
+- WHEN the transition commits
+- THEN a labeled `turnStart` event persists and the other coach's client shows "Tu turno"
+
+#### Scenario: Nudge persists and notifies
+
+- GIVEN away's turn active
+- WHEN the home coach POSTs requestTurn
+- THEN a labeled `requestTurn` event persists, the active coach's UI shows "te piden el turno", and `activeSide` stays away
+
+#### Scenario: Nudge never flips the turn
+
+- GIVEN repeated requestTurn commands
+- WHEN any are processed
+- THEN `activeSide` and the clock state are unchanged
+
+#### Scenario: Cooldown absorbs spam (optional)
+
+- GIVEN a rate limit implemented
+- WHEN nudges exceed the cooldown window
+- THEN the extras are rejected or ignored until the window elapses
 
 ## Acceptance Criteria
 
