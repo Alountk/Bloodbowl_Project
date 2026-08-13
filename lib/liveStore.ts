@@ -163,7 +163,15 @@ async function persistAndPublish(
   });
 
   const bounded = { ...input.next, seq: nextSeq };
-  deps.hub.publish(input.fixtureId, toLiveViewState(bounded, input.now));
+  // The fan-out frame carries the view PLUS this transition's delta events so a
+  // connected client can apply the new state and append the events to its
+  // timeline in one frame (no reload, no second DB read). `eventsToPersist` is
+  // always the event rows created in the SAME transaction (empty for
+  // pause/resume/retract-style transitions that emit no event).
+  deps.hub.publish(input.fixtureId, {
+    ...toLiveViewState(bounded, input.now),
+    events: eventsToPersist,
+  });
   return nextSeq;
 }
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { useSession } from "next-auth/react";
 import { MatchView } from "./MatchView";
-import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
+import type { LiveMatchEventDto, LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
 
 // `MatchView` uses the session to derive the viewer's side when no live row
 // exists (D19). Default the viewer to the home coach (u1).
@@ -385,6 +385,108 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
+});
+
+/** A promise whose resolution the test controls (a pending fetch response). */
+function deferredResponse(): { promise: Promise<unknown>; resolve: (value: unknown) => void } {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise<unknown>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+/** The view the server returns after the home coach's endTurn (one flip). */
+const turnFlippedView = () => ({
+  seq: 7,
+  status: "live",
+  half: 1,
+  turnNumber: 4,
+  activeSide: "away",
+  homeConsented: true,
+  awayConsented: true,
+  viewerSide: "home",
+  startedAt: 8000,
+  elapsed: 2400,
+  homeTurnMs: 2100,
+  awayTurnMs: 300,
+  paused: false,
+  homeScore: 1,
+  awayScore: 0,
+  finishedAt: null,
+});
+
+describe("MatchView — double-click guard on live commands (in-flight lock)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("advances the turn by exactly one on a normal single 'Dar el turno' click", async () => {
+    stubLiveEventSource();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: turnFlippedView() }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(liveDetail()) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => {
+      screen.getByRole("button", { name: /Dar el turno/i }).click();
+    });
+
+    // Exactly ONE live POST, and the turn advances by one (3 → 4, no jump to 5).
+    await waitFor(() => {
+      const livePosts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+      expect(livePosts).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText(/Mitad 1 · Turno 4/).length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText(/Mitad 1 · Turno 5/)).toBeNull();
+  });
+
+  it("drops a rapid second 'Dar el turno' while the first command is in flight (one flip, not two)", async () => {
+    stubLiveEventSource();
+    const { promise, resolve } = deferredResponse();
+    let livePostCount = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (/\/live$/.test(url)) {
+        livePostCount += 1;
+        return promise;
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(liveDetail()) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    const button = screen.getByRole("button", { name: /Dar el turno/i });
+
+    // Two synchronous clicks while the first POST is still pending (a double-click).
+    act(() => {
+      button.click();
+      button.click();
+    });
+
+    // The in-flight ref lock drops the second invocation — ONE command.
+    expect(livePostCount).toBe(1);
+
+    // The server resolves → the optimistic view applies: one flip to turn 4.
+    act(() => {
+      resolve({ ok: true, status: 200, json: () => Promise.resolve({ view: turnFlippedView() }) });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Mitad 1 · Turno 4/).length).toBeGreaterThan(0);
+    });
+    // No second flip: turn 5 never renders and no extra command was sent.
+    expect(livePostCount).toBe(1);
+    expect(screen.queryByText(/Mitad 1 · Turno 5/)).toBeNull();
   });
 });
 
@@ -777,6 +879,118 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
+});
+
+describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A hub fan-out frame carrying delta events (viewerSide null per D19). */
+  function liveFrameWithEvents(
+    seq: number,
+    overrides: Partial<LiveMatchViewState>,
+    events: Record<string, unknown>[],
+  ): string {
+    const base = liveDetail().live!;
+    return JSON.stringify({
+      seq,
+      status: "live",
+      half: base.half,
+      turnNumber: base.turnNumber,
+      activeSide: base.activeSide,
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: null,
+      startedAt: base.startedAt,
+      elapsed: base.elapsed,
+      homeTurnMs: base.homeTurnMs,
+      awayTurnMs: base.awayTurnMs,
+      paused: false,
+      homeScore: base.homeScore,
+      awayScore: base.awayScore,
+      finishedAt: null,
+      ...overrides,
+      events,
+    });
+  }
+
+  const requestTurn = (seq: number, side: "home" | "away") => ({
+    seq,
+    kind: "requestTurn",
+    side,
+    playerRosterId: null,
+    half: 1,
+    turnNumber: 3,
+    payload: {},
+    at: 5000,
+  });
+
+  it("shows the banner on the ACTIVE coach's page when the opponent's requestTurn arrives live", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail()); // home coach (u1) viewer, activeSide home → active
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
+
+    // The away (opponent) coach nudges → a requestTurn event frame arrives.
+    act(() => {
+      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
+    });
+    expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
+  });
+
+  it("keeps the banner after a reload because the snapshot carries the persisted nudge", async () => {
+    stubLiveEventSource();
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, events: [requestTurn(7, "away") as LiveMatchEventDto] };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    // The reloaded view carries the opponent's nudge → banner shows.
+    expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
+  });
+
+  it("clears the banner when the turn flips (a turnStart event arrives)", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail());
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => {
+      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
+    });
+    expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
+
+    // The active coach passes the turn → the opponent's turnStart lands.
+    act(() => {
+      liveInstances[0]?.dispatch(
+        "state",
+        liveFrameWithEvents(8, { activeSide: "away", turnNumber: 4 }, [
+          { seq: 8, kind: "turn", side: null, playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
+          { seq: 9, kind: "turnStart", side: "away", playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
+        ]),
+      );
+    });
+    expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
+  });
+
+  it("does NOT show the banner to the requester (non-active coach)", async () => {
+    stubLiveEventSource();
+    // The away coach (u2) is the viewer; the active side is home → requester view.
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, viewerSide: "away" };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => {
+      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
+    });
+    expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
   });
 });
 

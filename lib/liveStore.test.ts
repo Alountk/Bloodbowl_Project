@@ -315,6 +315,57 @@ describe("applyTransition — optimistic seq + atomic event + publish-after-comm
     expect(result).not.toBeNull();
   });
 
+  it("publishes the delta events alongside the view so SSE frames carry the timeline", async () => {
+    const { deps, publish } = makeDeps(1);
+    const current = fakeRow();
+    const next: LiveMatchState = {
+      ...current,
+      activeSide: "away",
+      turnNumber: 2,
+      events: [
+        {
+          seq: 6,
+          kind: "turn" as const,
+          side: null,
+          playerRosterId: null,
+          half: 1,
+          turnNumber: 2,
+          payload: {},
+          at: 2000,
+        },
+        {
+          seq: 7,
+          kind: "turnStart" as const,
+          side: "away",
+          playerRosterId: null,
+          half: 1,
+          turnNumber: 2,
+          payload: {},
+          at: 2000,
+        },
+      ],
+    };
+
+    await applyTransition(
+      { liveMatchId: "lm-1", fixtureId: "f-1", current, next, now: 2000 },
+      deps,
+    );
+
+    // The fan-out frame carries ONLY the delta events of this transition so the
+    // receiving client can append them to its timeline (dedupe by seq) without a
+    // reload or a second DB read.
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({
+        seq: 7,
+        events: [
+          expect.objectContaining({ seq: 6, kind: "turn" }),
+          expect.objectContaining({ seq: 7, kind: "turnStart", side: "away" }),
+        ],
+      }),
+    );
+  });
+
   it("rejects with 409 (double-action) when updateMany reports 0 rows and creates/publishes nothing", async () => {
     const { deps, liveEventCreate, publish } = makeDeps(0);
     const current = fakeRow();
