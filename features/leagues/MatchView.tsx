@@ -811,11 +811,6 @@ function FinishedLiveTimeline({
 }) {
   return (
     <div className="bg-white border border-[#e2e8f0]">
-      <div className="px-4 py-4 text-center">
-        <p className="text-3xl font-black text-[#12225a]">
-          {live.homeScore} <span className="text-[#d11938]">–</span> {live.awayScore}
-        </p>
-      </div>
       <LiveEventsList
         events={live.events}
         startedAt={live.startedAt}

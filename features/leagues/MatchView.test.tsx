@@ -1262,8 +1262,9 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     // ★ SPP via eventSpp: td ★3, lasting casualty ★2.
     expect(container.textContent).toContain("★3");
     expect(container.textContent).toContain("★2");
-    // Final scoreboard 2 – 1.
-    expect(container.textContent).toMatch(/2\s*–\s*1/);
+    // The final score now lives in the UNIFORM sticky header hero ("2:1"),
+    // not in the finished-live body (removed to avoid duplication).
+    expect(container.textContent).toMatch(/2\s*:\s*1/);
   });
 
   it("renders minute, global turn tag and dorsal per row from liveFeed derivations", async () => {
