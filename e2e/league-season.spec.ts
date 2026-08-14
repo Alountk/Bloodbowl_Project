@@ -140,16 +140,16 @@ test("multi-user journey: join open league, start season, jornadas, post-start l
     await expect(
       pageA.getByRole("region", { name: "Jornada 1" }).getByText(teamBName),
     ).toBeVisible();
-    // Exactly one matchup in this single round.
+    // Exactly one matchup in this single round — its CENTER SCORE (Tourplay).
     await expect(
-      pageA.getByRole("region", { name: "Jornada 1" }).getByText("vs"),
+      pageA.getByRole("region", { name: "Jornada 1" }).getByTestId("match-card-score"),
     ).toHaveCount(1);
 
     // --- Post-start: B can no longer self-leave (controls hidden) ---
     await pageB.reload();
     await expect(pageB.getByText("Iniciada")).toBeVisible();
     await expect(pageB.getByRole("button", { name: "Desapuntarse" })).not.toBeVisible();
-    await expect(pageB.getByRole("region", { name: "Jornada 1" }).getByText("vs")).toHaveCount(1);
+    await expect(pageB.getByRole("region", { name: "Jornada 1" }).getByTestId("match-card-score")).toHaveCount(1);
 
     // --- Post-start: foreign non-member C gets a 404 on the started detail ---
     const emailC = uniqueEmail("outsider");
@@ -229,11 +229,12 @@ test("started-league member sees the league in their own /leagues list", async (
       .locator("..");
     await expect(openSection.getByText(leagueName)).not.toBeVisible();
 
-    // B can open the league and reach the matchup where the VS is accepted.
+    // B can open the league and reach the matchup where the date is accepted
+    // (the card's center score opens the negotiation, Design B).
     await openLeagueCard(pageB, leagueName);
     await expect(pageB.getByRole("region", { name: "Jornada 1" })).toBeVisible();
     await expect(
-      pageB.getByRole("region", { name: "Jornada 1" }).getByText("vs"),
+      pageB.getByRole("region", { name: "Jornada 1" }).getByTestId("match-card-score"),
     ).toHaveCount(1);
   } finally {
     await contextA.close();

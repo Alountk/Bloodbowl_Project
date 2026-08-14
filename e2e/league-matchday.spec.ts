@@ -15,9 +15,9 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  *    drive the negotiation when their team plays (owner-participant).
  *
  * 2. Forfeit + completion (matchday-forfeit): the league owner awards a walkover
- *    via the forfeit modal → the card shows "Jugado" with the winner and the
- *    single round becomes "Jornada completa". A non-admin member receives 403 on
- *    the forfeit API.
+ *    via the forfeit modal → the card shows "Jugado" with the winner highlighted
+ *    (VICTORIA chip) and the single round becomes "Jornada completa". A non-admin
+ *    member receives 403 on the forfeit API.
  *
  * 3. Scouting (team-scouting): a member opens a rival team's detail page and
  *    sees the roster read-only (no mutation affordances); an outsider navigating
@@ -127,7 +127,9 @@ async function fixturesTeamNames(page: Page, round = 1): Promise<string[]> {
 }
 
 async function openNegotiation(page: Page, round = 1) {
-  await page.getByRole("region", { name: `Jornada ${round}` }).getByText("VS").click();
+  // Tourplay card: the CENTER SCORE is the clickable negotiation target (the
+  // old "VS" glyph was replaced by the scorebox — deliberate Design-B update).
+  await page.getByRole("region", { name: `Jornada ${round}` }).getByTestId("match-card-score").click();
 }
 
 const negotiationDialog = (page: Page) =>
@@ -571,11 +573,14 @@ test("forfeit: admin awards a walkover → played + Jornada completa; non-admin 
     await modal.getByRole("button", { name: t1, exact: true }).click();
     await modal.getByRole("button", { name: `Otorgar victoria a ${t1}` }).click();
 
-    // Card shows "Jugado" with the winner, and the round is complete (the badge
-    // lives in the round header, above the cards' `region`, so scope to the page).
+    // Card shows "Jugado" with the winner highlighted (the winner's team column
+    // carries data-winner + the VICTORIA chip), and the round is complete (the
+    // badge lives in the round header, above the cards' `region`, so scope to
+    // the page).
     const region = admin.getByRole("region", { name: "Jornada 1" });
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    await expect(region.getByText(`Ganador: ${t1}`)).toBeVisible();
+    await expect(region.getByText("VICTORIA")).toBeVisible();
+    await expect(region.locator('[data-winner="true"]').getByRole("link").first()).toHaveText(t1);
     await expect(admin.getByText("Jornada completa")).toBeVisible();
   } finally {
     await league.close();

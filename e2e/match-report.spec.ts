@@ -235,11 +235,12 @@ test("result + progression: load a win through the modal → score + jornada com
     // The async POST commits in the background; poll until the fixture is played.
     await waitForFixtureStatus(league.admin, league.leagueId, fixtureId, "played");
 
-    // The MatchCard shows the score (either side) and the single round completes.
+    // The MatchCard shows the score in the CENTER (either side) and the single
+    // round completes.
     await league.admin.reload();
     const region = league.admin.getByRole("region", { name: "Jornada 1" });
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    await expect(region.getByText(/(Jugado · 2 – 0|Jugado · 0 – 2)/)).toBeVisible();
+    await expect(region.getByText(/(2 : 0|0 : 2)/)).toBeVisible();
     await expect(league.admin.getByText("Jornada completa")).toBeVisible();
 
     // Same owner spends the scorer's PE (2 TDs → 6 PE) on Block (élite primary).
@@ -314,7 +315,8 @@ test("correction: admin corrects a played result → the MatchCard score updates
       .not.toBe(null);
     await league.admin.reload();
     const after = league.admin.getByRole("region", { name: "Jornada 1" });
-    await expect(after.getByText(/Jugado · 1 – 1/)).toBeVisible();
+    // The corrected draw renders in the CENTER (Design B scorebox).
+    await expect(after.getByText(/1 : 1/)).toBeVisible();
   } finally {
     await league.admin.context()?.close().catch(() => undefined);
     await league.rival.context()?.close().catch(() => undefined);
@@ -373,7 +375,8 @@ test("correction: a participant captain (rival) corrects a played result → the
       .not.toBe(null);
     await league.rival.reload();
     const after = league.rival.getByRole("region", { name: "Jornada 1" });
-    await expect(after.getByText(/Jugado · 1 – 1/)).toBeVisible();
+    // The corrected draw renders in the CENTER (Design B scorebox).
+    await expect(after.getByText(/1 : 1/)).toBeVisible();
   } finally {
     await league.admin.context()?.close().catch(() => undefined);
     await league.rival.context()?.close().catch(() => undefined);
