@@ -7,7 +7,7 @@ import { resolveEventPermission, type EventKind } from "./livePhase";
  * coach → ONLY a casualty to one of their OWN players; caller with no side
  * (admin/spectator) → no event (lifecycle only). Zero mocks.
  */
-const KINDS: EventKind[] = ["td", "foul", "casualty", "passTurn"];
+const KINDS: EventKind[] = ["td", "foul", "casualty", "completion", "passTurn"];
 
 describe("resolveEventPermission — ACTIVE coach records any event (LM-12)", () => {
   it("lets the ACTIVE home coach record TD/foul/casualty/pass-turn (any victim)", () => {
@@ -37,6 +37,12 @@ describe("resolveEventPermission — NON-ACTIVE coach is side-gated (LM-12)", ()
 
   it("denies a non-active coach a pass-turn (only the active coach flips the turn)", () => {
     expect(resolveEventPermission({ callerSide: "home", activeSide: "away", kind: "passTurn" })).toBe("deny");
+  });
+
+  it("denies a non-active coach a completion (non-active completion → 409, LM-15)", () => {
+    // away active; the home coach records a completion → denied.
+    expect(resolveEventPermission({ callerSide: "home", activeSide: "away", kind: "completion" })).toBe("deny");
+    expect(resolveEventPermission({ callerSide: "away", activeSide: "home", kind: "completion" })).toBe("deny");
   });
 
   it("ALLOWS a non-active coach to record a casualty to one of their OWN players", () => {

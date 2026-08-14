@@ -7,6 +7,8 @@ const prismaMock = vi.hoisted(() => ({
   matchResult: { create: vi.fn(), update: vi.fn() },
   matchResultCorrection: { create: vi.fn() },
   team: { update: vi.fn() },
+  liveEvent: { aggregate: vi.fn(), createMany: vi.fn() },
+  liveMatch: { updateMany: vi.fn() },
   player: { createMany: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -74,6 +76,11 @@ function stubTransaction() {
         matchResult: { create: prismaMock.matchResult.create, update: prismaMock.matchResult.update },
         matchResultCorrection: { create: prismaMock.matchResultCorrection.create },
         team: { update: prismaMock.team.update },
+        liveEvent: {
+          aggregate: prismaMock.liveEvent.aggregate,
+          createMany: prismaMock.liveEvent.createMany,
+        },
+        liveMatch: { updateMany: prismaMock.liveMatch.updateMany },
         player: { findMany: prismaMock.player.findMany, updateMany: prismaMock.player.updateMany },
       };
       return cb(data as never);
@@ -439,6 +446,102 @@ describe("POST /api/.../[fixtureId]/result", () => {
         }),
       }),
     );
+  });
+});
+
+describe("POST /api/.../[fixtureId]/result — MVP live-event write (LM-mvp, D20)", () => {
+  const finishedAtIso = "2026-01-15T12:00:00.000Z";
+  const finishedAtMs = new Date(finishedAtIso).getTime();
+
+  function fixtureWithLiveMatch(overrides: Record<string, unknown> = {}) {
+    return buildFixture({
+      liveMatch: { id: "lm-1", half: 2, turnNumber: 8, finishedAt: new Date(finishedAtIso), ...overrides },
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubTransaction();
+    prismaMock.fixture.update.mockResolvedValue({ id: "f1" });
+    prismaMock.matchResult.create.mockResolvedValue({ id: "r1" });
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("appends home+away mvp events with monotonic seq inside the result transaction (D20)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(fixtureWithLiveMatch());
+    stubFixedRolls();
+    // Existing events cap at seq 7 → home mvp seq 8, away 9.
+    prismaMock.liveEvent.aggregate.mockResolvedValue({ _max: { seq: 7 } });
+
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(200);
+
+    // The two mvp events are written via createMany inside the tx.
+    const createCalls = prismaMock.liveEvent.createMany.mock.calls;
+    expect(createCalls).toHaveLength(1);
+    const created = createCalls[0][0].data;
+    expect(created).toHaveLength(2);
+    expect(created[0]).toMatchObject({
+      liveMatchId: "lm-1",
+      seq: 8,
+      kind: "mvp",
+      side: "home",
+      playerRosterId: "p1", // fixed MJP roll 1 → home grantee
+    });
+    expect(created[1]).toMatchObject({
+      liveMatchId: "lm-1",
+      seq: 9,
+      kind: "mvp",
+      side: "away",
+      playerRosterId: "p5", // fixed MJP roll 3 → away grantee
+    });
+    // The row seq is bumped past BOTH mvp seqs so the next event never collides.
+    expect(prismaMock.liveMatch.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1" },
+        data: expect.objectContaining({ seq: 9 }),
+      }),
+    );
+  });
+
+  it("writes mvp events with at = lm.finishedAt when present (validator refinement)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(fixtureWithLiveMatch());
+    stubFixedRolls();
+    prismaMock.liveEvent.aggregate.mockResolvedValue({ _max: { seq: 0 } });
+
+    await callRoute("POST", validBody);
+
+    const created = prismaMock.liveEvent.createMany.mock.calls[0][0].data;
+    expect(created[0].createdAt).toEqual(new Date(finishedAtMs));
+  });
+
+  it("appends no mvp events for a fixture WITHOUT a LiveMatch (legacy/walkover)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // no liveMatch
+    stubFixedRolls();
+    prismaMock.liveEvent.aggregate.mockResolvedValue({ _max: { seq: 0 } });
+
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(200);
+    expect(prismaMock.liveEvent.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.liveMatch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 when the concurrent double-write hits @@unique([liveMatchId, seq]) (P2002, D20)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(fixtureWithLiveMatch());
+    stubFixedRolls();
+    prismaMock.liveEvent.aggregate.mockResolvedValue({ _max: { seq: 7 } });
+    // A raced submit already consumed seq 8/9 → createMany raises Prisma P2002.
+    prismaMock.liveEvent.createMany.mockRejectedValue(
+      Object.assign(new Error("Unique constraint on liveMatchId, seq"), { code: "P2002" }),
+    );
+
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(409);
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
 });
 

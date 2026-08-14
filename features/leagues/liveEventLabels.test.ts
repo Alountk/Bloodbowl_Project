@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { liveEventLabel, type LiveEventLabelInput } from "./liveEventLabels";
+import { liveEventLabel, bandToDisplay, eventSpp, type LiveEventLabelInput } from "./liveEventLabels";
 
 /**
- * Spanish labels for the live event timeline (LM-10, MV-7 copy). Pure fn — the
- * payloads stay structured server-side; only the client renders labels
+ * Spanish labels for the live event timeline (LM-10, MV-7 copy) plus the
+ * band→display + SPP derivations (LM-18/LM-19). Pure fns — the payloads stay
+ * structured server-side; only the client renders labels/stars
  * (`matchSummary.ts` precedent).
  */
 
@@ -12,6 +13,51 @@ const ev = (kind: string, payload: Record<string, unknown> = {}): LiveEventLabel
   half: 1,
   turnNumber: 1,
   payload,
+});
+
+describe("bandToDisplay — 5 injury bands → 2 display buckets (LM-18)", () => {
+  it("maps a bruise to Herida with no star", () => {
+    expect(bandToDisplay("bruise")).toEqual({ label: "Herida", stars: 0 });
+  });
+
+  it("maps every lasting band (apaleado|grave|permanent|dead) to Baja with ★2", () => {
+    for (const band of ["apaleado", "grave", "permanent", "dead"]) {
+      expect(bandToDisplay(band)).toEqual({ label: "Baja", stars: 2 });
+    }
+  });
+
+  it("passes an unknown band through with zero stars (never throws)", () => {
+    expect(bandToDisplay("unknown")).toEqual({ label: "unknown", stars: 0 });
+  });
+});
+
+describe("eventSpp — stars per event kind (LM-19)", () => {
+  it("a TD is ★3", () => {
+    expect(eventSpp(ev("td"))).toBe(3);
+  });
+
+  it("a completion is ★1", () => {
+    expect(eventSpp(ev("completion"))).toBe(1);
+  });
+
+  it("an mvp is ★4", () => {
+    expect(eventSpp(ev("mvp"))).toBe(4);
+  });
+
+  it("a lasting casualty (Baja band) is ★2 but a bruise casualty is ★0", () => {
+    expect(eventSpp(ev("casualty", { band: "grave" }))).toBe(2);
+    expect(eventSpp(ev("casualty", { band: "bruise" }))).toBe(0);
+  });
+
+  it("a casualty with no band is ★0 (unknown → no lasting award)", () => {
+    expect(eventSpp(ev("casualty"))).toBe(0);
+  });
+
+  it("non-scoring feed events are ★0", () => {
+    expect(eventSpp(ev("turn"))).toBe(0);
+    expect(eventSpp(ev("foul"))).toBe(0);
+    expect(eventSpp(ev("start"))).toBe(0);
+  });
 });
 
 describe("liveEventLabel", () => {

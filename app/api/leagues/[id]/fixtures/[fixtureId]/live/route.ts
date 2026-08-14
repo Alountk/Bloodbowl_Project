@@ -15,6 +15,7 @@ import {
 import {
   applyEndTurn,
   applyTD,
+  applyCompletion,
   applyEndMatch,
   applyRequestTurn,
   REQUEST_TURN_COOLDOWN_MS,
@@ -417,13 +418,15 @@ export async function GET(
   });
 }
 
-/** Control command payloads (LM-4/D10/D11/LM-11). */
+/** Control command payloads (LM-4/D10/D11/LM-11). `mvp` is deliberately absent
+ * (LM-14): it is NEVER a live command — the result route writes it. */
 type ControlCommand =
   | { type: "consent"; side: TeamSide }
   | { type: "retractConsent"; side: TeamSide }
   | { type: "begin" }
   | { type: "endTurn"; side: TeamSide }
   | { type: "td"; side: TeamSide; playerRosterId: string }
+  | { type: "completion"; side: TeamSide; playerRosterId: string }
   | { type: "casualty"; side: TeamSide; victimRosterId: string; band?: unknown }
   | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId?: unknown }
   | { type: "requestTurn" }
@@ -443,6 +446,7 @@ function isControlCommand(value: unknown): value is ControlCommand {
     case "endTurn":
       return c.side === "home" || c.side === "away";
     case "td":
+    case "completion":
       return (c.side === "home" || c.side === "away") && typeof c.playerRosterId === "string";
     case "casualty":
       return (c.side === "home" || c.side === "away") && typeof c.victimRosterId === "string";
@@ -603,13 +607,14 @@ export async function POST(
   }
 
   // Side-aware event gate (LM-12/D14): only run the pure side matrix for the
-  // event commands (endTurn/pass, TD, casualty, foul); a deny maps to 409 (the
-  // only callers reaching here are fixture coaches or the no-team admin — a
-  // spectator member was already 403'd by the coach/admin gate above, and a
-  // foreign user 404'd by `loadFixtureGate`).
+  // event commands (endTurn/pass, TD, completion, casualty, foul); a deny maps
+  // to 409 (the only callers reaching here are fixture coaches or the no-team
+  // admin — a spectator member was already 403'd by the coach/admin gate above,
+  // and a foreign user 404'd by `loadFixtureGate`).
   if (
     command.type === "endTurn" ||
     command.type === "td" ||
+    command.type === "completion" ||
     command.type === "casualty" ||
     command.type === "foul"
   ) {
@@ -618,9 +623,11 @@ export async function POST(
         ? "passTurn"
         : command.type === "td"
           ? "td"
-          : command.type === "casualty"
-            ? "casualty"
-            : "foul";
+          : command.type === "completion"
+            ? "completion"
+            : command.type === "casualty"
+              ? "casualty"
+              : "foul";
     const victimSide = command.type === "casualty" ? command.side : undefined;
     if (
       resolveEventPermission({
@@ -647,6 +654,10 @@ export async function POST(
     } catch {
       return Response.json({ error: "Invalid transition" }, { status: 409 });
     }
+  } else if (command.type === "completion") {
+    // LM-15: the active-coach branch is enforced by the side gate above. A
+    // completion appends a ★1 event with NO turn flip.
+    next = applyCompletion(current, { side: command.side, playerRosterId: command.playerRosterId }, now);
   } else if (command.type === "casualty") {
     // Coach-reported injury band is immutable once recorded (D10). The band is
     // carried through; the result POST later re-rolls authoritatively.
