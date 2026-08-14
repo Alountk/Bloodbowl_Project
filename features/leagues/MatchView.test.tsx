@@ -360,7 +360,7 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(screen.getAllByText(/Inicio del partido/).length).toBeGreaterThan(0);
   });
 
-  it("renders hero mini-stats via deriveTeamStats (LM-19: 1td+1comp+1lastingcas+1foul → 1/1/1/1/★6)", async () => {
+  it("renders hero mini-stats as per-team pills via deriveTeamStats (1td+1comp+1lastingcas → home 1/1/1/★6)", async () => {
     stubLiveEventSource();
     // The initial snapshot carries the full LM-19 home event set (the hub frame
     // only carries DELTAS, so seed the timeline in the detail).
@@ -377,14 +377,15 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     };
     stubMatch(detail);
     renderPlayed();
-    await waitFor(() => expect(screen.getByTestId("live-stats").textContent).toContain("★6"));
-    const stats = screen.getByTestId("live-stats");
-    expect(stats.textContent).toMatch(/TD/);
-    expect(stats.textContent).toMatch(/1 · 0/);
-    expect(stats.textContent).toMatch(/Comp/);
-    expect(stats.textContent).toMatch(/Bajas/);
-    expect(stats.textContent).toMatch(/Faltas/);
-    expect(stats.textContent).toContain("★6");
+    await waitFor(() => expect(screen.getByTestId("mini-spp-home").textContent).toContain("6"));
+    // Per-team pills: home carries its own TD/comp/cas/★ values; the away side
+    // mirrors the same visible stats (0) for the side-by-side compare.
+    expect(screen.getByTestId("mini-td-home").textContent).toContain("1");
+    expect(screen.getByTestId("mini-comp-home").textContent).toContain("1");
+    expect(screen.getByTestId("mini-cas-home").textContent).toContain("1");
+    expect(screen.getByTestId("mini-td-away").textContent).toContain("0");
+    // Design 10 drops the "Faltas" stat from the mini grid.
+    expect(screen.queryByTestId("mini-foul-home")).toBeNull();
   });
 
   it("shows the EventControls FAB '+' for the ACTIVE coach (LM-20)", async () => {
@@ -597,8 +598,9 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(homeTrack.querySelector('[aria-current="true"]')?.textContent).toBe("2");
     expect(awayTrack.querySelector('[aria-current="true"]')).toBeNull();
     expect(within(awayTrack).getByLabelText("Turno 1").textContent).toBe("1");
-    expect(within(awayTrack).getByLabelText("Turno 1").className).toContain("bg-[#12225a]");
-    expect(within(awayTrack).getByLabelText("Turno 2").className).not.toContain("bg-[#12225a]");
+    // Design-10 navy bar: a DONE turn is the lighter navy tint, the ACTIVE turn red.
+    expect(within(awayTrack).getByLabelText("Turno 1").className).toContain("bg-[#1f3a7a]");
+    expect(within(awayTrack).getByLabelText("Turno 2").className).not.toContain("bg-[#1f3a7a]");
     expect(within(homeTrack).getByLabelText("Turno 2").className).toContain("bg-[#d11938]");
 
     // Hero: the team blocks mirror the center scoreboard (race · coach line).
@@ -606,10 +608,10 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/Human · Coach A/);
     expect(container.textContent).toMatch(/Dwarf · Coach B/);
 
-    // Stats grid derived via deriveTeamStats: only the rows we have data for
-    // (TD present; no casualties → no "Bajas" row).
-    expect(screen.getByText("TD")).toBeTruthy();
-    expect(screen.queryByText("Bajas")).toBeNull();
+    // Per-team mini pills derived via deriveTeamStats: only stats with data on
+    // either side render (TD present via the live td; no casualties → no cas pill).
+    expect(screen.getByTestId("mini-td-home")).toBeTruthy();
+    expect(screen.queryByTestId("mini-cas-home")).toBeNull();
 
     // Design-A timeline: one row per display event (start + td) with the
     // Spanish label + ★ SPP; the no-player start row renders the label only.
@@ -637,6 +639,54 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/0:00:05/);
     // The NON-active (away) side stays frozen at 0:00:00.
     expect(container.textContent).toMatch(/0:00:00/);
+  });
+});
+
+describe("MatchView — casi Tourplay hero (Design 10)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("renders both team emblems and the weather/stadium meta row in the live hero", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail());
+    renderPlayed();
+    await screen.findAllByText(/Mitad 1 · Turno 3/);
+
+    // Each team column shows its deterministic emblem (initial badge).
+    expect(screen.getByTestId("emblem-t1").textContent).toBe("R"); // Reavers
+    expect(screen.getByTestId("emblem-t2").textContent).toBe("D"); // Dwarves
+
+    // The weather/stadium row: a live match has no weather yet → the neutral
+    // "Clima · Estándar" + the rulebook-neutral "Estadio · Reglamentario".
+    expect(screen.getByText(/Clima · Estándar/)).toBeTruthy();
+    expect(screen.getByText(/Estadio · Reglamentario/)).toBeTruthy();
+  });
+
+  it("moves the 'Dar el turno' control into the navy top bar and keeps 'Tu turno' as a status", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail()); // home coach active → sees the pass control
+    const { container } = renderPlayed();
+    await screen.findAllByText(/Mitad 1 · Turno 3/);
+
+    // The top bar is navy (Design 10) and hosts the red turn button + status.
+    expect(container.textContent).toMatch(/1ª PARTE/);
+    expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
+    expect(screen.getAllByText(/Tu turno/).length).toBeGreaterThan(0);
+    // The active coach sees no "Pedir turno" (it stays in the bottom controls).
+    expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
+  });
+
+  it("keeps 'Pedir turno' in the bottom controls for the non-active coach", async () => {
+    stubLiveEventSource();
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, viewerSide: "away" };
+    stubMatch(detail);
+    renderPlayed();
+
+    await screen.findAllByText(/Mitad 1 · Turno 3/);
+    expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryByText(/Tu turno/)).toBeNull();
   });
 });
 

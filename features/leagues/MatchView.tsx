@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { PE_MVP } from "@/lib/rules";
 import { getRaceById } from "@/features/teams/data/races";
-import { deriveMinute, turnTag, deriveTeamStats, playerRef } from "@/lib/liveFeed";
+import { deriveMinute, turnTag, deriveTeamStats, playerRef, type TeamStats } from "@/lib/liveFeed";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
 import { liveEventLabel, eventSpp } from "./liveEventLabels";
 import { EventControls } from "./liveControls";
+import { TeamEmblem } from "./TeamEmblem";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
 import { useLeagueName } from "./useLeagueName";
@@ -338,8 +339,8 @@ function TurnTrack({
               active
                 ? "bg-[#d11938] text-white"
                 : done
-                  ? "bg-[#12225a] text-white"
-                  : "border border-[#e2e8f0] bg-[#f8fafc] text-slate-400"
+                  ? "bg-[#1f3a7a] text-white"
+                  : "border border-white/15 bg-white/5 text-[#9fb3d8]"
             }`}
           >
             {n}
@@ -351,50 +352,71 @@ function TurnTrack({
 }
 
 /**
- * The mockup top bar: league/jornada label, half indicator, the unified
- * "Tiempo", the two per-coach turn tracks (1-8, current highlighted) and the
- * two per-coach H:MM:SS clocks. The compact "Mitad H · Turno N" line keeps the
- * exact string the e2e/unit suites assert.
+ * The mockup top bar (casi Tourplay): navy bar with the league/jornada label,
+ * half indicator, the unified "Tiempo", the two per-coach turn tracks (1-8,
+ * current highlighted) and the two per-coach H:MM:SS clocks. The ACTIVE coach's
+ * "Tu turno" STATUS + the red TURNO ("Dar el turno") button sit CENTERED in the
+ * bar (the string stays "Dar el turno" — e2e/unit suites assert it). The compact
+ * "Mitad H · Turno N" line keeps the exact string the e2e/unit suites assert.
  */
 function LiveTopBar({
   state,
   clock,
   label,
   names,
+  turnControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
   label: string;
   names: { home: string; away: string };
+  turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
 }) {
   return (
-    <div className="border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-3">
+    <div className="border-b border-[#1f3a7a] bg-[#12225a] px-4 py-3 text-white">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#12225a]">{label}</p>
-        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#cbd5e1]">{label}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wide text-[#9fb3d8]">
           {state.half === 2 ? "2ª PARTE" : "1ª PARTE"}
         </p>
-        <p className="text-sm font-semibold text-slate-600">
+        <p className="text-sm font-semibold text-[#cbd5e1]">
           Tiempo <FormatMs ms={clock.elapsed} />
         </p>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase text-[#12225a]">{names.home}</span>
+          <span className="text-xs font-bold uppercase text-[#9fb3d8]">{names.home}</span>
           <TurnTrack
             sideName={names.home}
             current={teamTurnCounts(state.half, state.turnNumber).home}
             isActive={state.activeSide === "home"}
           />
-          <span className="text-sm font-black text-[#12225a] tabular-nums">
+          <span className="text-sm font-black text-white tabular-nums">
             <FormatHms ms={clock.homeTurnMs} />
           </span>
         </div>
-        <p className="text-sm font-semibold text-slate-500">
-          Mitad {state.half} · Turno {state.turnNumber}
-        </p>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-sm font-semibold text-[#cbd5e1]">
+            Mitad {state.half} · Turno {state.turnNumber}
+          </p>
+          {turnControls.isActive ? (
+            <div className="flex items-center gap-2">
+              <p role="status" className="text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
+                Tu turno
+              </p>
+              <button
+                type="button"
+                onClick={turnControls.onEndTurn}
+                disabled={state.status !== "live" || turnControls.submitting}
+                className="rounded-sm bg-[#d11938] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white hover:bg-[#b0142f] disabled:opacity-50"
+              >
+                Dar el turno
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-black text-[#12225a] tabular-nums">
+          <span className="text-sm font-black text-white tabular-nums">
             <FormatHms ms={clock.awayTurnMs} />
           </span>
           <TurnTrack
@@ -402,125 +424,166 @@ function LiveTopBar({
             current={teamTurnCounts(state.half, state.turnNumber).away}
             isActive={state.activeSide === "away"}
           />
-          <span className="text-xs font-bold uppercase text-[#12225a]">{names.away}</span>
+          <span className="text-xs font-bold uppercase text-[#9fb3d8]">{names.away}</span>
         </div>
       </div>
     </div>
   );
 }
 
-/** One team column of the hero banner (name uppercase + race · coach subtitle). */
+/** One team's mini-stat pill row (casi Tourplay): ⚽ TD / 🤝 completions /
+ * ⚰️ casualties / ★ SPP derived from the event feed via `deriveTeamStats`.
+ * A pill renders when the STAT has data on EITHER side (visible), so the two
+ * teams' pills sit side-by-side (a 0 shows next to the opponent's 1, Design 10). */
+function MiniStats({
+  stats,
+  side,
+  visible,
+}: {
+  stats: TeamStats;
+  side: "home" | "away";
+  visible: { td: boolean; comp: boolean; cas: boolean; spp: boolean };
+}) {
+  const pills = [
+    { key: "td", icon: "⚽", value: stats.tds, show: visible.td },
+    { key: "comp", icon: "🤝", value: stats.completions, show: visible.comp },
+    { key: "cas", icon: "⚰️", value: stats.casualties, show: visible.cas },
+    { key: "spp", icon: "★", value: stats.spp, show: visible.spp },
+  ].filter((pill) => pill.show);
+  if (pills.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+      {pills.map((pill) => (
+        <span
+          key={pill.key}
+          data-testid={`mini-${pill.key}-${side}`}
+          className="flex items-center gap-1 rounded-sm bg-white/15 px-1.5 py-0.5 text-[10px] text-white"
+        >
+          <span aria-hidden="true">{pill.icon}</span>
+          <b className="tabular-nums">{pill.value}</b>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** One team column of the hero banner (emblem + name + race · coach + pills). */
 function LiveTeamBlock({
   name,
   subtitle,
-  align,
+  teamId,
+  stats,
+  side,
+  visible,
 }: {
   name: string;
   subtitle: string;
-  align: "left" | "right";
+  teamId: string;
+  stats: TeamStats;
+  side: "home" | "away";
+  visible: { td: boolean; comp: boolean; cas: boolean; spp: boolean };
 }) {
   return (
-    <div className={`min-w-0 ${align === "right" ? "text-right" : "text-left"}`}>
-      <p className="truncate text-xl font-black uppercase tracking-wide text-[#12225a]">{name}</p>
-      <p className="mt-1 truncate text-xs text-slate-500">{subtitle}</p>
+    <div className="flex min-w-0 flex-col items-center gap-1">
+      <TeamEmblem teamId={teamId} name={name} size="lg" className="border-2 border-white/25" />
+      <p className="mt-1 max-w-full truncate text-lg font-black uppercase tracking-wide text-white">
+        {name}
+      </p>
+      <p className="max-w-full truncate text-[11px] text-[#cbd5e1]">{subtitle}</p>
+      <MiniStats stats={stats} side={side} visible={visible} />
     </div>
   );
 }
 
 /**
- * The center scoreboard: BIG "home : away" digits (navy/red) + a compact
- * Design-A stats grid derived from the event feed via `deriveTeamStats`
- * (LM-19/D22): TD / completions / casualties / fouls / ★ SPP per team. Only
- * rows that are non-empty render.
+ * The center scoreboard: BIG "home : away" digits (white on the navy hero, red
+ * separator) — the per-team mini-stats live under each team block (Design 10).
  */
-function LiveScoreboard({
-  state,
-  events,
-}: {
-  state: LiveMatchViewState;
-  events: LiveMatchView["events"];
-}) {
-  const stats = deriveTeamStats(events);
-  const show = (home: number, away: number) => home + away > 0;
+function LiveScoreboard({ state }: { state: LiveMatchViewState }) {
   return (
     <div className="px-2 text-center">
       <p
         data-testid="live-score"
         aria-label="Marcador"
-        className="text-5xl font-black leading-none text-[#12225a] tabular-nums"
+        className="text-5xl font-black leading-none text-white tabular-nums"
       >
         {state.homeScore}
         <span className="mx-2 text-[#d11938]">:</span>
         {state.awayScore}
       </p>
-      <dl
-        data-testid="live-stats"
-        className="mt-3 grid grid-cols-2 items-baseline justify-items-center gap-x-4 gap-y-1 text-xs"
-      >
-        {show(stats.home.tds, stats.away.tds) ? (
-          <>
-            <dt className="font-bold uppercase text-slate-500">TD</dt>
-            <dd className="font-bold text-[#12225a] tabular-nums">
-              {stats.home.tds} · {stats.away.tds}
-            </dd>
-          </>
-        ) : null}
-        {show(stats.home.completions, stats.away.completions) ? (
-          <>
-            <dt className="font-bold uppercase text-slate-500">Comp</dt>
-            <dd className="font-bold text-[#12225a] tabular-nums">
-              {stats.home.completions} · {stats.away.completions}
-            </dd>
-          </>
-        ) : null}
-        {show(stats.home.casualties, stats.away.casualties) ? (
-          <>
-            <dt className="font-bold uppercase text-slate-500">Bajas</dt>
-            <dd className="font-bold text-[#12225a] tabular-nums">
-              {stats.home.casualties} · {stats.away.casualties}
-            </dd>
-          </>
-        ) : null}
-        {show(stats.home.fouls, stats.away.fouls) ? (
-          <>
-            <dt className="font-bold uppercase text-slate-500">Faltas</dt>
-            <dd className="font-bold text-[#12225a] tabular-nums">
-              {stats.home.fouls} · {stats.away.fouls}
-            </dd>
-          </>
-        ) : null}
-        {show(stats.home.spp, stats.away.spp) ? (
-          <>
-            <dt className="font-bold uppercase text-slate-500">★</dt>
-            <dd className="font-bold text-[#12225a] tabular-nums">
-              {stats.home.spp} · {stats.away.spp}
-            </dd>
-          </>
-        ) : null}
-      </dl>
     </div>
   );
 }
 
-/** Hero banner: `1fr auto 1fr` — teams mirrored around the center scoreboard. */
+/**
+ * Hero banner (casi Tourplay, Design 10): `1fr auto 1fr` — teams mirrored
+ * around the center score, each with its emblem, name, race · coach line and
+ * the per-team mini-stat pills, on the navy→dark-red gradient. The whole view
+ * derives the stats once from the event feed via `deriveTeamStats`.
+ */
 function LiveHero({
   state,
   names,
   homeSubtitle,
   awaySubtitle,
+  homeTeamId,
+  awayTeamId,
   events,
 }: {
   state: LiveMatchViewState;
   names: { home: string; away: string };
   homeSubtitle: string;
   awaySubtitle: string;
+  homeTeamId: string;
+  awayTeamId: string;
   events: LiveMatchView["events"];
 }) {
+  const stats = deriveTeamStats(events);
+  // A stat pill renders only when EITHER side has data (per-stat, symmetric).
+  const visible = {
+    td: stats.home.tds + stats.away.tds > 0,
+    comp: stats.home.completions + stats.away.completions > 0,
+    cas: stats.home.casualties + stats.away.casualties > 0,
+    spp: stats.home.spp + stats.away.spp > 0,
+  };
+  const sideStats = (side: "home" | "away"): TeamStats => ({
+    tds: visible.td ? stats[side].tds : 0,
+    completions: visible.comp ? stats[side].completions : 0,
+    casualties: visible.cas ? stats[side].casualties : 0,
+    fouls: 0,
+    spp: visible.spp ? stats[side].spp : 0,
+  });
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-[#e2e8f0] px-4 py-5">
-      <LiveTeamBlock name={names.home} subtitle={homeSubtitle} align="right" />
-      <LiveScoreboard state={state} events={events} />
-      <LiveTeamBlock name={names.away} subtitle={awaySubtitle} align="left" />
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 bg-gradient-to-br from-[#1b2f6e] via-[#12225a] to-[#5c1020] px-4 py-6">
+      <LiveTeamBlock
+        name={names.home}
+        subtitle={homeSubtitle}
+        teamId={homeTeamId}
+        stats={sideStats("home")}
+        side="home"
+        visible={visible}
+      />
+      <LiveScoreboard state={state} />
+      <LiveTeamBlock
+        name={names.away}
+        subtitle={awaySubtitle}
+        teamId={awayTeamId}
+        stats={sideStats("away")}
+        side="away"
+        visible={visible}
+      />
+    </div>
+  );
+}
+
+/** The weather/stadium row (Design 10): weather is omit/neutral when a live
+ * match has none yet; the stadium has no data source → the rulebook-neutral
+ * "Reglamentario" always renders. */
+function LiveMetaRow() {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-1.5 text-[11px] text-slate-500">
+      <span>Clima · Estándar</span>
+      <span>Estadio · Reglamentario</span>
     </div>
   );
 }
@@ -628,14 +691,27 @@ function LiveActiveMatch({
           Tu rival pide el turno
         </p>
       ) : null}
-      <LiveTopBar state={state} clock={clock} label={leagueLabel} names={names} />
+      <LiveTopBar
+        state={state}
+        clock={clock}
+        label={leagueLabel}
+        names={names}
+        turnControls={{
+          isActive: state.viewerSide === state.activeSide,
+          submitting,
+          onEndTurn: () => void act({ type: "endTurn", side: state.activeSide }),
+        }}
+      />
       <LiveHero
         state={state}
         names={names}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
+        homeTeamId={homeTeam.id}
+        awayTeamId={awayTeam.id}
         events={events}
       />
+      <LiveMetaRow />
       <LiveEventsList
         events={events}
         startedAt={state.startedAt}
@@ -645,12 +721,6 @@ function LiveActiveMatch({
 
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
         <div className="min-w-0">
-          {/* LM-12/D19: the ACTIVE coach sees "Tu turno" (viewerSide matches activeSide). */}
-          {state.viewerSide === state.activeSide ? (
-            <p className="text-sm font-bold text-[#d11938]" role="status">
-              Tu turno
-            </p>
-          ) : null}
           {error ? (
             <p role="alert" className="mt-1 text-sm text-red-600">
               {error}
@@ -658,18 +728,8 @@ function LiveActiveMatch({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-3">
-          {/* The active coach may pass the turn; a non-active coach (with a side)
-              may request it (LM-13/D14). Side controls reflect the viewer's role. */}
-          {state.viewerSide === state.activeSide ? (
-            <button
-              type="button"
-              onClick={() => void act({ type: "endTurn", side: state.activeSide })}
-              disabled={state.status !== "live" || submitting}
-              className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
-            >
-              Dar el turno
-            </button>
-          ) : null}
+          {/* A non-active coach (with a side) may request the turn (LM-13/D14);
+              the ACTIVE coach's pass control lives CENTERED in the top bar. */}
           {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
             <button
               type="button"
