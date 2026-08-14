@@ -5,6 +5,7 @@ const isAuthEnabledMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn() },
   league: { findFirst: vi.fn() },
+  team: { findMany: vi.fn() },
   liveMatch: { findFirst: vi.fn() },
   liveEvent: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
 }));
@@ -596,10 +597,13 @@ describe("POST .../live — consent/retract/begin command handling", () => {
     beginLiveMatchMock.mockResolvedValue({ seq: 3, view: liveView({ status: "live", viewerSide: "home" }) });
     prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
     prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(2));
+    // Begin materializes both teams' rosters (idempotent); empty teams → no-op.
+    prismaMock.team.findMany.mockResolvedValue([]);
     const res = await POST(req({ type: "begin" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(200);
+    expect(prismaMock.team.findMany).toHaveBeenCalled();
     expect(beginLiveMatchMock).toHaveBeenCalledWith(
       expect.objectContaining({ liveMatchId: "lm-1", fixtureId: "f-1" }),
       expect.anything(),
