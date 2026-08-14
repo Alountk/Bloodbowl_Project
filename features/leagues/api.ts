@@ -6,6 +6,17 @@ export type LeagueStatus = "open" | "started";
 /** Derived matchday lifecycle of a fixture: pending → scheduled → played. */
 export type FixtureStatus = "pending" | "scheduled" | "played";
 
+/** The live-match snapshot embedded on an enriched fixture (league detail);
+ * null when the fixture has no LiveMatch row (MV-5). Only the card-relevant
+ * fields are selected — the full live DTO lives on the per-fixture GET. */
+export interface FixtureLiveLite {
+  status: "pending" | "ready" | "live" | "finished";
+  homeScore: number;
+  awayScore: number;
+  half: number;
+  turnNumber: number;
+}
+
 /** A proposed match date for a fixture (negotiation history/active row). */
 export interface ScheduleProposal {
   id: string;
@@ -41,6 +52,10 @@ export interface FixtureDraft {
   awayOwner: { id: string; name: string; avatar?: string | null } | null;
   /** Negotiation history (active + closed) for this fixture. */
   proposals: ScheduleProposal[];
+  /** The live-match snapshot when this fixture has a LiveMatch row (pending/
+   * ready/live/finished); null when it has none. Drives the card's EN VIVO
+   * badge + live score on the Jornadas. */
+  live?: FixtureLiveLite | null;
 }
 
 /**

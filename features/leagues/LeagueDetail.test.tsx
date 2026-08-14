@@ -262,8 +262,8 @@ describe("LeagueDetail — STARTED league", () => {
 
     // The active round renders as a region labelled "Jornada 1".
     const round1 = screen.getByRole("region", { name: "Jornada 1" });
-    // Its single match card centers a VS between the two teams.
-    expect(within(round1).getByText("VS")).toBeTruthy();
+    // Its single match card centers the score between the two teams.
+    expect(within(round1).getByTestId("match-card-score")).toBeTruthy();
     expect(within(round1).getByText("Reavers")).toBeTruthy();
     expect(within(round1).getByText("Orcs")).toBeTruthy();
 
@@ -367,7 +367,7 @@ describe("LeagueDetail — STARTED league", () => {
     );
 
     // me owns the away team of f2 (round 2) → propose a date; success closes the panel.
-    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 2" })).getByText("VS"));
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 2" })).getByTestId("match-card-score"));
     fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
     fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
@@ -400,7 +400,7 @@ describe("LeagueDetail — STARTED league", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByText("VS"));
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByTestId("match-card-score"));
     fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
     fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
@@ -427,7 +427,7 @@ describe("LeagueDetail — STARTED league", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByText("VS"));
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByTestId("match-card-score"));
 
     // The participant (me owns t1, home of f1) gets propose controls.
     expect(screen.getByRole("dialog", { name: /Acordar fecha/ })).toBeTruthy();

@@ -9,9 +9,10 @@ import { test, expect, type Page, type Browser } from "@playwright/test";
  *  1. profile-avatar: signup → /profile shows no avatar → upload a cropped PNG →
  *     the preview renders → reload → avatar persists (DB read, not JWT) → clear
  *     via PATCH null → reload → avatar gone.
- *  2. matchcard-avatar: a started 2-member league whose owners both uploaded —
- *     the round-1 MatchCard renders both owner avatars beside their names
- *     (single round-trip through enrichFixture, no N+1).
+ *  2. matchcard-emblem: a started 2-member league whose owners both uploaded —
+ *     the round-1 MatchCard renders both teams' deterministic EMBLEMS (Design B
+ *     replaced the owner-avatar line with the emblem + race line), one per team,
+ *     with the team's initial badge inside.
  *
  * A valid 1×1 PNG (68 B) is uploaded in real browser; the server sniff + sharp
  * 256×256 WebP resize is exercised on every upload. The profile flow has no
@@ -184,27 +185,33 @@ test.describe("Avatar E2E (real Postgres)", () => {
     await expect(page.getByRole("img", { name: "Avatar del entrenador" })).toHaveCount(0);
   });
 
-  test("matchcard: a started 2-member league shows both owner avatars on the round-1 card", async ({
+  test("matchcard: a started 2-member league shows both team emblems on the round-1 card", async ({
     browser,
   }) => {
     const league = await buildTwoMemberStartedLeague(browser, "mc");
     try {
-      // Both members upload avatars through the real /profile UI.
+      // Both members upload avatars through the real /profile UI (the profile
+      // journey is avatar's home — the MatchCard now renders emblems, Design B).
       await uploadAvatarViaProfile(league.admin);
       await uploadAvatarViaProfile(league.rival);
 
-      // A fresh view of the league detail carries each fixture owner's avatar via
-      // enrichFixture (single round-trip). Both owners appear on the round-1 card.
+      // A fresh view of the league detail carries each team's deterministic
+      // EMBLEM (initial badge, Design B) — one per side on the round-1 card.
       await league.admin.goto(league.leagueUrl);
       const region = league.admin.getByRole("region", { name: "Jornada 1" });
-      await expect(region.getByRole("img", { name: "Avatar del entrenador" })).toHaveCount(2);
+      const emblems = region.getByLabel(/Emblema de/);
+      await expect(emblems).toHaveCount(2);
 
-      // Each avatar is a server-issued /uploads path (never a client URL).
-      const srcs = await region
-        .getByRole("img", { name: "Avatar del entrenador" })
-        .evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).getAttribute("src")));
-      expect(srcs).toHaveLength(2);
-      for (const src of srcs) expect(src).toMatch(/^\/uploads\/avatars\//);
+      // Each emblem shows its team's initial (A/B — the admin/rival team names).
+      const initials = await emblems.evaluateAll((els) =>
+        els.map((el) => el.textContent?.trim() ?? ""),
+      );
+      expect(initials).toContain("A");
+      expect(initials).toContain("B");
+
+      // Design B: the card no longer renders the owner avatars (emblem + race
+      // line replace the avatar row) — the avatar stays on the profile/coach rows.
+      await expect(region.getByRole("img", { name: "Avatar del entrenador" })).toHaveCount(0);
     } finally {
       await league.close();
     }

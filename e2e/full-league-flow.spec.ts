@@ -12,7 +12,8 @@ import { test, expect, type Browser, type Locator, type Page } from "@playwright
  *      → joins; admin starts a 1-jornada season → single A-vs-B matchup; rival
  *      proposes a date and admin accepts → "Programado"; admin loads a 2–1 win
  *      through the real ResultModal (per-player TDs, a casualty victim, 6 MJP
- *      nominations) → "Jugado · 2 – 1" + "Jornada completa"; the RIVAL then
+ *      nominations) → "Partido 1 · Jugado" + the center "2 : 1" with the winner
+ *      highlighted + "Jornada completa"; the RIVAL then
  *      spends the PE its scorer earned (1 TD + 2 completions + 1 interception =
  *      7 PE) on the élite primary Block → skill + `$` badge + value update;
  *      admin corrects the played result to 1–1 → the MatchCard updates.
@@ -430,7 +431,8 @@ test("complete lifecycle: join → start → schedule → result → progression
     await expect(startedRegion).toBeVisible();
     await expect(startedRegion.getByText(teamAName)).toBeVisible();
     await expect(startedRegion.getByText(teamBName)).toBeVisible();
-    await expect(startedRegion.getByText("vs")).toHaveCount(1);
+    // Exactly one matchup in this single round — its CENTER SCORE (Tourplay).
+    await expect(startedRegion.getByTestId("match-card-score")).toHaveCount(1);
 
     // B reloads onto the started jornada.
     await pageB.reload();
@@ -479,9 +481,12 @@ test("complete lifecycle: join → start → schedule → result → progression
     const playedRegion = pageA.getByRole("region", { name: "Jornada 1" });
     await expect(playedRegion.getByText(/Partido 1 · Jugado/)).toBeVisible();
     // The fixture home/away sides are shuffled at start; A's 2–1 win renders
-    // in home–away order, so accept either orientation.
-    await expect(playedRegion.getByText(/(Jugado · 2 – 1|Jugado · 1 – 2)/)).toBeVisible();
-    await expect(playedRegion.getByText(`Ganador: ${teamAName}`)).toBeVisible();
+    // in home–away order, so accept either orientation of the CENTER score.
+    await expect(playedRegion.getByText(/(2 : 1|1 : 2)/)).toBeVisible();
+    // The winner's team column carries the VICTORIA chip (Design B replaces the
+    // old "Ganador:" footer line with the winner highlight).
+    await expect(playedRegion.getByText("VICTORIA")).toBeVisible();
+    await expect(playedRegion.locator('[data-winner="true"]').getByRole("link").first()).toHaveText(teamAName);
     await expect(pageA.getByText("Jornada completa")).toBeVisible();
 
     // --- Progression: B (owner) spends the scorer's 7 PE on élite Block ---
@@ -538,7 +543,7 @@ test("complete lifecycle: join → start → schedule → result → progression
       )
       .toBe("1-1");
     await pageA.reload();
-    await expect(pageA.getByRole("region", { name: "Jornada 1" }).getByText(/Jugado · 1 – 1/)).toBeVisible();
+    await expect(pageA.getByRole("region", { name: "Jornada 1" }).getByText(/1 : 1/)).toBeVisible();
   } finally {
     await contextA.close();
     await contextB.close();
@@ -634,8 +639,10 @@ test("forfeit walkover: admin forfeits a scheduled fixture → Jugado 2–0 → 
     await modal.getByRole("button", { name: `Otorgar victoria a ${league.teamAName}` }).click();
 
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    await expect(region.getByText(/(Jugado · 2 – 0|Jugado · 0 – 2)/)).toBeVisible();
-    await expect(region.getByText(`Ganador: ${league.teamAName}`)).toBeVisible();
+    // Walkover score in the CENTER (Design B), winner highlighted via VICTORIA.
+    await expect(region.getByText(/(2 : 0|0 : 2)/)).toBeVisible();
+    await expect(region.getByText("VICTORIA")).toBeVisible();
+    await expect(region.locator('[data-winner="true"]').getByRole("link").first()).toHaveText(league.teamAName);
     await expect(league.admin.getByText("Jornada completa")).toBeVisible();
 
     // result-after-forfeit is rejected (mutual exclusion).
