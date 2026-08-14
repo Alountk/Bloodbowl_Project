@@ -815,10 +815,16 @@ function LiveEventsList({
             : event.side === "home"
               ? "bg-gradient-to-r from-[#12225a]/10 to-transparent"
               : "";
+        // Tourplay `match-event--reverse`: the VISITOR rows are mirrored (detail
+        // on the left → player/dorsal/time on the right) so each team reads its
+        // chronology from its own side; the local rows keep the normal order.
+        const isVisitor = event.side === "away";
         return (
           <li
             key={event.seq}
-            className={`flex items-center gap-3 px-4 py-2 text-sm ${sideCls}`}
+            className={`flex items-center gap-3 px-4 py-2 text-sm ${sideCls} ${
+              isVisitor ? "flex-row-reverse" : ""
+            }`}
             data-testid="live-event-row"
           >
             <span className="w-10 shrink-0 text-xs tabular-nums text-slate-500">
@@ -847,7 +853,11 @@ function LiveEventsList({
               )}
             </div>
             {player ? (
-              <div className="flex shrink-0 flex-col items-end text-right">
+              <div
+                className={`flex shrink-0 flex-col ${
+                  isVisitor ? "items-start text-left" : "items-end text-right"
+                }`}
+              >
                 <p className="text-sm font-bold text-[#0f172a]">
                   <span aria-hidden="true" className="mr-1">{glyph}</span>
                   {liveEventLabel(event)}
