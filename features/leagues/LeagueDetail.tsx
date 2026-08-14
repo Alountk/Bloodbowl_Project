@@ -349,7 +349,7 @@ function Jornadas({
 }: {
   fixtures: FixtureDraft[];
   rounds: FixtureRound[];
-  teams: { id: string; name: string; roster: unknown }[];
+  teams: { id: string; name: string; raceId?: string; roster: unknown }[];
   currentUserId: string;
   isLeagueOwner: boolean;
   onPropose: (fixtureId: string, date: string) => Promise<void>;
@@ -360,6 +360,16 @@ function Jornadas({
 }) {
   const teamNameById = useMemo(
     () => new Map(teams.map((team) => [team.id, team.name])),
+    [teams],
+  );
+  const raceNameById = useMemo(
+    () =>
+      new Map(
+        teams.map((team) => [
+          team.id,
+          team.raceId ? getRaceById(team.raceId)?.name ?? team.raceId : "",
+        ]),
+      ),
     [teams],
   );
   const roundNumbers = useMemo(
@@ -447,6 +457,7 @@ function Jornadas({
             key={fixture.id}
             fixture={fixture}
             teamNameById={teamNameById}
+            raceNameById={raceNameById}
             currentUserId={currentUserId}
             isLeagueOwner={isLeagueOwner}
             onNegotiate={(f) => {

@@ -239,6 +239,32 @@ describe("matchday fixture enrichment (pure functions)", () => {
     expect(enriched.awayOwner).toEqual({ id: "user-2", name: "b@x", avatar: null });
   });
 
+  it("maps a nested liveMatch row to the card-lite `live` snapshot, null when absent", () => {
+    const liveFixture = {
+      id: "f1",
+      leagueId: "l1",
+      round: 1,
+      homeTeamId: "t1",
+      awayTeamId: "t2",
+      createdAt: new Date("2026-02-01"),
+      scheduledAt: new Date("2026-03-01"),
+      winnerId: null,
+      homeTeam: { user: null },
+      awayTeam: { user: null },
+      proposals: [],
+      liveMatch: { status: "live" as const, homeScore: 2, awayScore: 1, half: 2, turnNumber: 5 },
+    };
+    const plainFixture = { ...liveFixture, liveMatch: undefined };
+    expect(enrichFixture(liveFixture).live).toEqual({
+      status: "live",
+      homeScore: 2,
+      awayScore: 1,
+      half: 2,
+      turnNumber: 5,
+    });
+    expect(enrichFixture(plainFixture).live).toBeNull();
+  });
+
   it("builds per-round complete flags: complete only when every fixture in the round has scores", () => {
     const rounds = buildRoundsWithCompletion([
       { id: "f1", round: 1, homeScore: 2, awayScore: 1 },
@@ -286,6 +312,8 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
       homeTeam: { user: { id: "user-1", name: "Coach A", email: "a@x", avatar: "/uploads/avatars/u-1.webp" } },
       awayTeam: { user: { id: "user-2", name: "Coach B", email: "b@x" } },
       proposals: [{ id: "p1", acceptedAt: new Date() }],
+      // A (finished) LiveMatch row → the card-lite snapshot rides the DTO.
+      liveMatch: { status: "finished", homeScore: 2, awayScore: 1, half: 2, turnNumber: 8 },
     };
     const forfeitedFixture = {
       id: "f3",
@@ -340,11 +368,23 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
     expect(body.fixtures[0].homeOwner.name).toBe("Coach A");
     expect(body.fixtures[0].homeOwner.avatar).toBe("/uploads/avatars/u-1.webp");
     expect(body.fixtures[0].proposals).toHaveLength(1);
+    // The card-lite live snapshot maps the nested LiveMatch row (fixture 0 has
+    // one; the others have none → null).
+    expect(body.fixtures[0].live).toEqual({
+      status: "finished",
+      homeScore: 2,
+      awayScore: 1,
+      half: 2,
+      turnNumber: 8,
+    });
+    expect(body.fixtures[1].live).toBeNull();
+    expect(body.fixtures[2].live).toBeNull();
     // Round with a pending (or winnerId-only) fixture is NOT complete.
     expect(body.rounds).toEqual([
       { round: 1, fixtures: ["f1", "f3", "f2"], complete: false },
     ]);
-    // The nested user select now carries `avatar` so MatchCard can render it.
+    // The nested user select now carries `avatar` so MatchCard can render it,
+    // and the include carries the card-lite liveMatch select (EN VIVO badge).
     expect(prismaMock.fixture.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
@@ -352,6 +392,15 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
             select: {
               id: true,
               user: { select: { id: true, name: true, email: true, avatar: true } },
+            },
+          },
+          liveMatch: {
+            select: {
+              status: true,
+              homeScore: true,
+              awayScore: true,
+              half: true,
+              turnNumber: true,
             },
           },
         }),
