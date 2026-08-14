@@ -1,12 +1,10 @@
-import { casualtyKindLabel } from "./matchSummary";
-
 /**
  * Spanish labels for the live event timeline (LM-10, MV-7) plus the band→display
  * and SPP derivations (LM-18/LM-19). Pure functions — event payloads stay
- * structured server-side; only the client maps kind+payload to a human label
- * (`matchSummary.ts` precedent). The minimum taxonomy: start, turn, touchdown,
- * completion, casualty (with the coach-reported band), foul, mvp, end of half,
- * end of match. Unknown kinds pass through unchanged.
+ * structured server-side; only the client maps kind+payload to a human label.
+ * The minimum taxonomy: start, turn, touchdown, completion, casualty (with the
+ * Design-A band bucket), foul, mvp, end of half, end of match. Unknown kinds
+ * pass through unchanged.
  */
 
 export interface LiveEventLabelInput {
@@ -79,8 +77,10 @@ export function liveEventLabel(event: LiveEventLabelInput): string {
     case "mvp":
       return "Jugador más valioso";
     case "casualty": {
+      // LM-18: the Design-A bucket label — a bruise renders "Herida", every
+      // lasting band (apaleado|grave|permanent|dead) renders "Baja".
       const band = typeof event.payload.band === "string" ? event.payload.band : null;
-      return band ? `Baja · ${casualtyKindLabel(band)}` : "Baja";
+      return band ? bandToDisplay(band).label : "Baja";
     }
     case "foul":
       return "Falta";

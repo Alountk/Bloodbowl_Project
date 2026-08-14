@@ -1039,7 +1039,9 @@ describe("MatchView — finished live match timeline (LM-10)", () => {
 
     // Timeline entries (Spanish labels) present.
     expect(container.textContent).toContain("Touchdown");
-    expect(container.textContent).toContain("Baja · Herida grave");
+    // LM-18: a lasting casualty band renders the Design-A bucket "Baja" (the
+    // detailed rulebook label "Baja · Herida grave" was rewired to bandToDisplay).
+    expect(container.textContent).toContain("Baja");
     expect(container.textContent).toContain("Fin del partido");
     // Final scoreboard 2 – 1.
     expect(container.textContent).toMatch(/2\s*–\s*1/);
