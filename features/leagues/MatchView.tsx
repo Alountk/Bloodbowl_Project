@@ -951,10 +951,13 @@ function LiveEventsList({
       : key ?? "—";
   const playerOf = (team: MatchTeamDetail, rosterPlayerId: string | null) =>
     rosterPlayerId ? team.players.find((p) => p.rosterPlayerId === rosterPlayerId) : undefined;
+  // Mockup chronology (Design A): NEWEST FIRST — the mockup lists 196' at the
+  // top and 0' (Inicio) at the bottom, so sort by descending seq.
+  const ordered = [...events].sort((a, b) => b.seq - a.seq);
 
   return (
     <ol aria-label="Cronología del partido" className="border-t border-[#e2e8f0]">
-      {events.map((event) => {
+      {ordered.map((event) => {
         const ref = event.side === "away" ? awayRef : event.side === "home" ? homeRef : null;
         const team = event.side === "away" ? awayTeam : event.side === "home" ? homeTeam : null;
         const player = team ? playerOf(team, event.playerRosterId) : undefined;
