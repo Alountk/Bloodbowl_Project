@@ -93,7 +93,10 @@ export function EventControls({
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-20 flex flex-col items-end gap-3">
+    // z-50 keeps the FAB + its menu ABOVE the sticky Tourplay header (z-40):
+    // the match header now stays visible on scroll, so the floating controls
+    // must stack on top or the header would cover the open menu.
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
       {/* Mini-form */}
       {kind != null ? (
         <div className="w-64 rounded-md border border-[#e2e8f0] bg-white p-4 shadow-lg">

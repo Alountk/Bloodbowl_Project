@@ -71,14 +71,16 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
 }
 
 /**
- * Live match UI (MV-5): rendered ONLY when the fixture has a `LiveMatch`
- * (`detail.live !== null`). A running match (`status: "live"`) is fed by the
- * `useLiveMatch` SSE hook (controls call `sendCommand`); a finished live match
- * renders the chronological timeline from persisted events. Static fixtures
- * pass `live: null` and render nothing here, so no turn/clock/event UI ever
- * appears for them (MV-5/AC-5). Clocks are hidden when the league turns the
- * option off (LM-5).
-  */
+ * Live match UI (MV-5): the UNIFORM sticky Tourplay header (top bar + hero +
+ * meta row) renders for the pending/scheduled/live/finished fixture states —
+ * turns, clocks and score stay visible while the body scrolls, with the
+ * LIVE-specific elements gated by `status === "live"` + the viewer's side. A
+ * running match (`status: "live"`) is fed by the `useLiveMatch` SSE hook
+ * (controls call `sendCommand`); a finished live match renders the header with
+ * the final score above the chronological timeline from persisted events.
+ * Static played/walkover fixtures (no `LiveMatch`) keep their own summary/
+ * walkover bodies with no turn/clock/event chrome (MV-5/AC-5).
+ */
 
 /** Formats a millisecond value as M:SS (informational unified clock). */
 function FormatMs({ ms }: { ms: number }) {
@@ -334,11 +336,16 @@ function TurnTrack({
  * small screens) —
  * `[label "{league} · Jornada {round}"] [home track] [home clock H:MM:SS]
  *  [2ª PARTE badge] [away clock H:MM:SS] [TURNO button] [away track]`.
- * Both turn tracks show the SAME global numbers with the ACTIVE side's current
- * turn highlighted; the ACTIVE coach's "Tu turno" STATUS + the red TURNO
- * ("Dar el turno") button sit next to the always-visible compact
- * "Mitad H · Turno N" line (all three strings stay byte-identical — e2e/unit
- * suites assert them). The unified "Tiempo" clock lives in the hero scoreboard.
+ * The layout renders UNIFORMLY in every fixture state (pending/scheduled/live/
+ * finished); only the LIVE-specific elements are gated: both turn tracks show
+ * the SAME global numbers with the ACTIVE side's current turn highlighted ONLY
+ * while live (inert otherwise — no `aria-current`), the clocks show H:MM:SS
+ * while live (or the frozen base value once it carries real time) and "–"
+ * before kickoff, and the ACTIVE coach's "Tu turno" STATUS + the red TURNO
+ * ("Dar el turno") button render ONLY when `status === "live"` AND the viewer
+ * is the active participant (spectator/admin → hidden). The "Mitad H · Turno N"
+ * line stays always-visible (all strings stay byte-identical — e2e/unit suites
+ * assert them). The unified "Tiempo" clock lives in the hero scoreboard.
  */
 function LiveTopBar({
   state,
@@ -353,29 +360,34 @@ function LiveTopBar({
   names: { home: string; away: string };
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
 }) {
+  const live = state.status === "live";
   const globalTurn = state.half === 2 ? state.turnNumber + 8 : state.turnNumber;
+  // Inert pre-kickoff clocks render "–"; once a value exists (live or finished)
+  // the H:MM:SS (base or ticking) renders.
+  const clockValue = (ms: number) => (live || ms > 0 ? <FormatHms ms={ms} /> : "–");
+  const showTurnControls = live && turnControls.isActive;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#1f3a7a] bg-[#12225a] px-4 py-2 text-white">
       <p className="text-[11px] font-bold uppercase tracking-wide text-[#cbd5e1]">{label}</p>
       <TurnTrack
         sideName={names.home}
         current={globalTurn}
-        isActive={state.activeSide === "home"}
+        isActive={live && state.activeSide === "home"}
       />
       <span className="text-[11px] font-bold tabular-nums text-white">
-        <FormatHms ms={clock.homeTurnMs} />
+        {clockValue(clock.homeTurnMs)}
       </span>
       <span className="rounded-sm bg-[#d11938] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white">
         {state.half === 2 ? "2ª PARTE" : "1ª PARTE"}
       </span>
       <span className="text-[11px] font-bold tabular-nums text-white">
-        <FormatHms ms={clock.awayTurnMs} />
+        {clockValue(clock.awayTurnMs)}
       </span>
       <span className="flex items-center gap-2">
         <p className="text-[11px] font-semibold text-[#cbd5e1]">
           Mitad {state.half} · Turno {state.turnNumber}
         </p>
-        {turnControls.isActive ? (
+        {showTurnControls ? (
           <>
             <p role="status" className="text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
               Tu turno
@@ -383,7 +395,7 @@ function LiveTopBar({
             <button
               type="button"
               onClick={turnControls.onEndTurn}
-              disabled={state.status !== "live" || turnControls.submitting}
+              disabled={turnControls.submitting}
               className="rounded-sm bg-[#d11938] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white hover:bg-[#b0142f] disabled:opacity-50"
             >
               Dar el turno
@@ -394,7 +406,7 @@ function LiveTopBar({
       <TurnTrack
         sideName={names.away}
         current={globalTurn}
-        isActive={state.activeSide === "away"}
+        isActive={live && state.activeSide === "away"}
       />
     </div>
   );
@@ -466,25 +478,30 @@ function LiveTeamBlock({
 
 /**
  * The center scoreboard: BIG "home : away" digits (white on the navy hero, red
- * separator) + the unified "Tiempo" match clock (Design 10: the per-team
- * mini-stats live under each team block; the top bar dropped the Tiempo label
- * in the Tourplay single-row redesign, so it lives here under the score).
+ * separator, mockup letter-spaced digits). The score is "- : -" before the
+ * fixture is played (pending/scheduled), the live score while live, and the
+ * final score once finished. The unified "Tiempo" match clock renders ONLY
+ * while live (it ticks client-side; a frozen elapsed would be inert noise on a
+ * pre-live or finished page).
  */
 function LiveScoreboard({ state }: { state: LiveMatchViewState }) {
+  const played = state.status === "live" || state.status === "finished";
   return (
     <div className="px-2 text-center">
       <p
         data-testid="live-score"
         aria-label="Marcador"
-        className="text-5xl font-black leading-none text-white tabular-nums"
+        className="text-5xl font-black leading-none tracking-[0.08em] text-white tabular-nums"
       >
-        {state.homeScore}
+        {played ? state.homeScore : "-"}
         <span className="mx-2 text-[#d11938]">:</span>
-        {state.awayScore}
+        {played ? state.awayScore : "-"}
       </p>
-      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#cbd5e1]">
-        Tiempo <FormatMs ms={state.elapsed} />
-      </p>
+      {state.status === "live" ? (
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#cbd5e1]">
+          Tiempo <FormatMs ms={state.elapsed} />
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -562,6 +579,62 @@ function LiveMetaRow() {
   );
 }
 
+/**
+ * The uniform sticky match header (top bar + hero + meta row): rendered for
+ * EVERY fixture state (pending/scheduled/live/finished) so the turns, clocks
+ * and score stay visible while the body scrolls (`sticky top-0 z-40` on a solid
+ * navy background). Only the LIVE-specific elements inside are gated by
+ * `state.status === "live"` (see LiveTopBar/LiveScoreboard).
+ */
+function TourplayHeader({
+  state,
+  clock,
+  label,
+  names,
+  homeSubtitle,
+  awaySubtitle,
+  homeTeamId,
+  awayTeamId,
+  events,
+  turnControls,
+}: {
+  state: LiveMatchViewState;
+  clock: DisplayClock;
+  label: string;
+  names: { home: string; away: string };
+  homeSubtitle: string;
+  awaySubtitle: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  events: LiveMatchView["events"];
+  turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
+}) {
+  return (
+    <div
+      data-testid="tourplay-header"
+      className="sticky top-0 z-40 border-b border-[#1f3a7a] bg-[#12225a]"
+    >
+      <LiveTopBar
+        state={state}
+        clock={clock}
+        label={label}
+        names={names}
+        turnControls={turnControls}
+      />
+      <LiveHero
+        state={state}
+        names={names}
+        homeSubtitle={homeSubtitle}
+        awaySubtitle={awaySubtitle}
+        homeTeamId={homeTeamId}
+        awayTeamId={awayTeamId}
+        events={events}
+      />
+      <LiveMetaRow />
+    </div>
+  );
+}
+
 /** The live-session control: consent → ready → begin → live clock + controls. */
 function LiveActiveMatch({
   live,
@@ -627,27 +700,6 @@ function LiveActiveMatch({
     }
   };
 
-  // Pre-live states (no row / pending / ready): the two-phase consent panel.
-  if (state.status === "pending" || state.status === "ready") {
-    return (
-      <div className="bg-white border border-[#e2e8f0]">
-        <LiveConsentPanel
-          state={state}
-          names={names}
-          onConsent={(side) => void act({ type: "consent", side })}
-          onRetract={(side) => void act({ type: "retractConsent", side })}
-          onBegin={() => void act({ type: "begin" })}
-          submitting={submitting}
-        />
-        {error ? (
-          <p role="alert" className="px-4 pb-3 text-sm text-red-600">
-            {error}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
   // The event timeline comes from the SSE hook's accumulated frames once it has
   // converged (the snapshot carries the persisted timeline); until then the
   // fixture detail's persisted events stand in. This keeps the timeline, the
@@ -657,75 +709,92 @@ function LiveActiveMatch({
 
   return (
     <div className="bg-white border border-[#e2e8f0]">
-      {showNudgeBanner ? (
-        <p
-          role="status"
-          className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
-        >
-          Tu rival pide el turno
-        </p>
-      ) : null}
-      <LiveTopBar
+      {/* Uniform sticky match header: renders in EVERY fixture state. */}
+      <TourplayHeader
         state={state}
         clock={clock}
         label={leagueLabel}
-        names={names}
-        turnControls={{
-          isActive: state.viewerSide === state.activeSide,
-          submitting,
-          onEndTurn: () => void act({ type: "endTurn", side: state.activeSide }),
-        }}
-      />
-      <LiveHero
-        state={state}
         names={names}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
         homeTeamId={homeTeam.id}
         awayTeamId={awayTeam.id}
         events={events}
-      />
-      <LiveMetaRow />
-      <LiveEventsList
-        events={events}
-        startedAt={state.startedAt}
-        homeTeam={homeTeam}
-        awayTeam={awayTeam}
+        turnControls={{
+          isActive: state.viewerSide === state.activeSide,
+          submitting,
+          onEndTurn: () => void act({ type: "endTurn", side: state.activeSide }),
+        }}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-        <div className="min-w-0">
+      {state.status === "pending" || state.status === "ready" ? (
+        <>
+          <LiveConsentPanel
+            state={state}
+            names={names}
+            onConsent={(side) => void act({ type: "consent", side })}
+            onRetract={(side) => void act({ type: "retractConsent", side })}
+            onBegin={() => void act({ type: "begin" })}
+            submitting={submitting}
+          />
           {error ? (
-            <p role="alert" className="mt-1 text-sm text-red-600">
+            <p role="alert" className="px-4 pb-3 text-sm text-red-600">
               {error}
             </p>
           ) : null}
-        </div>
-        <div className="flex flex-wrap gap-3">
-          {/* A non-active coach (with a side) may request the turn (LM-13/D14);
-              the ACTIVE coach's pass control lives CENTERED in the top bar. */}
-          {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
-            <button
-              type="button"
-              onClick={() => void act({ type: "requestTurn" })}
-              disabled={state.status !== "live" || submitting}
-              className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+        </>
+      ) : (
+        <>
+          {showNudgeBanner ? (
+            <p
+              role="status"
+              className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
             >
-              Pedir turno
-            </button>
+              Tu rival pide el turno
+            </p>
           ) : null}
-        </div>
-      </div>
-      {/* D26: event recording controls — FAB + role-aware menu; renders only for a
-          live match with a viewer side (null → spectator/admin hidden). The
-          roster is the viewer's OWN side (alive players) for the mini-form. */}
-      <EventControls
-        viewerSide={state.viewerSide}
-        activeSide={state.activeSide}
-        status={state.status}
-        roster={state.viewerSide === "away" ? awayTeam.players : homeTeam.players}
-        onSubmit={act}
-      />
+          <LiveEventsList
+            events={events}
+            startedAt={state.startedAt}
+            homeTeam={homeTeam}
+            awayTeam={awayTeam}
+          />
+
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+            <div className="min-w-0">
+              {error ? (
+                <p role="alert" className="mt-1 text-sm text-red-600">
+                  {error}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {/* A non-active coach (with a side) may request the turn (LM-13/D14);
+                  the ACTIVE coach's pass control lives CENTERED in the top bar. */}
+              {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
+                <button
+                  type="button"
+                  onClick={() => void act({ type: "requestTurn" })}
+                  disabled={state.status !== "live" || submitting}
+                  className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+                >
+                  Pedir turno
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {/* D26: event recording controls — FAB + role-aware menu; renders only for a
+              live match with a viewer side (null → spectator/admin hidden). The
+              roster is the viewer's OWN side (alive players) for the mini-form. */}
+          <EventControls
+            viewerSide={state.viewerSide}
+            activeSide={state.activeSide}
+            status={state.status}
+            roster={state.viewerSide === "away" ? awayTeam.players : homeTeam.players}
+            onSubmit={act}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -753,6 +822,93 @@ function FinishedLiveTimeline({
         homeTeam={homeTeam}
         awayTeam={awayTeam}
       />
+    </div>
+  );
+}
+
+/**
+ * A finished live match (status "finished"): the UNIFORM sticky Tourplay header
+ * renders the final score + frozen per-team clocks + inert tracks above the
+ * persisted Design-A timeline. `useLiveClock` re-derives nothing while not
+ * live — it just serves the persisted clock base values.
+ */
+function FinishedLiveView({
+  live,
+  leagueLabel,
+  names,
+  homeSubtitle,
+  awaySubtitle,
+  homeTeam,
+  awayTeam,
+}: {
+  live: LiveMatchView;
+  leagueLabel: string;
+  names: { home: string; away: string };
+  homeSubtitle: string;
+  awaySubtitle: string;
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
+}) {
+  const clock = useLiveClock(live);
+  return (
+    <div className="bg-white border border-[#e2e8f0]">
+      <TourplayHeader
+        state={live}
+        clock={clock}
+        label={leagueLabel}
+        names={names}
+        homeSubtitle={homeSubtitle}
+        awaySubtitle={awaySubtitle}
+        homeTeamId={homeTeam.id}
+        awayTeamId={awayTeam.id}
+        events={live.events}
+        turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
+      />
+      <FinishedLiveTimeline live={live} homeTeam={homeTeam} awayTeam={awayTeam} />
+    </div>
+  );
+}
+
+/**
+ * A pending fixture (no scheduled date): the UNIFORM sticky Tourplay header
+ * renders the inert pre-kickoff state ("–" clocks, "- : -" score, no turn
+ * controls) above the pending notice. The header runs on the empty pending
+ * shell (D16) so pending and scheduled share the exact same chrome.
+ */
+function PendingFixtureView({
+  leagueLabel,
+  names,
+  homeSubtitle,
+  awaySubtitle,
+  homeTeam,
+  awayTeam,
+}: {
+  leagueLabel: string;
+  names: { home: string; away: string };
+  homeSubtitle: string;
+  awaySubtitle: string;
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
+}) {
+  const state = useMemo(() => emptyPendingView(), []);
+  const clock = useLiveClock(state);
+  return (
+    <div className="bg-white border border-[#e2e8f0]">
+      <TourplayHeader
+        state={state}
+        clock={clock}
+        label={leagueLabel}
+        names={names}
+        homeSubtitle={homeSubtitle}
+        awaySubtitle={awaySubtitle}
+        homeTeamId={homeTeam.id}
+        awayTeamId={awayTeam.id}
+        events={[]}
+        turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
+      />
+      <div className="bg-white px-4 py-6 text-center">
+        <p className="text-sm font-semibold text-slate-600">Sin jornada programada todavía.</p>
+      </div>
     </div>
   );
 }
@@ -1053,11 +1209,20 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
 
   let body: React.ReactNode;
   if (detail.live) {
-    // A LiveMatch exists for this fixture (MV-5): render the consent/ready/live
-    // panel, or the finished timeline.
+    // A LiveMatch exists for this fixture (MV-5): the uniform header renders
+    // for the consent/ready/live states (LiveActiveMatch) and for the finished
+    // live timeline (FinishedLiveView); the body below holds the per-state panel.
     body =
       detail.live.status === "finished" ? (
-        <FinishedLiveTimeline live={detail.live} homeTeam={detail.homeTeam} awayTeam={detail.awayTeam} />
+        <FinishedLiveView
+          live={detail.live}
+          leagueLabel={leagueLabel}
+          names={names}
+          homeSubtitle={homeSubtitle}
+          awaySubtitle={awaySubtitle}
+          homeTeam={detail.homeTeam}
+          awayTeam={detail.awayTeam}
+        />
       ) : (
         <LiveActiveMatch
           live={detail.live}
@@ -1073,6 +1238,8 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         />
       );
   } else if (summary.walkover) {
+    // A walkover keeps its own panel (no uniform Tourplay header — the fixture
+    // was never played live; the e2e asserts zero turn/clock chrome here).
     body = (
       <div className="border border-[#e2e8f0] bg-white px-4 py-4 text-center">
         <p className="text-3xl font-black text-[#12225a]">
@@ -1082,8 +1249,8 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       </div>
     );
   } else if (detail.fixture.status === "scheduled") {
-    // A scheduled fixture with no LiveMatch yet (MV-5/D16): the two-phase
-    // consent start panel ("Iniciar partido" per coach).
+    // A scheduled fixture with no LiveMatch yet (MV-5/D16): the uniform header
+    // + the two-phase consent start panel ("Iniciar partido" per coach).
     body = (
       <LiveActiveMatch
         live={null}
@@ -1099,10 +1266,17 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       />
     );
   } else if (detail.fixture.status === "pending") {
+    // A pending fixture (no date agreed): the uniform header renders the inert
+    // pre-kickoff chrome above the pending notice.
     body = (
-      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
-        <p className="text-sm font-semibold text-slate-600">Sin jornada programada todavía.</p>
-      </div>
+      <PendingFixtureView
+        leagueLabel={leagueLabel}
+        names={names}
+        homeSubtitle={homeSubtitle}
+        awaySubtitle={awaySubtitle}
+        homeTeam={detail.homeTeam}
+        awayTeam={detail.awayTeam}
+      />
     );
   } else {
     body = <PlayedSections sections={summary.sections} />;
