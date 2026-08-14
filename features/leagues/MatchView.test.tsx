@@ -1186,6 +1186,28 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(tdRow!.textContent).toContain("#1");
     expect(tdRow!.textContent).toContain("Blitzer A");
   });
+
+  it("mirrors the VISITOR rows so each team reads its chronology from its own side", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const localRow = rows.find((li) => li.textContent?.includes("Blitzer A"));
+    const visitorRow = rows.find((li) => li.textContent?.includes("Blitzer B"));
+    expect(localRow).toBeTruthy();
+    expect(visitorRow).toBeTruthy();
+
+    // The LOCAL row keeps the normal left→right order (time first, detail right).
+    expect(localRow!.className).not.toContain("flex-row-reverse");
+    expect(localRow!.lastElementChild!.textContent).toContain("Touchdown");
+    // The VISITOR row is MIRRORED (Tourplay match-event--reverse): the detail
+    // becomes the visual-LEFT block (DOM-last child) and the minute moves to the
+    // visual-right edge (DOM-first child).
+    expect(visitorRow!.className).toContain("flex-row-reverse");
+    expect(visitorRow!.lastElementChild!.textContent).toContain("Baja");
+    expect(visitorRow!.firstElementChild!.textContent).toMatch(/\d+'/);
+  });
 });
 
 describe("MatchView — copy + tokens + notFound (MV-7)", () => {
