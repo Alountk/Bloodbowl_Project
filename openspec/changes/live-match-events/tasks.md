@@ -40,10 +40,10 @@ Implement stack-to-main: PR1→main, PR2→main, PR3a→main, PR3b→main, PR4�
 - [x] **1.6** `app/api/leagues/[id]/fixtures/[fixtureId]/live/route.ts`: dispatch `completion` (shape `{type,side,playerRosterId}`); `type:"mvp"` → 400 no mutation (LM-14 mvp-not-command).
 - [x] **1.7** `app/api/leagues/[id]/fixtures/[fixtureId]/live/route.test.ts`: completion 200/409; `mvp`→400.
 - [x] **1.8** `features/leagues/api.ts`: extend `LiveCommand` with `completion` (no `mvp`, D26/D22).
-- [ ] **1.9** `features/leagues/liveEventLabels.ts`: add pure `bandToDisplay` (`bruise`→`{Herida,0}`; `apaleado|grave|permanent|dead`→`{Baja,2}`) + `eventSpp` (td 3, completion 1, casualty via band lasting?2:0, mvp 4) (LM-18).
-- [ ] **1.10** T-unit: `liveEventLabels.test.ts` — 5 bands→2 buckets; spp per kind incl. completion/mvp (LM-18).
-- [ ] **1.11** `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts`: add `include:{ liveMatch: { include:{ events:{ orderBy:{ seq:"desc" }, take:1 } } } }`; if LiveMatch exists, in-tx `aggregate({_max:{seq}})` → home mvp seq+1, away +2, rows with payload `{}`, each team's `side`, guarded row bump (D20); no LiveMatch → no write.
-- [ ] **1.12** T-route: result on live fixture appends home+away `mvp` monotonic seq (`at` = `lm.finishedAt ?? now` per validator); concurrent double-write P2002→409; fixture without LiveMatch unchanged (match-result all 3 scenarios).
+- [x] **1.9** `features/leagues/liveEventLabels.ts`: add pure `bandToDisplay` (`bruise`→`{Herida,0}`; `apaleado|grave|permanent|dead`→`{Baja,2}`) + `eventSpp` (td 3, completion 1, casualty via band lasting?2:0, mvp 4) (LM-18).
+- [x] **1.10** T-unit: `liveEventLabels.test.ts` — 5 bands→2 buckets; spp per kind incl. completion/mvp (LM-18).
+- [x] **1.11** `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts`: add `include:{ liveMatch: ... }`; if LiveMatch exists, in-tx `aggregate({_max:{seq}})` → home mvp seq+1, away +2, rows with payload `{}`, each team's `side`, guarded row bump (D20); no LiveMatch → no write.
+- [x] **1.12** T-route: result on live fixture appends home+away `mvp` monotonic seq (`at` = `lm.finishedAt ?? now` per validator); concurrent double-write P2002→409; fixture without LiveMatch unchanged (match-result all 3 scenarios).
 
 ## PR 2 — DTO filter + pure derivations
 

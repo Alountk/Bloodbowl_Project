@@ -225,7 +225,7 @@ describe("applyCompletion — records a ★1 completion event WITHOUT flipping t
   });
 
   it("appends for the away side too, monotonic seq continues from prior events", () => {
-    const prior = state({ seq: 5, events: [{ seq: 5, kind: "endTurn", side: "home", playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 }] });
+    const prior = state({ seq: 5, events: [{ seq: 5, kind: "turn", side: "home", playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 }] });
     const next = applyCompletion(prior, { side: "away", playerRosterId: "p-9" }, 1200);
     expect(next.events).toHaveLength(2);
     const completion = next.events[1];

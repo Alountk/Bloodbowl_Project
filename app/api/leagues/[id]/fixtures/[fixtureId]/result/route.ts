@@ -213,6 +213,9 @@ export async function POST(
           players: { select: { rosterPlayerId: true, valueBonus: true } },
         },
       },
+      // D20: when a live match exists, the result transaction appends the
+      // home+away mvp events to its LiveEvent list and bumps the row seq.
+      liveMatch: { select: { id: true, half: true, turnNumber: true, finishedAt: true } },
     },
   });
   if (!fixture || fixture.league.status !== "started" || fixture.leagueId !== id) {
@@ -302,7 +305,62 @@ export async function POST(
   await ensurePlayersForTeam(homeTeamId, Array.isArray(fixture.homeTeam.roster) ? (fixture.homeTeam.roster as unknown as PlayerEntry[]) : []);
   await ensurePlayersForTeam(awayTeamId, Array.isArray(fixture.awayTeam.roster) ? (fixture.awayTeam.roster as unknown as PlayerEntry[]) : []);
 
-  const updated = await prisma.$transaction(async (tx) => {
+  let updated;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
+    // D20/LM-mvp: a fixture with a LiveMatch appends the home+away MJP grantee
+    // `mvp` events to that LiveMatch's event list INSIDE this transaction. The
+    // next seq is read as max(seq) in-tx and the row seq is bumped, so two
+    // concurrent result submits can never collide on `@@unique([liveMatchId,
+    // seq])` — the constraint is the double-submit arbiter (P2002 → 409 below).
+    // It runs FIRST so a seq conflict aborts the whole result before any score
+    // mutation commits (all writes are atomic either way). A fixture without a
+    // LiveMatch (legacy/walkover) writes no mvp event.
+    if (fixture.liveMatch) {
+      const lm = fixture.liveMatch;
+      const agg = await tx.liveEvent.aggregate({
+        where: { liveMatchId: lm.id },
+        _max: { seq: true },
+      });
+      const maxSeq = agg._max.seq ?? 0;
+      const homeSeq = maxSeq + 1;
+      const awaySeq = maxSeq + 2;
+      // Validator refinement: the mvp feed minute is the load time — `at` =
+      // `lm.finishedAt` when present, else `now`.
+      const atMs = lm.finishedAt ? new Date(lm.finishedAt).getTime() : Date.now();
+      await tx.liveEvent.createMany({
+        data: [
+          {
+            liveMatchId: lm.id,
+            seq: homeSeq,
+            kind: "mvp",
+            side: "home",
+            playerRosterId: homeMvp,
+            half: lm.half,
+            turnNumber: lm.turnNumber,
+            payload: {},
+            createdAt: new Date(atMs),
+          },
+          {
+            liveMatchId: lm.id,
+            seq: awaySeq,
+            kind: "mvp",
+            side: "away",
+            playerRosterId: awayMvp,
+            half: lm.half,
+            turnNumber: lm.turnNumber,
+            payload: {},
+            createdAt: new Date(atMs),
+          },
+        ],
+      });
+      // Bump the LiveMatch row seq past BOTH mvp seqs so the next live/result
+      // transition's event (seq = row.seq + 1) never collides (D20).
+      await tx.liveMatch.updateMany({
+        where: { id: lm.id },
+        data: { seq: awaySeq },
+      });
+    }
     await tx.fixture.update({
       where: { id: fixtureId },
       data: { homeScore: home.score, awayScore: away.score, winnerId },
@@ -342,7 +400,19 @@ export async function POST(
       resolvedCasualties,
     );
     return report;
-  });
+    });
+  } catch (error) {
+    // D20: a concurrent double-submit trips `@@unique([liveMatchId, seq])`
+    // (Prisma P2002) inside the transaction — map it to a 409 so no duplicate
+    // mvp write ever persists.
+    if ((error as { code?: string }).code === "P2002") {
+      return NextResponse.json(
+        { error: "Concurrent result load conflict" },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
 
   return NextResponse.json({
     fixtureId,
