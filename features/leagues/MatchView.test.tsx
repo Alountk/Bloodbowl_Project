@@ -387,6 +387,25 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(stats.textContent).toContain("★6");
   });
 
+  it("shows the EventControls FAB '+' for the ACTIVE coach (LM-20)", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail()); // home coach, active side home → FAB
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "+" })).toBeTruthy();
+  });
+
+  it("hides the EventControls FAB for a spectator (no side, LM-20 no-side)", async () => {
+    stubLiveEventSource();
+    // A spectator member user owns neither team → session-derived viewerSide null.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (vi.mocked(useSession) as any).mockReturnValue({ data: { user: { id: "user-spectator" } } });
+    stubMatch(liveDetail());
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "+" })).toBeNull();
+  });
+
   it("sends a control command when the coach clicks 'Dar el turno'", async () => {
     const fetchMock = vi.fn((url: string) => {
       // getMatchDetail GET → the live detail; sendCommand POST → the new view.

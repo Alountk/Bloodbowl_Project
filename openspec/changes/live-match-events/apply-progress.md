@@ -3,16 +3,16 @@
 ## Change
 **Change**: live-match-events
 **Phase**: sdd-apply
-**Slice**: PR 1 (event model + mvp) + PR 2 (DTO filter + derivations) + PR 3a (Design-A feed UI)
-**Branches**: `feat/live-match-events-pr1` (#80) → `feat/live-match-events-pr2` (#81) → `feat/live-match-events-pr3a`
+**Slice**: PR 1 (event model + mvp) + PR 2 (DTO filter + derivations) + PR 3a (Design-A feed UI) + PR 3b (event recording controls)
+**Branches**: `feat/live-match-events-pr1` (#80) → `feat/live-match-events-pr2` (#81) → `feat/live-match-events-pr3a` (#82) → `feat/live-match-events-pr3b`
 **Mode**: Strict TDD
-**Status**: success — PR 1 (1.1–1.12) + PR 2 (2.1–2.8) + PR 3a (3.1–3.5) complete
-**Elapsed state**: applyState ready → PR 1 + PR 2 + PR 3a done; remaining PRs 3b/4 untouched
+**Status**: success — PR 1 (1.1–1.12) + PR 2 (2.1–2.8) + PR 3a (3.1–3.5) + PR 3b (3.6–3.11) complete
+**Elapsed state**: applyState ready → PR 1 + PR 2 + PR 3a + PR 3b done; remaining PR 4 (e2e) untouched
 
 ## Delivery Strategy Resolution
 
 - Forecast: `400-line budget risk: Low` · `Chained PRs recommended: Yes` · `Chain strategy: stacked-to-main`
-- Resolved path: 5-PR stacked-to-main chain; this batch implemented PR 1, PR 2, then PR 3a (each estimated < 400 lines). No `size:exception`.
+- Resolved path: 5-PR stacked-to-main chain; this batch implemented PR 1, PR 2, PR 3a, then PR 3b (each estimated < 400 lines). No `size:exception`.
 - Work-unit commits: 3 feature commits (+1 style cleanup). Each is independently green (pre-commit hooks run the full `pnpm test` suite).
 
 ## PR 1 Completed Tasks
@@ -212,5 +212,55 @@
 - Auth e2e: `pnpm run test:e2e:auth` (Docker Postgres) → **31/31 passed** — including `live-match.spec.ts` two-context SSE journey (control strings Tu turno / Dar el turno / Pedir turno / consent all intact).
 - Pre-commit hooks (full `pnpm test`) passed on every PR 1 + PR 2 + PR 3a feature commit.
 
+## PR 3b Completed Tasks
+
+- [x] **3.6** `liveControls.tsx` created: `EventControls` FAB `fixed bottom-6 right-6` navy "+", rendered only while `status==="live"` && `viewerSide != null`.
+- [x] **3.7** Role-aware menu + mini-form: active → TD/Pase completo/Baja·Herida/Falta; non-active → Herida only; player `<select>` from the viewer's OWN roster (alive only) + 5-band `<select>` for casualty; commands map to route shapes (`td`/`completion`→playerRosterId, `casualty`→victimRosterId+band, `foul`→playerRosterId).
+- [x] **3.8** Submit via `act`/busyRef; menu/form closes on submit (errors surface via the existing `act` alert).
+- [x] **3.9** `MatchView.tsx` `LiveActiveMatch` renders `EventControls` with the merged session `viewerSide` + the viewer's own roster; never reads the raw SSE frame's viewerSide.
+- [x] **3.10** `liveControls.test.tsx`: FAB visibility, role menu (active 4 kinds / non-active Herida only / spectator no FAB), band select only for casualty, alive-only roster, submit fires the 4 command shapes, menu closes on submit.
+- [x] **3.11** `MatchView.test.tsx`: FAB visible for active coach, hidden for a spectator (no side).
+
+## PR 3b TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.6/3.7/3.10 | `liveControls.test.tsx` | Component | N/A (new) | ✅ Written (module missing) | ✅ Passed | ✅ 12 cases | ✅ Cancelar→menu vs submit→close split |
+| 3.8/3.10 | `liveControls.test.tsx` (submission) | Component | ✅ 8/8 | ✅ Written | ✅ Passed | ✅ 4 command shapes | ➖ None |
+| 3.9/3.11 | `MatchView.test.tsx` (FAB) | Component | ✅ 33/33 | ✅ Written (spectator fail) | ✅ Passed | ✅ active vs spectator | ✅ spectator via session mock |
+
+## PR 3b Work Unit Evidence
+
+| Unit | Focused test command + result | Runtime harness | Rollback boundary |
+|------|------------------------------|-----------------|-------------------|
+| EventControls FAB/module/form + MatchView wiring | `pnpm vitest run features/leagues/liveControls.test.tsx features/leagues/MatchView.test.tsx` → 47 passed | Local e2e 21/21 + auth e2e 31/31 (live-match journey green) | Revert `liveControls.tsx` + the `EventControls` render in `LiveActiveMatch` + the two test files (restores the pre-FAB live view) |
+
+## PR 3b Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/liveControls.tsx` | Created | `EventControls` FAB + role menu + mini-form; submit→command mapping |
+| `features/leagues/liveControls.test.tsx` | Created | 12 component tests |
+| `features/leagues/MatchView.tsx` | Modified | imported + rendered `EventControls` in `LiveActiveMatch` (own roster via `viewerSide`) |
+| `features/leagues/MatchView.test.tsx` | Modified | FAB active/spectator integration tests |
+| `openspec/changes/live-match-events/tasks.md` | Modified | PR 3b tasks 3.6–3.11 marked `[x]` |
+
+## PR 3b Deviations from Design
+- **Band `<select>` labels**: used the 5 detailed Spanish labels via `casualtyKindLabel` (Magullado/Apaleado/Herida grave/Permanente/Muerto) rather than `bandToDisplay`'s 2 buckets — a 5-band select needs distinct options so the coach picks a precise band; the feed still displays the Herida/Baja bucket via `bandToDisplay`. Values are the raw band keys (`bruise|apaleado|grave|permanent|dead`) matching the route's `casualty.band` payload and `INJURY_OUTCOMES`.
+- The active menu shows a single "Baja · Herida" casualty item (per LM-20's 4 actions), which opens the same 5-band casualty form used by the non-active "Herida" — the distinction is the side/permission gate (server matrix authoritative), not a separate form.
+
+## PR 3b Issues Found
+- **Spectator test pollution**: my first spectator assertion tried to hide the FAB by nulling the DTO's `viewerSide`, but `LiveActiveMatch` overrides it with the session-derived `viewerSide` prop (D19) — the FAB still showed and the failing test leaked session state that broke a later nudge test. Fixed by mocking `useSession` to a non-owner user so the SESSION-derived `viewerSide` is null (the true spectator path). Resolved the whole cascade; full MatchView 35/35 green.
+
+## Verification (cumulative, PR 1 + PR 2 + PR 3a + PR 3b)
+
+- Focused PR 3b: `pnpm vitest run features/leagues/liveControls.test.tsx features/leagues/MatchView.test.tsx` → **2 files, 47 tests passed**.
+- Full: `pnpm test` → **96 files, 1211 tests passed**.
+- `pnpm lint` → clean.
+- `npx tsc --noEmit` → clean.
+- Local e2e: `AUTH_MODE=local pnpm exec playwright test` → **21/21 passed**.
+- Auth e2e: `pnpm run test:e2e:auth` (Docker Postgres) → **31/31 passed** — including `live-match.spec.ts` journey (control strings Tu turno / Dar el turno / Pedir turno / consent intact).
+- Pre-commit hooks (full `pnpm test`) passed on every PR 1–PR 3b feature commit.
+
 ## Status
-PR 1: 12/12 · PR 2: 8/8 · PR 3a: 5/5 — all complete. Ready for the next batch (PR 3b — event recording controls) once the orchestrator opens the next slice branch, or `sdd-verify` per the parent's flow.
+PR 1: 12/12 · PR 2: 8/8 · PR 3a: 5/5 · PR 3b: 6/6 — all complete. Ready for the final batch (PR 4 — e2e + regression) once the orchestrator opens the next slice branch, or `sdd-verify` per the parent's flow.
