@@ -3,16 +3,16 @@
 ## Change
 **Change**: live-match-events
 **Phase**: sdd-apply
-**Slice**: PR 1 (event model + mvp) + PR 2 (DTO filter + derivations) + PR 3a (Design-A feed UI) + PR 3b (event recording controls)
-**Branches**: `feat/live-match-events-pr1` (#80) → `feat/live-match-events-pr2` (#81) → `feat/live-match-events-pr3a` (#82) → `feat/live-match-events-pr3b`
+**Slice**: PR 1 (event model + mvp) + PR 2 (DTO filter + derivations) + PR 3a (Design-A feed UI) + PR 3b (controls) + PR 4 (e2e + regression — FINAL)
+**Branches**: `feat/live-match-events-pr1` (#80) → `pr2` (#81) → `pr3a` (#82) → `pr3b` (#83) → `pr4`
 **Mode**: Strict TDD
-**Status**: success — PR 1 (1.1–1.12) + PR 2 (2.1–2.8) + PR 3a (3.1–3.5) + PR 3b (3.6–3.11) complete
-**Elapsed state**: applyState ready → PR 1 + PR 2 + PR 3a + PR 3b done; remaining PR 4 (e2e) untouched
+**Status**: success — ALL 34 tasks across PR 1 (1.1–1.12) + PR 2 (2.1–2.8) + PR 3a (3.1–3.5) + PR 3b (3.6–3.11) + PR 4 (4.1–4.3) complete. **The change is complete at 4/4 slices.**
+**Elapsed state**: applyState ready → all change PRs done. Natural next phase: sdd-verify.
 
 ## Delivery Strategy Resolution
 
 - Forecast: `400-line budget risk: Low` · `Chained PRs recommended: Yes` · `Chain strategy: stacked-to-main`
-- Resolved path: 5-PR stacked-to-main chain; this batch implemented PR 1, PR 2, PR 3a, then PR 3b (each estimated < 400 lines). No `size:exception`.
+- Resolved path: 5-PR stacked-to-main chain, delivered as 4 merged PRs (#80–#83, 3a+3b both from the original "slice 3"); each estimated < 400 lines. No `size:exception`.
 - Work-unit commits: 3 feature commits (+1 style cleanup). Each is independently green (pre-commit hooks run the full `pnpm test` suite).
 
 ## PR 1 Completed Tasks
@@ -262,5 +262,55 @@
 - Auth e2e: `pnpm run test:e2e:auth` (Docker Postgres) → **31/31 passed** — including `live-match.spec.ts` journey (control strings Tu turno / Dar el turno / Pedir turno / consent intact).
 - Pre-commit hooks (full `pnpm test`) passed on every PR 1–PR 3b feature commit.
 
-## Status
-PR 1: 12/12 · PR 2: 8/8 · PR 3a: 5/5 · PR 3b: 6/6 — all complete. Ready for the final batch (PR 4 — e2e + regression) once the orchestrator opens the next slice branch, or `sdd-verify` per the parent's flow.
+## PR 4 Completed Tasks (FINALE)
+
+- [x] **4.1** `e2e/live-match.spec.ts` (auth suite): Design-A feed asserts after events — feed rows render minute/tag/dorsal/label/★; no turn-pass row ever appears (`Fin de turno` absent, turn kinds server-filtered live-only).
+- [x] **4.2** e2e: completion via the FAB (active coach → Pase completo → player → feed row ★1); FAB→TD flow (active coach → Touchdown → feed row ★3 + hero score update + turn flip); non-active coach's "+" menu offers ONLY Herida (no TD/Pase/Falta) and records a Herida on their own player; reload persistence (the Design-A rows survive a reload from persisted events); mvp rows (home+away ★4) visible in the finished feed after the result is loaded via the real result modal (6 MJP nominations per team).
+- [x] **4.3** Full gates green: `pnpm test` 1211/1211, auth e2e ×2 (31/31 each run), `pnpm lint`, `npx tsc --noEmit`; plus local e2e 21/21.
+
+## PR 4 Product Fixes (real defects surfaced by the e2e)
+
+Two production defects were surfaced by the new assertions and fixed minimally (task 4.2's "no prod changes unless a test surfaces a defect"):
+
+1. **`fix(live-events): materialize team rosters when a match begins`** — `EventControls`/feed resolve roster names from `Player` rows, which were empty until a result; materialized both teams' rosters (idempotent `ensurePlayersForTeam`) at `begin`.
+2. **`fix(live-events): serve the match roster from team roster JSON`** — the client caches the fixture GET on mount (pre-begin), so the materialize-at-begin fix alone didn't repopulate an already-mounted page. The fixture GET now merges the authoritative `team.roster` JSON (names/positions always present, order = dorsal index+1) with `Player`-row progression fields when present (D21).
+
+## PR 4 TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.1/4.2 | `e2e/live-match.spec.ts` (auth suite) | E2E | ✅ prior 31/31 suites | ✅ surfaced 2 real defects | ✅ passed | ✅ FAB×3, reload, mvp×2 | ✅ removed diagnostic |
+| 4.1/4.2 (route) | `live/route.test.ts`, `fixtures/[fixtureId]/route.test.ts` | Unit/Integration | ✅ 111/111 | ✅ (roster empty) | ✅ | ✅ fix covered | ➖ None |
+
+## PR 4 Work Unit Evidence
+
+| Unit | Focused test command + result | Runtime harness | Rollback boundary |
+|------|------------------------------|-----------------|-------------------|
+| e2e + roster fixes | `pnpm exec playwright test --config playwright.config.auth.ts e2e/live-match.spec.ts` → 1 passed (19s iterating); full auth suite ×2 → 31/31 | Full auth e2e (Docker Postgres) ×2 + local e2e 21/21 | Revert the two `fix()` commits (restores the pre-live roster gap) + the e2e additions |
+
+## PR 4 Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `e2e/live-match.spec.ts` | Modified | Design-A/EventControls/reload/mvp rows coverage; updated file-top comment |
+| `app/api/leagues/[id]/fixtures/[fixtureId]/live/route.ts` | Modified | materialize both teams' rosters at `begin` |
+| `app/api/leagues/[id]/fixtures/[fixtureId]/live/route.test.ts` | Modified | `team.findMany` mock for begin |
+| `app/api/leagues/[id]/fixtures/[fixtureId]/route.ts` | Modified | serve players from `team.roster` merged with Player rows (D21) |
+| `app/api/leagues/[id]/fixtures/[fixtureId]/route.test.ts` | Modified | buildFixture `roster` + merged-player assertions |
+| `openspec/changes/live-match-events/tasks.md` | Modified | PR 4 tasks 4.1–4.3 marked `[x]` (all 34 change tasks done) |
+
+## PR 4 Deviations from Design
+- **Two production fixes** required to make the e2e pass (roster source during live): the design (D21) assumed `Player` rows exist, but they were lazy until the result route. Fixed by serving the roster JSON in the fixture GET (identity source) + materializing at begin. No spec divergence — this restores the intended behavior the design assumed.
+- The e2e treats the active/non-active FAB role assertions deterministically by resolving the randomized home/away mapping (same approach the spec already used).
+
+## Verification (FINAL, cumulative PR 1–PR 4)
+
+- `pnpm test` → **96 files, 1211 tests passed**.
+- `pnpm lint` → clean.
+- `npx tsc --noEmit` → clean.
+- Local e2e: `AUTH_MODE=local pnpm exec playwright test` → **21/21 passed**.
+- Auth e2e: `pnpm run test:e2e:auth` (Docker Postgres) → **31/31 passed ×2 runs** (deterministic under randomized home/away), incl. the extended `live-match.spec.ts` FAB/reload/mvp journey.
+- Every feature/fix commit passed full `pnpm test` via the pre-commit hook.
+
+## Status — CHANGE COMPLETE
+PR 1: 12/12 · PR 2: 8/8 · PR 3a: 5/5 · PR 3b: 6/6 · PR 4: 3/3 — **all 34 tasks across the 5-slice change are `[x]`.** The live-match-events change is fully implemented and verified. Natural next phase: `sdd-verify` (and `sdd-archive` to merge the delta specs into the main specs).
