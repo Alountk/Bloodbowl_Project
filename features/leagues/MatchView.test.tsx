@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { useSession } from "next-auth/react";
-import { MatchView, teamTurnCounts } from "./MatchView";
+import { MatchView } from "./MatchView";
 import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
 
 // `MatchView` uses the session to derive the viewer's side when no live row
@@ -581,27 +581,30 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/Jornada 1/);
     expect(container.textContent).toMatch(/1ª PARTE/);
 
-    // Turn tracks: 8 cells per team (16 total), exactly ONE current turn is
-    // highlighted — the ACTIVE side's OWN isolated turn count (per-team, not the
-    // global number): half 1 turn 3 (home active) → home is on its 2nd turn,
-    // away has completed its 1st.
+    // Turn tracks: 8 cells per team (16 total), the SAME GLOBAL sequence 1-8 on
+    // BOTH tracks (Tourplay), with exactly ONE highlighted cell — the ACTIVE
+    // side's current GLOBAL turn. Half 1 turn 3 (home active) → "3" (supersedes
+    // the per-team isolated counters from #79).
     const cells = screen.getAllByLabelText(/Turno \d/);
     expect(cells).toHaveLength(16);
     const highlighted = cells.filter((c) => c.getAttribute("aria-current") === "true");
     expect(highlighted).toHaveLength(1);
-    expect(highlighted[0].textContent).toBe("2");
+    expect(highlighted[0].textContent).toBe("3");
 
-    // Isolation: the AWAY track shows its own completed count (1) as done and
-    // has NO aria-current; the HOME track marks only its own done turns (1).
+    // Both tracks show the same global numbers 1-8; only the ACTIVE (home) track
+    // highlights its current turn — the away track shows no aria-current.
     const homeTrack = screen.getByLabelText(/Turnos de Reavers/);
     const awayTrack = screen.getByLabelText(/Turnos de Dwarves/);
-    expect(homeTrack.querySelector('[aria-current="true"]')?.textContent).toBe("2");
-    expect(awayTrack.querySelector('[aria-current="true"]')).toBeNull();
+    expect(within(homeTrack).getByLabelText("Turno 1").textContent).toBe("1");
+    expect(within(homeTrack).getByLabelText("Turno 8").textContent).toBe("8");
     expect(within(awayTrack).getByLabelText("Turno 1").textContent).toBe("1");
-    // Design-10 navy bar: a DONE turn is the lighter navy tint, the ACTIVE turn red.
-    expect(within(awayTrack).getByLabelText("Turno 1").className).toContain("bg-[#1f3a7a]");
-    expect(within(awayTrack).getByLabelText("Turno 2").className).not.toContain("bg-[#1f3a7a]");
-    expect(within(homeTrack).getByLabelText("Turno 2").className).toContain("bg-[#d11938]");
+    expect(within(awayTrack).getByLabelText("Turno 8").textContent).toBe("8");
+    expect(homeTrack.querySelector('[aria-current="true"]')?.textContent).toBe("3");
+    expect(awayTrack.querySelector('[aria-current="true"]')).toBeNull();
+    // Design-10 navy bar: the ACTIVE turn is the red highlight; the rest are the
+    // muted navy cells (mockup `.tn`).
+    expect(within(homeTrack).getByLabelText("Turno 3").className).toContain("bg-[#d11938]");
+    expect(within(homeTrack).getByLabelText("Turno 2").className).toContain("bg-[#1f3a7a]");
 
     // Hero: the team blocks mirror the center scoreboard (race · coach line).
     expect(screen.getAllByText(/Reavers/).length).toBeGreaterThan(0);
@@ -618,6 +621,32 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.querySelectorAll("[data-testid='live-event-row']").length).toBe(2);
     expect(screen.getByText(/Inicio del partido/)).toBeTruthy();
     expect(screen.getByText(/Touchdown/)).toBeTruthy();
+  });
+
+  it("shows the GLOBAL sequence 9-16 on both tracks during half 2 (active away highlights its global turn)", async () => {
+    stubLiveEventSource();
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, half: 2, turnNumber: 5, activeSide: "away" };
+    stubMatch(detail);
+    renderPlayed();
+    await screen.findAllByText(/Mitad 2 · Turno 5/);
+
+    // Half 2 → both tracks show 9-16; the ACTIVE (away) track highlights its
+    // current GLOBAL turn: half 2 turn 5 → 13.
+    const cells = screen.getAllByLabelText(/Turno \d/);
+    expect(cells).toHaveLength(16);
+    const highlighted = cells.filter((c) => c.getAttribute("aria-current") === "true");
+    expect(highlighted).toHaveLength(1);
+    expect(highlighted[0].textContent).toBe("13");
+
+    const homeTrack = screen.getByLabelText(/Turnos de Reavers/);
+    const awayTrack = screen.getByLabelText(/Turnos de Dwarves/);
+    expect(within(homeTrack).getByLabelText("Turno 9").textContent).toBe("9");
+    expect(within(homeTrack).getByLabelText("Turno 16").textContent).toBe("16");
+    expect(within(awayTrack).getByLabelText("Turno 9").textContent).toBe("9");
+    expect(within(awayTrack).getByLabelText("Turno 16").textContent).toBe("16");
+    expect(awayTrack.querySelector('[aria-current="true"]')?.textContent).toBe("13");
+    expect(homeTrack.querySelector('[aria-current="true"]')).toBeNull();
   });
 
   it("ticks the unified clock and the ACTIVE coach's clock every second while live", async () => {
@@ -687,28 +716,6 @@ describe("MatchView — casi Tourplay hero (Design 10)", () => {
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Tu turno/)).toBeNull();
-  });
-});
-
-describe("teamTurnCounts — isolated per-team turn counters (BB rulebook)", () => {
-  it("half 1 starts with home: each team's track advances only on ITS turns", () => {
-    // turn 1 (home active): home on its 1st, away none yet.
-    expect(teamTurnCounts(1, 1)).toEqual({ home: 1, away: 0 });
-    // turn 2 (away active): home done 1, away on its 1st.
-    expect(teamTurnCounts(1, 2)).toEqual({ home: 1, away: 1 });
-    // turn 3 (home active): home on its 2nd, away done 1.
-    expect(teamTurnCounts(1, 3)).toEqual({ home: 2, away: 1 });
-    // turn 4 (away active): home done 2, away on its 2nd.
-    expect(teamTurnCounts(1, 4)).toEqual({ home: 2, away: 2 });
-    // end of half 1: each team played 4 turns.
-    expect(teamTurnCounts(1, 8)).toEqual({ home: 4, away: 4 });
-  });
-
-  it("half 2 starts with away (advanceTurnIndex): the roles swap", () => {
-    expect(teamTurnCounts(2, 1)).toEqual({ home: 0, away: 1 });
-    expect(teamTurnCounts(2, 2)).toEqual({ home: 1, away: 1 });
-    expect(teamTurnCounts(2, 5)).toEqual({ home: 2, away: 3 });
-    expect(teamTurnCounts(2, 8)).toEqual({ home: 4, away: 4 });
   });
 });
 
@@ -1178,6 +1185,28 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(tdRow).toBeTruthy();
     expect(tdRow!.textContent).toContain("#1");
     expect(tdRow!.textContent).toContain("Blitzer A");
+  });
+
+  it("mirrors the VISITOR rows so each team reads its chronology from its own side", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const localRow = rows.find((li) => li.textContent?.includes("Blitzer A"));
+    const visitorRow = rows.find((li) => li.textContent?.includes("Blitzer B"));
+    expect(localRow).toBeTruthy();
+    expect(visitorRow).toBeTruthy();
+
+    // The LOCAL row keeps the normal left→right order (time first, detail right).
+    expect(localRow!.className).not.toContain("flex-row-reverse");
+    expect(localRow!.lastElementChild!.textContent).toContain("Touchdown");
+    // The VISITOR row is MIRRORED (Tourplay match-event--reverse): the detail
+    // becomes the visual-LEFT block (DOM-last child) and the minute moves to the
+    // visual-right edge (DOM-first child).
+    expect(visitorRow!.className).toContain("flex-row-reverse");
+    expect(visitorRow!.lastElementChild!.textContent).toContain("Baja");
+    expect(visitorRow!.firstElementChild!.textContent).toMatch(/\d+'/);
   });
 });
 
