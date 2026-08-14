@@ -339,6 +339,21 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Tu turno/)).toBeNull();
   });
+
+  it("renders the Design-A chronology NEWEST FIRST (mockup 196' → 0')", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    // finishedLiveDetail events have seq 1 (start), 5 (td), 9 (casualty), 10
+    // (endMatch) → the list must read 10, 9, 5, 1 from top to bottom.
+    expect(rows).toHaveLength(4);
+    expect(rows[0].textContent).toContain("Fin del partido");
+    expect(rows[1].textContent).toContain("Baja");
+    expect(rows[2].textContent).toContain("Touchdown");
+    expect(rows[3].textContent).toContain("Inicio del partido");
+  });
 });
 
 /** A scheduled fixture with an active LiveMatch (status live). */
