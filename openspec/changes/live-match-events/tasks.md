@@ -53,8 +53,8 @@ Implement stack-to-main: PR1→main, PR2→main, PR3a→main, PR3b→main, PR4�
 - [x] **2.4** T-route: snapshot excludes `turn|turnStart|requestTurn`; DB rows unchanged; fixture GET filter integration check (LM-16, validator explicit fixture-GET test).
 - [x] **2.5** `lib/liveFeed.ts` **create**: pure `deriveMinute(at, startedAt)`→`199'`; `turnTag(half, turnNumber)`→`half===2 ? +8 : turnNumber`; `eventSpp` re-export; `deriveTeamStats(events)` per team TD/completions/casualties/fouls/★ (zeroed empty); `playerRef` dorsal map = roster index+1 (D22/D23).
 - [x] **2.6** T-unit `lib/liveFeed.test.ts`: 1td+1comp+1lastingcas+1foul → 1/1/1/1/★6; empty → all 0; minute 199; T16 (LM-17/LM-19).
-- [ ] **2.7** `liveEventLabels.ts`: rewire casualty→`bandToDisplay`; `completion`/`mvp` labels (LM-18).
-- [ ] **2.8** T-unit: `liveEventLabels.test.ts` label updates (turn rows moved live-only).
+- [x] **2.7** `liveEventLabels.ts`: rewire casualty→`bandToDisplay`; `completion`/`mvp` labels (LM-18).
+- [x] **2.8** T-unit: `liveEventLabels.test.ts` label updates (turn rows moved live-only).
 
 ## PR 3a — Design-A feed UI
 
