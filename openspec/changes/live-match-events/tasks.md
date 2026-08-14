@@ -66,12 +66,12 @@ Implement stack-to-main: PR1→main, PR2→main, PR3a→main, PR3b→main, PR4�
 
 ## PR 3b — Event recording controls
 
-- [ ] **3.6** `features/leagues/liveControls.tsx` **create**: `EventControls` FAB `fixed bottom-6 right-6` navy "+", only while `status==="live"` && `viewerSide != null`; menu from `viewerSide` vs `activeSide` (D26).
-- [ ] **3.7** `liveControls.tsx`: menu — active: TD/Pase completo/Baja/Herida/Falta; non-active: Herida only (own player); mini-form player `<select>` from own roster (alive only) + 5-band `<select>` for casualty; commands map to route shapes (`td`/`completion`→playerRosterId scorer/thrower, `casualty`→victimRosterId+band, `foul`→playerRosterId) (LM-20).
-- [ ] **3.8** `liveControls.tsx`: submit via `act`/busyRef; menu closes on submit (LM-20 submission).
-- [ ] **3.9** `features/leagues/MatchView.tsx`: pass own roster into `LiveActiveMatch`; render `EventControls`; read `viewerSide` from merged session DTO (never raw SSE frame) (D26).
-- [ ] **3.10** T-comp `liveControls.test.tsx`: menu per role (spectator no FAB; active 4 kinds; non-active Herida only); band select only casualty; submit fires `act`; menu closes (LM-20 all scenarios).
-- [ ] **3.11** T-comp `MatchView.test.tsx`: FAB visible active, hidden spectator (LM-20 no-side).
+- [x] **3.6** `features/leagues/liveControls.tsx` **create**: `EventControls` FAB `fixed bottom-6 right-6` navy "+", only while `status==="live"` && `viewerSide != null`; menu from `viewerSide` vs `activeSide` (D26).
+- [x] **3.7** `liveControls.tsx`: menu — active: TD/Pase completo/Baja/Herida/Falta; non-active: Herida only (own player); mini-form player `<select>` from own roster (alive only) + 5-band `<select>` for casualty; commands map to route shapes (`td`/`completion`→playerRosterId scorer/thrower, `casualty`→victimRosterId+band, `foul`→playerRosterId) (LM-20).
+- [x] **3.8** `liveControls.tsx`: submit via `act`/busyRef; menu closes on submit (LM-20 submission).
+- [x] **3.9** `features/leagues/MatchView.tsx`: pass own roster into `LiveActiveMatch`; render `EventControls`; read `viewerSide` from merged session DTO (never raw SSE frame) (D26).
+- [x] **3.10** T-comp `liveControls.test.tsx`: menu per role (spectator no FAB; active 4 kinds; non-active Herida only); band select only casualty; submit fires `act`; menu closes (LM-20 all scenarios).
+- [x] **3.11** T-comp `MatchView.test.tsx`: FAB visible active, hidden spectator (LM-20 no-side).
 
 ## PR 4 — e2e + regression
 
