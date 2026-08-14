@@ -308,98 +308,98 @@ export async function POST(
   let updated;
   try {
     updated = await prisma.$transaction(async (tx) => {
-    // D20/LM-mvp: a fixture with a LiveMatch appends the home+away MJP grantee
-    // `mvp` events to that LiveMatch's event list INSIDE this transaction. The
-    // next seq is read as max(seq) in-tx and the row seq is bumped, so two
-    // concurrent result submits can never collide on `@@unique([liveMatchId,
-    // seq])` — the constraint is the double-submit arbiter (P2002 → 409 below).
-    // It runs FIRST so a seq conflict aborts the whole result before any score
-    // mutation commits (all writes are atomic either way). A fixture without a
-    // LiveMatch (legacy/walkover) writes no mvp event.
-    if (fixture.liveMatch) {
-      const lm = fixture.liveMatch;
-      const agg = await tx.liveEvent.aggregate({
-        where: { liveMatchId: lm.id },
-        _max: { seq: true },
+      // D20/LM-mvp: a fixture with a LiveMatch appends the home+away MJP grantee
+      // `mvp` events to that LiveMatch's event list INSIDE this transaction. The
+      // next seq is read as max(seq) in-tx and the row seq is bumped, so two
+      // concurrent result submits can never collide on `@@unique([liveMatchId,
+      // seq])` — the constraint is the double-submit arbiter (P2002 → 409 below).
+      // It runs FIRST so a seq conflict aborts the whole result before any score
+      // mutation commits (all writes are atomic either way). A fixture without a
+      // LiveMatch (legacy/walkover) writes no mvp event.
+      if (fixture.liveMatch) {
+        const lm = fixture.liveMatch;
+        const agg = await tx.liveEvent.aggregate({
+          where: { liveMatchId: lm.id },
+          _max: { seq: true },
+        });
+        const maxSeq = agg._max.seq ?? 0;
+        const homeSeq = maxSeq + 1;
+        const awaySeq = maxSeq + 2;
+        // Validator refinement: the mvp feed minute is the load time — `at` =
+        // `lm.finishedAt` when present, else `now`.
+        const atMs = lm.finishedAt ? new Date(lm.finishedAt).getTime() : Date.now();
+        await tx.liveEvent.createMany({
+          data: [
+            {
+              liveMatchId: lm.id,
+              seq: homeSeq,
+              kind: "mvp",
+              side: "home",
+              playerRosterId: homeMvp,
+              half: lm.half,
+              turnNumber: lm.turnNumber,
+              payload: {},
+              createdAt: new Date(atMs),
+            },
+            {
+              liveMatchId: lm.id,
+              seq: awaySeq,
+              kind: "mvp",
+              side: "away",
+              playerRosterId: awayMvp,
+              half: lm.half,
+              turnNumber: lm.turnNumber,
+              payload: {},
+              createdAt: new Date(atMs),
+            },
+          ],
+        });
+        // Bump the LiveMatch row seq past BOTH mvp seqs so the next live/result
+        // transition's event (seq = row.seq + 1) never collides (D20).
+        await tx.liveMatch.updateMany({
+          where: { id: lm.id },
+          data: { seq: awaySeq },
+        });
+      }
+      await tx.fixture.update({
+        where: { id: fixtureId },
+        data: { homeScore: home.score, awayScore: away.score, winnerId },
       });
-      const maxSeq = agg._max.seq ?? 0;
-      const homeSeq = maxSeq + 1;
-      const awaySeq = maxSeq + 2;
-      // Validator refinement: the mvp feed minute is the load time — `at` =
-      // `lm.finishedAt` when present, else `now`.
-      const atMs = lm.finishedAt ? new Date(lm.finishedAt).getTime() : Date.now();
-      await tx.liveEvent.createMany({
-        data: [
-          {
-            liveMatchId: lm.id,
-            seq: homeSeq,
-            kind: "mvp",
-            side: "home",
-            playerRosterId: homeMvp,
-            half: lm.half,
-            turnNumber: lm.turnNumber,
-            payload: {},
-            createdAt: new Date(atMs),
-          },
-          {
-            liveMatchId: lm.id,
-            seq: awaySeq,
-            kind: "mvp",
-            side: "away",
-            playerRosterId: awayMvp,
-            half: lm.half,
-            turnNumber: lm.turnNumber,
-            payload: {},
-            createdAt: new Date(atMs),
-          },
-        ],
+      const report = await tx.matchResult.create({
+        data: {
+          fixtureId,
+          weather: typeof raw.weather === "string" ? raw.weather : null,
+          scores: scoreboard as never,
+          pettyCash,
+          loadedBy: userId,
+        },
       });
-      // Bump the LiveMatch row seq past BOTH mvp seqs so the next live/result
-      // transition's event (seq = row.seq + 1) never collides (D20).
-      await tx.liveMatch.updateMany({
-        where: { id: lm.id },
-        data: { seq: awaySeq },
+      await tx.team.update({
+        where: { id: homeTeamId },
+        data: { treasury: { increment: homeWinnings } },
       });
-    }
-    await tx.fixture.update({
-      where: { id: fixtureId },
-      data: { homeScore: home.score, awayScore: away.score, winnerId },
-    });
-    const report = await tx.matchResult.create({
-      data: {
-        fixtureId,
-        weather: typeof raw.weather === "string" ? raw.weather : null,
-        scores: scoreboard as never,
-        pettyCash,
-        loadedBy: userId,
-      },
-    });
-    await tx.team.update({
-      where: { id: homeTeamId },
-      data: { treasury: { increment: homeWinnings } },
-    });
-    await tx.team.update({
-      where: { id: awayTeamId },
-      data: { treasury: { increment: awayWinnings } },
-    });
-    for (const award of homeAwards) {
-      await tx.player.updateMany({
-        where: { teamId: homeTeamId, rosterPlayerId: award.rosterPlayerId },
-        data: { pe: { increment: award.pe } },
+      await tx.team.update({
+        where: { id: awayTeamId },
+        data: { treasury: { increment: awayWinnings } },
       });
-    }
-    for (const award of awayAwards) {
-      await tx.player.updateMany({
-        where: { teamId: awayTeamId, rosterPlayerId: award.rosterPlayerId },
-        data: { pe: { increment: award.pe } },
-      });
-    }
-    await persistCasualtyOutcomes(
-      tx.player as unknown as PlayerPersistenceTx,
-      (role) => (role === "home" ? homeTeamId : awayTeamId),
-      resolvedCasualties,
-    );
-    return report;
+      for (const award of homeAwards) {
+        await tx.player.updateMany({
+          where: { teamId: homeTeamId, rosterPlayerId: award.rosterPlayerId },
+          data: { pe: { increment: award.pe } },
+        });
+      }
+      for (const award of awayAwards) {
+        await tx.player.updateMany({
+          where: { teamId: awayTeamId, rosterPlayerId: award.rosterPlayerId },
+          data: { pe: { increment: award.pe } },
+        });
+      }
+      await persistCasualtyOutcomes(
+        tx.player as unknown as PlayerPersistenceTx,
+        (role) => (role === "home" ? homeTeamId : awayTeamId),
+        resolvedCasualties,
+      );
+      return report;
     });
   } catch (error) {
     // D20: a concurrent double-submit trips `@@unique([liveMatchId, seq])`
@@ -612,3 +612,4 @@ export async function PUT(
     winnerId,
   });
 }
+
