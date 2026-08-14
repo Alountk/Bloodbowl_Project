@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import type { FixtureStatus } from "@/features/leagues/api";
+import type { FixtureLiveLite, FixtureStatus } from "@/features/leagues/api";
 
 /** The scheduling/result fields a fixture derives its lifecycle status from. */
 export interface FixtureStatusInput {
@@ -57,6 +57,8 @@ interface FixtureWithMatchday {
   homeTeam?: { user?: { id: string; name: string | null; email: string | null; avatar?: string | null } | null } | null;
   awayTeam?: { user?: { id: string; name: string | null; email: string | null; avatar?: string | null } | null } | null;
   proposals?: unknown[];
+  /** The nested LiveMatch row (card-lite select) when the fixture has one. */
+  liveMatch?: FixtureLiveLite | null;
   [key: string]: unknown;
 }
 
@@ -80,6 +82,7 @@ export function enrichFixture(fixture: FixtureWithMatchday): FixtureWithMatchday
   homeOwner: FixtureOwnerRef | null;
   awayOwner: FixtureOwnerRef | null;
   proposals: unknown[];
+  live: FixtureLiveLite | null;
 } {
   const homeUser = fixture.homeTeam?.user ?? null;
   const awayUser = fixture.awayTeam?.user ?? null;
@@ -93,6 +96,16 @@ export function enrichFixture(fixture: FixtureWithMatchday): FixtureWithMatchday
       ? { id: awayUser.id, name: ownerNameOf(awayUser), avatar: awayUser.avatar ?? null }
       : null,
     proposals: Array.isArray(fixture.proposals) ? fixture.proposals : [],
+    // The card-lite live snapshot (MV-5): null when the fixture has no LiveMatch.
+    live: fixture.liveMatch
+      ? {
+          status: fixture.liveMatch.status,
+          homeScore: fixture.liveMatch.homeScore,
+          awayScore: fixture.liveMatch.awayScore,
+          half: fixture.liveMatch.half,
+          turnNumber: fixture.liveMatch.turnNumber,
+        }
+      : null,
   };
 }
 
@@ -173,6 +186,9 @@ export async function GET(
             homeTeam: { select: { id: true, user: { select: { id: true, name: true, email: true, avatar: true } } } },
             awayTeam: { select: { id: true, user: { select: { id: true, name: true, email: true, avatar: true } } } },
             proposals: { orderBy: { createdAt: "desc" } },
+            // Card-lite live snapshot (LM-lite): the Jornadas EN VIVO badge + live
+            // score need only these fields (the full DTO is served by the fixture GET).
+            liveMatch: { select: { status: true, homeScore: true, awayScore: true, half: true, turnNumber: true } },
           },
         })
       : [];
