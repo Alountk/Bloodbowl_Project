@@ -161,6 +161,18 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.awayTeam).not.toHaveProperty("awayTeam");
   });
 
+  it("fetches both teams' players with orderBy id asc so dorsal = roster index+1 (D21)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    await callGet();
+    const queryArg = prismaMock.fixture.findFirst.mock.calls[0][0];
+    // The served `players` array must be deterministically ordered for the
+    // Design-A dorsal map (roster index + 1); without orderBy the DB order is
+    // unspecified and the dorsal would drift across loads.
+    expect(queryArg.include.homeTeam.select.players.orderBy).toEqual({ id: "asc" });
+    expect(queryArg.include.awayTeam.select.players.orderBy).toEqual({ id: "asc" });
+  });
+
   it("serializes an active LiveMatch into the unified-clock live DTO + viewer's side (D19)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } }); // home team owner → viewerSide "home"
     prismaMock.fixture.findFirst.mockResolvedValue(
@@ -195,8 +207,10 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
           clockStartedAt: new Date("2026-03-01T20:00:10"),
           finishedAt: null,
           events: [
+            { id: "e0", liveMatchId: "lm-1", seq: 3, kind: "turnStart", side: "away", playerRosterId: null, half: 1, turnNumber: 2, payload: {}, createdAt: new Date("2026-03-01T20:00:01") },
             { id: "e1", liveMatchId: "lm-1", seq: 5, kind: "turn", side: null, playerRosterId: null, half: 1, turnNumber: 2, payload: {}, createdAt: new Date("2026-03-01T20:00:05") },
             { id: "e2", liveMatchId: "lm-1", seq: 6, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date("2026-03-01T20:00:10") },
+            { id: "e3", liveMatchId: "lm-1", seq: 7, kind: "mvp", side: "away", playerRosterId: "p2", half: 1, turnNumber: 3, payload: {}, createdAt: new Date("2026-03-01T20:00:15") },
           ],
         },
       }),
@@ -223,13 +237,18 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect("turnClockEnabled" in body.live).toBe(false);
     expect("homeClock" in body.live).toBe(false);
     expect("awayClock" in body.live).toBe(false);
-    // The chronological event feed is serialized for the timeline (LM-10).
+    // LM-16 filter (validator explicit fixture-GET check): `serializeLive` (and
+    // `toEventDtos`) keep ONLY display kinds — `td` and `mvp` survive while the
+    // `turnStart`/`turn` rows are dropped from the feed DTO. The DB still holds
+    // them (the query includes all events); only the serialized feed is filtered.
     expect(body.live.events).toHaveLength(2);
-    expect(body.live.events[0].seq).toBe(5);
-    expect(body.live.events[0].kind).toBe("turn");
-    expect(body.live.events[1].seq).toBe(6);
-    expect(body.live.events[1].kind).toBe("td");
-    expect(body.live.events[1].side).toBe("home");
+    expect(body.live.events[0].seq).toBe(6);
+    expect(body.live.events[0].kind).toBe("td");
+    expect(body.live.events[0].side).toBe("home");
+    expect(body.live.events[1].seq).toBe(7);
+    expect(body.live.events[1].kind).toBe("mvp");
+    expect(body.live.events.some((e: { kind: string }) => e.kind === "turn")).toBe(false);
+    expect(body.live.events.some((e: { kind: string }) => e.kind === "turnStart")).toBe(false);
   });
 
   it("has field-set parity between serializeLive and toLiveViewState for the same state", async () => {

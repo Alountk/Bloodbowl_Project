@@ -73,10 +73,17 @@ describe("liveEventLabel", () => {
     expect(liveEventLabel(ev("td"))).toBe("Touchdown");
   });
 
-  it("labels a casualty and reuses the rulebook band label from its payload band", () => {
-    expect(liveEventLabel(ev("casualty", { band: "grave" }))).toContain("Herida grave");
-    expect(liveEventLabel(ev("casualty", { band: "permanent" }))).toContain("Permanente");
-    expect(liveEventLabel(ev("casualty", { band: "dead" }))).toContain("Muerto");
+  it("labels a casualty via the band→display bucket (bruise → Herida, lasting → Baja, LM-18)", () => {
+    expect(liveEventLabel(ev("casualty", { band: "bruise" }))).toBe("Herida");
+    expect(liveEventLabel(ev("casualty", { band: "apaleado" }))).toBe("Baja");
+    expect(liveEventLabel(ev("casualty", { band: "grave" }))).toBe("Baja");
+    expect(liveEventLabel(ev("casualty", { band: "permanent" }))).toBe("Baja");
+    expect(liveEventLabel(ev("casualty", { band: "dead" }))).toBe("Baja");
+  });
+
+  it("labels a completion and an mvp in the Design-A taxonomy", () => {
+    expect(liveEventLabel(ev("completion"))).toBe("Pase completo");
+    expect(liveEventLabel(ev("mvp"))).toBe("Jugador más valioso");
   });
 
   it("falls back to a generic label when the casualty payload has no band", () => {

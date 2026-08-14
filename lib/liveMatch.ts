@@ -35,6 +35,31 @@ export type LiveEventKind =
   | "mvp";
 
 /**
+ * The display-worthy kinds that reach the feed DTOs (LM-16): the history shows
+ * `start|td|completion|casualty|foul|endHalf|endMatch|mvp`. `turn`, `turnStart`
+ * and `requestTurn` stay in the DB (audit/replay) and live-only (nudge banner)
+ * but MUST NEVER appear in a feed DTO. Shared by BOTH serializers
+ * (`toEventDtos` in the live route and `serializeLive` in the fixture GET) so
+ * the feed and the render can never drift (D23). Unknown kinds are rejected so
+ * a future raw kind never leaks without a deliberate filter change.
+ */
+export function isDisplayEvent(kind: string): boolean {
+  switch (kind) {
+    case "start":
+    case "td":
+    case "completion":
+    case "casualty":
+    case "foul":
+    case "endHalf":
+    case "endMatch":
+    case "mvp":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
  * Nudge cooldown (D17): a `requestTurn` nudge is persisted at most once per
  * window, keyed on the last persisted `requestTurn` event's timestamp. Extras
  * within the window → the route rejects with 409, no mutation.

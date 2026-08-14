@@ -9,6 +9,7 @@ import {
   applyEndMatch,
   toLiveViewState,
   deriveLiveClock,
+  isDisplayEvent,
   type LiveMatchState,
 } from "./liveMatch";
 
@@ -235,6 +236,27 @@ describe("applyCompletion — records a ★1 completion event WITHOUT flipping t
     // The turn is STILL home's — a completion never flips.
     expect(next.activeSide).toBe("home");
     expect(next.seq).toBe(5);
+  });
+});
+
+describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
+  it("accepts exactly the 8 display kinds (start|td|completion|casualty|foul|endHalf|endMatch|mvp)", () => {
+    const displayKinds = ["start", "td", "completion", "casualty", "foul", "endHalf", "endMatch", "mvp"];
+    for (const kind of displayKinds) {
+      expect(isDisplayEvent(kind)).toBe(true);
+    }
+    // every non-display kind the model can persist is excluded
+    for (const kind of ["turn", "turnStart", "requestTurn"]) {
+      expect(isDisplayEvent(kind)).toBe(false);
+    }
+  });
+
+  it("does NOT rely on a static allow-list for unknown future kinds (explicit rejection)", () => {
+    // Unknown kinds are not display-worthy; the predicate must reject them so a
+    // feed never leaks a new raw kind without a deliberate filter change.
+    expect(isDisplayEvent("interception")).toBe(false);
+    expect(isDisplayEvent("")).toBe(false);
+    expect(isDisplayEvent("blitz")).toBe(false);
   });
 });
 

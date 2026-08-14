@@ -20,6 +20,7 @@ import {
   applyRequestTurn,
   REQUEST_TURN_COOLDOWN_MS,
   toLiveViewState,
+  isDisplayEvent,
   type FixtureStartState,
   type LiveMatchState,
   type TeamSide,
@@ -80,21 +81,27 @@ interface LiveEventDto {
   at: number;
 }
 
-/** Maps persisted LiveEvent rows to the DTO shape (LM-6/`serializeLive` parity). */
+/** Maps persisted LiveEvent rows to the DTO shape (LM-6/`serializeLive` parity),
+ * filtering OUT non-display kinds (LM-16): the snapshot feed carries only
+ * `start|td|completion|casualty|foul|endHalf|endMatch|mvp`. `turn`/`turnStart`/
+ * `requestTurn` stay in the DB (audit) and reach the client ONLY via the
+ * unfiltered hub fan-out (D25: the live nudge is live-only). */
 function toEventDtos(rows: PersistedLiveEventRow[]): LiveEventDto[] {
-  return rows.map((e) => ({
-    seq: e.seq,
-    kind: e.kind,
-    side: e.side,
-    playerRosterId: e.playerRosterId,
-    half: e.half,
-    turnNumber: e.turnNumber,
-    payload:
-      typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
-        ? (e.payload as Record<string, unknown>)
-        : {},
-    at: new Date(e.createdAt).getTime(),
-  }));
+  return rows
+    .filter((e) => isDisplayEvent(e.kind))
+    .map((e) => ({
+      seq: e.seq,
+      kind: e.kind,
+      side: e.side,
+      playerRosterId: e.playerRosterId,
+      half: e.half,
+      turnNumber: e.turnNumber,
+      payload:
+        typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
+          ? (e.payload as Record<string, unknown>)
+          : {},
+      at: new Date(e.createdAt).getTime(),
+    }));
 }
 
 /**
