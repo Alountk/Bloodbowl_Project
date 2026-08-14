@@ -58,11 +58,11 @@ Implement stack-to-main: PR1→main, PR2→main, PR3a→main, PR3b→main, PR4�
 
 ## PR 3a — Design-A feed UI
 
-- [ ] **3.1** `features/leagues/MatchView.tsx`: replace `LiveEventFeed` with Design-A row list (minute, `T{n}` tag, dorsal, name+position from detail rosters, icon, label, ★, side gradient local navy/visitor red) (LM-17).
-- [ ] **3.2** `MatchView.tsx`: hero mini-stats row via `deriveTeamStats` (LM-19).
-- [ ] **3.3** `MatchView.tsx`: plumb `homeTeam`/`awayTeam` `players` rosters into `FinishedLiveTimeline`/`LiveActiveMatch` for name/position/dorsal resolution (D21).
-- [ ] **3.4** `MatchView.tsx`: D25 rework — nudge banner stays live-only; reload no longer restores a pending nudge (LM-16).
-- [ ] **3.5** T-comp `MatchView.test.tsx`: Design-A row asserts (minute/tag/dorsal/name/position/icon/label/stars + gradient); hero stats; null-player rows; nudge-test rework asserts live-only reload behavior (LM-17).
+- [x] **3.1** `features/leagues/MatchView.tsx`: replace `LiveEventFeed` with Design-A row list (minute, `T{n}` tag, dorsal, name+position from detail rosters, icon, label, ★, side gradient local navy/visitor red) (LM-17).
+- [x] **3.2** `MatchView.tsx`: hero mini-stats row via `deriveTeamStats` (LM-19).
+- [x] **3.3** `MatchView.tsx`: plumb `homeTeam`/`awayTeam` `players` rosters into `FinishedLiveTimeline`/`LiveActiveMatch` for name/position/dorsal resolution (D21).
+- [x] **3.4** `MatchView.tsx`: D25 rework — nudge banner stays live-only; reload no longer restores a pending nudge (LM-16).
+- [x] **3.5** T-comp `MatchView.test.tsx`: Design-A row asserts (minute/tag/dorsal/name/position/icon/label/stars + gradient); hero stats; null-player rows; nudge-test rework asserts live-only reload behavior (LM-17).
 
 ## PR 3b — Event recording controls
 
