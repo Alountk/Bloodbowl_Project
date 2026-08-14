@@ -26,6 +26,8 @@ import {
   type TeamSide,
 } from "@/lib/liveMatch";
 import { resolveEventPermission, type EventKind } from "@/lib/livePhase";
+import { ensurePlayersForTeam } from "@/lib/players";
+import type { PlayerEntry } from "@/features/teams/types";
 
 export const dynamic = "force-dynamic";
 
@@ -198,6 +200,23 @@ function viewerSide(ctx: FixtureContext, userId: string | null): "home" | "away"
   if (userId === ctx.homeOwnerId) return "home";
   if (userId === ctx.awayOwnerId) return "away";
   return null;
+}
+
+/**
+ * Materializes both teams' Player rows from their roster JSON before the match
+ * begins (player-progression identity, D21). The Player rows are the live
+ * feed/EventControls roster source; they are lazily created by the result route
+ * today, so a live match's roster would otherwise be EMPTY (no names/dorsals).
+ * `ensurePlayersForTeam` is idempotent, so re-runs are safe.
+ */
+async function materializeTeamRosters(ctx: FixtureContext): Promise<void> {
+  const teams = await prisma.team.findMany({
+    where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+  });
+  for (const team of teams) {
+    const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
+    await ensurePlayersForTeam(team.id, roster);
+  }
 }
 
 /**
@@ -560,6 +579,9 @@ export async function POST(
     const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
     if (!row) return Response.json({ error: "Not found" }, { status: 404 });
     try {
+      // Materialize both rosters so the live feed/controls resolve player names
+      // and dorsals from the very first turn (D21; see materializeTeamRosters).
+      await materializeTeamRosters(ctx);
       const result = await beginLiveMatch({ liveMatchId: row.id, fixtureId, now }, deps);
       return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
     } catch (error) {

@@ -4,7 +4,8 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  * Real-DB live-match E2E (auth suite only — `pnpm run test:e2e:auth` with
  * AUTH_MODE=auth + Postgres; ignored in the local `AUTH_MODE=local` suite).
  *
- * Covers the interactive 2-coach realtime slice (LM-1/LM-8/LM-11):
+ * Covers the interactive 2-coach realtime slice (LM-1/LM-8/LM-11) PLUS the
+ * Design-A history feed and the EventControls FAB (LM-17/LM-20):
  *   1. a league is created (no clock option, D15); two coaches join and start a
  *      1-jornada season;
  *   2. both coaches consent through the REAL match-view buttons ("Iniciar
@@ -17,17 +18,24 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  *      make cross-context fan-out observable in `next dev`;
  *   4. new-device recovery: B reconnects from a FRESH page in a new context (same
  *      user — a new device equivalent) and gets a snapshot-first live view;
- *   5. a finished live match pre-fills the result modal (scores + per-scorer
- *      TDs, LM-9) via the fixture GET live DTO.
+ *   5. Event recording via the REAL "+" FAB (LM-20/D26): the ACTIVE coach
+ *      records a Pase completo (completion ★1) and a Touchdown (★3) through the
+ *      mini-form (feed rows appear live), while the NON-active coach's "+" menu
+ *      offers ONLY Herida and records a casualty to their own player (LM-12);
+ *   6. reload persistence: the match page re-renders the same Design-A history
+ *      from the persisted events (no turn rows, a reload does not drop them);
+ *   7. a finished live match pre-fills the result modal (scores + per-scorer
+ *      TDs, LM-9) and, once the result is loaded, the finished feed carries the
+ *      home+away mvp rows (★4) written by the result route (D20/LM-mvp).
  *
  * The two-phase consent → begin flow is driven through the REAL match-view
  * controls ("Iniciar partido" per coach, then "Empezar partido") and converges
  * via SSE too — reloads are kept only where they test genuine snapshot/recovery
- * semantics (the fresh-context step); the fan-out itself is asserted live.
- * td/endMatch stay API-driven (lifecycle + side-matrix guards are server-side).
- * Which coach owns HOME vs AWAY is resolved from the real round-robin fixture
- * (home/away is randomized) so each consent goes to the correct side. Unique
- * emails per run keep the shared Postgres idempotent.
+ * semantics (the fresh-context step and the reload persistence step); the
+ * fan-out itself is asserted live. endMatch stays API-driven (lifecycle + side-
+ * matrix guards are server-side). Which coach owns HOME vs AWAY is resolved from
+ * the real round-robin fixture (home/away is randomized) so each consent goes to
+ * the correct side. Unique emails per run keep the shared Postgres idempotent.
  */
 test.setTimeout(180_000);
 
@@ -228,12 +236,35 @@ async function liveCommand(page: Page, leagueId: string, fixtureId: string, data
   return (await res.json()) as { view: { seq: number; status: string; turnNumber: number } };
 }
 
+/**
+ * Records a live event through the REAL "+" FAB (LM-20/D26): opens the FAB,
+ * clicks the given menu label, picks the player from the roster select and the
+ * (optional) band from the injury select, then submits. The menu closes on
+ * submit. `band` is only supplied for the casualty kind.
+ */
+async function recordViaFab(
+  page: Page,
+  menuLabel: string,
+  playerName: string,
+  band?: string,
+) {
+  await page.getByRole("button", { name: "+" }).click();
+  await page.getByRole("button", { name: new RegExp(menuLabel, "i") }).click();
+  await page.getByLabel("Jugador").selectOption({ label: playerName });
+  if (band) {
+    await page.getByLabel("Tipo de lesión").selectOption({ label: band });
+  }
+  await page.getByRole("button", { name: "Registrar" }).click();
+  // Menu + form close again after the submit.
+  await expect(page.getByLabel("Jugador")).toHaveCount(0);
+}
+
 test("two-context SSE sync + new-device recovery + result prefill", async ({ browser }) => {
   const tag = Date.now().toString(36);
   const league = await buildStartedLeague(browser, tag);
   try {
     const { admin, rival, leagueId, rivalEmail, adminTeam, rivalTeam } = league;
-    const { fixtureId, homeTeamName, awayTeamName, awayScorerId, awayScorerName } = await fixtureAndScorers(admin, leagueId);
+    const { fixtureId, homeTeamName, awayTeamName, homeScorerName, awayScorerName } = await fixtureAndScorers(admin, leagueId);
     // Which team is home is randomized by buildRoundRobin (~50/50); the TD
     // below targets the AWAY side (valid after Coach A's turn flip), so the
     // score lands on whatever team is away. Assert side-relative below.
@@ -322,6 +353,52 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByText("Tu rival pide el turno")).toBeVisible();
     await expect(homeCoach.getByText("Tu rival pide el turno")).toHaveCount(0);
 
+    // DESIGN-A feed (LM-17) + EventControls (LM-20/D26) — recorded through the
+    // REAL "+" FAB. At Turn 2 the AWAY coach is ACTIVE and the HOME coach is
+    // NON-active, so each role's menu is exercised deterministically (home/away
+    // side is resolved above; the player names come from the fixture rosters).
+    //
+    // [A] NON-active (home) coach: the "+" menu offers ONLY Herida (casualty to
+    // their own player) — no TD / Pase completo / Falta rows (LM-20 scenario).
+    await homeCoach.getByRole("button", { name: "+" }).click();
+    await expect(homeCoach.getByText("Herida")).toBeVisible();
+    await expect(homeCoach.getByRole("button", { name: /Touchdown/i })).toHaveCount(0);
+    await expect(homeCoach.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
+    await expect(homeCoach.getByRole("button", { name: /Falta/i })).toHaveCount(0);
+    // Record a Herida (band: grave) to the home coach's OWN player → feed shows
+    // the lasting Baja bucket (★2) and the feed row resolves the player.
+    await homeCoach.getByRole("button", { name: /Herida/i }).click();
+    await expect(homeCoach.getByLabel("Jugador")).toBeVisible();
+    await homeCoach.getByLabel("Jugador").selectOption({ label: homeScorerName });
+    await homeCoach.getByLabel("Tipo de lesión").selectOption({ label: "Herida grave" });
+    await homeCoach.getByRole("button", { name: "Registrar" }).click();
+    await expect(homeCoach.getByLabel("Jugador")).toHaveCount(0);
+    await expect(homeCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName })).toBeVisible();
+
+    // [B] ACTIVE (away) coach records a Pase completo (completion ★1) through the
+    // FAB mini-form → a completion Design-A row (★1) streams into both feeds.
+    await recordViaFab(awayCoach, "Pase completo", awayScorerName);
+    await expect(awayCoach.getByText("Pase completo").first()).toBeVisible();
+
+    // [C] ACTIVE (away) coach records a Touchdown via the FAB → the Design-A TD
+    // row (★3) + the hero score update (away +1) + the turn flips back to home.
+    await recordViaFab(awayCoach, "Touchdown", awayScorerName);
+    await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: "★3" })).toBeVisible();
+    // The away TD lands on the away side → hero reads "0 : 1" (home : away).
+    await expect(awayCoach.getByTestId("live-score")).toHaveText(/0\s*:\s*1/);
+    // Turn2 away active → after the away TD the active side flips home.
+    await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+
+    // [D] RELOAD persistence (LM-17): re-render the match page from the persisted
+    // history → the Design-A rows (start / Herida / completion / TD) survive, and
+    // no turn-pass row ever appears (turn kinds are filtered live-only, LM-16).
+    await awayCoach.reload();
+    await expect(awayCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    for (const text of ["Inicio del partido", homeScorerName, "Pase completo", "★3"]) {
+      await expect(awayCoach.getByText(new RegExp(text)).first()).toBeVisible();
+    }
+    await expect(awayCoach.getByText("Fin de turno")).toHaveCount(0);
+
     // New-device recovery: B logs in from a FRESH context (same user, a new
     // device equivalent) and gets a snapshot-first live view (turn 2 persisted).
     const freshContext = await browser.newContext();
@@ -332,12 +409,8 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(freshB.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
     await freshContext.close();
 
-    // Finish the match: the AWAY team is now on the active turn (Turn 2). Under
-    // LM-12 the ACTIVE (away) coach may record the TD — route it through that
-    // coach's own context so the side-matrix guard allows it — then the match
-    // ends (lifecycle, admin MayEnd). The finished live DTO then pre-fills the
-    // result modal.
-    await liveCommand(awayCoach, leagueId, fixtureId, { type: "td", side: "away", playerRosterId: awayScorerId });
+    // Finish the match (lifecycle, admin MayEnd). The finished live DTO then
+    // pre-fills the result modal. (The away score is already 1 via the FAB TD.)
     const afterEnd = await liveCommand(admin, leagueId, fixtureId, { type: "endMatch" });
     expect(afterEnd.view.status).toBe("finished");
 
@@ -351,11 +424,30 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const dialog = admin.getByRole("dialog", { name: /Cargar resultado/ });
     const awaySection = dialog.getByLabel(`Resultado ${awayTeamName}`);
     const homeSection = dialog.getByLabel(`Resultado ${homeTeamName}`);
-    // The away team scored 1 (the TD), the home team 0.
+    // The away team scored 1 (the FAB TD), the home team 0.
     await expect(awaySection.getByLabel(`Goles ${awayTeamName}`)).toHaveValue("1");
     await expect(homeSection.getByLabel(`Goles ${homeTeamName}`)).toHaveValue("0");
     // The away scorer's TD (1) prefilled; no MJP nominations auto-filled.
     await expect(awaySection.getByLabel(`Anotaciones ${awayScorerName}`, { exact: true })).toHaveValue("1");
+
+    // Load the result through the real modal (six DIFFERENT MJP nominations per
+    // team, option index i = player i — the MJP roll then selects each side's
+    // grantee), which triggers the result-route mvp write (D20/LM-mvp).
+    for (const section of [homeSection, awaySection]) {
+      const teamName = section === homeSection ? homeTeamName : awayTeamName;
+      for (let i = 1; i <= 6; i++) {
+        await section.getByLabel(`MVP ${i} ${teamName}`).selectOption({ index: i });
+      }
+    }
+    await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+    await expect(dialog).not.toBeVisible();
+
+    // MVP rows (LM-mvp): once the result commits, the FINISHED feed on the match
+    // page carries the home+away mvp rows (★4) the result route appended.
+    await admin.goto(matchUrl);
+    await expect(admin.getByText("Jugador más valioso").first()).toBeVisible();
+    const mvpRows = admin.getByTestId("live-event-row").filter({ hasText: "Jugador más valioso" });
+    await expect(mvpRows.filter({ hasText: "★4" })).toHaveCount(2);
   } finally {
     await league.close();
   }
