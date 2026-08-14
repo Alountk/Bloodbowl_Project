@@ -234,17 +234,110 @@ describe("MatchView — walkover and inert live shells (MV-2/MV-5/MV-6)", () => 
     expect(screen.queryByText(/Clima/)).toBeNull();
   });
 
-  it("renders no visible live/timeline/clock shells in played, scheduled or pending states", async () => {
-    const cases = [playedDetail(), scheduledDetail(), pendingDetail(), walkoverDetail()];
+  it("renders no visible live/timeline/clock chrome in the played summary or the walkover body", async () => {
+    // The uniform Tourplay header only covers pending/scheduled/live/finished;
+    // the result-loaded summary and the walkover keep their own bodies (the
+    // auth e2e asserts `/turno|minuto|½/` is absent from the played page).
+    const cases = [playedDetail(), walkoverDetail()];
     for (const detail of cases) {
       vi.unstubAllGlobals();
-      stubLiveEventSource(); // scheduled renders LiveActiveMatch (consent panel)
       stubMatch(detail);
       const { container } = renderPlayed();
       await waitFor(() => expect(container.textContent?.length ?? 0).toBeGreaterThan(0));
-      // No turn/clock/half/event-feed digits appear in ANY pre-live state.
+      // No turn/clock/half/event-feed digits, and no Tourplay header.
       expect(container.textContent).not.toMatch(/turno \d|tiempo|mitad|evento|:\d{2}/i);
+      expect(container.querySelector("[data-testid='tourplay-header']")).toBeNull();
     }
+  });
+});
+
+describe("MatchView — uniform sticky Tourplay header across states", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("renders the sticky header for a PENDING fixture (inert tracks, '–' clocks, '- : -' score)", async () => {
+    stubMatch(pendingDetail());
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Sin jornada programada/)).toBeTruthy());
+
+    const header = screen.getByTestId("tourplay-header");
+    expect(header).toBeTruthy();
+    // Sticky presence: solid navy bar pinned to the viewport top.
+    expect(header.className).toContain("sticky");
+    expect(header.className).toContain("top-0");
+    expect(header.className).toContain("z-40");
+    expect(header.className).toContain("bg-[#12225a]");
+
+    // Top bar: label + half badge + the always-visible Mitad · Turno line.
+    expect(screen.getByText(/Jornada 1/)).toBeTruthy();
+    expect(screen.getByText(/1ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
+    // Pre-kickoff clocks are inert "–" (no H:MM:SS digits).
+    expect(screen.getAllByText("–").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/0:00/)).toBeNull();
+    // Hero: no-played score + the meta row.
+    expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
+    expect(screen.getByText(/Clima · Estándar/)).toBeTruthy();
+    // Gating: no highlight, no "Tu turno"/"Dar el turno" before live.
+    const highlighted = screen
+      .getAllByLabelText(/Turno \d/)
+      .filter((c) => c.getAttribute("aria-current") === "true");
+    expect(highlighted).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
+
+  it("renders the sticky header above the consent panel for a SCHEDULED fixture (no live row)", async () => {
+    stubLiveEventSource();
+    stubMatch(scheduledDetail());
+    renderPlayed();
+    await screen.findByText(/Partido programado/);
+
+    // The header shares the exact same chrome (top bar + hero + meta row).
+    expect(screen.getByTestId("tourplay-header")).toBeTruthy();
+    expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
+    expect(screen.getByText(/1ª PARTE/)).toBeTruthy();
+    expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
+    // The consent panel stays in the BODY below the header.
+    expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
+    // Gating: the home coach HAS a side but the match is not live → no turn button.
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
+
+  it("renders the header for a FINISHED live match with the final score + frozen clocks and no turn controls", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Fin del partido/)).toBeTruthy());
+
+    expect(screen.getByTestId("tourplay-header")).toBeTruthy();
+    expect(screen.getByTestId("live-score").textContent).toMatch(/2\s*:\s*1/);
+    expect(screen.getByText(/2ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/Mitad 2 · Turno 8/)).toBeTruthy();
+    // Frozen base clocks render H:MM:SS (finished values carry real time).
+    expect(container.textContent).toMatch(/0:00:01/);
+    // Inert: no active highlight, no "Tu turno"/"Dar el turno" (not live).
+    const highlighted = screen
+      .getAllByLabelText(/Turno \d/)
+      .filter((c) => c.getAttribute("aria-current") === "true");
+    expect(highlighted).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryByText(/Tu turno/)).toBeNull();
+  });
+
+  it("gates 'Dar el turno' + 'Tu turno' to LIVE active participants only (spectator hidden)", async () => {
+    stubLiveEventSource();
+    // A spectator member owns neither team → session-derived viewerSide null.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (vi.mocked(useSession) as any).mockReturnValue({ data: { user: { id: "user-spectator" } } });
+    stubMatch(liveDetail());
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+
+    // The header renders, the match IS live, but the viewer has no side → the
+    // turn controls stay hidden (only the ACTIVE participant may pass).
+    expect(screen.getByTestId("tourplay-header")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryByText(/Tu turno/)).toBeNull();
   });
 });
 
