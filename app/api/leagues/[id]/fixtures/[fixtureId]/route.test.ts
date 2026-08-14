@@ -36,6 +36,7 @@ function buildFixture(overrides: Record<string, unknown> = {}) {
       raceId: "human",
       userId: "user-1",
       user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+      roster: [],
       players: [],
     },
     awayTeam: {
@@ -44,6 +45,7 @@ function buildFixture(overrides: Record<string, unknown> = {}) {
       raceId: "dwarf",
       userId: "user-2",
       user: { id: "user-2", name: "Coach B", email: "b@x", avatar: null },
+      roster: [],
       players: [],
     },
     ...overrides,
@@ -130,6 +132,7 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
           raceId: "human",
           userId: "user-1",
           user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster: [{ id: "p1", name: "Blitzer", positionalKey: "blitzer" }],
           players: [{ rosterPlayerId: "p1", name: "Blitzer", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, valueBonus: 0 }],
         },
       }),

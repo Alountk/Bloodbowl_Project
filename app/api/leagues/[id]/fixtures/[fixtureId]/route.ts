@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { deriveLiveClock, isDisplayEvent } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
+import type { PlayerEntry } from "@/features/teams/types";
 
 /** A persisted live event, serialized for the timeline (LM-10). */
 interface LiveEventDto {
@@ -131,6 +132,48 @@ export function serializeLive(
 }
 
 /**
+ * Builds the served `players` roster for a team side (D21): the squad ALWAYS
+ * carries every roster entry (id → rosterPlayerId, name, positionalKey) so the
+ * Design-A feed and EventControls mini-form resolve names/positions/dorsals even
+ * during a LIVE match before the lazy `Player` progression rows exist. When a
+ * `Player` row is present it is overlaid (progression fields, alive) so a played
+ * match keeps the authoritative post-result state. Dorsal = roster index + 1.
+ */
+function mergeRosterPlayers(
+  team: { roster: unknown; players: MatchPlayerRow[] },
+): MatchPlayerRow[] {
+  const entries = Array.isArray(team.roster) ? (team.roster as PlayerEntry[]) : [];
+  const rowByRef = new Map(team.players.map((p) => [p.rosterPlayerId, p]));
+  // Roster JSON is the identity source and its order is deterministic; a
+  // Player-progression row, when present, overlays the live fields.
+  return entries.map((e) => {
+    const row = rowByRef.get(e.id);
+    return {
+      rosterPlayerId: e.id,
+      name: row?.name ?? e.name,
+      positionalKey: row?.positionalKey ?? e.positionalKey,
+      pe: row?.pe ?? 0,
+      skills: row?.skills ?? [],
+      injuries: row?.injuries ?? [],
+      alive: row?.alive ?? true,
+      valueBonus: row?.valueBonus ?? 0,
+    };
+  });
+}
+
+/** A Prisma `Player` row as served for a match roster. */
+interface MatchPlayerRow {
+  rosterPlayerId: string;
+  name: string;
+  positionalKey: string;
+  pe: number;
+  skills: unknown;
+  injuries: unknown;
+  alive: boolean;
+  valueBonus: number;
+}
+
+/**
  * GET /api/leagues/[id]/fixtures/[fixtureId]
  * Returns a single fixture together with its persisted `MatchResult` snapshot
  * and both teams' enriched rosters. The fixture is enriched via `enrichFixture`
@@ -180,8 +223,9 @@ export async function GET(
           raceId: true,
           userId: true,
           user: { select: { id: true, name: true, email: true, avatar: true } },
+          roster: true,
           players: {
-            orderBy: { id: "asc" }, // D21: deterministic roster order → dorsal = index+1
+            orderBy: { id: "asc" }, // D21: stable row order for dorsal = index+1
             select: {
               rosterPlayerId: true,
               name: true,
@@ -202,8 +246,9 @@ export async function GET(
           raceId: true,
           userId: true,
           user: { select: { id: true, name: true, email: true, avatar: true } },
+          roster: true,
           players: {
-            orderBy: { id: "asc" }, // D21: deterministic roster order → dorsal = index+1
+            orderBy: { id: "asc" }, // D21: stable row order for dorsal = index+1
             select: {
               rosterPlayerId: true,
               name: true,
@@ -264,8 +309,8 @@ export async function GET(
   return NextResponse.json({
     fixture: fixtureRest,
     result: fixture.result ?? null,
-    homeTeam,
-    awayTeam,
+    homeTeam: { ...homeTeam, players: mergeRosterPlayers(homeTeam as never) },
+    awayTeam: { ...awayTeam, players: mergeRosterPlayers(awayTeam as never) },
     live,
   });
 }
