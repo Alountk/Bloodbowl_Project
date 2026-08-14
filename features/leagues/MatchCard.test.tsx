@@ -4,18 +4,23 @@ import { MatchCard, type MatchCardProps, matchStatusLabel, formatMatchDate, form
 import type { FixtureDraft } from "./api";
 
 /**
- * Pattern B MatchCard: a per-fixture card whose header is "Partido N · <status>",
- * whose body centers a "VS" with each team on its own side (team name + the
- * owner user's name below from the API's homeOwner/awayOwner), that navigates to
- * `/teams/[id]` (scouting) when a team is clicked, and that fires onNegotiate
- * when the card (its VS area) is clicked. Status badge labels Pendiente /
- * Programado (with date) / Jugado (with winner). Admin-only Forfeit control is
- * surfaced elsewhere (ForfeitModal), not on the card.
+ * Tourplay-style MatchCard (Design B): a per-fixture card whose header is
+ * "Partido N · <status>", whose body centers the RESULT (score or "- : -")
+ * between the two teams (deterministic emblem + name + race line), that
+ * navigates to `/teams/[id]` (scouting) when a team is clicked, and that fires
+ * onNegotiate when the card's center score is clicked. Status badge labels
+ * Pendiente / Programado (with date) / Jugado (with the winner's VICTORIA chip).
+ * Admin-only Forfeit control is surfaced elsewhere (ForfeitModal), not on the card.
  */
 
 const teamNameById = new Map([
   ["th", "Reavers"],
   ["ta", "Orcboyz"],
+]);
+
+const raceNameById = new Map([
+  ["th", "Human"],
+  ["ta", "Orc"],
 ]);
 
 function fixture(overrides: Partial<FixtureDraft> = {}): FixtureDraft {
@@ -43,6 +48,7 @@ function renderCard(props: Partial<MatchCardProps> = {}) {
     <MatchCard
       fixture={fixture()}
       teamNameById={teamNameById}
+      raceNameById={raceNameById}
       currentUserId="u3"
       isLeagueOwner={false}
       onNegotiate={onNegotiate}
@@ -85,9 +91,9 @@ describe("formatMatchDate", () => {
 });
 
 describe("formatMatchScore", () => {
-  it("returns the en-dash score when both scores are recorded", () => {
-    expect(formatMatchScore(2, 1)).toBe("2 – 1");
-    expect(formatMatchScore(0, 0)).toBe("0 – 0");
+  it("returns the ' : ' score when both scores are recorded", () => {
+    expect(formatMatchScore(2, 1)).toBe("2 : 1");
+    expect(formatMatchScore(0, 0)).toBe("0 : 0");
   });
   it("returns null when either score is absent", () => {
     expect(formatMatchScore(null, 1)).toBeNull();
@@ -102,72 +108,24 @@ describe("MatchCard", () => {
     expect(screen.getByText(/Partido 1 · Pendiente/)).toBeTruthy();
   });
 
-  it("centers a VS between the two team names with each owner's name below", () => {
+  it("centers the pending dash between the two teams with their emblems + race lines", () => {
     renderCard();
-    expect(screen.getByText("VS")).toBeTruthy();
-    // Each team shows its name (from the league member teams map) and the owner
-    // user's name directly below (from the API's homeOwner/awayOwner).
+    // The center scorebox replaces the old "VS": pending shows "- : -".
+    expect(screen.getByTestId("match-card-score").textContent).toMatch(/- : -/);
+    // Each team shows its deterministic emblem (initial), name and race line.
+    expect(screen.getByTestId("emblem-th").textContent).toBe("R");
+    expect(screen.getByTestId("emblem-ta").textContent).toBe("O");
     expect(screen.getByText("Reavers")).toBeTruthy();
     expect(screen.getByText("Orcboyz")).toBeTruthy();
-    expect(screen.getByText("raul")).toBeTruthy();
-    expect(screen.getByText("maria")).toBeTruthy();
-  });
-
-  it("shows the owner's name even when it differs from the team name", () => {
-    renderCard({ fixture: fixture({ homeOwner: { id: "u1", name: "Coach Raul" } }) });
-    expect(screen.getByText("Coach Raul")).toBeTruthy();
-    expect(screen.getByText("Reavers")).toBeTruthy();
-  });
-
-  it("renders the owner avatar beside the name when the owner has one", () => {
-    renderCard({
-      fixture: fixture({
-        homeOwner: { id: "u1", name: "raul", avatar: "/uploads/avatars/u-1.webp" },
-        awayOwner: { id: "u2", name: "maria", avatar: "/uploads/avatars/u-2.webp" },
-      }),
-    });
-    const imgs = screen.getAllByRole("img");
-    expect(imgs).toHaveLength(2);
-    expect(imgs[0].getAttribute("src")).toBe("/uploads/avatars/u-1.webp");
-    expect(imgs[1].getAttribute("src")).toBe("/uploads/avatars/u-2.webp");
-    // The name fallback stays rendered beside the avatar.
-    expect(screen.getByText("raul")).toBeTruthy();
-    expect(screen.getByText("maria")).toBeTruthy();
-  });
-
-  it("renders no avatar image for an owner without one, keeping the name fallback", () => {
-    const { container } = render(
-      <MatchCard
-        fixture={fixture({ homeOwner: { id: "u1", name: "raul", avatar: null }, awayOwner: { id: "u2", name: "maria" } })}
-        teamNameById={teamNameById}
-        currentUserId="u3"
-        isLeagueOwner={false}
-        onNegotiate={vi.fn()}
-        onForfeit={vi.fn()}
-      />,
-    );
-    expect(container.querySelector("img")).toBeNull();
-    expect(screen.getByText("raul")).toBeTruthy();
-    expect(screen.getByText("maria")).toBeTruthy();
-  });
-
-  it("renders nothing (no img) when the home owner avatar is absent but the away has one", () => {
-    renderCard({
-      fixture: fixture({
-        homeOwner: { id: "u1", name: "raul" },
-        awayOwner: { id: "u2", name: "maria", avatar: "/uploads/avatars/u-2.webp" },
-      }),
-    });
-    const imgs = screen.getAllByRole("img");
-    expect(imgs).toHaveLength(1);
-    expect(imgs[0].getAttribute("src")).toBe("/uploads/avatars/u-2.webp");
+    expect(screen.getByText("Human")).toBeTruthy();
+    expect(screen.getByText("Orc")).toBeTruthy();
   });
 
   it("shows a Programado badge with the scheduled date", () => {
     renderCard({
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
     });
-    // Label appears in the badge and the footer.
+    // Label appears in the header and the footer.
     const labels = screen.getAllByText(/Programado/);
     expect(labels.length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/01\/03\/2026/)).toBeTruthy();
@@ -184,26 +142,36 @@ describe("MatchCard", () => {
     ).toBeTruthy();
   });
 
-  it("shows a Jugado badge with the winner when played", () => {
+  it("shows a Jugado header with the winner highlighted and the loser grayed when played", () => {
     renderCard({ fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }) });
     const labels = screen.getAllByText(/Jugado/);
     expect(labels.length).toBeGreaterThanOrEqual(1);
-    // The footer names the winner team.
-    expect(screen.getByText(/Ganador: Reavers/)).toBeTruthy();
+    // The winner's side carries the VICTORIA chip and the winner ring.
+    expect(screen.getByText("VICTORIA")).toBeTruthy();
+    expect(screen.getByTestId("emblem-th").className).toContain("ring-2");
+    const winnerSide = screen.getByText("VICTORIA").closest("[data-winner='true']");
+    expect(winnerSide).toBeTruthy();
+    expect(withinSide(winnerSide as HTMLElement).getByText("Reavers")).toBeTruthy();
   });
 
-  it("renders the final score (homeScore – awayScore) with the winner on a played result", () => {
-    // league-season: result-loaded fixtures expose the score; MatchCard shows it.
+  it("renders the final score (home : away) with the winner highlighted on a played result", () => {
     renderCard({ fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }) });
-    expect(screen.getByText(/2 – 1/)).toBeTruthy();
-    expect(screen.getByText(/Ganador: Reavers/)).toBeTruthy();
+    expect(screen.getByTestId("match-card-score").textContent).toMatch(/2 : 1/);
+    expect(screen.getByText("VICTORIA")).toBeTruthy();
   });
 
-  it("shows only the winner label when a played result has no raw scores", () => {
+  it("keeps the winner highlight when a played result has no raw scores", () => {
     renderCard({ fixture: fixture({ status: "played", winnerId: "th", homeScore: null, awayScore: null }) });
-    // No score shown (legacy/forfeit fixture without raw scores), winner still named.
-    expect(screen.queryByText(/–/)).toBeNull();
-    expect(screen.getByText(/Ganador: Reavers/)).toBeTruthy();
+    // No score available → the pending dash; the winner still gets the VICTORIA chip.
+    expect(screen.getByTestId("match-card-score").textContent).toMatch(/- : -/);
+    expect(screen.getByText("VICTORIA")).toBeTruthy();
+  });
+
+  it("renders a draw neutrally (no VICTORIA chip, no winner column)", () => {
+    renderCard({ fixture: fixture({ status: "played", winnerId: null, homeScore: 1, awayScore: 1 }) });
+    expect(screen.getByTestId("match-card-score").textContent).toMatch(/1 : 1/);
+    expect(screen.queryByText("VICTORIA")).toBeNull();
+    expect(document.querySelector("[data-winner='true']")).toBeNull();
   });
 
   it("does not label a winnerId-only forfeit as Jugado when no result is recorded", () => {
@@ -211,8 +179,37 @@ describe("MatchCard", () => {
     renderCard({ fixture: fixture({ status: "pending", winnerId: "th" }) });
     expect(screen.getByText(/Pendiente/)).toBeTruthy();
     expect(screen.queryByText(/Jugado/)).toBeNull();
-    // No winner footer either (no result recorded).
-    expect(screen.queryByText(/Ganador:/)).toBeNull();
+    // No result recorded → no winner chip and a pending dash.
+    expect(screen.queryByText("VICTORIA")).toBeNull();
+    expect(screen.getByTestId("match-card-score").textContent).toMatch(/- : -/);
+  });
+
+  it("shows the pulsing EN VIVO badge and the live score for a running match", () => {
+    renderCard({
+      fixture: fixture({
+        status: "scheduled",
+        scheduledAt: "2026-03-01T10:00:00.000Z",
+        live: { status: "live", homeScore: 1, awayScore: 0, half: 2, turnNumber: 5 },
+      }),
+    });
+    expect(screen.getAllByText("EN VIVO").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId("match-card-score").textContent).toMatch(/1 : 0/);
+    // The live match owns its scoreboard → no result-load control.
+    expect(screen.queryByRole("button", { name: /Cargar resultado/ })).toBeNull();
+  });
+
+  it("restores the load-result path once the live match is finished", () => {
+    renderCard({
+      fixture: fixture({
+        status: "scheduled",
+        scheduledAt: "2026-03-01T10:00:00.000Z",
+        homeOwner: { id: "u1", name: "raul" },
+        live: { status: "finished", homeScore: 2, awayScore: 1, half: 2, turnNumber: 8 },
+      }),
+      currentUserId: "u1",
+    });
+    expect(screen.queryByText("EN VIVO")).toBeNull();
+    expect(screen.getByRole("button", { name: /Cargar resultado/ })).toBeTruthy();
   });
 
   it("links each team's name to its scouting page '/teams/[id]'", () => {
@@ -220,6 +217,7 @@ describe("MatchCard", () => {
       <MatchCard
         fixture={fixture()}
         teamNameById={teamNameById}
+        raceNameById={raceNameById}
         currentUserId="u3"
         isLeagueOwner={false}
         onNegotiate={vi.fn()}
@@ -232,9 +230,9 @@ describe("MatchCard", () => {
     expect(awayLink.getAttribute("href")).toBe("/teams/ta");
   });
 
-  it("fires onNegotiate when the card's VS area is clicked", () => {
+  it("fires onNegotiate when the card's center score is clicked", () => {
     const { onNegotiate } = renderCard();
-    fireEvent.click(screen.getByText("VS"));
+    fireEvent.click(screen.getByTestId("match-card-score"));
     expect(onNegotiate).toHaveBeenCalledTimes(1);
   });
 });
@@ -265,6 +263,7 @@ describe("MatchCard — Ver partido navigation (MV-4)", () => {
         <MatchCard
           fixture={fixture(overrides)}
           teamNameById={teamNameById}
+          raceNameById={raceNameById}
           currentUserId="u3"
           isLeagueOwner={false}
           onNegotiate={vi.fn()}
@@ -289,6 +288,7 @@ describe("MatchCard — Ver partido navigation (MV-4)", () => {
       <MatchCard
         fixture={fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" })}
         teamNameById={teamNameById}
+        raceNameById={raceNameById}
         currentUserId="u3"
         isLeagueOwner={false}
         onNegotiate={vi.fn()}
@@ -301,19 +301,21 @@ describe("MatchCard — Ver partido navigation (MV-4)", () => {
     expect(links[links.length - 1].text).toBe("Ver partido");
   });
 
-  it("keeps the played footer byte-identical and renders the link last", () => {
+  it("moves the played score to the center and renders the link last", () => {
     render(
       <MatchCard
         fixture={fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 })}
         teamNameById={teamNameById}
+        raceNameById={raceNameById}
         currentUserId="u3"
         isLeagueOwner={false}
         onNegotiate={vi.fn()}
         onForfeit={vi.fn()}
       />,
     );
-    // Exact existing played line: Jugado · 2 – 1 · Ganador: Reavers
-    expect(screen.getByText(/Jugado · 2 – 1 · Ganador: Reavers/)).toBeTruthy();
+    // The result moved to the CENTER (Tourplay); the footer no longer repeats it.
+    expect(screen.getByTestId("match-card-score").textContent).toMatch(/2 : 1/);
+    expect(screen.queryByText(/Ganador:/)).toBeNull();
     const links = linksInOrder();
     expect(links[links.length - 1].text).toBe("Ver partido");
   });
@@ -361,10 +363,8 @@ describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () =
     const { unmount } = render(
       <MatchCard
         fixture={fixture({ status: "scheduled", scheduledAt: "2026-03-01T18:00:00.000Z" })}
-        teamNameById={new Map([
-          ["th", "Reavers"],
-          ["ta", "Orcboyz"],
-        ])}
+        teamNameById={teamNameById}
+        raceNameById={raceNameById}
         currentUserId="u3"
         isLeagueOwner
         onNegotiate={vi.fn()}
@@ -385,3 +385,16 @@ describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () =
     expect(screen.queryByRole("button", { name: /Corregir resultado/ })).toBeNull();
   });
 });
+
+/** Scoped queries within a winner/loser column (asserts the highlight layout). */
+function withinSide(side: HTMLElement) {
+  return {
+    getByText: (text: string) => {
+      const found = Array.from(side.querySelectorAll("a")).find(
+        (a) => a.textContent?.trim() === text,
+      );
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    },
+  };
+}

@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { UserAvatar } from "@/components/UserAvatar";
 import type { FixtureDraft, FixtureStatus } from "./api";
+import { TeamEmblem } from "./TeamEmblem";
 
 /**
  * Pure: resolves the Spanish status label shown on a match card from the
@@ -30,22 +30,24 @@ export function formatMatchDate(iso: string | null): string {
 }
 
 /**
- * Pure: renders the recorded final score as "home – away" (en-dash) when both
- * scores are present. Returns null when scores are absent so the MatchCard can
- * fall back to the winner-only footer (legacy/forfeit rows without raw scores).
+ * Pure: renders the recorded final score as "home : away" (Tourplay center
+ * format). Returns null when scores are absent so the MatchCard can fall back
+ * to the pending dash ("- : -").
  */
 export function formatMatchScore(
   homeScore: number | null | undefined,
   awayScore: number | null | undefined,
 ): string | null {
   if (homeScore == null || awayScore == null) return null;
-  return `${homeScore} – ${awayScore}`;
+  return `${homeScore} : ${awayScore}`;
 }
 
 export interface MatchCardProps {
   fixture: FixtureDraft;
   /** Maps a member team id → team display name (from the league detail). */
   teamNameById: Map<string, string>;
+  /** Maps a member team id → resolved race display name (Tourplay card line). */
+  raceNameById?: Map<string, string>;
   /** Session user id, used to decide whether the viewer is a match participant. */
   currentUserId: string;
   /** True when the session user owns the league (admin → forfeit/correct control). */
@@ -61,15 +63,19 @@ export interface MatchCardProps {
 }
 
 /**
- * Pattern B match card: a clickable card (opens negotiation) whose header is
- * "Partido N · <status>", whose body centers a "VS" with each team on its own
- * side (team name with the owner user below, from the API), and whose team names
- * are links to the rival's scouting page `/teams/[id]`. Clicking a team stops
- * propagation so it does not also open negotiation.
+ * Tourplay-style match card (Design B): a clickable card (opens negotiation)
+ * whose header is "Partido N · <status>" (navy, with a pulsing EN VIVO badge
+ * while the live match runs), whose body centers the RESULT (score, or "- : -"
+ * before the match) between the two teams, each with its deterministic emblem,
+ * name (a link to `/teams/[id]` scouting) and race line. The winner's side is
+ * highlighted navy with a "VICTORIA" chip and the loser is grayed; a draw stays
+ * neutral. Clicking a team stops propagation so it does not also open
+ * negotiation.
  */
 export function MatchCard({
   fixture,
   teamNameById,
+  raceNameById,
   currentUserId,
   isLeagueOwner,
   onNegotiate,
@@ -82,29 +88,49 @@ export function MatchCard({
   const status = matchStatusLabel(fixture.status);
   const homeName = teamNameById.get(fixture.homeTeamId) ?? "Equipo";
   const awayName = teamNameById.get(fixture.awayTeamId) ?? "Equipo";
+  const homeRace = raceNameById?.get(fixture.homeTeamId) ?? "";
+  const awayRace = raceNameById?.get(fixture.awayTeamId) ?? "";
   const score = formatMatchScore(fixture.homeScore, fixture.awayScore);
-  const winnerName = teamNameById.get(fixture.winnerId ?? "") ?? "Equipo";
+  const liveActive = fixture.live?.status === "live";
 
   const openNegotiation = () => onNegotiate(fixture);
   const openForfeit = () => onForfeit(fixture);
   const openLoadResult = () => onLoadResult?.(fixture);
   const openCorrectResult = () => onCorrectResult?.(fixture);
 
-  const canLoadResult = fixture.status === "scheduled" && (isParticipant || isLeagueOwner);
+  // No result loading while the match is live (the live controls own the
+  // scoreboard); after `endMatch` the fixture returns to the normal path.
+  const canLoadResult =
+    fixture.status === "scheduled" && !liveActive && (isParticipant || isLeagueOwner);
+
+  const played = fixture.status === "played";
+  const winnerIsHome = played && fixture.winnerId === fixture.homeTeamId;
+  const winnerIsAway = played && fixture.winnerId === fixture.awayTeamId;
+  const draw = played && !winnerIsHome && !winnerIsAway;
+  const centerScore = liveActive
+    ? `${fixture.live?.homeScore ?? 0} : ${fixture.live?.awayScore ?? 0}`
+    : score ?? "- : -";
 
   return (
     <article
       aria-label={`Partido ${fixture.round} ${homeName} vs ${awayName}`}
       className="border border-[#e2e8f0] bg-white transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e2e8f0] bg-[#f8fafc] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
-        <span>Partido {fixture.round} · {status}</span>
-        <span className="flex gap-2">
+      <header className="flex flex-wrap items-center justify-between gap-2 bg-[#12225a] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
+        <span className="flex items-center gap-2">
+          <span>Partido {fixture.round} · {liveActive ? "En vivo" : status}</span>
+          {liveActive ? (
+            <span className="animate-pulse rounded-sm bg-[#d11938] px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
+              EN VIVO
+            </span>
+          ) : null}
+        </span>
+        <span className="flex flex-wrap gap-2">
           {canLoadResult ? (
             <button
               type="button"
               onClick={openLoadResult}
-              className="rounded-sm border border-slate-300 px-2 py-0.5 text-[10px] font-semibold normal-case text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+              className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
             >
               Cargar resultado
             </button>
@@ -113,7 +139,7 @@ export function MatchCard({
             <button
               type="button"
               onClick={openCorrectResult}
-              className="rounded-sm border border-slate-300 px-2 py-0.5 text-[10px] font-semibold normal-case text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+              className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
             >
               Corregir resultado
             </button>
@@ -122,7 +148,7 @@ export function MatchCard({
             <button
               type="button"
               onClick={openForfeit}
-              className="rounded-sm border border-slate-300 px-2 py-0.5 text-[10px] font-semibold normal-case text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+              className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
             >
               Otorgar victoria
             </button>
@@ -139,30 +165,57 @@ export function MatchCard({
             openNegotiation();
           }
         }}
-        className="flex cursor-pointer items-center justify-between gap-2 px-3 py-4"
+        className="grid cursor-pointer grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-4"
       >
         <TeamSide
           name={homeName}
-          ownerName={fixture.homeOwner?.name ?? null}
-          ownerAvatar={fixture.homeOwner?.avatar ?? null}
+          race={homeRace}
           href={`/teams/${fixture.homeTeamId}`}
+          emblem={
+            <TeamEmblem
+              teamId={fixture.homeTeamId}
+              name={homeName}
+              className={winnerIsHome ? "ring-2 ring-[#12225a] ring-offset-2" : ""}
+            />
+          }
+          outcome={played ? (winnerIsHome ? "win" : draw ? "draw" : "lose") : "none"}
         />
-        <span className="text-[13px] font-black tracking-[0.05em] text-[#d11938]">VS</span>
+        <div data-testid="match-card-score" className="flex min-w-[52px] flex-col items-center px-1">
+          <span
+            className={`text-2xl font-black tracking-[0.15em] tabular-nums ${
+              liveActive
+                ? "text-[#d11938]"
+                : played || score
+                  ? "text-[#12225a]"
+                  : "text-[#cbd5e1]"
+            }`}
+          >
+            {centerScore}
+          </span>
+          {liveActive ? (
+            <span className="text-[9px] font-extrabold tracking-[0.2em] text-[#d11938]">EN VIVO</span>
+          ) : null}
+        </div>
         <TeamSide
           name={awayName}
-          ownerName={fixture.awayOwner?.name ?? null}
-          ownerAvatar={fixture.awayOwner?.avatar ?? null}
+          race={awayRace}
           href={`/teams/${fixture.awayTeamId}`}
+          emblem={
+            <TeamEmblem
+              teamId={fixture.awayTeamId}
+              name={awayName}
+              className={winnerIsAway ? "ring-2 ring-[#12225a] ring-offset-2" : ""}
+            />
+          }
+          outcome={played ? (winnerIsAway ? "win" : draw ? "draw" : "lose") : "none"}
         />
       </div>
-      <footer className="border-t border-[#e2e8f0] px-3 py-1.5 text-center text-[11px] text-slate-500">
+      <footer className="flex items-center justify-between gap-2 border-t border-[#e2e8f0] px-3 py-1.5 text-[11px] text-slate-500">
         {fixture.status === "scheduled" ? (
-          <>Programado: {formatMatchDate(fixture.scheduledAt)}</>
-        ) : fixture.status === "played" ? (
-          <>
-            Jugado{score ? ` · ${score}` : ""} · Ganador: {winnerName}
-          </>
-        ) : null}
+          <span>Programado: {formatMatchDate(fixture.scheduledAt)}</span>
+        ) : (
+          <span />
+        )}
         <Link
           href={`/leagues/${fixture.leagueId}/fixtures/${fixture.id}`}
           className="ml-2 inline-block font-semibold text-[#d11938] no-underline hover:opacity-70"
@@ -174,30 +227,44 @@ export function MatchCard({
   );
 }
 
+/** One team column of the Tourplay card: emblem, name link, race line, and the
+ * VICTORIA chip when this side won (the loser is grayed, a draw stays neutral). */
 function TeamSide({
   name,
-  ownerName,
-  ownerAvatar,
+  race,
   href,
+  emblem,
+  outcome,
 }: {
   name: string;
-  ownerName: string | null;
-  ownerAvatar: string | null;
+  race: string;
   href: string;
+  emblem: React.ReactNode;
+  outcome: "win" | "lose" | "draw" | "none";
 }) {
+  const win = outcome === "win";
+  const lose = outcome === "lose";
   return (
-    <div className="flex-1 text-center">
+    <div
+      data-winner={win ? "true" : undefined}
+      className={`flex min-w-0 flex-col items-center gap-1 text-center ${lose ? "opacity-60" : ""}`}
+    >
+      {emblem}
       <Link
         href={href}
         onClick={(e) => e.stopPropagation()}
-        className="font-bold text-[#12225a] no-underline hover:opacity-65"
+        className={`max-w-full truncate font-extrabold no-underline hover:opacity-65 ${
+          win ? "text-[#12225a]" : lose ? "text-[#94a3b8]" : "text-[#12225a]"
+        }`}
       >
         {name}
       </Link>
-      {ownerName ? (
-        <span className="mt-0.5 flex items-center justify-center gap-1 text-[11px] text-slate-400">
-          <UserAvatar src={ownerAvatar} />
-          {ownerName}
+      <span className={`max-w-full truncate text-[10px] ${lose ? "text-[#94a3b8]" : "text-slate-500"}`}>
+        {race}
+      </span>
+      {win ? (
+        <span className="rounded-sm bg-[#e0e7ff] px-1.5 py-px text-[9px] font-black tracking-[0.15em] text-[#12225a]">
+          VICTORIA
         </span>
       ) : null}
     </div>
