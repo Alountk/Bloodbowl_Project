@@ -292,55 +292,33 @@ function LiveConsentPanel({
 }
 
 /**
- * Pure: each team's OWN turn count within the current half (isolated per team,
- * BB rulebook). The global `turnNumber` (1..8 per half) alternates between the
- * teams, so it must NOT be shown on both tracks — each team's track advances
- * only when THAT team plays. Half 1 starts with home, half 2 with away
- * (advanceTurnIndex): the starting side has ceil(n/2) turns played/in-progress,
- * the other side floor(n/2). The ACTIVE side (derivable from half + odd/even
- * turn) carries its in-progress turn; the non-active side its completed turns.
+ * One team's turn track (Tourplay): BOTH tracks always show the SAME GLOBAL
+ * sequence — 1-8 during half 1, 9-16 during half 2 (current global =
+ * `half === 2 ? turnNumber + 8 : turnNumber`). Only the ACTIVE side's current
+ * turn is highlighted (this supersedes the per-team isolated counters from #79).
  */
-export function teamTurnCounts(
-  half: number,
-  turnNumber: number,
-): { home: number; away: number } {
-  const starter: "home" | "away" = half === 1 ? "home" : "away";
-  const starterCount = Math.ceil(turnNumber / 2);
-  const otherCount = Math.floor(turnNumber / 2);
-  return starter === "home"
-    ? { home: starterCount, away: otherCount }
-    : { home: otherCount, away: starterCount };
-}
-
-/** One team's 1..8-per-half turn track; the current turn is highlighted. */
 function TurnTrack({
   sideName,
   current,
   isActive,
 }: {
   sideName: string;
+  /** The GLOBAL current turn: 1-8 in half 1, 9-16 in half 2. */
   current: number;
   isActive: boolean;
 }) {
+  const first = current > 8 ? 9 : 1;
   return (
     <div aria-label={`Turnos de ${sideName}`} className="flex items-center gap-1">
-      {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => {
-        // Active side: turns below the current one are done, the current one is
-        // highlighted. Non-active side: its `current` is its COMPLETED count, so
-        // `n <= current` marks every finished turn as done (isolated counters).
-        const done = isActive ? n < current : n <= current;
+      {Array.from({ length: 8 }, (_, i) => first + i).map((n) => {
         const active = isActive && n === current;
         return (
           <span
             key={n}
             aria-label={`Turno ${n}`}
             aria-current={active ? "true" : undefined}
-            className={`flex h-6 w-6 items-center justify-center rounded-sm text-[11px] font-bold ${
-              active
-                ? "bg-[#d11938] text-white"
-                : done
-                  ? "bg-[#1f3a7a] text-white"
-                  : "border border-white/15 bg-white/5 text-[#9fb3d8]"
+            className={`flex h-5 w-5 items-center justify-center rounded-sm text-[10px] font-bold ${
+              active ? "bg-[#d11938] text-white" : "bg-[#1f3a7a] text-[#9fb3d8]"
             }`}
           >
             {n}
@@ -352,12 +330,15 @@ function TurnTrack({
 }
 
 /**
- * The mockup top bar (casi Tourplay): navy bar with the league/jornada label,
- * half indicator, the unified "Tiempo", the two per-coach turn tracks (1-8,
- * current highlighted) and the two per-coach H:MM:SS clocks. The ACTIVE coach's
- * "Tu turno" STATUS + the red TURNO ("Dar el turno") button sit CENTERED in the
- * bar (the string stays "Dar el turno" — e2e/unit suites assert it). The compact
- * "Mitad H · Turno N" line keeps the exact string the e2e/unit suites assert.
+ * The mockup top bar (Tourplay): a COMPACT SINGLE-ROW navy bar (flex-wrap on
+ * small screens) —
+ * `[label "{league} · Jornada {round}"] [home track] [home clock H:MM:SS]
+ *  [2ª PARTE badge] [away clock H:MM:SS] [TURNO button] [away track]`.
+ * Both turn tracks show the SAME global numbers with the ACTIVE side's current
+ * turn highlighted; the ACTIVE coach's "Tu turno" STATUS + the red TURNO
+ * ("Dar el turno") button sit next to the always-visible compact
+ * "Mitad H · Turno N" line (all three strings stay byte-identical — e2e/unit
+ * suites assert them). The unified "Tiempo" clock lives in the hero scoreboard.
  */
 function LiveTopBar({
   state,
@@ -372,61 +353,49 @@ function LiveTopBar({
   names: { home: string; away: string };
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
 }) {
+  const globalTurn = state.half === 2 ? state.turnNumber + 8 : state.turnNumber;
   return (
-    <div className="border-b border-[#1f3a7a] bg-[#12225a] px-4 py-3 text-white">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#cbd5e1]">{label}</p>
-        <p className="text-[11px] font-bold uppercase tracking-wide text-[#9fb3d8]">
-          {state.half === 2 ? "2ª PARTE" : "1ª PARTE"}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#1f3a7a] bg-[#12225a] px-4 py-2 text-white">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-[#cbd5e1]">{label}</p>
+      <TurnTrack
+        sideName={names.home}
+        current={globalTurn}
+        isActive={state.activeSide === "home"}
+      />
+      <span className="text-[11px] font-bold tabular-nums text-white">
+        <FormatHms ms={clock.homeTurnMs} />
+      </span>
+      <span className="rounded-sm bg-[#d11938] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white">
+        {state.half === 2 ? "2ª PARTE" : "1ª PARTE"}
+      </span>
+      <span className="text-[11px] font-bold tabular-nums text-white">
+        <FormatHms ms={clock.awayTurnMs} />
+      </span>
+      <span className="flex items-center gap-2">
+        <p className="text-[11px] font-semibold text-[#cbd5e1]">
+          Mitad {state.half} · Turno {state.turnNumber}
         </p>
-        <p className="text-sm font-semibold text-[#cbd5e1]">
-          Tiempo <FormatMs ms={clock.elapsed} />
-        </p>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase text-[#9fb3d8]">{names.home}</span>
-          <TurnTrack
-            sideName={names.home}
-            current={teamTurnCounts(state.half, state.turnNumber).home}
-            isActive={state.activeSide === "home"}
-          />
-          <span className="text-sm font-black text-white tabular-nums">
-            <FormatHms ms={clock.homeTurnMs} />
-          </span>
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <p className="text-sm font-semibold text-[#cbd5e1]">
-            Mitad {state.half} · Turno {state.turnNumber}
-          </p>
-          {turnControls.isActive ? (
-            <div className="flex items-center gap-2">
-              <p role="status" className="text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
-                Tu turno
-              </p>
-              <button
-                type="button"
-                onClick={turnControls.onEndTurn}
-                disabled={state.status !== "live" || turnControls.submitting}
-                className="rounded-sm bg-[#d11938] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white hover:bg-[#b0142f] disabled:opacity-50"
-              >
-                Dar el turno
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-black text-white tabular-nums">
-            <FormatHms ms={clock.awayTurnMs} />
-          </span>
-          <TurnTrack
-            sideName={names.away}
-            current={teamTurnCounts(state.half, state.turnNumber).away}
-            isActive={state.activeSide === "away"}
-          />
-          <span className="text-xs font-bold uppercase text-[#9fb3d8]">{names.away}</span>
-        </div>
-      </div>
+        {turnControls.isActive ? (
+          <>
+            <p role="status" className="text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
+              Tu turno
+            </p>
+            <button
+              type="button"
+              onClick={turnControls.onEndTurn}
+              disabled={state.status !== "live" || turnControls.submitting}
+              className="rounded-sm bg-[#d11938] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white hover:bg-[#b0142f] disabled:opacity-50"
+            >
+              Dar el turno
+            </button>
+          </>
+        ) : null}
+      </span>
+      <TurnTrack
+        sideName={names.away}
+        current={globalTurn}
+        isActive={state.activeSide === "away"}
+      />
     </div>
   );
 }
@@ -497,7 +466,9 @@ function LiveTeamBlock({
 
 /**
  * The center scoreboard: BIG "home : away" digits (white on the navy hero, red
- * separator) — the per-team mini-stats live under each team block (Design 10).
+ * separator) + the unified "Tiempo" match clock (Design 10: the per-team
+ * mini-stats live under each team block; the top bar dropped the Tiempo label
+ * in the Tourplay single-row redesign, so it lives here under the score).
  */
 function LiveScoreboard({ state }: { state: LiveMatchViewState }) {
   return (
@@ -510,6 +481,9 @@ function LiveScoreboard({ state }: { state: LiveMatchViewState }) {
         {state.homeScore}
         <span className="mx-2 text-[#d11938]">:</span>
         {state.awayScore}
+      </p>
+      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#cbd5e1]">
+        Tiempo <FormatMs ms={state.elapsed} />
       </p>
     </div>
   );
