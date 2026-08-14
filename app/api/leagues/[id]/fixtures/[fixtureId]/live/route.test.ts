@@ -253,7 +253,7 @@ describe("GET .../live — snapshot carries the persistent state + per-viewer vi
     await reader.cancel().catch(() => {});
   });
 
-  it("loads the persisted events and streams them in the snapshot frame (reload shows the timeline)", async () => {
+  it("loads the persisted events and streams only DISPLAY kinds in the snapshot (reload+filter, LM-16)", async () => {
     prismaMock.liveMatch.findFirst.mockResolvedValue({
       ...pendingRow(5),
       status: "live",
@@ -284,22 +284,46 @@ describe("GET .../live — snapshot carries the persistent state + per-viewer vi
         payload: {},
         createdAt: new Date(4000),
       },
+      {
+        seq: 5,
+        kind: "turn",
+        side: null,
+        playerRosterId: null,
+        half: 1,
+        turnNumber: 3,
+        payload: {},
+        createdAt: new Date(5000),
+      },
+      {
+        seq: 6,
+        kind: "turnStart",
+        side: "away",
+        playerRosterId: null,
+        half: 1,
+        turnNumber: 4,
+        payload: {},
+        createdAt: new Date(6000),
+      },
     ]);
 
     const res = await GET(
       new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
-    // The snapshot's events array is loaded from the persisted LiveEvent rows,
-    // mapped into the client DTO shape (kind/side/half/turnNumber/payload/at).
+    // The snapshot timeline is loaded from the persisted LiveEvent rows and
+    // filtered through `isDisplayEvent` (LM-16): `start` appears, but the
+    // `turn`/`turnStart`/`requestTurn` rows are excluded from the feed DTO.
     expect(prismaMock.liveEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { liveMatchId: "lm-1" }, orderBy: { seq: "asc" } }),
     );
     const reader = res.body!.getReader();
     const first = new TextDecoder().decode((await reader.read()).value);
-    expect(first).toContain('"kind":"requestTurn"');
-    expect(first).toContain('"side":"away"');
-    expect(first).toContain('"at":4000');
+    expect(first).toContain('"kind":"start"');
+    expect(first).toContain('"at":1000');
+    // The display filter drops turn-family kinds from the snapshot feed.
+    expect(first).not.toContain('"kind":"requestTurn"');
+    expect(first).not.toContain('"kind":"turn"');
+    expect(first).not.toContain('"kind":"turnStart"');
     await reader.cancel().catch(() => {});
   });
 
