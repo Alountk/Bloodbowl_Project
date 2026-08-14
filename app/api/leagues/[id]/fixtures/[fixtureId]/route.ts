@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { deriveLiveClock } from "@/lib/liveMatch";
+import { deriveLiveClock, isDisplayEvent } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 
 /** A persisted live event, serialized for the timeline (LM-10). */
@@ -110,19 +110,23 @@ export function serializeLive(
     homeScore: row.homeScore,
     awayScore: row.awayScore,
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
-    events: row.events.map((e) => ({
-      seq: e.seq,
-      kind: e.kind,
-      side: e.side,
-      playerRosterId: e.playerRosterId,
-      half: e.half,
-      turnNumber: e.turnNumber,
-      payload:
-        typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
-          ? (e.payload as Record<string, unknown>)
-          : {},
-      at: new Date(e.createdAt).getTime(),
-    })),
+    // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
+    // `requestTurn` stay in the DB (audit/replay) and are never shown here.
+    events: row.events
+      .filter((e) => isDisplayEvent(e.kind))
+      .map((e) => ({
+        seq: e.seq,
+        kind: e.kind,
+        side: e.side,
+        playerRosterId: e.playerRosterId,
+        half: e.half,
+        turnNumber: e.turnNumber,
+        payload:
+          typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
+            ? (e.payload as Record<string, unknown>)
+            : {},
+        at: new Date(e.createdAt).getTime(),
+      })),
   };
 }
 
@@ -177,6 +181,7 @@ export async function GET(
           userId: true,
           user: { select: { id: true, name: true, email: true, avatar: true } },
           players: {
+            orderBy: { id: "asc" }, // D21: deterministic roster order → dorsal = index+1
             select: {
               rosterPlayerId: true,
               name: true,
@@ -198,6 +203,7 @@ export async function GET(
           userId: true,
           user: { select: { id: true, name: true, email: true, avatar: true } },
           players: {
+            orderBy: { id: "asc" }, // D21: deterministic roster order → dorsal = index+1
             select: {
               rosterPlayerId: true,
               name: true,
