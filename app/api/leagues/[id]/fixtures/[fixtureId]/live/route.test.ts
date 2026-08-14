@@ -6,7 +6,7 @@ const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn() },
   league: { findFirst: vi.fn() },
   liveMatch: { findFirst: vi.fn() },
-  liveEvent: { findFirst: vi.fn(), findMany: vi.fn() },
+  liveEvent: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
 }));
 
 const consentLiveMatchMock = vi.hoisted(() => vi.fn());
@@ -684,6 +684,71 @@ describe("POST .../live — side-aware event permission (LM-12, D14)", () => {
     } as never);
     expect(res.status).toBe(409);
     expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST .../live — completion command (LM-15) + mvp-not-a-command (LM-14)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active (liveState.activeSide = home). */
+  function liveSetup(sessionId: string) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("returns 200 and persists a completion event when the ACTIVE coach records one (LM-15)", async () => {
+    liveSetup("coach-home");
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "completion", side: "home", playerRosterId: "p-2" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    // The transition must carry a `completion` event with ★1 and NO turn flip.
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    expect(transitionArg.next.events[0].kind).toBe("completion");
+    expect(transitionArg.next.events[0].payload.spp).toBe(1);
+    expect(transitionArg.next.events[0].playerRosterId).toBe("p-2");
+    expect(transitionArg.next.activeSide).toBe("home");
+  });
+
+  it("returns 409 (no mutation) when a NON-active coach records a completion (LM-15)", async () => {
+    // home active; the away coach records a completion → 409, no persist.
+    liveSetup("coach-away");
+    const res = await POST(req({ type: "completion", side: "away", playerRosterId: "p-9" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 with no mutation for an `mvp` control command (mvp is never a live command, LM-14)", async () => {
+    liveSetup("coach-home");
+    const res = await POST(req({ type: "mvp", side: "home", playerRosterId: "p-1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(prismaMock.liveEvent.create).not.toHaveBeenCalled();
   });
 });
 

@@ -5,6 +5,7 @@ import {
   beginMatch,
   applyEndTurn,
   applyTD,
+  applyCompletion,
   applyEndMatch,
   toLiveViewState,
   deriveLiveClock,
@@ -196,6 +197,44 @@ describe("applyTD — records event, scores, and auto-ends the turn (D11)", () =
 
   it("rejects an out-of-turn TD", () => {
     expect(() => applyTD(state(), { side: "away", playerRosterId: "p-2" }, 1100)).toThrow("out");
+  });
+});
+
+describe("applyCompletion — records a ★1 completion event WITHOUT flipping the turn (LM-15)", () => {
+  it("appends a `completion` event with the next monotonic seq and ★1 payload, no turn flip", () => {
+    const next = applyCompletion(state(), { side: "home", playerRosterId: "p-1" }, 1100);
+    // seq is monotonic: current 5 → next event seq 6 (row seq untouched, no flip).
+    expect(next.events).toHaveLength(1);
+    expect(next.events[0].seq).toBe(6);
+    expect(next.events[0].kind).toBe("completion");
+    expect(next.events[0].side).toBe("home");
+    expect(next.events[0].playerRosterId).toBe("p-1");
+    expect(next.events[0].half).toBe(1);
+    expect(next.events[0].turnNumber).toBe(1);
+    expect(next.events[0].at).toBe(1100);
+    // ★1 rides in the payload; no SPP field on the row itself.
+    expect(next.events[0].payload.spp).toBe(1);
+    // NO turn flip: activeSide, half, turnNumber, clock, and score stay identical.
+    expect(next.activeSide).toBe("home");
+    expect(next.half).toBe(1);
+    expect(next.turnNumber).toBe(1);
+    expect(next.clockStartedAt).toBe(1000);
+    expect(next.homeScore).toBe(0);
+    expect(next.awayScore).toBe(0);
+    expect(next.status).toBe("live");
+  });
+
+  it("appends for the away side too, monotonic seq continues from prior events", () => {
+    const prior = state({ seq: 5, events: [{ seq: 5, kind: "turn", side: "home", playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 }] });
+    const next = applyCompletion(prior, { side: "away", playerRosterId: "p-9" }, 1200);
+    expect(next.events).toHaveLength(2);
+    const completion = next.events[1];
+    expect(completion.seq).toBe(6);
+    expect(completion.side).toBe("away");
+    expect(completion.payload.spp).toBe(1);
+    // The turn is STILL home's — a completion never flips.
+    expect(next.activeSide).toBe("home");
+    expect(next.seq).toBe(5);
   });
 });
 

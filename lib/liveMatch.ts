@@ -25,12 +25,14 @@ export type LiveEventKind =
   | "start"
   | "turn"
   | "td"
+  | "completion"
   | "casualty"
   | "foul"
   | "endHalf"
   | "endMatch"
   | "turnStart"
-  | "requestTurn";
+  | "requestTurn"
+  | "mvp";
 
 /**
  * Nudge cooldown (D17): a `requestTurn` nudge is persisted at most once per
@@ -422,6 +424,38 @@ export function applyRequestTurn(
         half: state.half,
         turnNumber: state.turnNumber,
         payload: {},
+        at: now,
+      },
+    ],
+  };
+}
+
+/**
+ * Records a `completion` (completed pass) event (LM-15/LM-6): a ★1 SPP award for
+ * the throwing player. Like `applyRequestTurn`, it appends a labeled event
+ * WITHOUT flipping the turn or changing any turn/clock/score state (activeSide,
+ * clock, and scores stay identical). The route enforces the active-coach caller +
+ * side gate before calling this. ★1 rides in the payload (`{ spp: 1 }`, D24); the
+ * `eventSpp` helper derives it from the kind for the feed. The next event seq is
+ * monotonic (`state.seq + 1`); the row `seq` bump is handled by the store.
+ */
+export function applyCompletion(
+  state: LiveMatchState,
+  cmd: { side: TeamSide; playerRosterId: string },
+  now: number,
+): LiveMatchState {
+  return {
+    ...state,
+    events: [
+      ...state.events,
+      {
+        seq: state.seq + 1,
+        kind: "completion",
+        side: cmd.side,
+        playerRosterId: cmd.playerRosterId,
+        half: state.half,
+        turnNumber: state.turnNumber,
+        payload: { spp: 1 },
         at: now,
       },
     ],
