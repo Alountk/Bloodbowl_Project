@@ -75,9 +75,9 @@ Implement stack-to-main: PR1→main, PR2→main, PR3a→main, PR3b→main, PR4�
 
 ## PR 4 — e2e + regression
 
-- [ ] **4.1** `e2e/live-match.spec.ts`: update turn/label asserts (~279-332) to new feed (no turn rows); completion e2e via command.
-- [ ] **4.2** `e2e/live-match.spec.ts`: Design-A row renders (minute/tag/dorsal/label/★); reload persistence; FAB→TD flow records event; non-active sees only Herida; mvp rows visible after result load.
-- [ ] **4.3** Full suite green: `pnpm test`, auth e2e (31+), `pnpm lint`, `npx tsc --noEmit` (AGENTS.md).
+- [x] **4.1** `e2e/live-match.spec.ts`: update turn/label asserts (~279-332) to new feed (no turn rows); completion e2e via command.
+- [x] **4.2** `e2e/live-match.spec.ts`: Design-A row renders (minute/tag/dorsal/label/★); reload persistence; FAB→TD flow records event; non-active sees only Herida; mvp rows visible after result load.
+- [x] **4.3** Full suite green: `pnpm test`, auth e2e (31+), `pnpm lint`, `npx tsc --noEmit` (AGENTS.md).
 
 ## Traceability
 LM-6→1.2-1.4 · LM-12→1.1/1.5/3.7 · LM-14→1.1/1.2/1.6/1.7 · LM-15→1.3-1.7 · LM-16→2.1-2.4/3.4/3.5 · LM-17→2.6/3.1-3.5 · LM-18→1.9/1.10/2.7/2.8 · LM-19→2.5/2.6/3.2 · LM-20→3.6-3.11 · mVmP→1.11/1.12. ACs: completion 200/409→1.4-1.7; mvp write→1.11/1.12; feed filter→2.1-2.4; row render→3.1; band→1.9/1.10; stats→2.5/2.6; reload→3.5/4.2; controls→3.6-3.11. Validator: mvp at=finishedAt 1.12 · applyCompletion case 1.4 · serializeLive test 2.4 · dorsal orderBy 2.3 · D25 nudge test 3.5.
