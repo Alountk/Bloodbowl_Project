@@ -18,7 +18,7 @@
  * zero-mock testable.
  */
 
-export type EventKind = "td" | "foul" | "casualty" | "passTurn";
+export type EventKind = "td" | "foul" | "casualty" | "completion" | "passTurn";
 
 export interface EventPermissionInput {
   /** The caller's team side, or null when they have no team (admin/spectator). */
