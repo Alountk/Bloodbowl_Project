@@ -3,16 +3,16 @@
 ## Change
 **Change**: live-match-events
 **Phase**: sdd-apply
-**Slice**: PR 1 (event model + mvp write) + PR 2 (DTO filter + pure derivations)
-**Branches**: `feat/live-match-events-pr1` (merged #80) → `feat/live-match-events-pr2`
+**Slice**: PR 1 (event model + mvp) + PR 2 (DTO filter + derivations) + PR 3a (Design-A feed UI)
+**Branches**: `feat/live-match-events-pr1` (#80) → `feat/live-match-events-pr2` (#81) → `feat/live-match-events-pr3a`
 **Mode**: Strict TDD
-**Status**: success — PR 1 (1.1–1.12) + PR 2 (2.1–2.8) complete
-**Elapsed state**: applyState ready → PR 1 + PR 2 done; remaining PRs 3a/3b/4 untouched
+**Status**: success — PR 1 (1.1–1.12) + PR 2 (2.1–2.8) + PR 3a (3.1–3.5) complete
+**Elapsed state**: applyState ready → PR 1 + PR 2 + PR 3a done; remaining PRs 3b/4 untouched
 
 ## Delivery Strategy Resolution
 
 - Forecast: `400-line budget risk: Low` · `Chained PRs recommended: Yes` · `Chain strategy: stacked-to-main`
-- Resolved path: 5-PR stacked-to-main chain; this batch implemented PR 1 then PR 2 (each estimated < 400 lines). No `size:exception`.
+- Resolved path: 5-PR stacked-to-main chain; this batch implemented PR 1, PR 2, then PR 3a (each estimated < 400 lines). No `size:exception`.
 - Work-unit commits: 3 feature commits (+1 style cleanup). Each is independently green (pre-commit hooks run the full `pnpm test` suite).
 
 ## PR 1 Completed Tasks
@@ -163,5 +163,54 @@
 - Local e2e: `AUTH_MODE=local pnpm exec playwright test` (stale :3000 killed first) → **21/21 passed**.
 - Pre-commit hooks (full `pnpm test`) passed on every PR 1 + PR 2 feature commit.
 
+## PR 3a Completed Tasks
+
+- [x] **3.1** `features/leagues/MatchView.tsx`: replaced `LiveEventFeed` + `LiveTimelineTrack` with a Design-A row list (`LiveEventsList`) — each row renders minute (`deriveMinute`), `T{n}` tag (`turnTag`), dorsal (`playerRef` roster index+1), player name + position resolved from detail rosters, per-kind glyph (rulebook-light text glyphs, no icon lib), Spanish label (`liveEventLabel`/`bandToDisplay`), ★ SPP (`eventSpp`), and the local navy / visitor red gradient (LM-17).
+- [x] **3.2** `MatchView.tsx`: `LiveScoreboard` now derives the hero mini-stats via `deriveTeamStats` — TD/Completions/Bajas/Faltas/★ per team, zeroed-omitting empty rows (LM-19/D22).
+- [x] **3.3** `MatchView.tsx`: plumbed `detail.homeTeam`/`detail.awayTeam` into `FinishedLiveTimeline` and `LiveActiveMatch` for name/position/dorsal resolution (D21).
+- [x] **3.4** `MatchView.tsx`: D25 nudge — the banner stays live-only (rivals show from unfiltered hub frames); the reload nudge test now asserts a filtered snapshot does NOT restore the banner (LM-16).
+- [x] **3.5** T-comp `MatchView.test.tsx`: Design-A row asserts (minute/tag/dorsal/name/position/label/★), hero stats, null-player rows (start/boundary), nudge reload rework.
+
+## PR 3a TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 3.1/3.5 | `MatchView.test.tsx` (finished-timeline block) | Component | ✅ 30/30 | ✅ Written (3 failed) | ✅ Passed | ✅ row content + gradient + null-player + dorsal | ✅ removed dots track/legend |
+| 3.2/3.5 | `MatchView.test.tsx` (hero mini-stats) | Component | ✅ 32/32 | ✅ Written (failed ★6) | ✅ Passed | ✅ full stat grid | ➖ None |
+| 3.4/3.5 | `MatchView.test.tsx` (nudge D25) | Component | ✅ 33/33 | ✅ Written (behavior flip) | ✅ Passed | ✅ live-only | ➖ None |
+
+## PR 3a Work Unit Evidence
+
+| Unit | Focused test command + result | Runtime harness | Rollback boundary |
+|------|------------------------------|-----------------|-------------------|
+| Design-A feed + hero + rosters + nudge | `pnpm vitest run features/leagues/MatchView.test.tsx` → 33 passed | Local e2e 21/21 + auth e2e 31/31 (live-match journey green) | Revert `MatchView.tsx` `LiveEventsList`/`LiveScoreboard` + roster plumbing + the test changes (restores the old feed; MV-timeline behavior intact elsewhere) |
+
+## PR 3a Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/MatchView.tsx` | Modified | `LiveEventsList` (Design-A rows), `LiveScoreboard` (deriveTeamStats grid), roster plumbing, removed `LiveTimelineTrack`/`EVENT_DOT_COLORS`/`LiveEventFeed` |
+| `features/leagues/MatchView.test.tsx` | Modified | Design-A row/hero/null-player/nudge tests; `liveFrameWithEvents` moved to module scope |
+| `openspec/changes/live-match-events/tasks.md` | Modified | PR 3a tasks 3.1–3.5 marked `[x]` |
+
+## PR 3a Deviations from Design
+- **`★{spp}` numeric format** (e.g. `★3`) chosen over repeated-star glyphs, matching the reference visual and keeping the SPP number explicit — the reference `01-lista-cronologica.html` shows both `★★★` and `★3`; the numeric form is exact and test-stable.
+- **Hero stat order/stats**: renders TD / Comp / Bajas / Faltas / ★ (rulebook-light labels) vs the reference's icon-grid (`⚽🏥⚰️★`) — each row only when non-zero; kept as compact labeled rows per the existing `LiveScoreboard` contract.
+- **Position labels** resolved via `getRaceById(team.raceId).positionals` → `name` (e.g. Blitzer/Thrower) rather than the raw `positionalKey` — matches the reference's friendly position names.
+
+## PR 3a Issues Found
+- **Hub delta frames only carry NEW events** — a `state` frame does not re-send prior events, so a hero-stats test that seeded only via frame dispatch showed partial stats. Fixed the test to seed the snapshot (the real merge path is via the accumulated timeline; deriveTeamStats was verified correct in isolation + full suite).
+- The old `mockup layout` test asserted `event-dot` (removed with `LiveTimelineTrack`); updated to `live-event-row` + derived labels.
+
+## Verification (cumulative, PR 1 + PR 2 + PR 3a)
+
+- Focused PR 3a: `pnpm vitest run features/leagues/MatchView.test.tsx features/leagues/liveEventLabels.test.ts lib/liveFeed.test.ts` → **3 files, 63 tests passed**.
+- Full: `pnpm test` → **95 files, 1197 tests passed**.
+- `pnpm lint` → clean (0 errors, 0 warnings after unused-import cleanup).
+- `npx tsc --noEmit` → clean.
+- Local e2e: `AUTH_MODE=local pnpm exec playwright test` (stale :3000 killed first) → **21/21 passed**.
+- Auth e2e: `pnpm run test:e2e:auth` (Docker Postgres) → **31/31 passed** — including `live-match.spec.ts` two-context SSE journey (control strings Tu turno / Dar el turno / Pedir turno / consent all intact).
+- Pre-commit hooks (full `pnpm test`) passed on every PR 1 + PR 2 + PR 3a feature commit.
+
 ## Status
-PR 1: 12/12 · PR 2: 8/8 — both complete. Ready for the next batch (PR 3a — Design-A feed UI) once the orchestrator opens the next slice branch, or `sdd-verify` per the parent's flow.
+PR 1: 12/12 · PR 2: 8/8 · PR 3a: 5/5 — all complete. Ready for the next batch (PR 3b — event recording controls) once the orchestrator opens the next slice branch, or `sdd-verify` per the parent's flow.

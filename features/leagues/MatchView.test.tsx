@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { useSession } from "next-auth/react";
 import { MatchView, teamTurnCounts } from "./MatchView";
-import type { LiveMatchEventDto, LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
+import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
 
 // `MatchView` uses the session to derive the viewer's side when no live row
 // exists (D19). Default the viewer to the home coach (u1).
@@ -279,6 +279,35 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
   };
 }
 
+/** A hub fan-out frame carrying delta events (viewerSide null per D19). */
+function liveFrameWithEvents(
+  seq: number,
+  overrides: Partial<LiveMatchViewState>,
+  events: Record<string, unknown>[],
+): string {
+  const base = liveDetail().live!;
+  return JSON.stringify({
+    seq,
+    status: "live",
+    half: base.half,
+    turnNumber: base.turnNumber,
+    activeSide: base.activeSide,
+    homeConsented: true,
+    awayConsented: true,
+    viewerSide: null,
+    startedAt: base.startedAt,
+    elapsed: base.elapsed,
+    homeTurnMs: base.homeTurnMs,
+    awayTurnMs: base.awayTurnMs,
+    paused: false,
+    homeScore: base.homeScore,
+    awayScore: base.awayScore,
+    finishedAt: null,
+    ...overrides,
+    events,
+  });
+}
+
 /** A played fixture whose LiveMatch finished (persisted timeline). */
 function finishedLiveDetail(): MatchDetail {
   const raw = playedDetail();
@@ -331,8 +360,34 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(screen.getAllByText(/Inicio del partido/).length).toBeGreaterThan(0);
   });
 
-  it("sends a control command when the coach clicks 'Dar el turno'", async () => {
+  it("renders hero mini-stats via deriveTeamStats (LM-19: 1td+1comp+1lastingcas+1foul → 1/1/1/1/★6)", async () => {
     stubLiveEventSource();
+    // The initial snapshot carries the full LM-19 home event set (the hub frame
+    // only carries DELTAS, so seed the timeline in the detail).
+    const detail = liveDetail();
+    detail.live = {
+      ...detail.live!,
+      events: [
+        { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 8000 },
+        { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
+        { seq: 6, kind: "completion", side: "home", playerRosterId: "p2", half: 1, turnNumber: 3, payload: {}, at: 9100 },
+        { seq: 7, kind: "casualty", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: { band: "grave" }, at: 9200 },
+        { seq: 8, kind: "foul", side: "home", playerRosterId: "p2", half: 1, turnNumber: 3, payload: {}, at: 9300 },
+      ],
+    };
+    stubMatch(detail);
+    renderPlayed();
+    await waitFor(() => expect(screen.getByTestId("live-stats").textContent).toContain("★6"));
+    const stats = screen.getByTestId("live-stats");
+    expect(stats.textContent).toMatch(/TD/);
+    expect(stats.textContent).toMatch(/1 · 0/);
+    expect(stats.textContent).toMatch(/Comp/);
+    expect(stats.textContent).toMatch(/Bajas/);
+    expect(stats.textContent).toMatch(/Faltas/);
+    expect(stats.textContent).toContain("★6");
+  });
+
+  it("sends a control command when the coach clicks 'Dar el turno'", async () => {
     const fetchMock = vi.fn((url: string) => {
       // getMatchDetail GET → the live detail; sendCommand POST → the new view.
       return Promise.resolve(
@@ -532,12 +587,14 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/Human · Coach A/);
     expect(container.textContent).toMatch(/Dwarf · Coach B/);
 
-    // Stats grid derived from the event feed: only the rows we have data for.
+    // Stats grid derived via deriveTeamStats: only the rows we have data for
+    // (TD present; no casualties → no "Bajas" row).
     expect(screen.getByText("TD")).toBeTruthy();
-    expect(screen.queryByText("CAS")).toBeNull();
+    expect(screen.queryByText("Bajas")).toBeNull();
 
-    // Timeline: one dot per event (start + td) + a compact Spanish legend.
-    expect(container.querySelectorAll("[data-testid='event-dot']").length).toBe(2);
+    // Design-A timeline: one row per display event (start + td) with the
+    // Spanish label + ★ SPP; the no-player start row renders the label only.
+    expect(container.querySelectorAll("[data-testid='live-event-row']").length).toBe(2);
     expect(screen.getByText(/Inicio del partido/)).toBeTruthy();
     expect(screen.getByText(/Touchdown/)).toBeTruthy();
   });
@@ -920,35 +977,6 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
 describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  /** A hub fan-out frame carrying delta events (viewerSide null per D19). */
-  function liveFrameWithEvents(
-    seq: number,
-    overrides: Partial<LiveMatchViewState>,
-    events: Record<string, unknown>[],
-  ): string {
-    const base = liveDetail().live!;
-    return JSON.stringify({
-      seq,
-      status: "live",
-      half: base.half,
-      turnNumber: base.turnNumber,
-      activeSide: base.activeSide,
-      homeConsented: true,
-      awayConsented: true,
-      viewerSide: null,
-      startedAt: base.startedAt,
-      elapsed: base.elapsed,
-      homeTurnMs: base.homeTurnMs,
-      awayTurnMs: base.awayTurnMs,
-      paused: false,
-      homeScore: base.homeScore,
-      awayScore: base.awayScore,
-      finishedAt: null,
-      ...overrides,
-      events,
-    });
-  }
-
   const requestTurn = (seq: number, side: "home" | "away") => ({
     seq,
     kind: "requestTurn",
@@ -975,16 +1003,18 @@ describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () 
     expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
   });
 
-  it("keeps the banner after a reload because the snapshot carries the persisted nudge", async () => {
+  it("does NOT restore the banner after a reload (D25: the snapshot feed is filtered live-only)", async () => {
     stubLiveEventSource();
+    // The server filters `requestTurn` from the feed DTOs (LM-16/D25), so a
+    // reload's snapshot never carries the nudge — the banner is LIVE-only.
     const detail = liveDetail();
-    detail.live = { ...detail.live!, events: [requestTurn(7, "away") as LiveMatchEventDto] };
+    detail.live = { ...detail.live!, events: [] }; // snapshot has no persisted nudge
     stubMatch(detail);
     renderPlayed();
 
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // The reloaded view carries the opponent's nudge → banner shows.
-    expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
+    // A reloaded (filtered) snapshot restores NO nudge banner.
+    expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
   });
 
   it("clears the banner when the turn flips (a turnStart event arrives)", async () => {
@@ -1029,22 +1059,56 @@ describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () 
   });
 });
 
-describe("MatchView — finished live match timeline (LM-10)", () => {
+describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("renders the chronological timeline from persisted events for a played live match", async () => {
+  it("renders the Design-A chronological row list from persisted events", async () => {
     stubMatch(finishedLiveDetail());
     const { container } = renderPlayed();
     await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
 
-    // Timeline entries (Spanish labels) present.
+    // Design-A rows carry minute + global turn tag + player name + label + ★.
+    // home TD at at=2000, startedAt=1000 → minute 1'; half 1 turn 3 → T3.
     expect(container.textContent).toContain("Touchdown");
-    // LM-18: a lasting casualty band renders the Design-A bucket "Baja" (the
-    // detailed rulebook label "Baja · Herida grave" was rewired to bandToDisplay).
+    expect(container.textContent).toContain("Blitzer A");
+    // LM-18: a lasting casualty band renders the Design-A bucket "Baja".
     expect(container.textContent).toContain("Baja");
+    expect(container.textContent).toContain("Blitzer B");
     expect(container.textContent).toContain("Fin del partido");
+    // ★ SPP via eventSpp: td ★3, lasting casualty ★2.
+    expect(container.textContent).toContain("★3");
+    expect(container.textContent).toContain("★2");
     // Final scoreboard 2 – 1.
     expect(container.textContent).toMatch(/2\s*–\s*1/);
+  });
+
+  it("renders minute, global turn tag and dorsal per row from liveFeed derivations", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    // td at=2000 from startedAt=1000 → 0'; half 1 turn 3 → T3.
+    expect(container.textContent).toContain("T3");
+    // dorsal = roster index+1: home Blitzer A (p1) → #1.
+    expect(container.textContent).toContain("#1");
+  });
+
+  it("renders a null-player row (start/boundary) gracefully with no dorsal/name", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+    // The `start` event has playerRosterId null → no dorsal/name, label only;
+    // while a player row (td → Blitzer A) DOES carry a dorsal (#1) and name.
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const startRow = rows.find((li) => li.textContent?.includes("Inicio del partido"));
+    const tdRow = rows.find((li) => li.textContent?.includes("Touchdown"));
+    expect(startRow).toBeTruthy();
+    expect(startRow!.textContent).not.toMatch(/#\d/);
+    expect(startRow!.textContent).not.toMatch(/Blitzer/);
+    // The td row resolves its player: dorsal #1 + "Blitzer A" name.
+    expect(tdRow).toBeTruthy();
+    expect(tdRow!.textContent).toContain("#1");
+    expect(tdRow!.textContent).toContain("Blitzer A");
   });
 });
 

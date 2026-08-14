@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { PE_MVP } from "@/lib/rules";
 import { getRaceById } from "@/features/teams/data/races";
-import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail } from "./api";
+import { deriveMinute, turnTag, deriveTeamStats, playerRef } from "@/lib/liveFeed";
+import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
-import { liveEventLabel } from "./liveEventLabels";
+import { liveEventLabel, eventSpp } from "./liveEventLabels";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
 import { useLeagueName } from "./useLeagueName";
@@ -427,8 +428,9 @@ function LiveTeamBlock({
 
 /**
  * The center scoreboard: BIG "home : away" digits (navy/red) + a compact
- * stats grid derived from the event feed. Only the rows we actually track
- * (TD from `td`, CAS from `casualty`) render, and only when there is data.
+ * Design-A stats grid derived from the event feed via `deriveTeamStats`
+ * (LM-19/D22): TD / completions / casualties / fouls / ★ SPP per team. Only
+ * rows that are non-empty render.
  */
 function LiveScoreboard({
   state,
@@ -437,12 +439,8 @@ function LiveScoreboard({
   state: LiveMatchViewState;
   events: LiveMatchView["events"];
 }) {
-  const tdHome = events.filter((e) => e.kind === "td" && e.side === "home").length;
-  const tdAway = events.filter((e) => e.kind === "td" && e.side === "away").length;
-  const casHome = events.filter((e) => e.kind === "casualty" && e.side === "home").length;
-  const casAway = events.filter((e) => e.kind === "casualty" && e.side === "away").length;
-  const hasTd = tdHome + tdAway > 0;
-  const hasCas = casHome + casAway > 0;
+  const stats = deriveTeamStats(events);
+  const show = (home: number, away: number) => home + away > 0;
   return (
     <div className="px-2 text-center">
       <p
@@ -458,19 +456,43 @@ function LiveScoreboard({
         data-testid="live-stats"
         className="mt-3 grid grid-cols-2 items-baseline justify-items-center gap-x-4 gap-y-1 text-xs"
       >
-        {hasTd ? (
+        {show(stats.home.tds, stats.away.tds) ? (
           <>
             <dt className="font-bold uppercase text-slate-500">TD</dt>
             <dd className="font-bold text-[#12225a] tabular-nums">
-              {tdHome} · {tdAway}
+              {stats.home.tds} · {stats.away.tds}
             </dd>
           </>
         ) : null}
-        {hasCas ? (
+        {show(stats.home.completions, stats.away.completions) ? (
           <>
-            <dt className="font-bold uppercase text-slate-500">CAS</dt>
+            <dt className="font-bold uppercase text-slate-500">Comp</dt>
             <dd className="font-bold text-[#12225a] tabular-nums">
-              {casHome} · {casAway}
+              {stats.home.completions} · {stats.away.completions}
+            </dd>
+          </>
+        ) : null}
+        {show(stats.home.casualties, stats.away.casualties) ? (
+          <>
+            <dt className="font-bold uppercase text-slate-500">Bajas</dt>
+            <dd className="font-bold text-[#12225a] tabular-nums">
+              {stats.home.casualties} · {stats.away.casualties}
+            </dd>
+          </>
+        ) : null}
+        {show(stats.home.fouls, stats.away.fouls) ? (
+          <>
+            <dt className="font-bold uppercase text-slate-500">Faltas</dt>
+            <dd className="font-bold text-[#12225a] tabular-nums">
+              {stats.home.fouls} · {stats.away.fouls}
+            </dd>
+          </>
+        ) : null}
+        {show(stats.home.spp, stats.away.spp) ? (
+          <>
+            <dt className="font-bold uppercase text-slate-500">★</dt>
+            <dd className="font-bold text-[#12225a] tabular-nums">
+              {stats.home.spp} · {stats.away.spp}
             </dd>
           </>
         ) : null}
@@ -502,61 +524,6 @@ function LiveHero({
   );
 }
 
-/**
- * Event-dot colors for the timeline track. Rulebook-light palette only: the
- * mockup's gold/amber become the brand red/navy and the slate neutrals already
- * in use (no new color variants, MV-7).
- */
-const EVENT_DOT_COLORS: Record<string, string> = {
-  td: "bg-[#d11938]",
-  casualty: "bg-[#12225a]",
-  foul: "bg-slate-500",
-  turn: "bg-slate-400",
-  turnStart: "bg-slate-400",
-  requestTurn: "bg-slate-300",
-  start: "bg-[#12225a]",
-  endHalf: "bg-[#12225a]",
-  endMatch: "bg-[#12225a]",
-};
-
-/**
- * The live horizontal event track (mockup): chronological events as small
- * colored dots along a line + a compact legend below reusing the Spanish
- * `liveEventLabel` strings. Rendered only when there are events.
- */
-function LiveTimelineTrack({ events }: { events: LiveMatchView["events"] }) {
-  if (events.length === 0) return null;
-  const kinds = [...new Set(events.map((e) => e.kind))];
-  return (
-    <div className="border-b border-[#e2e8f0] px-4 py-3">
-      <ol aria-label="Cronología del partido" className="flex items-center">
-        {events.map((event, i) => (
-          <li key={event.seq} className="flex flex-1 items-center last:flex-none">
-            <span
-              data-testid="event-dot"
-              aria-label={liveEventLabel(event)}
-              title={liveEventLabel(event)}
-              className={`h-2.5 w-2.5 shrink-0 rounded-full ${EVENT_DOT_COLORS[event.kind] ?? "bg-slate-400"}`}
-            />
-            {i < events.length - 1 ? <span className="mx-1 h-px flex-1 bg-[#e2e8f0]" /> : null}
-          </li>
-        ))}
-      </ol>
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-        {kinds.map((kind) => (
-          <li key={kind} className="flex items-center gap-1.5">
-            <span
-              className={`h-2 w-2 rounded-full ${EVENT_DOT_COLORS[kind] ?? "bg-slate-400"}`}
-              aria-hidden="true"
-            />
-            {liveEventLabel({ kind, half: 1, turnNumber: 1, payload: {} })}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 /** The live-session control: consent → ready → begin → live clock + controls. */
 function LiveActiveMatch({
   live,
@@ -567,6 +534,8 @@ function LiveActiveMatch({
   leagueLabel,
   homeSubtitle,
   awaySubtitle,
+  homeTeam,
+  awayTeam,
 }: {
   live: LiveMatchView | null;
   leagueId: string;
@@ -576,6 +545,8 @@ function LiveActiveMatch({
   leagueLabel: string;
   homeSubtitle: string;
   awaySubtitle: string;
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
 }) {
   const { live: hookLive, sendCommand } = useLiveMatch({ leagueId, fixtureId });
   // Start from the persisted snapshot (or an empty pending shell when no row
@@ -664,7 +635,12 @@ function LiveActiveMatch({
         awaySubtitle={awaySubtitle}
         events={events}
       />
-      <LiveTimelineTrack events={events} />
+      <LiveEventsList
+        events={events}
+        startedAt={state.startedAt}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
         <div className="min-w-0">
@@ -709,15 +685,16 @@ function LiveActiveMatch({
   );
 }
 
-/** The persisted timeline for a finished live match (LM-10, live + played). */
+/** The persisted Design-A timeline for a finished live match (LM-10, live + played). */
 function FinishedLiveTimeline({
   live,
-  names,
+  homeTeam,
+  awayTeam,
 }: {
   live: LiveMatchView;
-  names: { home: string; away: string };
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
 }) {
-  void names;
   return (
     <div className="bg-white border border-[#e2e8f0]">
       <div className="px-4 py-4 text-center">
@@ -725,24 +702,121 @@ function FinishedLiveTimeline({
           {live.homeScore} <span className="text-[#d11938]">–</span> {live.awayScore}
         </p>
       </div>
-      <LiveEventFeed events={live.events} />
+      <LiveEventsList
+        events={live.events}
+        startedAt={live.startedAt}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+      />
     </div>
   );
 }
 
-/** The chronological event feed rendered from a list of live events. */
-function LiveEventFeed({ events }: { events: LiveMatchView["events"] }) {
+/**
+ * Design-A per-kind glyph (rulebook-light — inline text glyphs, no icon
+ * library). The casing/nursing sub-buckets reuse the band: a lasting casualty
+ * (Baja) gets the skull, a bruise (Herida) the cross. Boundary/no-player rows
+ * get neutral glyphs.
+ */
+const EVENT_GLYPH: Record<string, string> = {
+  start: "🌤️",
+  td: "⚽",
+  completion: "🤝",
+  foul: "👟",
+  mvp: "⭐",
+  endHalf: "⏱️",
+  endMatch: "🏁",
+};
+
+/** The Design-A chronology: one row per display-worthy event (LM-17). */
+function LiveEventsList({
+  events,
+  startedAt,
+  homeTeam,
+  awayTeam,
+}: {
+  events: LiveMatchView["events"];
+  startedAt: number | null;
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
+}) {
   if (events.length === 0) return null;
+  // D21: dorsal = roster index + 1 via the served players array.
+  const homeRef = playerRef(homeTeam.players);
+  const awayRef = playerRef(awayTeam.players);
+  const positionOf = (team: MatchTeamDetail, key: string | undefined): string =>
+    team.raceId && key
+      ? getRaceById(team.raceId)?.positionals.find((p) => p.key === key)?.name ?? key
+      : key ?? "—";
+  const playerOf = (team: MatchTeamDetail, rosterPlayerId: string | null) =>
+    rosterPlayerId ? team.players.find((p) => p.rosterPlayerId === rosterPlayerId) : undefined;
+
   return (
-    <ol aria-label="Cronología del partido" className="border-t border-[#e2e8f0] px-4 py-3">
-      {events.map((event) => (
-        <li key={event.seq} className="flex items-baseline justify-between gap-3 border-b border-[#eef2f7] py-1.5 text-sm last:border-b-0">
-          <span className="text-slate-700">{liveEventLabel(event)}</span>
-          <span className="text-xs text-slate-400">
-            Mitad {event.half} · Turno {event.turnNumber}
-          </span>
-        </li>
-      ))}
+    <ol aria-label="Cronología del partido" className="border-t border-[#e2e8f0]">
+      {events.map((event) => {
+        const ref = event.side === "away" ? awayRef : event.side === "home" ? homeRef : null;
+        const team = event.side === "away" ? awayTeam : event.side === "home" ? homeTeam : null;
+        const player = team ? playerOf(team, event.playerRosterId) : undefined;
+        const dorsal = player ? ref?.get(player.rosterPlayerId) : undefined;
+        const spp = eventSpp(event);
+        const glyph =
+          event.kind === "casualty"
+            ? (typeof event.payload.band === "string" && event.payload.band === "bruise" ? "🏥" : "⚰️")
+            : EVENT_GLYPH[event.kind] ?? "•";
+        // Rulebook-light side gradient (navy home / red visitor) like the mockup.
+        const sideCls =
+          event.side === "away"
+            ? "bg-gradient-to-l from-[#d11938]/10 to-transparent"
+            : event.side === "home"
+              ? "bg-gradient-to-r from-[#12225a]/10 to-transparent"
+              : "";
+        return (
+          <li
+            key={event.seq}
+            className={`flex items-center gap-3 px-4 py-2 text-sm ${sideCls}`}
+            data-testid="live-event-row"
+          >
+            <span className="w-10 shrink-0 text-xs tabular-nums text-slate-500">
+              {deriveMinute(event.at, startedAt ?? 0)}
+            </span>
+            <span
+              className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${
+                event.side === "away" ? "bg-[#d11938]" : "bg-[#12225a]"
+              }`}
+            >
+              {turnTag(event.half, event.turnNumber)}
+            </span>
+            <span className="w-6 shrink-0 text-center text-sm font-black text-slate-500">
+              {dorsal != null ? `#${dorsal}` : ""}
+            </span>
+            <div className="min-w-0 flex-1">
+              {player ? (
+                <>
+                  <p className="truncate font-bold text-[#0f172a]">{player.name}</p>
+                  <p className="truncate text-[11px] text-slate-500">
+                    {positionOf(team!, player.positionalKey)}
+                  </p>
+                </>
+              ) : (
+                <p className="truncate font-semibold text-[#0f172a]">{liveEventLabel(event)}</p>
+              )}
+            </div>
+            {player ? (
+              <div className="flex shrink-0 flex-col items-end text-right">
+                <p className="text-sm font-bold text-[#0f172a]">
+                  <span aria-hidden="true" className="mr-1">{glyph}</span>
+                  {liveEventLabel(event)}
+                </p>
+                {spp > 0 ? (
+                  <p className="text-[11px] font-semibold text-[#b8860b]" aria-label="SPP">
+                    ★{spp}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -928,7 +1002,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     // panel, or the finished timeline.
     body =
       detail.live.status === "finished" ? (
-        <FinishedLiveTimeline live={detail.live} names={names} />
+        <FinishedLiveTimeline live={detail.live} homeTeam={detail.homeTeam} awayTeam={detail.awayTeam} />
       ) : (
         <LiveActiveMatch
           live={detail.live}
@@ -939,6 +1013,8 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
           leagueLabel={leagueLabel}
           homeSubtitle={homeSubtitle}
           awaySubtitle={awaySubtitle}
+          homeTeam={detail.homeTeam}
+          awayTeam={detail.awayTeam}
         />
       );
   } else if (summary.walkover) {
@@ -963,6 +1039,8 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         leagueLabel={leagueLabel}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
+        homeTeam={detail.homeTeam}
+        awayTeam={detail.awayTeam}
       />
     );
   } else if (detail.fixture.status === "pending") {
