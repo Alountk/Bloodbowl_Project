@@ -9,6 +9,7 @@ import { deriveMinute, turnTag, deriveTeamStats, playerRef } from "@/lib/liveFee
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
 import { liveEventLabel, eventSpp } from "./liveEventLabels";
+import { EventControls } from "./liveControls";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
 import { useLeagueName } from "./useLeagueName";
@@ -681,6 +682,16 @@ function LiveActiveMatch({
           ) : null}
         </div>
       </div>
+      {/* D26: event recording controls — FAB + role-aware menu; renders only for a
+          live match with a viewer side (null → spectator/admin hidden). The
+          roster is the viewer's OWN side (alive players) for the mini-form. */}
+      <EventControls
+        viewerSide={state.viewerSide}
+        activeSide={state.activeSide}
+        status={state.status}
+        roster={state.viewerSide === "away" ? awayTeam.players : homeTeam.players}
+        onSubmit={act}
+      />
     </div>
   );
 }
