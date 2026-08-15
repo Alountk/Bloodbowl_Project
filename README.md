@@ -104,6 +104,7 @@ Entorno de desarrollo virtualizado (docker-compose.dev.yml): `next dev` con **Tu
 
 ### Requisitos
 - Docker Desktop / Engine con **Compose ≥ 2.23** (para `develop.watch` con `sync+restart`; `docker compose up --watch`).
+- Si tu plugin de Docker Desktop es más viejo que 2.23 (verificá con `docker compose version`), instalá el standalone `docker-compose` ≥ 2.23 y usá `docker-compose -f docker-compose.dev.yml ...` en lugar de `docker compose`.
 
 ### Arranque
 
@@ -116,7 +117,7 @@ pnpm dev:docker:watch         # o: docker compose -f docker-compose.dev.yml watc
 
 ### Hot-reload
 - Los cambios en el código se reflejan al instante (Turbopack HMR).
-- `prisma/schema.prisma` reinicia el servicio (`sync-restart`).
+- `prisma/schema.prisma` reinicia el servicio (`sync+restart`).
 - `package.json` reconstruye la imagen (`rebuild`).
 
 ### Migraciones nuevas durante dev
