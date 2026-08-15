@@ -19,6 +19,7 @@ import {
   type LiveCommand,
   type LiveMatchViewState,
   type MatchDetail,
+  type MatchResultRecord,
 } from "./api";
 
 /**
@@ -654,5 +655,126 @@ describe("sendLiveCommand", () => {
     );
 
     await expect(sendLiveCommand("lg-1", "f-1", { type: "begin" })).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("LiveCommand — LM-6 foul casualty payloads and actor fields", () => {
+  it("sends a foul with the REQUIRED victimRosterId on the wire", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          view: {
+            seq: 5,
+            status: "live",
+            half: 1,
+            turnNumber: 1,
+            activeSide: "home",
+            homeConsented: true,
+            awayConsented: true,
+            viewerSide: "home",
+            startedAt: 1000,
+            elapsed: 0,
+            homeTurnMs: 0,
+            awayTurnMs: 0,
+            paused: false,
+            homeScore: 0,
+            awayScore: 0,
+            finishedAt: null,
+          },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const cmd: LiveCommand = { type: "foul", side: "home", playerRosterId: "p1", victimRosterId: "p9" };
+    await sendLiveCommand("lg-1", "f-1", cmd);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "foul", side: "home", playerRosterId: "p1", victimRosterId: "p9" }),
+      }),
+    );
+  });
+
+  it("sends a casualty with cause + causerRosterId and a dodge one with neither", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          view: {
+            seq: 6,
+            status: "live",
+            half: 1,
+            turnNumber: 1,
+            activeSide: "home",
+            homeConsented: true,
+            awayConsented: true,
+            viewerSide: "home",
+            startedAt: 1000,
+            elapsed: 0,
+            homeTurnMs: 0,
+            awayTurnMs: 0,
+            paused: false,
+            homeScore: 0,
+            awayScore: 0,
+            finishedAt: null,
+          },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sendLiveCommand("lg-1", "f-1", {
+      type: "casualty",
+      side: "home",
+      victimRosterId: "p1",
+      band: "mng",
+      cause: "blitz",
+      causerRosterId: "p9",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({
+        body: JSON.stringify({
+          type: "casualty",
+          side: "home",
+          victimRosterId: "p1",
+          band: "mng",
+          cause: "blitz",
+          causerRosterId: "p9",
+        }),
+      }),
+    );
+
+    // Crowd/self-inflicted: no causer on the wire.
+    await sendLiveCommand("lg-1", "f-1", { type: "casualty", side: "home", victimRosterId: "p1", cause: "dodge" });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "casualty", side: "home", victimRosterId: "p1", cause: "dodge" }),
+      }),
+    );
+  });
+});
+
+describe("MatchResultRecord — createdAt surface for the report date (MVT/summary)", () => {
+  it("carries the persisted result createdAt as a string", () => {
+    const result: MatchResultRecord = {
+      id: "mr1",
+      fixtureId: "f1",
+      weather: "perfect",
+      scores: {
+        home: { score: 2, postFf: 4, winnings: 45_000, casualties: [], pe: [{ rosterPlayerId: "p1", pe: 7 }] },
+        away: { score: 1, postFf: 2, winnings: 35_000, casualties: [], pe: [{ rosterPlayerId: "p3", pe: 3 }] },
+        winnerId: "t1",
+        mvp: { home: "p1", away: "p5" },
+      },
+      pettyCash: 150_000,
+      loadedBy: "u1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(result.createdAt).toBe("2026-01-01T00:00:00.000Z");
   });
 });

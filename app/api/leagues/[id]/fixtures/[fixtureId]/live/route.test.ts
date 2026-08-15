@@ -6,6 +6,7 @@ const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn() },
   league: { findFirst: vi.fn() },
   team: { findMany: vi.fn() },
+  player: { findMany: vi.fn() },
   liveMatch: { findFirst: vi.fn() },
   liveEvent: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
 }));
@@ -325,6 +326,54 @@ describe("GET .../live — snapshot carries the persistent state + per-viewer vi
     expect(first).not.toContain('"kind":"requestTurn"');
     expect(first).not.toContain('"kind":"turn"');
     expect(first).not.toContain('"kind":"turnStart"');
+    await reader.cancel().catch(() => {});
+  });
+
+  it("streams legacy `{}`/`{band}` payloads verbatim so they render as fallback rows (LM-6)", async () => {
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...pendingRow(5),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, seq: 5, events: [] });
+    // Pre-S1 persisted rows: a foul with `{}` and a casualty with only `{ band }`.
+    prismaMock.liveEvent.findMany.mockResolvedValue([
+      {
+        seq: 2,
+        kind: "foul",
+        side: "home",
+        playerRosterId: "p1",
+        half: 1,
+        turnNumber: 2,
+        payload: {},
+        createdAt: new Date(2000),
+      },
+      {
+        seq: 3,
+        kind: "casualty",
+        side: "home",
+        playerRosterId: "p3",
+        half: 1,
+        turnNumber: 2,
+        payload: { band: "mng" },
+        createdAt: new Date(3000),
+      },
+    ]);
+
+    const res = await GET(
+      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    // Legacy payloads pass through unchanged (fallback client rows, no error).
+    expect(first).toContain('"kind":"foul"');
+    expect(first).toContain('"payload":{}');
+    expect(first).toContain('"kind":"casualty"');
+    expect(first).toContain('"payload":{"band":"mng"}');
     await reader.cancel().catch(() => {});
   });
 
@@ -653,6 +702,8 @@ describe("POST .../live — side-aware event permission (LM-12, D14)", () => {
       clockStartedAt: new Date(1000).toISOString(),
     });
     liveMatchRowToStateMock.mockReturnValue(liveState);
+    // The LM-12 invariant gate loads the materialized rosters for foul/casualty.
+    prismaMock.player.findMany.mockResolvedValue([]);
   }
 
   function req(body: unknown) {
@@ -707,7 +758,7 @@ describe("POST .../live — side-aware event permission (LM-12, D14)", () => {
   it("returns 409 when the league admin (no side) records an event (D14 lifecycle-only)", async () => {
     // league owner owns no team → side null → no event recording.
     liveSetup("owner-1");
-    const res = await POST(req({ type: "foul", side: "home", playerRosterId: "p-1" }), {
+    const res = await POST(req({ type: "foul", side: "home", playerRosterId: "p-1", victimRosterId: "p-9" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(409);
@@ -860,5 +911,118 @@ describe("POST .../live — requestTurn nudge + 60s cooldown (LM-13, D17)", () =
     } as never);
     expect(res.status).toBe(200);
     expect(applyTransitionMock).toHaveBeenCalled();
+  });
+});
+
+describe("POST .../live — LM-12 foul/casualty actor invariants + LM-6 payloads", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active (liveState.activeSide = home). Roster: p1/p2 home, p9 away. */
+  function liveSetup(sessionId: string) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "home-t", rosterPlayerId: "p1" },
+      { teamId: "home-t", rosterPlayerId: "p2" },
+      { teamId: "away-t", rosterPlayerId: "p9" },
+    ]);
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("200 + persists a foul whose victim is on the OPPOSITE side, payload {victimRosterId} (LM-6)", async () => {
+    liveSetup("coach-home");
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "foul", side: "home", playerRosterId: "p1", victimRosterId: "p9" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    expect(transitionArg.next.events[0].kind).toBe("foul");
+    expect(transitionArg.next.events[0].payload).toEqual({ victimRosterId: "p9" });
+  });
+
+  it("409 (no mutation) when an ACTIVE coach fouls an OWN-side victim (invariant bypass)", async () => {
+    liveSetup("coach-home");
+    const res = await POST(req({ type: "foul", side: "home", playerRosterId: "p1", victimRosterId: "p1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when a foul's victimRosterId is MISSING (REQUIRED, LM-6)", async () => {
+    liveSetup("coach-home");
+    const res = await POST(req({ type: "foul", side: "home", playerRosterId: "p1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when a casualty's causer is on the VICTIM's own side", async () => {
+    liveSetup("coach-home");
+    const res = await POST(
+      req({ type: "casualty", side: "home", victimRosterId: "p1", cause: "blitz", causerRosterId: "p2" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("200 + persists casualty payload {band, cause, causerRosterId} when the causer is opposite the victim", async () => {
+    liveSetup("coach-home");
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(
+      req({ type: "casualty", side: "home", victimRosterId: "p1", band: "mng", cause: "blitz", causerRosterId: "p9" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    expect(transitionArg.next.events[0].kind).toBe("casualty");
+    expect(transitionArg.next.events[0].payload).toEqual({ band: "mng", cause: "blitz", causerRosterId: "p9" });
+  });
+
+  it("409 (no mutation) when a dodge/crowd casualty carries a causer (strict LM-12)", async () => {
+    liveSetup("coach-home");
+    for (const cause of ["dodge", "crowd"]) {
+      const res = await POST(
+        req({ type: "casualty", side: "home", victimRosterId: "p1", cause, causerRosterId: "p9" }),
+        { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+      );
+      expect(res.status).toBe(409);
+      expect(applyTransitionMock).not.toHaveBeenCalled();
+    }
+  });
+
+  it("200 (no mutation is not involved) when a non-active coach records a crowd casualty to their OWN player", async () => {
+    // home active; away coach records a crowd casualty to their own (away) player.
+    liveSetup("coach-away");
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", cause: "crowd" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    expect(transitionArg.next.events[0].payload).toEqual({ band: null, cause: "crowd", causerRosterId: null });
   });
 });
