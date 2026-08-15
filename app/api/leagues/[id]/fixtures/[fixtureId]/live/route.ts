@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { isAuthEnabled } from "@/lib/auth-mode";
 import { resolveLiveAccess } from "@/lib/liveAccess";
 import { liveHub, type HubSubscriber, type TickSnapshot } from "@/lib/liveHub";
+import { rollD6, rollD3 } from "@/lib/random";
 import {
   liveMatchRowToState,
   consentLiveMatch,
@@ -193,6 +194,14 @@ async function loadFixtureGate(
   };
 }
 
+/** The team's dedicated-fans characteristic (coaching.dedicatedFans), used as
+ * the fan-factor `base` (D4, LM-22). Result-route `dedicatedFansOf` precedent. */
+function dedicatedFansOf(coaching: unknown): number {
+  if (typeof coaching !== "object" || coaching === null) return 0;
+  const c = coaching as Record<string, unknown>;
+  return typeof c.dedicatedFans === "number" ? c.dedicatedFans : 0;
+}
+
 /** Converts the loaded fixture context to the state machine's start guard input. */
 function fixtureStartState(ctx: FixtureContext): FixtureStartState {
   const played = ctx.homeScore != null || ctx.awayScore != null || ctx.result != null;
@@ -208,20 +217,26 @@ function viewerSide(ctx: FixtureContext, userId: string | null): "home" | "away"
 }
 
 /**
- * Materializes both teams' Player rows from their roster JSON before the match
- * begins (player-progression identity, D21). The Player rows are the live
+ * Materializes both teams' rosters (idempotent) and returns the two Team rows so
+ * the begin handler can build the server-owned kickoff input from their
+ * `treasury` and `coaching.dedicatedFans` (D3/D4). The Player rows are the live
  * feed/EventControls roster source; they are lazily created by the result route
  * today, so a live match's roster would otherwise be EMPTY (no names/dorsals).
- * `ensurePlayersForTeam` is idempotent, so re-runs are safe.
+ * A team row normally exists, but a fixture whose team was deleted returns
+ * nothing for that side.
  */
-async function materializeTeamRosters(ctx: FixtureContext): Promise<void> {
+async function materializeTeamRosters(
+  ctx: FixtureContext,
+): Promise<{ id: string; treasury: number; coaching: unknown }[]> {
   const teams = await prisma.team.findMany({
     where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+    select: { id: true, treasury: true, coaching: true, roster: true },
   });
   for (const team of teams) {
     const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
     await ensurePlayersForTeam(team.id, roster);
   }
+  return teams.map(({ id, treasury, coaching }) => ({ id, treasury, coaching }));
 }
 
 /**
@@ -620,9 +635,38 @@ export async function POST(
     if (!row) return Response.json({ error: "Not found" }, { status: 404 });
     try {
       // Materialize both rosters so the live feed/controls resolve player names
-      // and dorsals from the very first turn (D21; see materializeTeamRosters).
-      await materializeTeamRosters(ctx);
-      const result = await beginLiveMatch({ liveMatchId: row.id, fixtureId, now }, deps);
+      // and dorsals from the very first turn (D21), and return the two Team
+      // rows so the kickoff input is built from their server-authoritative
+      // treasury + coaching.dedicatedFans (D3/D4, LM-22/23).
+      const teams = await materializeTeamRosters(ctx);
+      const home = teams.find((t) => t.id === ctx.homeTeamId);
+      const away = teams.find((t) => t.id === ctx.awayTeamId);
+      // LM-21/LM-16: every kickoff die is rolled server-side here; any rolls in
+      // the POST body are ignored. D3 for a minor deduction, the D6 keep pair
+      // for a catastrophe, and the per-team 1D6 em + 1D6 fan rolls.
+      const diceFor = () => ({
+        em: rollD6(),
+        d3: rollD3(),
+        keep: [rollD6(), rollD6()] as [number, number],
+        fan: rollD6(),
+      });
+      const kickoff = {
+        now,
+        half: 1,
+        turnNumber: 1,
+        home: {
+          teamId: ctx.homeTeamId,
+          treasury: home?.treasury ?? 0,
+          dedicatedFans: dedicatedFansOf(home?.coaching),
+        },
+        away: {
+          teamId: ctx.awayTeamId,
+          treasury: away?.treasury ?? 0,
+          dedicatedFans: dedicatedFansOf(away?.coaching),
+        },
+        dice: { home: diceFor(), away: diceFor() },
+      };
+      const result = await beginLiveMatch({ liveMatchId: row.id, fixtureId, now, kickoff }, deps);
       return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
     } catch (error) {
       if ((error as { status?: number }).status === 409) {
