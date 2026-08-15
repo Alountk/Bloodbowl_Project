@@ -1,3 +1,10 @@
+// @vitest-environment node
+//
+// jsdom 27 expone su propio `Request` global cuyo `formData()` no parsea
+// bodies multipart (ni armados a mano ni FormData real). Esta ruta solo usa
+// Request/Response + mocks (sin DOM), así que corre en el entorno `node`,
+// donde `Request` es el de undici y `req.formData()` funciona igual que en
+// producción.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const authMock = vi.hoisted(() => vi.fn());
