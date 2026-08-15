@@ -1,4 +1,5 @@
 import type { Team } from "@/features/teams/types";
+import type { CasualtyCause } from "@/lib/livePhase";
 
 /** Lifecycle state of a league: joinable/open or locked after a season starts. */
 export type LeagueStatus = "open" | "started";
@@ -476,6 +477,9 @@ export interface MatchResultRecord {
   scores: MatchScoreboard;
   pettyCash: number | null;
   loadedBy: string;
+  /** Server-side persistence timestamp; the future report row date (D6/MVT).
+   * Optional in S1 (additive) — S4 flips it required when the summary consumes it. */
+  createdAt?: string;
 }
 
 /** A single match's normalized payload: fixture, snapshot (or null), rosters. */
@@ -560,8 +564,17 @@ export type LiveCommand =
   | { type: "endTurn"; side: "home" | "away" }
   | { type: "td"; side: "home" | "away"; playerRosterId: string }
   | { type: "completion"; side: "home" | "away"; playerRosterId: string }
-  | { type: "casualty"; side: "home" | "away"; victimRosterId: string; band?: unknown }
-  | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId?: unknown }
+  | {
+      type: "casualty";
+      side: "home" | "away";
+      victimRosterId: string;
+      band?: unknown;
+      /** One of blitz|foul|dodge|crowd|penetration|block (MVT-5/LM-6). */
+      cause?: CasualtyCause;
+      /** The opposite-side causer; ABSENT for dodge/crowd (LM-12 strict). */
+      causerRosterId?: string;
+    }
+  | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId?: string }
   | { type: "requestTurn" }
   | { type: "endMatch" };
 
