@@ -63,6 +63,6 @@ Chain strategy: stacked-to-main
 - [x] 5.2 Full sweep: `pnpm test`, `npx tsc --noEmit`, `pnpm lint`, auth e2e green
 - [x] 5.3 Resolve open questions: `createdAt` datetime typing; strict dodge/crowd causer reject confirmed; incentive chips follow-up slice (kickoff precedent)
 
-### Fixed follow-up (not in scope — incentive chips)
+### Follow-up diferido (fuera de alcance — decisión del maintainer, no es tarea pendiente)
 
-- [ ] MVT-4 team-assigned incentives: the snapshot stores ONE `pettyCash` (TV difference) with no per-team split, so the finished-feed "Incentivos" row renders the single home-assigned value ("+45.000 gp."). Per-team inducement chips need a follow-up slice (kickoff precedent); they are deliberately NOT implemented here.
+- Follow-up (deferido): MVT-4 team-assigned incentives — el snapshot guarda UN solo `pettyCash` (diferencia de TV) sin split por equipo, así que la fila "Incentivos" del feed terminado renderiza el valor único asignado a home ("+45.000 gp."). Los chips por equipo requieren un slice posterior (precedente kickoff); deliberadamente NO se implementan aquí.
