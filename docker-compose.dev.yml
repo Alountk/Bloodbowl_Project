@@ -1,0 +1,65 @@
+name: bloodbowl-dev
+services:
+  web-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["sh", "./docker-entrypoint.dev.sh"]
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://bloodbowl:bloodbowl@postgres:5432/bloodbowl?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:-dev-secret-change-me}
+      AUTH_TRUST_HOST: "true"
+      AUTH_MODE: ${AUTH_MODE:-local}
+      NEXT_TELEMETRY_DISABLED: "1"
+      DOCKER_DEV: "1"
+    volumes:
+      - .:/app
+      - /app/node_modules          # anónimo: conserva el node_modules del contenedor
+      - web_dev_next:/app/.next    # con nombre: cache de Turbopack persistente
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /app
+          ignore:
+            - node_modules
+            - .next
+            - .git
+            - openspec
+            - previews
+            - e2e
+        - action: sync+restart
+          path: prisma/schema.prisma
+          target: /app/prisma/schema.prisma
+        - action: rebuild
+          path: package.json
+          target: /app/package.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [dev_net]
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bloodbowl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bloodbowl}
+      POSTGRES_DB: ${POSTGRES_DB:-bloodbowl}
+    ports:
+      - "5434:5432"
+    volumes:
+      - bloodbowl_dev_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bloodbowl} -d ${POSTGRES_DB:-bloodbowl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [dev_net]
+networks:
+  dev_net:
+    driver: bridge
+volumes:
+  bloodbowl_dev_postgres_data:
+  web_dev_next:
