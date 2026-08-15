@@ -14,6 +14,10 @@ export interface FeedEvent {
   half: number;
   turnNumber: number;
   payload: Record<string, unknown>;
+  /** Monotonic sequence (LM-6); used to key per-TD partial scores (D5). Absent on synthetic rows. */
+  seq?: number;
+  /** Event absolute timestamp (ms); used by the timeline percent (D4). */
+  at?: number;
 }
 
 /** A roster player id → dorsal entry source (the served teams' players array). */
@@ -108,4 +112,43 @@ export function deriveTeamStats(events: readonly FeedEvent[]): { home: TeamStats
     target.spp += sppOf(e);
   }
   return { home, away };
+}
+
+/** A running per-side TD tally, keyed by event seq for TD cards (D5). */
+export type PartialScoreLine = { home: number; away: number };
+
+/**
+ * Per-TD partial score (MVT-1/D5): accumulate TD events per side across the
+ * display feed IN SEQ ORDER and record a `Map<seq, {home, away}>` snapshot ONLY
+ * at each TD event, so a TD card renders the score "up to that event". Iterating
+ * the feed in seq order means a home TD then an away TD yields `(1 - 0)` then
+ * `(1 - 1)`. Non-TD events never appear in the map; events without a `seq` are
+ * skipped (no key to bind to). Empty/untagged feeds → an empty map.
+ */
+export function derivePartialScore(events: readonly FeedEvent[]): Map<number, PartialScoreLine> {
+  const scores = new Map<number, PartialScoreLine>();
+  let home = 0;
+  let away = 0;
+  for (const e of events) {
+    if (e.kind === "td") {
+      if (e.side === "home") home += 1;
+      else if (e.side === "away") away += 1;
+    }
+    if (e.seq != null && e.kind === "td") {
+      scores.set(e.seq, { home, away });
+    }
+  }
+  return scores;
+}
+
+/**
+ * The timeline-icon position (MVT-2/D4): the event's elapsed share of the
+ * `[start, end]` window, rounded to the nearest whole percent and clamped to
+ * 0..100. A null-width window (start === end) returns 0 so callers never
+ * divide by zero.
+ */
+export function timelinePercent(at: number, start: number, end: number): number {
+  if (end <= start) return 0;
+  const ratio = (at - start) / (end - start);
+  return Math.max(0, Math.min(100, Math.round(ratio * 100)));
 }
