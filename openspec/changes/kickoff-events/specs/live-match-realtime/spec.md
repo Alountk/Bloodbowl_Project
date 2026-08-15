@@ -100,15 +100,15 @@ For each team the begin transition MUST roll 1D6 and resolve against the treasur
 
 #### Scenario: Serious incident rounds down to 5k
 
-- GIVEN treasury 234.000 and a serious-incident roll
+- GIVEN treasury 334.000 (300k–395k bracket, roll 1 → serious) 
 - WHEN resolved
-- THEN amountLost is 115.000 (half rounded DOWN to the nearest 5k) and treasuryAfter is 119.000
+- THEN amountLost is 165.000 (half rounded DOWN to the nearest 5k) and treasuryAfter is 169.000
 
 #### Scenario: Catastrophe keeps 2D6×10k
 
-- GIVEN treasury 400.000 and catastrophe rolls 4 + 6
+- GIVEN treasury 500.000 (500k–595k bracket, roll 1 → catastrophe) and keep rolls 4 + 6
 - WHEN resolved
-- THEN amountLost is 300.000 and treasuryAfter is 100.000
+- THEN amountLost is 400.000 and treasuryAfter is 100.000
 
 #### Scenario: Sub-100k treasury clamps to the first bracket
 
