@@ -477,9 +477,9 @@ export interface MatchResultRecord {
   scores: MatchScoreboard;
   pettyCash: number | null;
   loadedBy: string;
-  /** Server-side persistence timestamp; the future report row date (D6/MVT).
-   * Optional in S1 (additive) — S4 flips it required when the summary consumes it. */
-  createdAt?: string;
+  /** Server-side persistence timestamp; the report row date (D6/MVT). The GET
+   * route always serves it, so the summary consumes it as required (S4). */
+  createdAt: string;
 }
 
 /** A single match's normalized payload: fixture, snapshot (or null), rosters. */

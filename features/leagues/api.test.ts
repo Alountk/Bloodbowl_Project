@@ -489,6 +489,7 @@ describe("getMatchDetail", () => {
         },
         pettyCash: 150_000,
         loadedBy: "u1",
+        createdAt: "2026-03-01T21:00:00.000Z",
       },
       homeTeam: {
         id: "t1",
