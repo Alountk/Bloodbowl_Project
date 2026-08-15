@@ -1,0 +1,13 @@
+# Dev image: full source + deps, runs `next dev` (Turbopack) with HMR.
+# Bind-mounted by docker-compose.dev.yml; used by the .devcontainer.
+FROM node:22-alpine
+RUN corepack enable
+WORKDIR /app
+COPY package.json pnpm-lock.yaml ./
+COPY prisma ./prisma
+RUN pnpm install --frozen-lockfile
+RUN pnpm prisma generate
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
+EXPOSE 3000
+# Sin USER node: en dev el bind mount necesita permisos del host.
