@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { PE_MVP } from "@/lib/rules";
 import { getRaceById } from "@/features/teams/data/races";
-import { deriveMinute, turnTag, deriveTeamStats, playerRef, type TeamStats } from "@/lib/liveFeed";
+import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
-import { liveEventLabel, eventSpp } from "./liveEventLabels";
+import { LiveEventCards } from "./liveEventCards";
+import { MatchTimelineBar } from "./matchTimelineBar";
 import { EventControls } from "./liveControls";
 import { TeamEmblem } from "./TeamEmblem";
 import { useLiveMatch } from "./useLiveMatch";
@@ -631,6 +632,11 @@ function TourplayHeader({
         events={events}
       />
       <LiveMetaRow />
+      <MatchTimelineBar
+        events={events}
+        startedAt={state.startedAt}
+        finishedAt={state.finishedAt}
+      />
     </div>
   );
 }
@@ -753,7 +759,7 @@ function LiveActiveMatch({
               Tu rival pide el turno
             </p>
           ) : null}
-          <LiveEventsList
+          <LiveEventCards
             events={events}
             startedAt={state.startedAt}
             homeTeam={homeTeam}
@@ -812,7 +818,7 @@ function FinishedLiveTimeline({
 }) {
   return (
     <div className="bg-white border border-[#e2e8f0]">
-      <LiveEventsList
+      <LiveEventCards
         events={live.events}
         startedAt={live.startedAt}
         homeTeam={homeTeam}
@@ -906,128 +912,6 @@ function PendingFixtureView({
         <p className="text-sm font-semibold text-slate-600">Sin jornada programada todavía.</p>
       </div>
     </div>
-  );
-}
-
-/**
- * Design-A per-kind glyph (rulebook-light — inline text glyphs, no icon
- * library). The casing/nursing sub-buckets reuse the band: a lasting casualty
- * (Baja) gets the skull, a bruise (Herida) the cross. Boundary/no-player rows
- * get neutral glyphs.
- */
-const EVENT_GLYPH: Record<string, string> = {
-  start: "🌤️",
-  td: "⚽",
-  completion: "🤝",
-  foul: "👟",
-  mvp: "⭐",
-  endHalf: "⏱️",
-  endMatch: "🏁",
-};
-
-/** The Design-A chronology: one row per display-worthy event (LM-17). */
-function LiveEventsList({
-  events,
-  startedAt,
-  homeTeam,
-  awayTeam,
-}: {
-  events: LiveMatchView["events"];
-  startedAt: number | null;
-  homeTeam: MatchTeamDetail;
-  awayTeam: MatchTeamDetail;
-}) {
-  if (events.length === 0) return null;
-  // D21: dorsal = roster index + 1 via the served players array.
-  const homeRef = playerRef(homeTeam.players);
-  const awayRef = playerRef(awayTeam.players);
-  const positionOf = (team: MatchTeamDetail, key: string | undefined): string =>
-    team.raceId && key
-      ? getRaceById(team.raceId)?.positionals.find((p) => p.key === key)?.name ?? key
-      : key ?? "—";
-  const playerOf = (team: MatchTeamDetail, rosterPlayerId: string | null) =>
-    rosterPlayerId ? team.players.find((p) => p.rosterPlayerId === rosterPlayerId) : undefined;
-  // Mockup chronology (Design A): NEWEST FIRST — the mockup lists 196' at the
-  // top and 0' (Inicio) at the bottom, so sort by descending seq.
-  const ordered = [...events].sort((a, b) => b.seq - a.seq);
-
-  return (
-    <ol aria-label="Cronología del partido" className="border-t border-[#e2e8f0]">
-      {ordered.map((event) => {
-        const ref = event.side === "away" ? awayRef : event.side === "home" ? homeRef : null;
-        const team = event.side === "away" ? awayTeam : event.side === "home" ? homeTeam : null;
-        const player = team ? playerOf(team, event.playerRosterId) : undefined;
-        const dorsal = player ? ref?.get(player.rosterPlayerId) : undefined;
-        const spp = eventSpp(event);
-        const glyph =
-          event.kind === "casualty"
-            ? (typeof event.payload.band === "string" && event.payload.band === "bruise" ? "🏥" : "⚰️")
-            : EVENT_GLYPH[event.kind] ?? "•";
-        // Rulebook-light side gradient (navy home / red visitor) like the mockup.
-        const sideCls =
-          event.side === "away"
-            ? "bg-gradient-to-l from-[#d11938]/10 to-transparent"
-            : event.side === "home"
-              ? "bg-gradient-to-r from-[#12225a]/10 to-transparent"
-              : "";
-        // Tourplay `match-event--reverse`: the VISITOR rows are mirrored (detail
-        // on the left → player/dorsal/time on the right) so each team reads its
-        // chronology from its own side; the local rows keep the normal order.
-        const isVisitor = event.side === "away";
-        return (
-          <li
-            key={event.seq}
-            className={`flex items-center gap-3 px-4 py-2 text-sm ${sideCls} ${
-              isVisitor ? "flex-row-reverse" : ""
-            }`}
-            data-testid="live-event-row"
-          >
-            <span className="w-10 shrink-0 text-xs tabular-nums text-slate-500">
-              {deriveMinute(event.at, startedAt ?? 0)}
-            </span>
-            <span
-              className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${
-                event.side === "away" ? "bg-[#d11938]" : "bg-[#12225a]"
-              }`}
-            >
-              {turnTag(event.half, event.turnNumber)}
-            </span>
-            <span className="w-6 shrink-0 text-center text-sm font-black text-slate-500">
-              {dorsal != null ? `#${dorsal}` : ""}
-            </span>
-            <div className="min-w-0 flex-1">
-              {player ? (
-                <>
-                  <p className="truncate font-bold text-[#0f172a]">{player.name}</p>
-                  <p className="truncate text-[11px] text-slate-500">
-                    {positionOf(team!, player.positionalKey)}
-                  </p>
-                </>
-              ) : (
-                <p className="truncate font-semibold text-[#0f172a]">{liveEventLabel(event)}</p>
-              )}
-            </div>
-            {player ? (
-              <div
-                className={`flex shrink-0 flex-col ${
-                  isVisitor ? "items-start text-left" : "items-end text-right"
-                }`}
-              >
-                <p className="text-sm font-bold text-[#0f172a]">
-                  <span aria-hidden="true" className="mr-1">{glyph}</span>
-                  {liveEventLabel(event)}
-                </p>
-                {spp > 0 ? (
-                  <p className="text-[11px] font-semibold text-[#b8860b]" aria-label="SPP">
-                    ★{spp}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 

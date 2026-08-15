@@ -3,6 +3,8 @@ import {
   deriveMinute,
   turnTag,
   deriveTeamStats,
+  derivePartialScore,
+  timelinePercent,
   playerRef,
   type FeedEvent,
   type FeedPlayers,
@@ -20,7 +22,9 @@ const ev = (
   payload: Record<string, unknown> = {},
   half = 1,
   turnNumber = 1,
-): FeedEvent => ({ kind, side, payload, half, turnNumber });
+  seq?: number,
+  at = 0,
+): FeedEvent => ({ kind, side, payload, half, turnNumber, seq, at });
 
 describe("deriveMinute — match minute from event at vs kickoff (LM-17)", () => {
   it("returns the floored minute since startedAt with a trailing apostrophe", () => {
@@ -107,5 +111,59 @@ describe("deriveTeamStats — per-team TD/completions/casualties/fouls/★ (LM-1
     const stats = deriveTeamStats(events);
     expect(stats.home).toEqual({ tds: 0, completions: 1, casualties: 0, fouls: 0, spp: 1 + 4 });
     expect(stats.away).toEqual({ tds: 0, completions: 0, casualties: 0, fouls: 0, spp: 4 });
+  });
+});
+
+describe("derivePartialScore — per-TD partial score by seq (MVT-1/D5)", () => {
+  it("accumulates TDs per side in seq order so a home TD then an away TD yields (1-0) then (1-1)", () => {
+    const events = [
+      ev("start", null, {}, 1, 1, 1, 1000),
+      ev("td", "home", {}, 1, 3, 5, 2000),
+      ev("casualty", "away", { band: "grave" }, 2, 6, 9, 3000),
+      ev("td", "away", {}, 2, 8, 11, 4000),
+      ev("endMatch", null, {}, 2, 8, 12, 5000),
+    ];
+    const scores = derivePartialScore(events);
+    expect(scores.get(5)).toEqual({ home: 1, away: 0 });
+    expect(scores.get(11)).toEqual({ home: 1, away: 1 });
+    // Non-TD events never appear in the partial-score map.
+    expect(scores.has(1)).toBe(false);
+    expect(scores.has(9)).toBe(false);
+    expect(scores.has(12)).toBe(false);
+  });
+
+  it("ignores attempts without a seq and returns an empty map for no TDs", () => {
+    const noSeq = [ev("td", "home", {})];
+    expect(derivePartialScore(noSeq).size).toBe(0);
+    expect(derivePartialScore([]).size).toBe(0);
+    expect(derivePartialScore([ev("completion", "home", {}, 1, 1, 2, 100)]).size).toBe(0);
+  });
+
+  it("accumulates across repeated same-side TDs (home, home → (1-0) then (2-0))", () => {
+    const events = [
+      ev("td", "home", {}, 1, 3, 5, 2000),
+      ev("td", "home", {}, 2, 1, 10, 3000),
+    ];
+    const scores = derivePartialScore(events);
+    expect(scores.get(5)).toEqual({ home: 1, away: 0 });
+    expect(scores.get(10)).toEqual({ home: 2, away: 0 });
+  });
+});
+
+describe("timelinePercent — icon position as elapsed % (MVT-2/D4)", () => {
+  it("positions a TD at minute 99 of a 199-minute match at exactly 50%", () => {
+    expect(timelinePercent(99 * 60_000, 0, 199 * 60_000)).toBe(50);
+  });
+
+  it("clamps to 0 and 100 for events at/before the start or past the end", () => {
+    expect(timelinePercent(0, 0, 100)).toBe(0);
+    expect(timelinePercent(50, 100, 200)).toBe(0); // before start → clamped 0
+    expect(timelinePercent(250, 100, 200)).toBe(100); // past end → clamped 100
+  });
+
+  it("rounds to the nearest whole percent and handles a degenerate zero-width window", () => {
+    expect(timelinePercent(33 * 60_000, 0, 100 * 60_000)).toBe(33);
+    expect(timelinePercent(1, 0, 3)).toBe(33);
+    expect(timelinePercent(10, 10, 10)).toBe(0); // end === start → 0, no divide-by-zero
   });
 });
