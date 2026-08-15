@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { liveEventLabel, bandToDisplay, eventSpp, type LiveEventLabelInput } from "./liveEventLabels";
+import {
+  liveEventLabel,
+  bandToDisplay,
+  eventSpp,
+  CAUSE_LABELS,
+  EVENT_GLYPH,
+  type LiveEventLabelInput,
+} from "./liveEventLabels";
 
 /**
  * Spanish labels for the live event timeline (LM-10, MV-7 copy) plus the
@@ -106,5 +113,34 @@ describe("liveEventLabel", () => {
 
   it("passes through an unknown event kind unchanged", () => {
     expect(liveEventLabel(ev("interception"))).toBe("interception");
+  });
+});
+
+describe("CAUSE_LABELS — six casualty causes to display labels (MVT-5)", () => {
+  it("maps every cause exactly", () => {
+    expect(CAUSE_LABELS).toEqual({
+      blitz: "Blitz",
+      foul: "Falta",
+      dodge: "Esquivando — se cayó",
+      crowd: "El público",
+      penetration: "Penetración",
+      block: "Bloqueo",
+    });
+  });
+
+  it("passes through an unknown cause unchanged when looked up", () => {
+    // Direct property lookup: an unknown cause must not throw -> falls back to itself.
+    const label = CAUSE_LABELS["weirdCause" as keyof typeof CAUSE_LABELS];
+    expect(label).toBeUndefined();
+  });
+});
+
+describe("EVENT_GLYPH — per-kind inline glyph map (MV-7, no icon lib)", () => {
+  it("maps the display kinds to a glyph and falls back to a neutral bullet", () => {
+    expect(EVENT_GLYPH.td).toBeTruthy();
+    expect(EVENT_GLYPH.start).toBeTruthy();
+    expect(EVENT_GLYPH.endMatch).toBeTruthy();
+    // Unknown kinds have no glyph entry → the caller falls back to "•".
+    expect(EVENT_GLYPH["interception" as keyof typeof EVENT_GLYPH]).toBeUndefined();
   });
 });

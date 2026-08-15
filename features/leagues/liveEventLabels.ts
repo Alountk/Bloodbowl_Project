@@ -14,6 +14,37 @@ export interface LiveEventLabelInput {
   payload: Record<string, unknown>;
 }
 
+/**
+ * The six casualty causes mapped to their display labels (MVT-5): `blitz` →
+ * "Blitz", `foul` → "Falta", `dodge` → "Esquivando — se cayó", `crowd` → "El
+ * público", `penetration` → "Penetración", `block` → "Bloqueo". Callers map an
+ * unknown cause through the index so it never throws (bare value fallback).
+ */
+export const CAUSE_LABELS: Record<string, string> = {
+  blitz: "Blitz",
+  foul: "Falta",
+  dodge: "Esquivando — se cayó",
+  crowd: "El público",
+  penetration: "Penetración",
+  block: "Bloqueo",
+};
+
+/**
+ * Design-A per-kind glyph (rulebook-light — inline text glyphs, no icon
+ * library, MV-7). The casualty sub-buckets reuse the band (skull for a lasting
+ * Baja, cross for a bruise) at the card render site; unknown kinds fall back
+ * to a neutral "•". Moved here from MatchView (D3) so cards reuse it.
+ */
+export const EVENT_GLYPH: Record<string, string> = {
+  start: "🌤️",
+  td: "⚽",
+  completion: "🤝",
+  foul: "👟",
+  mvp: "⭐",
+  endHalf: "⏱️",
+  endMatch: "🏁",
+};
+
 /** A casualty band mapped to its Design-A display bucket (LM-18). */
 export interface BandDisplay {
   label: string;
