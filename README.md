@@ -98,6 +98,50 @@ docs/                 # auth.md (ops/deploy)
 
 ---
 
+## Development with Docker
+
+Entorno de desarrollo virtualizado (docker-compose.dev.yml): `next dev` con **Turbopack HMR** dentro del contenedor, bind mount del código y Postgres dev dedicado. No toca el compose de producción (`docker-compose.yml`).
+
+### Requisitos
+- Docker Desktop / Engine con **Compose ≥ 2.23** (para `develop.watch` con `sync+restart`; `docker compose up --watch`).
+
+### Arranque
+
+```bash
+cp .env.example .env          # opcional
+pnpm dev:docker:up            # o: docker compose -f docker-compose.dev.yml up --build -d
+pnpm dev:docker:watch         # o: docker compose -f docker-compose.dev.yml watch
+# abrir http://localhost:3000
+```
+
+### Hot-reload
+- Los cambios en el código se reflejan al instante (Turbopack HMR).
+- `prisma/schema.prisma` reinicia el servicio (`sync-restart`).
+- `package.json` reconstruye la imagen (`rebuild`).
+
+### Migraciones nuevas durante dev
+
+```bash
+docker compose -f docker-compose.dev.yml exec web-dev pnpm prisma migrate dev --name <nombre>
+```
+
+### Postgres dev
+- `localhost:5434` (credenciales `bloodbowl`/`bloodbowl`, db `bloodbowl`).
+
+### AUTH_MODE
+- `local` por defecto (sin login); `AUTH_MODE=auth` para probar el flujo completo (requiere `AUTH_SECRET`).
+
+### VS Code / Cursor
+- Instalar la extensión **Dev Containers** y "Reopen in Container" (usa `.devcontainer/devcontainer.json`).
+
+### Detener
+
+```bash
+pnpm dev:docker:down          # conserva el volumen de Postgres
+```
+
+---
+
 ## Documentación
 
 - [docs/auth.md](./docs/auth.md) — Auth, PostgreSQL, migraciones, e2e auth, deploy en Arcane.
