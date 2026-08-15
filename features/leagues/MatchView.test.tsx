@@ -1296,7 +1296,7 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(tdRow!.textContent).toContain("Blitzer A");
   });
 
-  it("mirrors the VISITOR rows so each team reads its chronology from its own side", async () => {
+  it("mirrors the VISITOR cards to the away side so each team reads its chronology from its own side (MVT-1)", async () => {
     stubMatch(finishedLiveDetail());
     const { container } = renderPlayed();
     await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
@@ -1307,15 +1307,17 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(localRow).toBeTruthy();
     expect(visitorRow).toBeTruthy();
 
-    // The LOCAL row keeps the normal left→right order (time first, detail right).
-    expect(localRow!.className).not.toContain("flex-row-reverse");
-    expect(localRow!.lastElementChild!.textContent).toContain("Touchdown");
-    // The VISITOR row is MIRRORED (Tourplay match-event--reverse): the detail
-    // becomes the visual-LEFT block (DOM-last child) and the minute moves to the
-    // visual-right edge (DOM-first child).
-    expect(visitorRow!.className).toContain("flex-row-reverse");
-    expect(visitorRow!.lastElementChild!.textContent).toContain("Baja");
-    expect(visitorRow!.firstElementChild!.textContent).toMatch(/\d+'/);
+    // Tourplay mirroring (MVT-1/D3): the LOCAL (home) 68% card sits on the left
+    // edge (`self-start`) and the VISITOR (away) card on the right edge
+    // (`self-end`), so each team reads its chronology from its own side.
+    expect(localRow!.className).toContain("self-start");
+    expect(visitorRow!.className).toContain("self-end");
+    // Both team cards still carry the preserved turn tag + minute; the away card
+    // keeps the red (visitor) gradient as its side identity.
+    expect(localRow!.textContent).toContain("T3");
+    expect(visitorRow!.textContent).toContain("T14");
+    expect(visitorRow!.textContent).toContain("Baja");
+    expect(visitorRow!.textContent).toContain("Blitzer B");
   });
 });
 
