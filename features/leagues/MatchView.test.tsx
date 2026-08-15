@@ -1426,8 +1426,11 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
 
 /** A finished live fixture whose feed includes the kickoff rows (LM-21 sequence). */
 function kickoffLiveDetail(): MatchDetail {
-  const raw = playedDetail();
-  raw.fixture.status = "live";
+  const raw = scheduledDetail();
+  raw.fixture.status = "scheduled";
+  raw.fixture.homeScore = null;
+  raw.fixture.awayScore = null;
+  raw.fixture.winnerId = null;
   raw.result = null;
   return {
     ...raw,
