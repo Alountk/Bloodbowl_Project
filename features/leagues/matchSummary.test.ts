@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMatchSummary,
+  buildSummaryFeedRows,
   casualtyKindLabel,
   weatherLabel,
+  formatReportDate,
   type MatchDetail,
 } from "./matchSummary";
 
@@ -53,6 +55,7 @@ function playedDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       },
       pettyCash: 150_000,
       loadedBy: "u1",
+      createdAt: "2026-03-01T21:00:00.000Z",
     },
     homeTeam: {
       id: "t1",
@@ -229,5 +232,57 @@ describe("buildMatchSummary — omit-if-empty + walkover (MV-2)", () => {
     const drawSummary = buildMatchSummary(draw);
     const drawScore = sectionOf<{ type: "score"; winnerName: string | null }>(drawSummary, "score");
     expect(drawScore?.winnerName).toBe("Empate");
+  });
+});
+
+describe("buildSummaryFeedRows — snapshot feed rows (MVT-4)", () => {
+  it("builds the four summary rows from a snapshot (reported, winnings, fans, incentives)", () => {
+    const rows = buildSummaryFeedRows(playedDetail());
+    // Order is significant and matches the visual: reported first.
+    expect(rows.map((r) => r.type)).toEqual(["reported", "winnings", "fans", "incentives"]);
+
+    const reported = rows.find((r) => r.type === "reported") as { type: "reported"; date: string } | undefined;
+    // The report date comes from the snapshot createdAt, formatted dd/MM/yyyy.
+    expect(reported).toEqual({ type: "reported", date: "01/03/2026" });
+
+    const winnings = rows.find((r) => r.type === "winnings") as { type: "winnings"; home: number; away: number } | undefined;
+    expect(winnings).toEqual({ type: "winnings", home: 45_000, away: 35_000 });
+
+    const fans = rows.find((r) => r.type === "fans") as { type: "fans"; home: number; away: number } | undefined;
+    expect(fans).toEqual({ type: "fans", home: 4, away: 2 });
+
+    const incentives = rows.find((r) => r.type === "incentives") as { type: "incentives"; team: "home"; value: number } | undefined;
+    expect(incentives).toEqual({ type: "incentives", team: "home", value: 150_000 });
+  });
+
+  it("returns an empty array for a walkover (no snapshot, MV-2 guard)", () => {
+    const detail: MatchDetail = { ...playedDetail(), result: null };
+    expect(buildSummaryFeedRows(detail)).toEqual([]);
+  });
+
+  it("omits the winnings/fans/incentives rows when their snapshot data is null but keeps reported", () => {
+    const detail = playedDetail();
+    if (detail.result) {
+      detail.result.scores.home.winnings = null;
+      detail.result.scores.away.winnings = null;
+      detail.result.scores.home.postFf = null;
+      detail.result.scores.away.postFf = null;
+      detail.result.pettyCash = null;
+    }
+    const rows = buildSummaryFeedRows(detail);
+    expect(rows).toEqual([{ type: "reported", date: "01/03/2026" }]);
+  });
+
+  it("limits rows to the four summary kinds — MVP stays event-derived (MVT-4/MV-6)", () => {
+    const rows = buildSummaryFeedRows(playedDetail());
+    // The row union deliberately has NO mvp/pe kind (enforced by the type), so
+    // the MVP rows are never duplicated here — they stay event-derived.
+    const kinds = rows.map((r) => r.type);
+    expect(kinds).toEqual(["reported", "winnings", "fans", "incentives"]);
+  });
+
+  it("formats the report date with zero-padded dd/MM/yyyy", () => {
+    expect(formatReportDate("2026-07-21T09:05:00.000Z")).toBe("21/07/2026");
+    expect(formatReportDate("2026-03-01T00:00:00.000Z")).toBe("01/03/2026");
   });
 });

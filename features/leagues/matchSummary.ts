@@ -228,3 +228,68 @@ export function buildMatchSummary(detail: MatchDetail): MatchSummary {
 
   return { walkover: false, sections };
 }
+
+/** One snapshot-derived feed row rendered above the finished-live cards
+ * (MVT-4). These are NEVER new event kinds (MV-6/LM-16) and NEVER duplicate the
+ * MVP rows, which stay event-derived. `reported` is always first. */
+export type SummaryFeedRow =
+  | { type: "reported"; date: string }
+  | { type: "winnings"; home: number; away: number }
+  | { type: "fans"; home: number; away: number }
+  | { type: "incentives"; team: "home"; value: number };
+
+/**
+ * Formats a persisted ISO datetime as the zero-padded Spanish `dd/MM/yyyy`
+ * report date (MVT-4 "Partido reportado"). Deterministic and timezone-local —
+ * `new Date(iso).getDate()` etc. use the runtime's local tz, matching the
+ * mockup's clock-row dates. A missing/invalid string falls back to "" (the
+ * caller omits the reported row rather than crash).
+ */
+export function formatReportDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+/**
+ * Builds the snapshot summary rows for a finished live feed (MVT-4): "Partido
+ * reportado" (green success, date = result.createdAt), "Ganancias" (per-team
+ * winnings), "Fanáticos dedicados" (per-team post-Ff), and "Incentivos" (the
+ * single fixed pettyCash, team-assigned card). Renders ONLY when the
+ * `MatchResult` snapshot exists — a walkover (result == null) returns `[]`
+ * (MV-2 guard) and never invents rows. Rows with null snapshot data are
+ * omitted (omit-if-empty, never a placeholder). MVP is deliberately excluded:
+ * it stays event-derived, so there is exactly one MVP row per grantee.
+ */
+export function buildSummaryFeedRows(detail: MatchDetail): SummaryFeedRow[] {
+  const result = detail.result;
+  if (!result) return [];
+
+  const rows: SummaryFeedRow[] = [];
+
+  const date = formatReportDate(result.createdAt);
+  if (date) rows.push({ type: "reported", date });
+
+  const homeWinnings = result.scores.home.winnings;
+  const awayWinnings = result.scores.away.winnings;
+  if (homeWinnings != null && awayWinnings != null) {
+    rows.push({ type: "winnings", home: homeWinnings, away: awayWinnings });
+  }
+
+  const homeFf = result.scores.home.postFf;
+  const awayFf = result.scores.away.postFf;
+  if (homeFf != null && awayFf != null) {
+    rows.push({ type: "fans", home: homeFf, away: awayFf });
+  }
+
+  // The snapshot stores ONE pettyCash (TV difference) with no per-team split.
+  // The row renders as a HOME-assigned card (mock precedent); the inducement
+  // chips are deferred to a follow-up slice (MVT-4 open question).
+  if (result.pettyCash != null) {
+    rows.push({ type: "incentives", team: "home", value: result.pettyCash });
+  }
+
+  return rows;
+}
