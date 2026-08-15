@@ -36,10 +36,10 @@ Chain strategy: pending
 
 ## Phase 2: EventRecording Controls (S2)
 
-- [ ] 2.1 `liveControls.tsx`: `opponentRoster` prop; Falta form victim select; Baja/Herida cause select + causer select
-- [ ] 2.2 Strict client rule: hide causer select for `dodge`/`crowd` + client-side reject if sent
-- [ ] 2.3 Distinct labels `Víctima`/`Causa`/`Causante` (keeps `getByLabelText(/Jugador/i)` unambiguous)
-- [ ] 2.4 `liveControls.test.tsx` RED+unit: capture+submit foul victim, casualty cause+causer, dodge/crowd hides causer
+- [x] 2.1 `liveControls.tsx`: `opponentRoster` prop; Falta form victim select; Baja/Herida cause select + causer select
+- [x] 2.2 Strict client rule: hide causer select for `dodge`/`crowd` + client-side reject if sent
+- [x] 2.3 Distinct labels `Víctima`/`Causa`/`Causante` (keeps `getByLabelText(/Jugador/i)` unambiguous)
+- [x] 2.4 `liveControls.test.tsx` RED+unit: capture+submit foul victim, casualty cause+causer, dodge/crowd hides causer
 
 ## Phase 3: Tourplay Cards (S3)
 
