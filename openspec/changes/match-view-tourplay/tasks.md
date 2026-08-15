@@ -43,15 +43,15 @@ Chain strategy: pending
 
 ## Phase 3: Tourplay Cards (S3)
 
-- [ ] 3.1 `lib/liveFeed.ts`: `derivePartialScore` (per-TD "(H - A)" from seq accumulation), `timelinePercent` (round+clamp 0..100)
-- [ ] 3.2 `liveEventLabels.ts`: `CAUSE_LABELS` (blitz→Blitz … block→Bloqueo), move `EVENT_GLYPH` here, unknown passes through
-- [ ] 3.3 `liveEventCards.tsx` (create): 68% team cards (navy/red 68%-opacity gradient, turn tag own side/minutes opposite), 100% generic centered, victim "a {name} (#{dorsal})", causer "por {name} (#{dorsal}) · {cause}"; preserve `live-event-row` on `li`
-- [ ] 3.4 `MatchView.tsx`: swap `LiveEventsList`→`LiveEventCards`, remove local glyph/list
-- [ ] 3.5 Unit: cards 68%/100%, "a Trash (#8)", "por Arnau (#4) · Blitz", crowd line "El público", labels exact, unknown passes; MatchView.test.tsx deliberate updates
+- [x] 3.1 `lib/liveFeed.ts`: `derivePartialScore` (per-TD "(H - A)" from seq accumulation), `timelinePercent` (round+clamp 0..100)
+- [x] 3.2 `liveEventLabels.ts`: `CAUSE_LABELS` (blitz→Blitz … block→Bloqueo), move `EVENT_GLYPH` here, unknown passes through
+- [x] 3.3 `liveEventCards.tsx` (create): 68% team cards (navy/red 68%-opacity gradient, turn tag own side/minutes opposite), 100% generic centered, victim "a {name} (#{dorsal})", causer "por {name} (#{dorsal}) · {cause}"; preserve `live-event-row` on `li`
+- [x] 3.4 `MatchView.tsx`: swap `LiveEventsList`→`LiveEventCards`, remove local glyph/list
+- [x] 3.5 Unit: cards 68%/100%, "a Trash (#8)", "por Arnau (#4) · Blitz", crowd line "El público", labels exact, unknown passes; MatchView.test.tsx deliberate updates
 
 ## Phase 4: Timeline + Summary + Header (S4)
 
-- [ ] 4.1 `matchTimelineBar.tsx` (create): `match-timeline`, icons at `round((at-startedAt)/elapsed×100)%`, home top/away bottom, 0'/100' markers when finished
+- [x] 4.1 `matchTimelineBar.tsx` (create): `match-timeline`, icons at `round((at-startedAt)/elapsed×100)%`, home top/away bottom, 0'/100' markers when finished
 - [ ] 4.2 `features/leagues/matchSummary.ts`: `buildSummaryFeedRows` (reported/ganancias/fanáticos/incentivos) from snapshot; `result==null`→`[]`; MV-2 walkover guard; report date = `result.createdAt`; MVP NOT duplicated
 - [ ] 4.3 `MatchView.tsx` FinishedLiveView: render summary rows above cards; `summary-row`/`summary-row-reported`; incentives shows single `pettyCash` (chips deferred @open)
 - [ ] 4.4 `LiveTopBar`: back arrow to jornada under `tourplay-header`; UI-only, existing DTO
