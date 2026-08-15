@@ -1,0 +1,23 @@
+{
+  "name": "Blood Bowl Web (Docker Dev)",
+  "dockerComposeFile": ["../docker-compose.dev.yml"],
+  "service": "web-dev",
+  "workspaceFolder": "/app",
+  "forwardPorts": [3000, 5434],
+  "postCreateCommand": "pnpm prisma generate",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss",
+        "Prisma.prisma"
+      ],
+      "settings": {
+        "files.associations": {
+          "*.css": "tailwindcss"
+        }
+      }
+    }
+  }
+}
