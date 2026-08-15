@@ -16,6 +16,11 @@ const aliveRoster = [
   { rosterPlayerId: "p3", name: "Dead B", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: false, valueBonus: 0 },
 ];
 
+const opponentRoster = [
+  { rosterPlayerId: "o1", name: "Blitzer Rival", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+  { rosterPlayerId: "o2", name: "Thrower Rival", positionalKey: "thrower", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+];
+
 function renderControls(props: Partial<Parameters<typeof EventControls>[0]> = {}) {
   const onSubmit = vi.fn(async () => {});
   const utils = render(
@@ -24,6 +29,7 @@ function renderControls(props: Partial<Parameters<typeof EventControls>[0]> = {}
       activeSide="home"
       status="live"
       roster={aliveRoster}
+      opponentRoster={opponentRoster}
       onSubmit={onSubmit}
       {...props}
     />,
@@ -114,24 +120,28 @@ describe("EventControls — submission (LM-20)", () => {
     expect(onSubmit).toHaveBeenCalledWith({ type: "completion", side: "home", playerRosterId: "p1" } as LiveCommand);
   });
 
-  it("fires a foul command with the chosen player", async () => {
+  it("fires a foul command with the chosen player AND the victim (LM-20 victim required)", async () => {
     const { onSubmit } = renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
     fireEvent.change(screen.getByLabelText(/Jugador/i), { target: { value: "p2" } });
+    fireEvent.change(screen.getByLabelText(/Víctima de la falta/i), { target: { value: "o1" } });
     fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
-    expect(onSubmit).toHaveBeenCalledWith({ type: "foul", side: "home", playerRosterId: "p2" } as LiveCommand);
+    expect(onSubmit).toHaveBeenCalledWith({ type: "foul", side: "home", playerRosterId: "p2", victimRosterId: "o1" } as LiveCommand);
   });
 
-  it("fires a casualty command with the victim + band", async () => {
+  it("fires a casualty command with the victim + band + cause (and no causer for dodge/crowd)", async () => {
     const { onSubmit } = renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     fireEvent.change(screen.getByLabelText(/Jugador/i), { target: { value: "p1" } });
     fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
+    // crowd → no causer required, no causer select.
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "crowd" } });
+    expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
     expect(onSubmit).toHaveBeenCalledWith(
-      { type: "casualty", side: "home", victimRosterId: "p1", band: "grave" } as LiveCommand,
+      { type: "casualty", side: "home", victimRosterId: "p1", band: "grave", cause: "crowd" } as LiveCommand,
     );
   });
 
@@ -145,5 +155,98 @@ describe("EventControls — submission (LM-20)", () => {
     // Menu + form close: no + still visible (FAB stays), no menu items.
     expect(screen.queryByRole("button", { name: /Touchdown/i })).toBeNull();
     expect(screen.queryByLabelText(/Jugador/i)).toBeNull();
+  });
+});
+
+describe("EventControls — Falta form captures the VICTIM (LM-20, D7)", () => {
+  it("shows a distinct 'Víctima de la falta' select from the OPPONENT roster", () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
+    const victim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
+    const options = Array.from(victim.options).map((o) => o.textContent);
+    expect(options).toContain("Blitzer Rival");
+    expect(options).toContain("Thrower Rival");
+    // The opponent roster must NOT bleed into the aggressor ("Jugador") select.
+    expect(options).not.toContain("Blitzer A");
+    // The victim select is distinct from the aggressor select.
+    expect(screen.getByLabelText(/^Jugador$/i)).toBeTruthy();
+  });
+
+  it("registers the foul only after BOTH aggressor and victim are chosen, firing victimRosterId", async () => {
+    const { onSubmit } = renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p2" } });
+    // Victim not yet picked → Registrar disabled.
+    expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Víctima de la falta/i), { target: { value: "o1" } });
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      { type: "foul", side: "home", playerRosterId: "p2", victimRosterId: "o1" } as LiveCommand,
+    );
+  });
+});
+
+describe("EventControls — Baja/Herida form captures CAUSE and CAUSER (LM-20, MVT-5, D7)", () => {
+  it("shows a 'Causa de la lesión' select with the six causes and no causer by default", () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    const cause = screen.getByLabelText(/Causa de la lesión/i) as HTMLSelectElement;
+    const causes = Array.from(cause.options).map((o) => o.value.trim()).filter(Boolean);
+    expect(causes).toEqual(["blitz", "foul", "dodge", "crowd", "penetration", "block"]);
+    // The causer select only appears once a cause requiring a causer is chosen.
+    expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
+  });
+
+  it("shows the 'Autor de la lesión' opponent select plus cause/causer on submit for blitz", async () => {
+    const { onSubmit } = renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
+    const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
+    const options = Array.from(causer.options).map((o) => o.textContent);
+    expect(options).toContain("Blitzer Rival");
+    fireEvent.change(causer, { target: { value: "o1" } });
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "casualty",
+      side: "home",
+      victimRosterId: "p1",
+      band: "grave",
+      cause: "blitz",
+      causerRosterId: "o1",
+    } as LiveCommand);
+  });
+
+  it("hides the causer select for dodge/crowd and submits WITHOUT causerRosterId", async () => {
+    const { onSubmit } = renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "dodge" } });
+    // Strict client rule: no causer select for dodge.
+    expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    // Deep-equality match below already proves NO causerRosterId for dodge (strict LM-12).
+    expect(onSubmit).toHaveBeenCalledWith(
+      { type: "casualty", side: "home", victimRosterId: "p1", band: "bruise", cause: "dodge" } as LiveCommand,
+    );
+  });
+
+  it("disables Registrar until a causer is chosen when the cause requires one (LM-12 strict)", async () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "block" } });
+    // Causer select is visible but empty → Registrar disabled until picked.
+    expect(screen.getByLabelText(/Autor de la lesión/i)).toBeTruthy();
+    expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "o2" } });
+    expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

@@ -574,7 +574,7 @@ export type LiveCommand =
       /** The opposite-side causer; ABSENT for dodge/crowd (LM-12 strict). */
       causerRosterId?: string;
     }
-  | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId?: string }
+  | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
   | { type: "endMatch" };
 
