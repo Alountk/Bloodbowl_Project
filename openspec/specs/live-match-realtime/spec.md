@@ -134,8 +134,8 @@ The match clock MUST be unified and server-owned: a persisted `startedAt` marks 
 
 ### Requirement: LM-6 · Event Persistence and Sequence
 
-Every TD, completion, casualty (with injury band), foul, end-of-half, and end-of-match MUST persist a `LiveEvent` row with monotonic `seq` and a JSON payload; the database MUST be the source of truth and an in-memory hub MUST fan out behind a narrow interface. Catch-up by `seq` MUST never be stale.
-(Previously: completion events did not exist — only TD, casualty, foul, and half/match boundary kinds persisted.)
+Every TD, completion, casualty, foul, end-of-half, and end-of-match MUST persist a `LiveEvent` row with monotonic `seq` and a JSON payload; the database MUST be the source of truth and an in-memory hub MUST fan out behind a narrow interface. Catch-up by `seq` MUST NEVER be stale. A `foul` payload MUST carry `victimRosterId`; a `casualty` payload MUST carry `band`, `cause` (one of `blitz|foul|dodge|crowd|penetration|block`), and `causerRosterId` (absent when the crowd or the player's own dodge caused it). Because payloads are JSON and `LiveEvent.kind` is TEXT, this MUST NOT require a migration (LM-14 precedent); legacy events with `{}`/`{band}` payloads MUST still render as fallback rows without victim/cause detail.
+(Previously: the `foul` payload was `{}` and the `casualty` payload carried only `band`.)
 
 #### Scenario: Event recorded with sequence
 
@@ -148,6 +148,18 @@ Every TD, completion, casualty (with injury band), foul, end-of-half, and end-of
 - GIVEN a subscriber at seq N
 - WHEN they request catch-up after N
 - THEN exactly the events with seq > N arrive, in seq order
+
+#### Scenario: Foul victim and casualty cause persist
+
+- GIVEN a foul POSTed with `victimRosterId` and a casualty POSTed with `cause` and `causerRosterId`
+- WHEN both commit
+- THEN the foul row stores the victim and the casualty row stores `band`, `cause`, and the causer
+
+#### Scenario: Legacy events keep rendering
+
+- GIVEN persisted events whose payloads lack the new fields
+- WHEN the feed renders
+- THEN they render as fallback rows without victim/cause detail and no error occurs
 
 ### Requirement: LM-7 · Disconnect Policy
 
@@ -268,8 +280,8 @@ Live events MUST persist from day one so played matches render the historical ti
 
 ### Requirement: LM-12 · Turn-Phase Event Permissions
 
-Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be allowed to record TDs, fouls, casualties, completions, and pass-turn; the NON-ACTIVE coach MUST be allowed ONLY to record a casualty to one of their OWN players. Any other non-active event command MUST return 409 with no mutation; spectator members 403 and foreign users 404 (per LM-2). The live DTO MUST expose the viewer's side so the client renders the correct controls.
-(Previously: the active-coach kind list covered TDs, fouls, casualties, and pass-turn only.)
+Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be allowed to record TDs, fouls, casualties, completions, and pass-turn; the NON-ACTIVE coach MUST be allowed ONLY to record a casualty to one of their OWN players. Any other non-active event command MUST return 409 with no mutation; spectator members 403 and foreign users 404 (per LM-2). Foul and casualty commands MUST also satisfy actor side invariants: a foul's `victimRosterId` MUST resolve to a roster player on the side opposite the aggressor (`side`), and a casualty's `causerRosterId`, when present, MUST resolve to a roster player on the side opposite the victim (`side`); a violation MUST return 409 with no mutation. The live DTO MUST expose the viewer's side so the client renders the correct controls.
+(Previously: the side gate checked kind and casualty victim-side only — a foul's victim and a casualty's causer were not constrained.)
 
 #### Scenario: Active coach records events
 
@@ -306,6 +318,24 @@ Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be
 - GIVEN a viewer whose side matches `activeSide`
 - WHEN the DTO is received
 - THEN it carries the viewer's side so the UI renders "Tu turno"
+
+#### Scenario: Foul victim must be an opponent
+
+- GIVEN the home coach POSTs a foul whose `victimRosterId` is a home player
+- WHEN the command reaches the route
+- THEN it returns 409 and no event persists
+
+#### Scenario: Casualty causer must be on the opposite side
+
+- GIVEN a home-coach casualty on a home player with `causerRosterId` of another home player
+- WHEN the command reaches the route
+- THEN it returns 409 and no event persists
+
+#### Scenario: Crowd and self-inflicted casualties omit the causer
+
+- GIVEN a casualty with cause `crowd` or `dodge` and no `causerRosterId`
+- WHEN the command reaches the route
+- THEN it returns 200 and the casualty persists without a causer
 
 ### Requirement: LM-13 · Turn Start Notification and Request Turn Nudge
 
@@ -445,7 +475,8 @@ A pure derivation over the display-worthy events MUST return, per team: TD count
 
 ### Requirement: LM-20 · Event Recording Controls
 
-The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster and a band select for casualty/injury; the NON-ACTIVE coach MUST be offered ONLY Herida (casualty to their OWN player). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
+The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster and a band select for casualty/injury. The Falta form MUST additionally capture the victim (select from the OPPONENT roster) and submit `victimRosterId`; the Baja/Herida form MUST additionally capture `cause` (one of the six causes) and, except for `dodge`/`crowd`, the causer (select from the OPPONENT roster, submitted as `causerRosterId`). The NON-ACTIVE coach MUST be offered ONLY Herida (casualty to their OWN player, with cause and optional causer). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
+(Previously: the foul form captured only the aggressor and the casualty form captured only the band.)
 
 #### Scenario: Active coach opens the menu
 
@@ -476,6 +507,46 @@ The live UI MUST render a floating "+" button that opens an event-type menu and 
 - GIVEN a client bypassing the menu, e.g. a NON-active coach POSTing a TD
 - WHEN the command reaches the live route
 - THEN it returns 409 with no mutation
+
+#### Scenario: Foul form captures the victim
+
+- GIVEN the ACTIVE coach opens the Falta form
+- WHEN they pick the aggressor from their roster and the victim from the OPPONENT roster and submit
+- THEN the foul command carries `victimRosterId` and the feed card shows the victim line
+
+#### Scenario: Casualty form captures cause and causer
+
+- GIVEN a coach opens the Baja/Herida form
+- WHEN they pick the band, the cause, and (unless `dodge`/`crowd`) the causer from the OPPONENT roster
+- THEN the casualty command carries `cause` and `causerRosterId` and the card shows the three actors
+
+### Requirement: MVT-5 · Casualty Cause and Actor Rendering Data
+
+Cause→label MUST map: `blitz` → "Blitz", `foul` → "Falta", `dodge` → "Esquivando — se cayó", `crowd` → "El público", `penetration` → "Penetración", `block` → "Bloqueo". A casualty card MUST render three actors: the victim (main row), the cause label, and the causer line — "por {name} (#{dorsal}) · {cause}" when `causerRosterId` resolves to a roster player, "El público" when the causer is absent with cause `crowd`, and the bare cause label when absent otherwise. A foul card MUST render the victim line "a {name} (#{dorsal})" resolved from `victimRosterId`. Unknown causes MUST pass through unchanged and never throw.
+
+#### Scenario: Cause labels
+
+- GIVEN the six valid causes
+- WHEN the label derives
+- THEN `blitz|foul|dodge|crowd|penetration|block` render "Blitz", "Falta", "Esquivando — se cayó", "El público", "Penetración", "Bloqueo"
+
+#### Scenario: Causer line
+
+- GIVEN a casualty whose `causerRosterId` resolves to dorsal 4 "Arnau" and `cause: "blitz"`
+- WHEN the card renders
+- THEN it shows "por Arnau (#4) · Blitz"
+
+#### Scenario: Crowd and self-inflicted lines
+
+- GIVEN a casualty with cause `crowd` or `dodge` and no `causerRosterId`
+- WHEN the card renders
+- THEN it shows "El público" (crowd) or "Esquivando — se cayó" (dodge) with no "por …" line
+
+#### Scenario: Foul victim line
+
+- GIVEN a foul whose `victimRosterId` resolves to dorsal 8 "Trash"
+- WHEN the card renders
+- THEN it shows "a Trash (#8)" under the aggressor row
 
 ## Acceptance Criteria
 

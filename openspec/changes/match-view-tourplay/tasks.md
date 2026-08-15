@@ -13,7 +13,7 @@
 
 Decision needed before apply: Yes
 Chained PRs recommended: Yes
-Chain strategy: pending
+Chain strategy: stacked-to-main
 400-line budget risk: High
 
 ### Suggested Work Units
@@ -59,6 +59,10 @@ Chain strategy: pending
 
 ## Phase 5: E2E + Cleanup (S5)
 
-- [ ] 5.1 `e2e/live-match.spec.ts`: victim/causer survive reload; cards/timeline/summary rows; labels preserved
-- [ ] 5.2 Full sweep: `pnpm test`, `npx tsc --noEmit`, `pnpm lint`, auth e2e green
-- [ ] 5.3 Resolve open questions: `createdAt` datetime typing; strict dodge/crowd causer reject confirmed; incentive chips follow-up slice (kickoff precedent)
+- [x] 5.1 `e2e/live-match.spec.ts`: victim/causer survive reload; cards/timeline/summary rows; labels preserved
+- [x] 5.2 Full sweep: `pnpm test`, `npx tsc --noEmit`, `pnpm lint`, auth e2e green
+- [x] 5.3 Resolve open questions: `createdAt` datetime typing; strict dodge/crowd causer reject confirmed; incentive chips follow-up slice (kickoff precedent)
+
+### Follow-up diferido (fuera de alcance — decisión del maintainer, no es tarea pendiente)
+
+- Follow-up (deferido): MVT-4 team-assigned incentives — el snapshot guarda UN solo `pettyCash` (diferencia de TV) sin split por equipo, así que la fila "Incentivos" del feed terminado renderiza el valor único asignado a home ("+45.000 gp."). Los chips por equipo requieren un slice posterior (precedente kickoff); deliberadamente NO se implementan aquí.
