@@ -102,6 +102,7 @@ function playedDetail(): MatchDetail {
       },
       pettyCash: 150_000,
       loadedBy: "u1",
+      createdAt: "2026-03-01T21:00:00.000Z",
     },
     homeTeam: {
       id: "t1",
@@ -353,6 +354,22 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     expect(rows[1].textContent).toContain("Baja");
     expect(rows[2].textContent).toContain("Touchdown");
     expect(rows[3].textContent).toContain("Inicio del partido");
+  });
+});
+
+describe("MatchView — Tourplay header back arrow (MVT-3/4.4)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("renders a back arrow inside the sticky header linking to the jornada", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    const header = screen.getByTestId("tourplay-header");
+    // The back arrow lives INSIDE the sticky header (top-left, before the
+    // league·round label) and points to the jornada (league page).
+    const back = within(header).getByRole("link", { name: /volver/i });
+    expect(back.getAttribute("href")).toBe("/leagues/l1");
   });
 });
 
@@ -1318,6 +1335,47 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(visitorRow!.textContent).toContain("T14");
     expect(visitorRow!.textContent).toContain("Baja");
     expect(visitorRow!.textContent).toContain("Blitzer B");
+  });
+});
+
+describe("MatchView — finished-live snapshot summary rows (MVT-4)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("renders the summary rows ABOVE the event cards inside the finished feed", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    // "Partido reportado" green success row with the report date.
+    const reported = screen.getByTestId("summary-row-reported");
+    expect(reported.textContent).toMatch(/Partido reportado/);
+    expect(reported.textContent).toMatch(/01\/03\/2026/);
+
+    // Ganancias (per-team winnings) + Fanáticos dedicados (per-team FF).
+    const rows = Array.from(container.querySelectorAll("[data-testid='summary-row']"));
+    const texts = rows.map((r) => r.textContent ?? "");
+    expect(texts.some((t) => t.includes("Ganancias") && t.includes("45.000") && t.includes("35.000"))).toBe(true);
+    expect(texts.some((t) => t.includes("Fanáticos dedicados") && t.includes("4") && t.includes("2"))).toBe(true);
+    // Incentivos: the single pettyCash value (chips deferred).
+    expect(texts.some((t) => t.includes("Incentivos") && t.includes("150.000"))).toBe(true);
+
+    // The summary rows sit ABOVE the event cards in the DOM.
+    const summary = container.querySelector("[data-testid='summary-row']");
+    const firstCard = container.querySelector("[data-testid='live-event-row']");
+    expect(summary && firstCard ? summary.compareDocumentPosition(firstCard) & Node.DOCUMENT_POSITION_FOLLOWING : 0).toBeTruthy();
+  });
+
+  it("renders NO summary rows and no placeholder for a finished live walkover (no snapshot, MV-2 guard)", async () => {
+    const detail = finishedLiveDetail();
+    detail.result = null; // finished live but no MatchResult snapshot → walkover
+    stubMatch(detail);
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    // The event cards still render, but no summary rows appear.
+    expect(container.querySelector("[data-testid='summary-row']")).toBeNull();
+    expect(container.querySelector("[data-testid='summary-row-reported']")).toBeNull();
+    expect(container.querySelectorAll("[data-testid='live-event-row']").length).toBeGreaterThan(0);
   });
 });
 
