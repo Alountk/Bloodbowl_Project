@@ -124,6 +124,34 @@ describe("resolveExpensiveMistake — full rulebook matrix (LM-23)", () => {
     expect(result.amountLost).toBe(0);
     expect(result.treasuryAfter).toBe(80000);
   });
+
+  it("R3-001: a minor incident never deducts more than the team's treasury (low balance → after 0, never negative)", () => {
+    // 5k treasury clamps to the first bracket where roll 1 → minor-incident;
+    // without the floor, d3 3 × 10k = 30k would exceed the 5k balance.
+    const result = resolveExpensiveMistake({ roll: 1, rollD3: 3, treasury: 5000 });
+    expect(result.outcome).toBe("minor-incident");
+    expect(result.amountLost).toBe(5000);
+    expect(result.treasuryAfter).toBe(0);
+  });
+
+  it("R3-001: the resolver never yields a negative amountLost or treasuryAfter for any matrix cell or keep", () => {
+    const bracketTreasury: Record<KickoffBracket, number> = {
+      "100k-195k": 100000,
+      "200k-295k": 200000,
+      "300k-395k": 300000,
+      "400k-495k": 400000,
+      "500k-595k": 500000,
+      "600k+": 600000,
+    };
+    for (const roll of [1, 2, 3, 4, 5, 6]) {
+      for (const treasury of [0, 5000, 80000, ...Object.values(bracketTreasury)]) {
+        const extreme = resolveExpensiveMistake({ roll, rollD3: 3, keep: [6, 6], treasury });
+        expect(extreme.amountLost).toBeGreaterThanOrEqual(0);
+        expect(extreme.amountLost).toBeLessThanOrEqual(treasury);
+        expect(extreme.treasuryAfter).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
 });
 
 describe("buildKickoffEvents — em(home), em(away), fan_factor events + treasury deltas (LM-21/22/23)", () => {

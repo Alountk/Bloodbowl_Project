@@ -123,6 +123,13 @@ export function resolveExpensiveMistake(input: ResolveExpensiveMistakeInput): Re
     }
   }
 
+  // R3-001 fix: the deduction can never exceed the team's actual treasury nor go
+  // negative. Without this floor a low-treasury minor incident (d3×10k > balance)
+  // would persist a negative treasury, and a catastrophe whose kept 2D6×10k
+  // exceeds the balance would produce a payload/DB mismatch (the amountLost>0
+  // guard would drop the update while the payload claimed a lower treasuryAfter).
+  amountLost = Math.max(0, Math.min(amountLost, input.treasury));
+
   return {
     bracket,
     outcome,
