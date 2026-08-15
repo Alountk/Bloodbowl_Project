@@ -1392,6 +1392,25 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
     expect(html).not.toMatch(/dark|bg-black|text-black/i);
   });
 
+  it("uses success-green tokens on the reported row and navy/red card gradients (MV-7 S2)", async () => {
+    stubMatch(finishedLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Partido reportado"));
+
+    // "Partido reportado": light green background, darker green text (success).
+    const reported = container.querySelector("[data-testid='summary-row-reported']");
+    const reportedCls = reported?.getAttribute("class") ?? "";
+    expect(reportedCls).toContain("bg-green-50");
+    expect(reportedCls).toContain("text-green-700");
+
+    // Cards: navy (home) / red (away) internal gradients fading to white.
+    const cards = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const cls = cards.map((c) => c.getAttribute("class") ?? "").join(" ");
+    expect(cls).toContain("from-[#12225a]/[0.12]");
+    expect(cls).toContain("from-[#d11938]/[0.12]");
+    expect(cls).toContain("to-white");
+  });
+
   it("collapses to the not-found view when the API returns 404", async () => {
     vi.stubGlobal(
       "fetch",
