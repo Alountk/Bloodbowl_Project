@@ -18,24 +18,9 @@ services:
       - .:/app
       - /app/node_modules          # anónimo: conserva el node_modules del contenedor
       - web_dev_next:/app/.next    # con nombre: cache de Turbopack persistente
-    develop:
-      watch:
-        - action: sync
-          path: .
-          target: /app
-          ignore:
-            - node_modules
-            - .next
-            - .git
-            - openspec
-            - previews
-            - e2e
-        - action: sync+restart
-          path: prisma/schema.prisma
-          target: /app/prisma/schema.prisma
-        - action: rebuild
-          path: package.json
-          target: /app/package.json
+    # Sin `develop.watch`: el bind mount completo (.:/app) ya propaga los cambios
+    # en vivo al contenedor; Turbopack HMR hace el resto. Compose Watch declararía
+    # los mismos paths como "no monitorizados" (redundante con el bind mount).
     depends_on:
       postgres:
         condition: service_healthy

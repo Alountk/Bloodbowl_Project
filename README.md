@@ -103,22 +103,21 @@ docs/                 # auth.md (ops/deploy)
 Entorno de desarrollo virtualizado (docker-compose.dev.yml): `next dev` con **Turbopack HMR** dentro del contenedor, bind mount del código y Postgres dev dedicado. No toca el compose de producción (`docker-compose.yml`).
 
 ### Requisitos
-- Docker Desktop / Engine con **Compose ≥ 2.23** (para `develop.watch` con `sync+restart`; `docker compose up --watch`).
-- Si tu plugin de Docker Desktop es más viejo que 2.23 (verificá con `docker compose version`), instalá el standalone `docker-compose` ≥ 2.23 y usá `docker-compose -f docker-compose.dev.yml ...` en lugar de `docker compose`.
+- Docker Desktop / Engine con Compose reciente (cualquier versión moderna sirve; el archivo no usa `develop.watch`).
+- Verificá con `docker compose version`; si tu plugin es muy viejo, usá el standalone `docker-compose` con los mismos comandos (`docker-compose -f docker-compose.dev.yml ...`).
 
 ### Arranque
 
 ```bash
 cp .env.example .env          # opcional
 pnpm dev:docker:up            # o: docker compose -f docker-compose.dev.yml up --build -d
-pnpm dev:docker:watch         # o: docker compose -f docker-compose.dev.yml watch
+pnpm dev:docker:logs          # opcional: seguir los logs de next dev
 # abrir http://localhost:3000
 ```
 
 ### Hot-reload
-- Los cambios en el código se reflejan al instante (Turbopack HMR).
-- `prisma/schema.prisma` reinicia el servicio (`sync+restart`).
-- `package.json` reconstruye la imagen (`rebuild`).
+- El código está **bind-mounteado** (`.:/app`): los cambios se reflejan al instante en el contenedor y **Turbopack HMR** recarga la página sin reiniciar nada.
+- Si tocás `prisma/schema.prisma`: creá la migración y **reiniciá el servicio** (`pnpm dev:docker:restart`).
 
 ### Migraciones nuevas durante dev
 
