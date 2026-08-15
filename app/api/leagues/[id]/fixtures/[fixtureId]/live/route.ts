@@ -25,7 +25,12 @@ import {
   type LiveMatchState,
   type TeamSide,
 } from "@/lib/liveMatch";
-import { resolveEventPermission, type EventKind } from "@/lib/livePhase";
+import {
+  checkActorInvariant,
+  resolveEventPermission,
+  type EventKind,
+  type RosterSideMap,
+} from "@/lib/livePhase";
 import { ensurePlayersForTeam } from "@/lib/players";
 import type { PlayerEntry } from "@/features/teams/types";
 
@@ -217,6 +222,27 @@ async function materializeTeamRosters(ctx: FixtureContext): Promise<void> {
     const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
     await ensurePlayersForTeam(team.id, roster);
   }
+}
+
+/**
+ * Loads the materialized Player rows for BOTH teams and groups their
+ * `rosterPlayerId`s by side into a `RosterSideMap` (LM-12/D1). The map powers
+ * `checkActorInvariant`: a foul victim / casualty causer MUST resolve to a
+ * roster player on the opposite side. Reads the idempotent `ensurePlayersForTeam`
+ * backfill, so it runs after `begin` materializes the rosters.
+ */
+async function loadRosterSideMap(ctx: FixtureContext): Promise<RosterSideMap> {
+  const players = await prisma.player.findMany({
+    where: { teamId: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+    select: { teamId: true, rosterPlayerId: true },
+  });
+  const home = new Set<string>();
+  const away = new Set<string>();
+  for (const p of players) {
+    if (p.teamId === ctx.homeTeamId) home.add(p.rosterPlayerId);
+    else if (p.teamId === ctx.awayTeamId) away.add(p.rosterPlayerId);
+  }
+  return { home, away };
 }
 
 /**
@@ -453,8 +479,17 @@ type ControlCommand =
   | { type: "endTurn"; side: TeamSide }
   | { type: "td"; side: TeamSide; playerRosterId: string }
   | { type: "completion"; side: TeamSide; playerRosterId: string }
-  | { type: "casualty"; side: TeamSide; victimRosterId: string; band?: unknown }
-  | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId?: unknown }
+  | {
+      type: "casualty";
+      side: TeamSide;
+      victimRosterId: string;
+      band?: unknown;
+      /** Casualty cause (MVT-5/LM-6). Loose string in S1; S2 constrains the picker. */
+      cause?: string;
+      /** The opposite-side causer; ABSENT for dodge/crowd (LM-12 strict). */
+      causerRosterId?: string;
+    }
+  | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
   | { type: "endMatch" };
 
@@ -477,7 +512,12 @@ function isControlCommand(value: unknown): value is ControlCommand {
     case "casualty":
       return (c.side === "home" || c.side === "away") && typeof c.victimRosterId === "string";
     case "foul":
-      return (c.side === "home" || c.side === "away") && typeof c.playerRosterId === "string";
+      // LM-6: `victimRosterId` is REQUIRED on a foul command.
+      return (
+        (c.side === "home" || c.side === "away") &&
+        typeof c.playerRosterId === "string" &&
+        typeof c.victimRosterId === "string"
+      );
     case "endMatch":
       return true;
     default:
@@ -668,6 +708,27 @@ export async function POST(
     ) {
       return Response.json({ error: "Not your turn" }, { status: 409 });
     }
+
+    // LM-12 actor-side invariants (D1): a foul's victim and a casualty's causer
+    // must resolve to a roster player on the side OPPOSITE the actor. The pure
+    // check needs the materialized rosters, so we load them here (after the side
+    // gate, only for foul/casualty). A deny → 409 with no mutation.
+    if (command.type === "foul" || command.type === "casualty") {
+      const rosters = await loadRosterSideMap(ctx);
+      const actorSide = command.side; // foul = aggressor side; casualty = victim side
+      const opponentId = command.type === "foul" ? command.victimRosterId : command.causerRosterId;
+      if (
+        checkActorInvariant({
+          kind: command.type,
+          actorSide,
+          opponentId,
+          cause: command.type === "casualty" ? command.cause : undefined,
+          rosters,
+        }) === "deny"
+      ) {
+        return Response.json({ error: "Invalid actor side" }, { status: 409 });
+      }
+    }
   }
 
   let next: LiveMatchState | null = null;
@@ -717,7 +778,10 @@ export async function POST(
   return Response.json({ view: toLiveViewState(next, now, { viewerSide: side }) }, { status: 200 });
 }
 
-/** Records a coach-reported casualty with its (immutable) injury band (D10). */
+/** Records a coach-reported casualty with its (immutable) injury band (D10) and
+ * the LM-6 details: `cause` and the opposite-side `causerRosterId` (null for
+ * dodge/crowd self-inflicted casualties — the invariant gate already rejected a
+ * causer on those causes). */
 function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { type: "casualty" }>, now: number): LiveMatchState {
   return {
     ...state,
@@ -731,14 +795,19 @@ function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { ty
         playerRosterId: cmd.victimRosterId,
         half: state.half,
         turnNumber: state.turnNumber,
-        payload: { band: cmd.band ?? null },
+        payload: {
+          band: cmd.band ?? null,
+          cause: cmd.cause ?? null,
+          causerRosterId: cmd.causerRosterId ?? null,
+        },
         at: now,
       },
     ],
   };
 }
 
-/** Records a foul event (D10: no parallel dice path; result POST stays authoritative). */
+/** Records a foul event (D10: no parallel dice path; result POST stays
+ * authoritative). LM-6: the payload carries the REQUIRED `victimRosterId`. */
 function recordFoul(state: LiveMatchState, cmd: Extract<ControlCommand, { type: "foul" }>, now: number): LiveMatchState {
   return {
     ...state,
@@ -751,7 +820,7 @@ function recordFoul(state: LiveMatchState, cmd: Extract<ControlCommand, { type: 
         playerRosterId: cmd.playerRosterId,
         half: state.half,
         turnNumber: state.turnNumber,
-        payload: {},
+        payload: { victimRosterId: cmd.victimRosterId },
         at: now,
       },
     ],
