@@ -28,6 +28,11 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
  *      TDs, LM-9) and, once the result is loaded, the finished feed carries the
  *      home+away mvp rows (★4) written by the result route (D20/LM-mvp).
  *
+ * Tourplay redesign guards (MVT-1/2/3/4) are asserted against the REAL UI:
+ * the sticky header back arrow + horizontal timeline bar (MVT-2/MVT-3), the
+ * per-TD partial score on TD cards (MVT-1), and the snapshot summary rows
+ * above the finished feed's event cards (MVT-4).
+ *
  * The two-phase consent → begin flow is driven through the REAL match-view
  * controls ("Iniciar partido" per coach, then "Empezar partido") and converges
  * via SSE too — reloads are kept only where they test genuine snapshot/recovery
@@ -238,21 +243,31 @@ async function liveCommand(page: Page, leagueId: string, fixtureId: string, data
 
 /**
  * Records a live event through the REAL "+" FAB (LM-20/D26): opens the FAB,
- * clicks the given menu label, picks the player from the roster select and the
- * (optional) band from the injury select, then submits. The menu closes on
- * submit. `band` is only supplied for the casualty kind.
+ * clicks the given menu label, picks the player from the roster select, the
+ * (optional) band from the injury select, and the (optional) casualty cause +
+ * causer from the S2 controls, then submits. The menu closes on submit. `band`
+ * is only supplied for the casualty kind; when `cause` is supplied and requires
+ * a causer (blitz/foul/penetration/block) the causer select is filled too.
  */
 async function recordViaFab(
   page: Page,
   menuLabel: string,
   playerName: string,
   band?: string,
+  cause?: string,
+  causerName?: string,
 ) {
   await page.getByRole("button", { name: "+" }).click();
   await page.getByRole("button", { name: new RegExp(menuLabel, "i") }).click();
   await page.getByLabel("Jugador").selectOption({ label: playerName });
   if (band) {
     await page.getByLabel("Tipo de lesión").selectOption({ label: band });
+  }
+  if (cause) {
+    await page.getByLabel("Causa de la lesión").selectOption({ label: cause });
+  }
+  if (causerName) {
+    await page.getByLabel("Autor de la lesión").selectOption({ label: causerName });
   }
   await page.getByRole("button", { name: "Registrar" }).click();
   // Menu + form close again after the submit.
@@ -312,6 +327,16 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // Coach B converges to the live state via SSE (no reload).
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
+    // MVT-2/MVT-3: the sticky Tourplay header renders the back arrow to the
+    // jornada and the horizontal timeline bar once the match is live. The bar
+    // derives from the LM-16 display events only, so a reload reproduces it.
+    const header = admin.getByTestId("tourplay-header");
+    await expect(header).toBeVisible();
+    await expect(
+      header.getByRole("link", { name: "Volver a la jornada" }),
+    ).toHaveAttribute("href", `/leagues/${leagueId}`);
+    await expect(header.getByTestId("match-timeline")).toBeVisible();
+
     // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
     // home). Only the ACTIVE coach sees the "Tu turno" STATUS + "Dar el turno";
     // the non-active coach sees "Pedir turno" and never "Dar el turno". The
@@ -365,15 +390,27 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(homeCoach.getByRole("button", { name: /Touchdown/i })).toHaveCount(0);
     await expect(homeCoach.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
     await expect(homeCoach.getByRole("button", { name: /Falta/i })).toHaveCount(0);
-    // Record a Herida (band: grave) to the home coach's OWN player → feed shows
-    // the lasting Baja bucket (★2) and the feed row resolves the player.
+    // Record a Herida (band: grave) to the home coach's OWN player, caused by a
+    // Blitz with the away opponent as causer (S2 controls: Jugador + Tipo de
+    // lesión + Causa de la lesión + Autor de la lesión). The MVT-5 accident line
+    // "por {causer} (#{dorsal}) · Blitz" renders on the card.
     await homeCoach.getByRole("button", { name: /Herida/i }).click();
     await expect(homeCoach.getByLabel("Jugador")).toBeVisible();
     await homeCoach.getByLabel("Jugador").selectOption({ label: homeScorerName });
     await homeCoach.getByLabel("Tipo de lesión").selectOption({ label: "Herida grave" });
+    await homeCoach.getByLabel("Causa de la lesión").selectOption({ label: "Blitz" });
+    await homeCoach.getByLabel("Autor de la lesión").selectOption({ label: awayScorerName });
     await homeCoach.getByRole("button", { name: "Registrar" }).click();
     await expect(homeCoach.getByLabel("Jugador")).toHaveCount(0);
-    await expect(homeCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName })).toBeVisible();
+    // The casualty card shows the victim (own home player) AND the MVT-5 causer
+    // line "por {away causer} ... · Blitz" (three-actor casualty).
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName }),
+    ).toBeVisible();
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }),
+    ).toBeVisible();
+    await expect(homeCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" })).toBeVisible();
 
     // [B] ACTIVE (away) coach records a Pase completo (completion ★1) through the
     // FAB mini-form → a completion Design-A row (★1) streams into both feeds.
@@ -384,6 +421,11 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // row (★3) + the hero score update (away +1) + the turn flips back to home.
     await recordViaFab(awayCoach, "Touchdown", awayScorerName);
     await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: "★3" })).toBeVisible();
+    // MVT-1: the away TD card carries the per-TD partial score "(home - away)"
+    // derived by accumulating TD events in seq order — home 0, away 1 here.
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: "(0 - 1)" }),
+    ).toBeVisible();
     // The away TD lands on the away side → hero reads "0 : 1" (home : away).
     await expect(awayCoach.getByTestId("live-score")).toHaveText(/0\s*:\s*1/);
     // Turn2 away active → after the away TD the active side flips home.
@@ -448,6 +490,26 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(admin.getByText("Jugador más valioso").first()).toBeVisible();
     const mvpRows = admin.getByTestId("live-event-row").filter({ hasText: "Jugador más valioso" });
     await expect(mvpRows.filter({ hasText: "★4" })).toHaveCount(2);
+
+    // MVT-4: the finished feed renders the snapshot summary rows ABOVE the event
+    // cards — "Partido reportado" (green success + date), then Ganancias /
+    // Fanáticos dedicados / Incentivos — derived from the MatchResult snapshot,
+    // never new event kinds. The reported row precedes the first event card.
+    await expect(
+      admin.getByTestId("summary-row-reported").filter({ hasText: "Partido reportado" }),
+    ).toBeVisible();
+    await expect(admin.getByTestId("summary-row").filter({ hasText: "Ganancias" })).toBeVisible();
+    await expect(
+      admin.getByTestId("summary-row").filter({ hasText: "Fanáticos dedicados" }),
+    ).toBeVisible();
+    await expect(admin.getByTestId("summary-row").filter({ hasText: "Incentivos" })).toBeVisible();
+    const reportedRow = admin.getByTestId("summary-row-reported");
+    const firstEventCard = admin.getByTestId("live-event-row").first();
+    await expect(reportedRow).toBeVisible();
+    await expect(firstEventCard).toBeAttached();
+    const reportedY = (await reportedRow.boundingBox())?.y ?? Infinity;
+    const firstCardY = (await firstEventCard.boundingBox())?.y ?? -Infinity;
+    expect(reportedY).toBeLessThan(firstCardY);
   } finally {
     await league.close();
   }
