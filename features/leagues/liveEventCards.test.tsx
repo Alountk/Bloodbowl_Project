@@ -178,3 +178,90 @@ describe("LiveEventCards — legacy fallback (LM-6) and unknown cause pass-throu
     expect(row.textContent).toContain("meteorite");
   });
 });
+
+describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)", () => {
+  it("renders a home em as a 68% team card with the money-bag glyph, outcome label and treasury before → after (LM-24)", () => {
+    const { container } = renderCards([
+      ev(
+        6,
+        "expensive_mistake",
+        "home",
+        { outcome: "serious-incident", treasuryBefore: 234000, treasuryAfter: 214000 },
+        null,
+        1,
+        1000,
+      ),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    // MVT-6: team card width + the navy (home) side gradient.
+    expect(row.className).toContain("w-[68%]");
+    expect(row.className).toContain("from-[#12225a]/[0.12]");
+    // Label, outcome label and the es-ES treasury line.
+    expect(row.textContent).toContain("Error costoso");
+    expect(row.textContent).toContain("Incidente grave");
+    expect(row.textContent).toContain("234.000 → 214.000 M.O.");
+  });
+
+  it("renders the away em with the away (red) gradient and money-bag glyph", () => {
+    const { container } = renderCards([
+      ev(
+        7,
+        "expensive_mistake",
+        "away",
+        { outcome: "minor-incident", amountLost: 20000, treasuryBefore: 234000, treasuryAfter: 214000 },
+        null,
+        1,
+        1000,
+      ),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.className).toContain("w-[68%]");
+    expect(row.className).toContain("from-[#d11938]/[0.12]");
+    expect(row.textContent).toContain("Error costoso");
+    expect(row.textContent).toContain("Incidente menor");
+  });
+
+  it("renders a label-only fallback when treasury fields are missing (no line, no throw)", () => {
+    const { container } = renderCards([
+      ev(8, "expensive_mistake", "home", { outcome: "crisis-evaded" }, null, 1, 1000),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.textContent).toContain("Error costoso");
+    expect(row.textContent).toContain("Crisis evitada");
+    // No treasury before→after line, and must not throw.
+    expect(row.textContent).not.toMatch(/→/);
+    expect(row.textContent).not.toMatch(/M\.O\./);
+  });
+
+  it("keeps the live-event-row testid on the em card (MVT-6 continuity)", () => {
+    const { container } = renderCards([
+      ev(6, "expensive_mistake", "home", { outcome: "crisis-evaded", treasuryBefore: 100000, treasuryAfter: 100000 }, null, 1, 1000),
+    ]);
+    expect(container.querySelectorAll("[data-testid='live-event-row']")).toHaveLength(1);
+  });
+});
+
+describe("LiveEventCards — kickoff fan_factor centered row (MVT-6/LM-24)", () => {
+  it("renders as a centered 100% row with the compact per-team totals copy", () => {
+    const { container } = renderCards([
+      ev(7, "fan_factor", null, { home: { base: 2, dice: 2, total: 4 }, away: { base: 1, dice: 3, total: 4 } }, null, 1, 1000),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    // Centered 100% width (generic branch, w-full) + the dice glyph.
+    expect(row.className).toContain("w-full");
+    expect(row.textContent).toContain("Factor de aficionados");
+    // Compact per-team copy with people-before-base and dice-before-roll glyphs.
+    expect(row.textContent).toContain("Local: 👥2 + 🎲2 = 4");
+    expect(row.textContent).toContain("Visitante: 👥1 + 🎲3 = 4");
+    expect(row.className).toContain("justify-self-stretch");
+  });
+
+  it("renders the per-team totals from a different roll (triangulation)", () => {
+    const { container } = renderCards([
+      ev(7, "fan_factor", null, { home: { base: 3, dice: 1, total: 4 }, away: { base: 2, dice: 2, total: 4 } }, null, 1, 1000),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.textContent).toContain("Local: 👥3 + 🎲1 = 4");
+    expect(row.textContent).toContain("Visitante: 👥2 + 🎲2 = 4");
+  });
+});

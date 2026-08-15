@@ -1423,3 +1423,96 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
     expect(await screen.findByText(/Partido no encontrado/)).toBeTruthy();
   });
 });
+
+/** A finished live fixture whose feed includes the kickoff rows (LM-21 sequence). */
+function kickoffLiveDetail(): MatchDetail {
+  const raw = playedDetail();
+  raw.fixture.status = "live";
+  raw.result = null;
+  return {
+    ...raw,
+    live: {
+      seq: 12,
+      status: "live",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: "home",
+      startedAt: 1000,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      paused: false,
+      finishedAt: null,
+      events: [
+        // LM-21 seq order: em(home), em(away), fan_factor, start, turnStart — all at 0'.
+        { seq: 1, kind: "expensive_mistake", side: "home", playerRosterId: null, half: 1, turnNumber: 1, payload: { outcome: "serious-incident", treasuryBefore: 234000, treasuryAfter: 214000 }, at: 1000 },
+        { seq: 2, kind: "expensive_mistake", side: "away", playerRosterId: null, half: 1, turnNumber: 1, payload: { outcome: "minor-incident", treasuryBefore: 334000, treasuryAfter: 319000 }, at: 1000 },
+        { seq: 3, kind: "fan_factor", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: { home: { base: 2, dice: 2, total: 4 }, away: { base: 1, dice: 3, total: 4 } }, at: 1000 },
+        { seq: 4, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+        { seq: 5, kind: "turnStart", side: "home", playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+      ],
+    } as LiveMatchView,
+  };
+}
+
+describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("renders the expensive_mistake team cards (navy home / red away) with outcome + treasury lines in the feed", async () => {
+    stubLiveEventSource();
+    stubMatch(kickoffLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Error costoso"));
+
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const emHome = rows.find((li) => li.textContent?.includes("234.000 → 214.000 M.O."));
+    const emAway = rows.find((li) => li.textContent?.includes("334.000 → 319.000 M.O."));
+    // Both em cards carry their side gradient + outcome label (MVT-6).
+    expect(emHome).toBeTruthy();
+    expect(emAway).toBeTruthy();
+    expect(emHome!.className).toContain("from-[#12225a]/[0.12]");
+    expect(emHome!.className).toContain("w-[68%]");
+    expect(emHome!.textContent).toContain("Incidente grave");
+    expect(emAway!.className).toContain("from-[#d11938]/[0.12]");
+    expect(emAway!.textContent).toContain("Incidente menor");
+  });
+
+  it("renders the fan_factor row centered at 100% with the compact per-team totals (MVP-6/LM-24)", async () => {
+    stubLiveEventSource();
+    stubMatch(kickoffLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Factor de aficionados"));
+
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const fan = rows.find((li) => li.textContent?.includes("Factor de aficionados"));
+    expect(fan).toBeTruthy();
+    // Centered 100% width (generic branch).
+    expect(fan!.className).toContain("w-full");
+    expect(fan!.textContent).toContain("Local: 👥2 + 🎲2 = 4");
+    expect(fan!.textContent).toContain("Visitante: 👥1 + 🎲3 = 4");
+  });
+
+  it("preserves the live-event-row count for the full 5-row kickoff feed (MVT-1 continuity)", async () => {
+    stubLiveEventSource();
+    stubMatch(kickoffLiveDetail());
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    // em, em, fan, start, turnStart — the turnStart is filtered from the feed
+    // DTO (LM-16), so only em(home), em(away), fan, start reach the cards.
+    const feedRows = rows.filter((li) => {
+      const t = li.textContent ?? "";
+      return (
+        t.includes("Error costoso") || t.includes("Factor de aficionados") || t.includes("Inicio del partido")
+      );
+    });
+    expect(feedRows).toHaveLength(4);
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+  });
+});
