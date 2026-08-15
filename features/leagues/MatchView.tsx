@@ -7,7 +7,7 @@ import { PE_MVP } from "@/lib/rules";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
-import { buildMatchSummary, type MatchSummarySection } from "./matchSummary";
+import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
 import { LiveEventCards } from "./liveEventCards";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { EventControls } from "./liveControls";
@@ -353,12 +353,14 @@ function LiveTopBar({
   clock,
   label,
   names,
+  leagueId,
   turnControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
   label: string;
   names: { home: string; away: string };
+  leagueId: string;
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
 }) {
   const live = state.status === "live";
@@ -369,6 +371,19 @@ function LiveTopBar({
   const showTurnControls = live && turnControls.isActive;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#1f3a7a] bg-[#12225a] px-4 py-2 text-white">
+      {/* MVT-3 back arrow to the jornada (UI-only, existing DTO). */}
+      <Link
+        href={`/leagues/${leagueId}`}
+        aria-label="Volver a la jornada"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white hover:border-white"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M20 11H8l5.5-5.5L12.08 4.08 4.16 12l7.92 7.92L13.5 18.5 8 13h12v-2z"
+          />
+        </svg>
+      </Link>
       <p className="text-[11px] font-bold uppercase tracking-wide text-[#cbd5e1]">{label}</p>
       <TurnTrack
         sideName={names.home}
@@ -596,6 +611,7 @@ function TourplayHeader({
   awaySubtitle,
   homeTeamId,
   awayTeamId,
+  leagueId,
   events,
   turnControls,
 }: {
@@ -607,6 +623,7 @@ function TourplayHeader({
   awaySubtitle: string;
   homeTeamId: string;
   awayTeamId: string;
+  leagueId: string;
   events: LiveMatchView["events"];
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
 }) {
@@ -620,6 +637,7 @@ function TourplayHeader({
         clock={clock}
         label={label}
         names={names}
+        leagueId={leagueId}
         turnControls={turnControls}
       />
       <LiveHero
@@ -725,6 +743,7 @@ function LiveActiveMatch({
         awaySubtitle={awaySubtitle}
         homeTeamId={homeTeam.id}
         awayTeamId={awayTeam.id}
+        leagueId={leagueId}
         events={events}
         turnControls={{
           isActive: state.viewerSide === state.activeSide,
@@ -828,6 +847,79 @@ function FinishedLiveTimeline({
   );
 }
 
+/** Format a coin amount as "+45.000 gp." (Spanish thousands separator). */
+function formatCoins(value: number): string {
+  return `+${value.toLocaleString("es-ES")} gp.`;
+}
+
+/** One row of the finished-feed snapshot summary (MVT-4): rendered ABOVE the
+ * event cards. Derived from the `MatchResult` snapshot — never a new event kind
+ * (MV-6/LM-16) and never duplicating the event-derived MVP rows. */
+function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
+  switch (row.type) {
+    case "reported":
+      return (
+        <li
+          data-testid="summary-row-reported"
+          className="flex items-center gap-2 bg-green-50 px-3 py-2 text-[12px] font-bold text-green-700"
+        >
+          <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600/15 text-green-700">
+            ✓
+          </span>
+          <span className="flex-1">Partido reportado</span>
+          <span className="tabular-nums">{row.date}</span>
+        </li>
+      );
+    case "winnings":
+    case "fans":
+      return (
+        <li
+          data-testid="summary-row"
+          className="flex items-center gap-3 bg-white px-3 py-1.5 text-[12px]"
+        >
+          <span aria-hidden="true" className="shrink-0 text-center">
+            {row.type === "winnings" ? "💰" : "👥"}
+          </span>
+          <span className="flex-1 font-bold uppercase tracking-wide text-slate-500">
+            {row.type === "winnings" ? "Ganancias" : "Fanáticos dedicados"}
+          </span>
+          <span className="flex flex-col items-end gap-0.5 text-right tabular-nums">
+            <span className="leading-tight">{row.type === "winnings" ? formatCoins(row.home) : `+${row.home}`}</span>
+            <span className="leading-tight">{row.type === "winnings" ? formatCoins(row.away) : `+${row.away}`}</span>
+          </span>
+        </li>
+      );
+    case "incentives":
+      return (
+        <li
+          data-testid="summary-row"
+          className="flex items-center gap-3 bg-gradient-to-r from-[#12225a]/[0.12] via-[#12225a]/[0.06] to-white px-3 py-1.5 text-[12px]"
+        >
+          <span aria-hidden="true" className="shrink-0 text-center">💰</span>
+          <span className="flex-1">
+            <span className="block font-bold uppercase tracking-wide text-slate-500">Incentivos</span>
+            {/* The snapshot stores a single pettyCash — the inducement chips are
+                deferred (MVT-4 open question). */}
+            <span className="block text-[11px] font-semibold text-slate-600">{formatCoins(row.value)}</span>
+          </span>
+        </li>
+      );
+  }
+}
+
+/** The snapshot-driven summary block above the finished-feed cards (MVT-4). */
+function SummaryFeedRows({ detail }: { detail: MatchDetail }) {
+  const rows = buildSummaryFeedRows(detail);
+  if (rows.length === 0) return null;
+  return (
+    <ol className="flex flex-col gap-2 bg-[#eef1f6] p-1.5">
+      {rows.map((row) => (
+        <SummaryFeedRowView key={row.type} row={row} />
+      ))}
+    </ol>
+  );
+}
+
 /**
  * A finished live match (status "finished"): the UNIFORM sticky Tourplay header
  * renders the final score + frozen per-team clocks + inert tracks above the
@@ -836,20 +928,24 @@ function FinishedLiveTimeline({
  */
 function FinishedLiveView({
   live,
+  detail,
   leagueLabel,
   names,
   homeSubtitle,
   awaySubtitle,
   homeTeam,
   awayTeam,
+  leagueId,
 }: {
   live: LiveMatchView;
+  detail: MatchDetail;
   leagueLabel: string;
   names: { home: string; away: string };
   homeSubtitle: string;
   awaySubtitle: string;
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
+  leagueId: string;
 }) {
   const clock = useLiveClock(live);
   return (
@@ -863,9 +959,12 @@ function FinishedLiveView({
         awaySubtitle={awaySubtitle}
         homeTeamId={homeTeam.id}
         awayTeamId={awayTeam.id}
+        leagueId={leagueId}
         events={live.events}
         turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
       />
+      {/* MVT-4: snapshot summary rows ABOVE the event timeline. */}
+      <SummaryFeedRows detail={detail} />
       <FinishedLiveTimeline live={live} homeTeam={homeTeam} awayTeam={awayTeam} />
     </div>
   );
@@ -884,6 +983,7 @@ function PendingFixtureView({
   awaySubtitle,
   homeTeam,
   awayTeam,
+  leagueId,
 }: {
   leagueLabel: string;
   names: { home: string; away: string };
@@ -891,6 +991,7 @@ function PendingFixtureView({
   awaySubtitle: string;
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
+  leagueId: string;
 }) {
   const state = useMemo(() => emptyPendingView(), []);
   const clock = useLiveClock(state);
@@ -905,6 +1006,7 @@ function PendingFixtureView({
         awaySubtitle={awaySubtitle}
         homeTeamId={homeTeam.id}
         awayTeamId={awayTeam.id}
+        leagueId={leagueId}
         events={[]}
         turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
       />
@@ -1099,12 +1201,14 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       detail.live.status === "finished" ? (
         <FinishedLiveView
           live={detail.live}
+          detail={detail}
           leagueLabel={leagueLabel}
           names={names}
           homeSubtitle={homeSubtitle}
           awaySubtitle={awaySubtitle}
           homeTeam={detail.homeTeam}
           awayTeam={detail.awayTeam}
+          leagueId={leagueId}
         />
       ) : (
         <LiveActiveMatch
@@ -1159,6 +1263,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         awaySubtitle={awaySubtitle}
         homeTeam={detail.homeTeam}
         awayTeam={detail.awayTeam}
+        leagueId={leagueId}
       />
     );
   } else {

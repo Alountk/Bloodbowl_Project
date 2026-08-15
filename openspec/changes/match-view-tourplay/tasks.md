@@ -52,10 +52,10 @@ Chain strategy: pending
 ## Phase 4: Timeline + Summary + Header (S4)
 
 - [x] 4.1 `matchTimelineBar.tsx` (create): `match-timeline`, icons at `round((at-startedAt)/elapsed×100)%`, home top/away bottom, 0'/100' markers when finished
-- [ ] 4.2 `features/leagues/matchSummary.ts`: `buildSummaryFeedRows` (reported/ganancias/fanáticos/incentivos) from snapshot; `result==null`→`[]`; MV-2 walkover guard; report date = `result.createdAt`; MVP NOT duplicated
-- [ ] 4.3 `MatchView.tsx` FinishedLiveView: render summary rows above cards; `summary-row`/`summary-row-reported`; incentives shows single `pettyCash` (chips deferred @open)
-- [ ] 4.4 `LiveTopBar`: back arrow to jornada under `tourplay-header`; UI-only, existing DTO
-- [ ] 4.5 `matchSummary.test.ts` RED+unit: 4 rows from snapshot, walkover→[], MVP not duplicated; MatchView.test.tsx header/summary
+- [x] 4.2 `features/leagues/matchSummary.ts`: `buildSummaryFeedRows` (reported/ganancias/fanáticos/incentivos) from snapshot; `result==null`→`[]`; MV-2 walkover guard; report date = `result.createdAt`; MVP NOT duplicated
+- [x] 4.3 `MatchView.tsx` FinishedLiveView: render summary rows above cards; `summary-row`/`summary-row-reported`; incentives shows single `pettyCash` (chips deferred @open)
+- [x] 4.4 `LiveTopBar`: back arrow to jornada under `tourplay-header`; UI-only, existing DTO
+- [x] 4.5 `matchSummary.test.ts` RED+unit: 4 rows from snapshot, walkover→[], MVP not duplicated; MatchView.test.tsx header/summary
 
 ## Phase 5: E2E + Cleanup (S5)
 
