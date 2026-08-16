@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/lib/i18n";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
 import {
@@ -56,15 +57,16 @@ function SelectWithChevron({ children }: { children: ReactNode }) {
 }
 
 const COACHING_LABELS: Record<string, string> = {
-  rerolls: "Rerolls",
-  dedicatedFans: "Dedicated Fans",
-  assistantCoaches: "Assistant Coaches",
-  cheerleaders: "Cheerleaders",
+  rerolls: "coaching.rerolls",
+  dedicatedFans: "coaching.dedicatedFans",
+  assistantCoaches: "coaching.assistantCoaches",
+  cheerleaders: "coaching.cheerleaders",
 };
 
 export function CreateTeamForm() {
   const { addTeam } = useApp();
   const router = useRouter();
+  const { t } = useI18n();
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const form = useCreateTeamForm(async (values) => {
@@ -75,7 +77,7 @@ export function CreateTeamForm() {
     } catch {
       // Persistence failed (e.g. API down / 401): stay on the form so the user
       // can retry instead of silently losing the team.
-      setSaveError("Could not save the team. Please check your connection and try again.");
+      setSaveError(t("create.saveError"));
     }
   });
 
@@ -95,21 +97,21 @@ export function CreateTeamForm() {
           <header className="bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
             <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{form.name}</h1>
             <p className="mt-2 text-[13px] text-[#cbd5e1]">
-              {race.name} · Paso 2
+              {t("create.step2Subline", { race: race.name })}
             </p>
             <button
               type="button"
               onClick={form.backStep}
               className="mt-3 inline-block rounded-md border border-white/40 px-3 py-1 text-sm text-white hover:border-white"
             >
-              Editar nombre/raza
+              {t("create.editNameRace")}
             </button>
           </header>
 
           {/* Plantilla */}
-          <section aria-label="Plantilla">
+          <section aria-label={t("create.plantilla")}>
             <h2 className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
-              Plantilla
+              {t("create.plantilla")}
             </h2>
             <RosterTable
               players={form.players}
@@ -123,13 +125,18 @@ export function CreateTeamForm() {
             {/* Budget bar */}
             <div className="mb-3 mt-3 flex items-center justify-between text-sm">
               <span className="text-[#334155]">
-                {form.playerCount} player{form.playerCount === 1 ? "" : "s"} ·{" "}
-                {formatGold(form.totalCost)} / {formatGold(STARTING_TREASURY)} gc
+                {t(form.playerCount === 1 ? "create.playerOne" : "create.playerMany", {
+                  count: form.playerCount,
+                  spent: formatGold(form.totalCost),
+                  treasury: formatGold(STARTING_TREASURY),
+                })}
               </span>
               <span className={isOverBudget ? "font-semibold text-[#d11938]" : "text-[#64748b]"}>
                 {isOverBudget
-                  ? `Over budget by ${formatGold(form.totalCost - STARTING_TREASURY)}`
-                  : `${formatGold(form.remainingBudget)} remaining`}
+                  ? t("create.overBudget", {
+                      amount: formatGold(form.totalCost - STARTING_TREASURY),
+                    })
+                  : t("create.remaining", { amount: formatGold(form.remainingBudget) })}
               </span>
             </div>
             <div className="mb-4 h-2 overflow-hidden rounded-full bg-[#e2e8f0]">
@@ -143,9 +150,9 @@ export function CreateTeamForm() {
           </section>
 
           {/* Jugadores disponibles */}
-          <section aria-label="Jugadores disponibles">
+          <section aria-label={t("create.availablePlayers")}>
             <h2 className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
-              Jugadores disponibles
+              {t("create.availablePlayers")}
             </h2>
             <PlayerAvailabilityTable
               race={race}
@@ -160,15 +167,15 @@ export function CreateTeamForm() {
         </>
       ) : form.step === 1 ? (
         // Step 1 — light book panel "Paso 1 · Datos del equipo".
-        <section aria-label="Paso 1 · Datos del equipo">
+        <section aria-label={t("create.step1Title")}>
           <h1 className="mb-4 border-b-[3px] border-[#d11938] pb-1.5 text-[26px] font-black text-[#12225a]">
-            Paso 1 · Datos del equipo
+            {t("create.step1Title")}
           </h1>
 
           <div className="space-y-4">
             <div>
               <label htmlFor="team-name" className="mb-1 block text-sm font-medium text-slate-700">
-                Team name
+                {t("create.teamName")}
               </label>
               <input
                 id="team-name"
@@ -185,7 +192,7 @@ export function CreateTeamForm() {
 
             <div>
               <label htmlFor="team-race" className="mb-1 block text-sm font-medium text-slate-700">
-                Race
+                {t("create.race")}
               </label>
               <SelectWithChevron>
                 <select
@@ -194,7 +201,7 @@ export function CreateTeamForm() {
                   onChange={(event) => form.changeRace(event.target.value)}
                   className={selectClassName}
                 >
-                  <option value="">Select a race</option>
+                  <option value="">{t("create.selectRace")}</option>
                   {RACES.map((raceOption) => (
                     <option key={raceOption.id} value={raceOption.id}>
                       {raceOption.name}
@@ -214,7 +221,7 @@ export function CreateTeamForm() {
               onClick={form.nextStep}
               className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48]"
             >
-              Siguiente →
+              {t("create.next")}
             </button>
           </div>
         </section>
@@ -224,11 +231,11 @@ export function CreateTeamForm() {
       {form.pendingRaceId !== null ? (
         <div
           role="alertdialog"
-          aria-label="Confirm race change"
+          aria-label={t("create.confirmRaceDialog")}
           className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900"
         >
           <p className="text-sm">
-            Changing race will clear your current roster. Your roster will be cleared. Are you sure?
+            {t("create.raceChangeWarning")}
           </p>
           <div className="mt-3 flex gap-3">
             <button
@@ -236,14 +243,14 @@ export function CreateTeamForm() {
               onClick={form.confirmRaceChange}
               className="rounded-md bg-[#12225a] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0f1d48]"
             >
-              Confirm
+              {t("create.confirm")}
             </button>
             <button
               type="button"
               onClick={form.cancelRaceChange}
               className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:border-slate-400"
             >
-              Cancel
+              {t("create.cancel")}
             </button>
           </div>
         </div>
@@ -271,7 +278,7 @@ export function CreateTeamForm() {
             type="submit"
             className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48]"
           >
-            Create Team
+            {t("create.createTeam")}
           </button>
         </>
       ) : null}
@@ -287,6 +294,7 @@ interface CoachingStaffSectionProps {
 }
 
 function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
+  const { t } = useI18n();
   const race = RACES.find((candidate) => candidate.id === raceId);
   if (!race) return null;
 
@@ -297,12 +305,12 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
 
   return (
     <section
-      aria-label="Coaching Staff"
+      aria-label={t("create.coachingStaff")}
       className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] p-4"
     >
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
-          Coaching Staff
+          {t("create.coachingStaff")}
         </h2>
         <span className="text-sm text-[#64748b]">{formatGold(coachingTotal)} gc</span>
       </div>
@@ -323,17 +331,20 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
                 htmlFor={`coaching-${item.key}`}
                 className="mb-1 flex items-baseline justify-between text-sm font-medium text-slate-700"
               >
-                <span>{COACHING_LABELS[item.key]}</span>
+                <span>{t(COACHING_LABELS[item.key])}</span>
                 <span className="text-xs text-[#64748b]">
                   {item.key === "dedicatedFans"
-                    ? `starts at ${DEDICATED_FANS_START} · ${formatGold(item.unitCost)} gc per upgrade`
+                    ? t("coaching.startsWith", {
+                        min: DEDICATED_FANS_START,
+                        cost: formatGold(item.unitCost),
+                      })
                     : `${formatGold(item.unitCost)} gc`}
                   {item.quantity > min ? ` · ${formatGold(item.total)}` : ""}
                 </span>
               </label>
               <input
                 id={`coaching-${item.key}`}
-                aria-label={COACHING_LABELS[item.key]}
+                aria-label={t(COACHING_LABELS[item.key])}
                 type="number"
                 min={min}
                 max={max}
@@ -351,14 +362,14 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
         <label className="flex items-center gap-3 self-end rounded-md border border-[#e2e8f0] bg-white px-3 py-2 text-sm text-slate-700">
           <input
             id="coaching-apothecary"
-            aria-label="Apothecary"
+            aria-label={t("coaching.apothecary")}
             type="checkbox"
             checked={form.coaching.apothecary}
             onChange={(event) => form.setCoaching({ apothecary: event.target.checked })}
             className="h-4 w-4 accent-[#12225a]"
           />
           <span className="flex items-baseline gap-1">
-            Apothecary
+            {t("coaching.apothecary")}
             <span className="text-xs text-[#64748b]">
               {formatGold(APOTHECARY_COST)} gc{apothecaryTotal > 0 ? ` · ${formatGold(apothecaryTotal)}` : ""}
             </span>

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { DEFAULT_LOCALE, t } from "./dictionaries";
+import { DEFAULT_LOCALE, dictionaries, t } from "./dictionaries";
 import { I18nProvider, useI18n } from "./index";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 
@@ -49,6 +49,13 @@ describe("t (dictionaries)", () => {
 
   it("exports the Spanish default locale", () => {
     expect(DEFAULT_LOCALE).toBe("es");
+  });
+
+  it("keeps es and en dictionaries key-for-key in sync", () => {
+    const esKeys = Object.keys(dictionaries.es).sort();
+    const enKeys = Object.keys(dictionaries.en).sort();
+    expect(enKeys).toEqual(esKeys);
+    expect(esKeys.length).toBeGreaterThan(20);
   });
 });
 

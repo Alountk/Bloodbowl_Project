@@ -6,6 +6,7 @@ import { getSkillById } from "../data/skills";
 import { formatRulebookCost } from "../format";
 import { translateRole } from "../roster-table/RosterTable";
 import { useIsDesktop } from "../hooks/useIsDesktop";
+import { useI18n } from "@/lib/i18n";
 
 export interface PlayerAvailabilityTableProps {
   race: Race;
@@ -16,18 +17,6 @@ export interface PlayerAvailabilityTableProps {
   /** Global roster cap (MAX_PLAYERS) used to disable adds when full. */
   maxPlayers: number;
 }
-
-const AVAILABILITY_HEADERS = [
-  "POSICIÓN",
-  "COSTE",
-  "MV",
-  "FU",
-  "AG",
-  "PS",
-  "AR",
-  "HABILIDADES Y RASGOS",
-  "DISP.",
-];
 
 /**
 
@@ -45,6 +34,18 @@ export function PlayerAvailabilityTable({
   maxPlayers,
 }: PlayerAvailabilityTableProps) {
   const isDesktop = useIsDesktop();
+  const { t } = useI18n();
+  const AVAILABILITY_HEADERS = [
+    t("roster.header.position"),
+    t("roster.header.cost"),
+    t("roster.header.ma"),
+    t("roster.header.st"),
+    t("roster.header.ag"),
+    t("roster.header.pa"),
+    t("roster.header.av"),
+    t("roster.header.skills"),
+    t("roster.header.available"),
+  ];
   const countFor = (positionalKey: string): number =>
     players.filter((player) => player.positionalKey === positionalKey).length;
 
@@ -122,7 +123,7 @@ export function PlayerAvailabilityTable({
                         })}
                       </ul>
                     ) : (
-                      <span>Ninguna</span>
+                      <span>{t("roster.none")}</span>
                     )}
                   </td>
                   <td className="px-[5px] py-2 text-center align-top">
@@ -132,12 +133,12 @@ export function PlayerAvailabilityTable({
                       </span>
                       <button
                         type="button"
-                        aria-label={`Add ${positional.name}`}
+                        aria-label={t("create.addAction", { name: positional.name })}
                         onClick={() => onAdd(positional.key)}
                         disabled={disabled}
                         className="rounded-md border border-slate-300 px-2 py-0.5 text-sm text-[#334155] hover:border-[#12225a] hover:text-[#12225a] disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        + Add
+                        {t("create.add")}
                       </button>
                     </div>
                   </td>
@@ -153,11 +154,11 @@ export function PlayerAvailabilityTable({
       <div className="space-y-3">
           {rows.map(({ positional, count, disabled }) => {
             const stats: Array<[string, string]> = [
-              ["MV", positional.ma.toString()],
-              ["FU", positional.st.toString()],
-              ["AG", positional.ag],
-              ["PS", positional.pa],
-              ["AR", positional.av],
+              [t("roster.header.ma"), positional.ma.toString()],
+              [t("roster.header.st"), positional.st.toString()],
+              [t("roster.header.ag"), positional.ag],
+              [t("roster.header.pa"), positional.pa],
+              [t("roster.header.av"), positional.av],
             ];
             return (
               <div
@@ -179,12 +180,12 @@ export function PlayerAvailabilityTable({
                     </span>
                     <button
                       type="button"
-                      aria-label={`Add ${positional.name}`}
+                      aria-label={t("create.addAction", { name: positional.name })}
                       onClick={() => onAdd(positional.key)}
                       disabled={disabled}
                       className="rounded-md border border-slate-300 px-2 py-0.5 text-sm text-[#334155] hover:border-[#12225a] hover:text-[#12225a] disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      + Add
+                      {t("create.add")}
                     </button>
                   </div>
                 </div>
@@ -203,7 +204,7 @@ export function PlayerAvailabilityTable({
 
                 <div className="mt-2 border-t border-[#e2e8f0] pt-2 space-y-1 text-xs text-[#1a1a1a]">
                   <div>
-                    <span className="font-bold text-[#12225a]">SKILLS</span>:{" "}
+                    <span className="font-bold text-[#12225a]">{t("roster.skillsLabel")}</span>:{" "}
                     <span>
                       {positional.skills.length > 0
                         ? positional.skills
@@ -213,15 +214,15 @@ export function PlayerAvailabilityTable({
                               return es ?? skill?.name ?? skillId;
                             })
                             .join(", ")
-                        : "Ninguna"}
+                        : t("roster.none")}
                     </span>
                   </div>
                   <div>
-                    <span className="font-bold text-[#12225a]">PRIMARIAS</span>:{" "}
+                    <span className="font-bold text-[#12225a]">{t("roster.header.primary")}</span>:{" "}
                     <span>{positional.accessPrimary.length > 0 ? positional.accessPrimary.join(" ") : "—"}</span>
                   </div>
                   <div>
-                    <span className="font-bold text-[#12225a]">SECUNDARIAS</span>:{" "}
+                    <span className="font-bold text-[#12225a]">{t("roster.header.secondary")}</span>:{" "}
                     <span>{positional.accessSecondary.length > 0 ? positional.accessSecondary.join(" ") : "—"}</span>
                   </div>
                 </div>

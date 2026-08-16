@@ -37,7 +37,7 @@ describe("useCreateTeamForm", () => {
     act(() => result.current.changeRace("human"));
     act(() => result.current.nextStep());
     expect(result.current.step).toBe(1);
-    expect(result.current.errors.name).toMatch(/required/i);
+    expect(result.current.errors.name).toMatch(/obligatorio/i);
   });
 
   it("nextStep without a race stays on step 1 and reports an error", () => {
@@ -45,7 +45,7 @@ describe("useCreateTeamForm", () => {
     act(() => result.current.setName("Reikland Reavers"));
     act(() => result.current.nextStep());
     expect(result.current.step).toBe(1);
-    expect(result.current.errors.race).toMatch(/select a race/i);
+    expect(result.current.errors.race).toMatch(/selecciona una raza/i);
   });
 
   it("backStep returns to step 1 and preserves entered state", () => {
@@ -288,7 +288,7 @@ describe("useCreateTeamForm", () => {
     await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
 
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(result.current.errors.players).toMatch(/at least 11/i);
+    expect(result.current.errors.players).toMatch(/al menos 11/i);
   });
 
   it("reports an error when the name is empty", async () => {
@@ -302,7 +302,7 @@ describe("useCreateTeamForm", () => {
     await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
 
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(result.current.errors.name).toMatch(/required/i);
+    expect(result.current.errors.name).toMatch(/obligatorio/i);
   });
 
   it("submits valid values as PlayerEntry[] and resets the form", async () => {

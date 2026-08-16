@@ -26,7 +26,7 @@ async function createTeam(page: Page) {
   await page.goto("/teams/create");
   await page.getByLabel("Team name").fill("Middenheim Marauders");
   await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
   // Three players so the team is valid.
   const addLineman = page.getByRole("button", { name: "Add Lineman" }).first();
   for (let i = 0; i < 11; i++) await addLineman.click();
@@ -150,7 +150,7 @@ async function archiveGuardCreateTeam(page: import("@playwright/test").Page, nam
   await page.goto("/teams/create");
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
   const add = page.getByRole("button", { name: "Add Lineman" }).first();
   for (let i = 0; i < 11; i++) await add.click();
   await page.getByRole("button", { name: /create team/i }).click();

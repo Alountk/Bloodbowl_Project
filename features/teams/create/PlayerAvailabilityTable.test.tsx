@@ -56,7 +56,7 @@ describe("PlayerAvailabilityTable", () => {
     );
     expect(screen.getByText("50 000")).toBeTruthy();
     expect(screen.getByText("2/4")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add Lineman" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Añadir Lineman" })).toBeTruthy();
   });
 
   it("renders Spanish skills with Ninguna fallback for empty skills", () => {
@@ -89,7 +89,7 @@ describe("PlayerAvailabilityTable", () => {
       />,
     );
     expect(screen.queryByText("Thrower · (Human, Lanzador)")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Add Thrower" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Añadir Thrower" })).toBeNull();
   });
 
   it("disables the Add button when the purchase would exceed the budget but keeps the row visible", () => {
@@ -102,7 +102,7 @@ describe("PlayerAvailabilityTable", () => {
         maxPlayers={16}
       />,
     );
-    const addBlitzer = screen.getByRole("button", { name: "Add Blitzer" }) as HTMLButtonElement;
+    const addBlitzer = screen.getByRole("button", { name: "Añadir Blitzer" }) as HTMLButtonElement;
     expect(addBlitzer.disabled).toBe(true);
     // Row stays visible (only max-capped rows disappear).
     expect(screen.getByText("Blitzer · (Human, Blitzer)")).toBeTruthy();
@@ -118,7 +118,7 @@ describe("PlayerAvailabilityTable", () => {
         maxPlayers={16}
       />,
     );
-    const addBlitzer = screen.getByRole("button", { name: "Add Blitzer" }) as HTMLButtonElement;
+    const addBlitzer = screen.getByRole("button", { name: "Añadir Blitzer" }) as HTMLButtonElement;
     expect(addBlitzer.disabled).toBe(true);
   });
 
@@ -133,7 +133,7 @@ describe("PlayerAvailabilityTable", () => {
         maxPlayers={16}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Add Blitzer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Blitzer" }));
     expect(onAdd).toHaveBeenCalledWith("blitzer");
   });
 
@@ -200,7 +200,7 @@ describe("PlayerAvailabilityTable", () => {
         />,
       );
       expect(screen.getByText("2/4")).toBeTruthy();
-      const addButton = screen.getByRole("button", { name: "Add Lineman" });
+      const addButton = screen.getByRole("button", { name: "Añadir Lineman" });
       expect(addButton).toBeTruthy();
     });
 
@@ -215,7 +215,7 @@ describe("PlayerAvailabilityTable", () => {
           maxPlayers={16}
         />,
       );
-      fireEvent.click(screen.getByRole("button", { name: "Add Blitzer" }));
+      fireEvent.click(screen.getByRole("button", { name: "Añadir Blitzer" }));
       expect(onAdd).toHaveBeenCalledWith("blitzer");
     });
 
@@ -240,7 +240,7 @@ describe("PlayerAvailabilityTable", () => {
       expect(screen.getByText("AR")).toBeTruthy();
       expect(screen.getByText("G", { selector: "span" })).toBeTruthy(); // PRIMARIAS letter
       expect(screen.getByText("A", { selector: "span" })).toBeTruthy(); // SECUNDARIAS letter
-      expect(screen.getByText("SKILLS")).toBeTruthy();
+      expect(screen.getByText("HABILIDADES")).toBeTruthy();
       expect(screen.getByText("PRIMARIAS")).toBeTruthy();
       expect(screen.getByText("SECUNDARIAS")).toBeTruthy();
     });
@@ -256,7 +256,7 @@ describe("PlayerAvailabilityTable", () => {
         />,
       );
       expect(screen.queryByText("Thrower")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Add Thrower" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Añadir Thrower" })).toBeNull();
     });
 
     it("disables the Add button when over budget but keeps the row visible on mobile", () => {
@@ -269,7 +269,7 @@ describe("PlayerAvailabilityTable", () => {
           maxPlayers={16}
         />,
       );
-      const addBlitzer = screen.getByRole("button", { name: "Add Blitzer" }) as HTMLButtonElement;
+      const addBlitzer = screen.getByRole("button", { name: "Añadir Blitzer" }) as HTMLButtonElement;
       expect(addBlitzer.disabled).toBe(true);
       expect(screen.getByText("Blitzer")).toBeTruthy();
     });
@@ -284,7 +284,7 @@ describe("PlayerAvailabilityTable", () => {
           maxPlayers={16}
         />,
       );
-      const addBlitzer = screen.getByRole("button", { name: "Add Blitzer" }) as HTMLButtonElement;
+      const addBlitzer = screen.getByRole("button", { name: "Añadir Blitzer" }) as HTMLButtonElement;
       expect(addBlitzer.disabled).toBe(true);
     });
   });

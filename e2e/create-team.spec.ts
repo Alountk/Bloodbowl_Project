@@ -5,7 +5,7 @@ import { RACES } from "../features/teams/data/races";
 async function goToStep2(page: import("@playwright/test").Page, name: string, raceId: string) {
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption(raceId);
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
 }
 
 test.describe("Create Team — E2E", () => {
@@ -25,10 +25,10 @@ test.describe("Create Team — E2E", () => {
     expect(pageErrors).toEqual([]);
 
     // Step 1 form is visible
-    await expect(page.getByRole("heading", { name: /paso 1 · datos del equipo/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /step 1 · team details/i })).toBeVisible();
     await expect(page.getByLabel("Team name")).toBeVisible();
     await expect(page.getByLabel("Race")).toBeVisible();
-    await expect(page.getByRole("button", { name: /siguiente/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /next/i })).toBeVisible();
   });
 
   test("shows the race select with all race options and a placeholder", async ({ page }) => {
@@ -57,16 +57,16 @@ test.describe("Create Team — E2E", () => {
     await page.goto("/teams/create");
     await page.waitForLoadState("networkidle");
 
-    await page.getByRole("button", { name: /siguiente/i }).click();
+    await page.getByRole("button", { name: /next/i }).click();
     await expect(page.getByText(/team name is required/i)).toBeVisible();
     // The validation alert appears (the placeholder option also contains "Select a race").
     await expect(page.getByRole("alert").filter({ hasText: /select a race/i })).toBeVisible();
 
     // Still on step 1 — no builder content.
-    await expect(page.getByRole("region", { name: "Plantilla" })).not.toBeVisible();
+    await expect(page.getByRole("region", { name: "Roster" })).not.toBeVisible();
   });
 
-  test("advancing to step 2 shows Plantilla, Jugadores disponibles and Coaching Staff", async ({
+  test("advancing to step 2 shows Roster, Available players and Coaching Staff", async ({
     page,
   }) => {
     await page.goto("/teams/create");
@@ -76,11 +76,11 @@ test.describe("Create Team — E2E", () => {
 
     // Step 2 hero shows the team name + race subline.
     await expect(page.getByRole("heading", { name: /reikland reavers/i })).toBeVisible();
-    await expect(page.getByText(/human · paso 2/i)).toBeVisible();
+    await expect(page.getByText(/human · step 2/i)).toBeVisible();
 
     // Sections render.
-    await expect(page.getByRole("region", { name: "Plantilla" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Jugadores disponibles" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Roster" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Available players" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Coaching Staff" })).toBeVisible();
 
     // Availability table shows positional Add buttons.
@@ -96,11 +96,11 @@ test.describe("Create Team — E2E", () => {
     await page.waitForLoadState("networkidle");
 
     await goToStep2(page, "Reikland Reavers", "human");
-    await page.getByRole("button", { name: /editar nombre\/raza/i }).click();
+    await page.getByRole("button", { name: /edit name\/race/i }).click();
 
     await expect(page.getByLabel("Team name")).toHaveValue("Reikland Reavers");
     await expect(page.getByLabel("Race")).toHaveValue("human");
-    await expect(page.getByRole("button", { name: /siguiente/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /next/i })).toBeVisible();
   });
 
   test("can create a full team end-to-end", async ({ page }) => {
@@ -126,7 +126,7 @@ test.describe("Create Team — E2E", () => {
     await expect(page.getByText("Human")).toBeVisible();
   });
 
-  test("rows disappear in Jugadores disponibles once a positional reaches its max", async ({
+  test("rows disappear in Available players once a positional reaches its max", async ({
     page,
   }) => {
     await page.goto("/teams/create");
@@ -154,9 +154,9 @@ test.describe("Create Team — E2E", () => {
     await page.getByRole("button", { name: "Add Lineman" }).click();
 
     // Return to step 1 to change race while the roster has players.
-    await page.getByRole("button", { name: /editar nombre\/raza/i }).click();
+    await page.getByRole("button", { name: /edit name\/race/i }).click();
     await page.getByLabel("Race").selectOption("orc");
-    await expect(page.getByText(/roster will be cleared/i)).toBeVisible();
+    await expect(page.getByText(/clear your current roster/i)).toBeVisible();
 
     // Cancel keeps the original race and players.
     await page.getByRole("button", { name: /cancel/i }).click();
@@ -168,7 +168,7 @@ test.describe("Create Team — E2E", () => {
     await expect(page.getByLabel("Race")).toHaveValue("orc");
 
     // Roster is cleared: advancing to step 2 shows the empty Plantilla.
-    await page.getByRole("button", { name: /siguiente/i }).click();
+    await page.getByRole("button", { name: /next/i }).click();
     await expect(page.getByText(/no players in roster yet/i)).toBeVisible();
     // Orc positionals are available.
     await expect(page.getByRole("button", { name: "Add Big Un Blocker" })).toBeVisible();
@@ -180,7 +180,7 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await page.goto("/teams/create");
     await page.waitForLoadState("networkidle");
     await goToStep2(page, "Reikland Reavers", "human");
-    await expect(page.getByRole("region", { name: "Plantilla" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Roster" })).toBeVisible();
   });
 
   test("adding players updates count, roster cost, and remaining budget", async ({ page }) => {

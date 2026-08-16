@@ -5,6 +5,7 @@ import { computeRosterCostFromPlayers, MAX_REROLLS } from "../roster";
 import { getSkillById } from "../data/skills";
 import { formatRulebookCost } from "../format";
 import { useIsDesktop } from "../hooks/useIsDesktop";
+import { useI18n } from "@/lib/i18n";
 
 export interface RosterTableProps {
   players: PlayerEntry[];
@@ -39,7 +40,31 @@ function formatGold(value: number): string {
   return `${(value / 1000).toLocaleString("en-US")}k`;
 }
 
-const RULEBOOK_HEADERS = ["POSICIÓN", "COSTE", "MV", "FU", "AG", "PS", "AR", "HABILIDADES Y RASGOS", "PRIMARIAS", "SECUNDARIAS"];
+const RULEBOOK_HEADER_KEYS = [
+  "position",
+  "cost",
+  "ma",
+  "st",
+  "ag",
+  "pa",
+  "av",
+  "skills",
+  "primary",
+  "secondary",
+] as const;
+
+const RULEBOOK_HEADER_T_KEY: Record<(typeof RULEBOOK_HEADER_KEYS)[number], string> = {
+  position: "roster.header.position",
+  cost: "roster.header.cost",
+  ma: "roster.header.ma",
+  st: "roster.header.st",
+  ag: "roster.header.ag",
+  pa: "roster.header.pa",
+  av: "roster.header.av",
+  skills: "roster.header.skills",
+  primary: "roster.header.primary",
+  secondary: "roster.header.secondary",
+};
 
 /** Resolves the Spanish (fallback English) skill names for a positional. */
 function resolveSkillNames(positional: Race["positionals"][number]): string[] {
@@ -74,12 +99,13 @@ function buildPlayerData(players: PlayerEntry[], race: Race): PlayerCellData[] {
 
 /** Stats chips shared by desktop and mobile so the mv/fu/ag/ps/ar values stay identical. */
 function StatsChips({ data }: { data: PlayerCellData }) {
+  const { t } = useI18n();
   const stats: Array<[string, string]> = [
-    ["MV", data.positional?.ma?.toString() ?? "—"],
-    ["FU", data.positional?.st?.toString() ?? "—"],
-    ["AG", data.positional?.ag ?? "—"],
-    ["PS", data.positional?.pa ?? "—"],
-    ["AR", data.positional?.av ?? "—"],
+    [t("roster.header.ma"), data.positional?.ma?.toString() ?? "—"],
+    [t("roster.header.st"), data.positional?.st?.toString() ?? "—"],
+    [t("roster.header.ag"), data.positional?.ag ?? "—"],
+    [t("roster.header.pa"), data.positional?.pa ?? "—"],
+    [t("roster.header.av"), data.positional?.av ?? "—"],
   ];
   return (
     <div className="flex flex-wrap gap-1">
@@ -98,19 +124,20 @@ function StatsChips({ data }: { data: PlayerCellData }) {
 
 /** Labeled skill/access rows shared by desktop and mobile. */
 function SkillAccessRows({ data }: { data: PlayerCellData }) {
+  const { t } = useI18n();
   const { skillNames, primary, secondary } = data;
   return (
     <div className="space-y-1 text-xs text-[#1a1a1a]">
       <div>
-        <span className="font-bold text-[#12225a]">SKILLS</span>:{" "}
-        <span>{skillNames.length > 0 ? skillNames.join(", ") : "Ninguna"}</span>
+        <span className="font-bold text-[#12225a]">{t("roster.skillsLabel")}</span>:{" "}
+        <span>{skillNames.length > 0 ? skillNames.join(", ") : t("roster.none")}</span>
       </div>
       <div>
-        <span className="font-bold text-[#12225a]">PRIMARIAS</span>:{" "}
+        <span className="font-bold text-[#12225a]">{t("roster.header.primary")}</span>:{" "}
         <span>{primary.length > 0 ? primary.join(" ") : "—"}</span>
       </div>
       <div>
-        <span className="font-bold text-[#12225a]">SECUNDARIAS</span>:{" "}
+        <span className="font-bold text-[#12225a]">{t("roster.header.secondary")}</span>:{" "}
         <span>{secondary.length > 0 ? secondary.join(" ") : "—"}</span>
       </div>
     </div>
@@ -129,16 +156,21 @@ export function RosterTable({
   apothecary,
 }: RosterTableProps) {
   const isDesktop = useIsDesktop();
+  const { t } = useI18n();
   const totalCost = computeRosterCostFromPlayers(race, players);
 
   if (players.length === 0) {
-    return <p className="text-sm text-slate-400">No players in roster yet.</p>;
+    return <p className="text-sm text-slate-400">{t("roster.empty")}</p>;
   }
 
   // Banner is a rulebook editable-mode affordance; read-only renders must never show it.
   const showBanner = !readOnly && bannerText !== undefined && bannerText.length > 0;
 
   const playersData = buildPlayerData(players, race);
+  const playerCountLabel =
+    players.length === 1
+      ? t("roster.playersOne", { count: players.length })
+      : t("roster.playersMany", { count: players.length });
 
   return isDesktop ? (
     <div className="max-h-[55vh] overflow-auto">
@@ -152,17 +184,17 @@ export function RosterTable({
           <table className="w-full text-sm">
             <thead>
               <tr>
-                {RULEBOOK_HEADERS.map((header) => (
+                {RULEBOOK_HEADER_KEYS.map((headerKey) => (
                   <th
-                    key={header}
+                    key={headerKey}
                     scope="col"
                     className={`sticky top-0 z-10 bg-[#d11938] px-[5px] py-2 text-white ${
-                      header === "POSICIÓN" || header === "HABILIDADES Y RASGOS"
+                      headerKey === "position" || headerKey === "skills"
                         ? "text-left"
                         : "text-center"
                     } font-black uppercase`}
                   >
-                    {header}
+                    {t(RULEBOOK_HEADER_T_KEY[headerKey])}
                   </th>
                 ))}
                 {!readOnly ? <th scope="col" className="sticky top-0 z-10 bg-[#d11938] px-[5px] py-2"></th> : null}
@@ -181,7 +213,7 @@ export function RosterTable({
                       <input
                         value={player.name}
                         onChange={(e) => onRename?.(player.id, e.target.value)}
-                        aria-label={`Player name for ${player.name}`}
+                        aria-label={t("roster.playerNameAria", { name: player.name })}
                         className="w-full rounded border border-slate-300 bg-white px-2 py-0.5 text-slate-900 outline-none focus:border-blue-500"
                       />
                     )}
@@ -191,7 +223,7 @@ export function RosterTable({
                       </span>
                     ) : (
                       <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
-                        {positional?.name ?? "Player"} · ({race.name}, {translateRole(positional?.role)})
+                        {positional?.name ?? t("roster.playerFallback")} · ({race.name}, {translateRole(positional?.role)})
                       </span>
                     )}
                   </td>
@@ -213,7 +245,7 @@ export function RosterTable({
                         ))}
                       </ul>
                     ) : (
-                      <span>Ninguna</span>
+                      <span>{t("roster.none")}</span>
                     )}
                   </td>
                   <td className="px-[5px] py-2 text-center align-top text-[#1a1a1a]">
@@ -226,7 +258,7 @@ export function RosterTable({
                     <td className="px-[5px] py-2 text-center align-top">
                       <button
                         type="button"
-                        aria-label={`Remove ${player.name}`}
+                        aria-label={t("roster.removeAria", { name: player.name })}
                         onClick={() => onRemove?.(player.id)}
                         className="rounded px-2 py-0.5 text-xs text-red-600 hover:text-red-800"
                       >
@@ -242,7 +274,7 @@ export function RosterTable({
                 {readOnly ? (
                   <tr className="bg-[#12225a] font-bold text-white">
                     <td colSpan={7} className="px-[5px] py-2 text-left">
-                      {`${players.length} jugadores · Coste total`}
+                      {t("roster.readOnlyTotal", { count: players.length })}
                     </td>
                     <td className="px-[5px] py-2 text-center">{formatRulebookCost(totalCost)}</td>
                     <td colSpan={2} className="px-[5px] py-2"></td>
@@ -250,12 +282,14 @@ export function RosterTable({
                 ) : (
                   <tr className="font-medium text-[#1a1a1a]">
                     <td colSpan={9} className="px-[5px] py-2 text-left">
-                      {players.length} player{players.length === 1 ? "" : "s"}
+                      {playerCountLabel}
                     </td>
                     <td className="px-[5px] py-2 text-center">{formatRulebookCost(totalCost)}</td>
                     <td className="px-[5px] py-2 text-center">
                       {remainingBudget !== undefined ? (
-                        <span className="text-xs">{formatGold(remainingBudget)} left</span>
+                        <span className="text-xs">
+                          {t("roster.remainingLeft", { amount: formatGold(remainingBudget) })}
+                        </span>
                       ) : null}
                     </td>
                   </tr>
@@ -263,10 +297,15 @@ export function RosterTable({
                 {apothecary !== undefined ? (
                   <tr className="bg-[#12225a] text-[13px] font-bold text-white">
                     <td colSpan={4} className="px-[5px] py-2 text-left">
-                      {`0-${MAX_REROLLS} Segundas oportunidades: ${formatRulebookCost(race.rerollCost)} M.O. cada una`}
+                      {t("roster.rerollFooter", {
+                        max: MAX_REROLLS,
+                        cost: formatRulebookCost(race.rerollCost),
+                      })}
                     </td>
                     <td colSpan={6} className="px-[5px] py-2 text-left">
-                      {`Apotecario: ${apothecary ? "SÍ" : "NO"}`}
+                      {t("roster.apothecaryFooter", {
+                        status: apothecary ? t("common.yes") : t("common.no"),
+                      })}
                     </td>
                     {!readOnly ? <td className="px-[5px] py-2"></td> : null}
                   </tr>
@@ -300,18 +339,18 @@ export function RosterTable({
                       <input
                         value={player.name}
                         onChange={(e) => onRename?.(player.id, e.target.value)}
-                        aria-label={`Player name for ${player.name}`}
+                        aria-label={t("roster.playerNameAria", { name: player.name })}
                         className="w-full rounded border border-slate-300 bg-white px-2 py-0.5 text-sm text-slate-900 outline-none focus:border-blue-500"
                       />
                     )}
                     <span className="block text-[11px] text-[#333]">
-                      {positional?.name ?? "Player"} · ({race.name}, {translateRole(positional?.role)})
+                      {positional?.name ?? t("roster.playerFallback")} · ({race.name}, {translateRole(positional?.role)})
                     </span>
                   </div>
                   {!readOnly ? (
                     <button
                       type="button"
-                      aria-label={`Remove ${player.name}`}
+                      aria-label={t("roster.removeAria", { name: player.name })}
                       onClick={() => onRemove?.(player.id)}
                       className="rounded px-2 py-0.5 text-xs text-red-600 hover:text-red-800"
                     >
@@ -325,7 +364,7 @@ export function RosterTable({
                 </div>
 
                 <div className="mt-2 flex items-baseline gap-1 text-xs text-[#334155]">
-                  <span className="font-bold text-[#12225a]">Coste</span>
+                  <span className="font-bold text-[#12225a]">{t("roster.costLabel")}</span>
                   <span>{positional ? formatRulebookCost(positional.cost) : "—"}</span>
                 </div>
 
@@ -338,12 +377,22 @@ export function RosterTable({
           {showTotals ? (
             <div className="rounded-md border border-[#12225a] bg-[#12225a] px-3 py-2 text-[13px] font-bold text-white">
               {readOnly ? (
-                <span>{`${players.length} jugadores · Coste total ${formatRulebookCost(totalCost)}`}</span>
+                <span>
+                  {t("roster.mobileTotal", {
+                    count: players.length,
+                    cost: formatRulebookCost(totalCost),
+                  })}
+                </span>
               ) : (
                 <span>
-                  {players.length} player{players.length === 1 ? "" : "s"} · Coste total {formatRulebookCost(totalCost)}
+                  {t("roster.mobileTotal", {
+                    count: players.length,
+                    cost: formatRulebookCost(totalCost),
+                  })}
                   {remainingBudget !== undefined ? (
-                    <span className="ml-1 font-medium text-[#cbd5e1]">{formatGold(remainingBudget)} left</span>
+                    <span className="ml-1 font-medium text-[#cbd5e1]">
+                      {t("roster.remainingLeft", { amount: formatGold(remainingBudget) })}
+                    </span>
                   ) : null}
                 </span>
               )}
@@ -351,8 +400,17 @@ export function RosterTable({
           ) : null}
           {apothecary !== undefined ? (
             <div className="rounded-md border border-[#e2e8f0] bg-white px-3 py-2 text-[13px] font-bold text-[#1a1a1a]">
-              <span>{`0-${MAX_REROLLS} Segundas oportunidades: ${formatRulebookCost(race.rerollCost)} M.O. cada una`}</span>
-              <span className="ml-2">{`Apotecario: ${apothecary ? "SÍ" : "NO"}`}</span>
+              <span>
+                {t("roster.rerollFooter", {
+                  max: MAX_REROLLS,
+                  cost: formatRulebookCost(race.rerollCost),
+                })}
+              </span>
+              <span className="ml-2">
+                {t("roster.apothecaryFooter", {
+                  status: apothecary ? t("common.yes") : t("common.no"),
+                })}
+              </span>
             </div>
           ) : null}
           </div>

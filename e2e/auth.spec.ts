@@ -30,7 +30,7 @@ async function createTeam(page: Page, name: string) {
   await page.goto("/teams/create");
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
   // 11 Linemen so the team meets the BB2025 minimum roster size.
   const addLineman = page.getByRole("button", { name: "Add Lineman" }).first();
   for (let i = 0; i < 11; i++) await addLineman.click();
@@ -89,7 +89,7 @@ test.describe("Auth flow regression (LAN host)", () => {
     await page.goto(`${base}/teams/create`);
     await page.getByLabel("Team name").fill("LAN Reavers");
     await page.getByLabel("Race").selectOption("human");
-    await page.getByRole("button", { name: /siguiente/i }).click();
+    await page.getByRole("button", { name: /next/i }).click();
     const add = page.getByRole("button", { name: "Add Lineman" }).first();
     for (let i = 0; i < 11; i++) await add.click();
     await page.getByRole("button", { name: /create team/i }).click();
