@@ -507,6 +507,8 @@ describe("C. Tourplay sticky header (MatchView)", () => {
     expect(screen.queryByText(/En juego · Tiempo/)).toBeNull();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText("Turno Reavers")).toBeNull();
+    // RAU-38: a finished match shows no concede control.
+    expect(screen.queryByRole("button", { name: /Conceder/i })).toBeNull();
   });
 
   it("locks the live header: TURNO button + 'Turno {team}', half badge, 'Mitad · Turno' line and the hero mini-line", async () => {
@@ -521,6 +523,8 @@ describe("C. Tourplay sticky header (MatchView)", () => {
     expect(screen.getByTestId("live-score").textContent).toMatch(/1\s*:\s*0/);
     expect(screen.getByText(/En juego · Tiempo/)).toBeTruthy();
     expect(screen.getByText("Clima · Estándar")).toBeTruthy();
+    // RAU-38: the live header turn zone carries the concede control for a coach.
+    expect(screen.getByRole("button", { name: "Conceder" })).toBeTruthy();
   });
 });
 
