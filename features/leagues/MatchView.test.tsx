@@ -1421,12 +1421,12 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
     expect(reportedCls).toContain("bg-green-50");
     expect(reportedCls).toContain("text-green-700");
 
-    // Cards: navy (home) / red (away) internal gradients fading to white.
+    // Cards: navy (home) / red (away) internal gradients over the white base.
     const cards = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const cls = cards.map((c) => c.getAttribute("class") ?? "").join(" ");
-    expect(cls).toContain("from-[#12225a]/[0.12]");
-    expect(cls).toContain("from-[#d11938]/[0.12]");
-    expect(cls).toContain("to-white");
+    expect(cls).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
+    expect(cls).toContain("linear-gradient(270deg,rgba(209,25,56,0.12)");
+    expect(cls).toContain("bg-white");
   });
 
   it("collapses to the not-found view when the API returns 404", async () => {
@@ -1496,10 +1496,10 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     // Both em cards carry their side gradient + outcome label (MVT-6).
     expect(emHome).toBeTruthy();
     expect(emAway).toBeTruthy();
-    expect(emHome!.className).toContain("from-[#12225a]/[0.12]");
+    expect(emHome!.className).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
     expect(emHome!.className).toContain("w-[68%]");
     expect(emHome!.textContent).toContain("Incidente grave");
-    expect(emAway!.className).toContain("from-[#d11938]/[0.12]");
+    expect(emAway!.className).toContain("linear-gradient(270deg,rgba(209,25,56,0.12)");
     expect(emAway!.textContent).toContain("Incidente menor");
   });
 
@@ -1538,6 +1538,6 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     const turnStart = rows.find((li) => li.textContent?.includes("Turno Reavers"));
     expect(turnStart).toBeTruthy();
     expect(turnStart!.className).toContain("w-[68%]");
-    expect(turnStart!.className).toContain("from-[#12225a]/[0.12]");
+    expect(turnStart!.className).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
   });
 });
