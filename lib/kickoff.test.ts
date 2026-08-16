@@ -13,7 +13,9 @@ import {
  * Pure kickoff-events (LM-21/LM-22/LM-23): D6→D3 mapping, the treasury-bracket
  * clamp, the team treasury-deduction resolution against the full 6×6 rulebook
  * matrix, and the `buildKickoffEvents` assembly returning the em(home),
- * em(away), fan_factor events plus the treasury deltas. Zero mocks.
+ * em(away), fan_factor events plus the treasury deltas. A team below the 100k
+ * rulebook minimum skips the expensive-mistake roll entirely (RAU-33). Zero
+ * mocks.
  */
 
 describe("d6ToD3 — D6 to D3 mapping (LM-22 D6→D3 bounds)", () => {
@@ -243,5 +245,70 @@ describe("buildKickoffEvents — em(home), em(away), fan_factor events + treasur
       home: { base: 2, dice: 2, total: 4 },
       away: { base: 1, dice: 3, total: 4 },
     });
+  });
+
+  it("emits NO expensive_mistake event or treasury update for a sub-100k treasury (80k, RAU-33)", () => {
+    const input = {
+      now: 3000,
+      half: 1,
+      turnNumber: 1,
+      home: { teamId: "home-t", treasury: 80000, dedicatedFans: 2 },
+      away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+      dice: {
+        home: { em: 1, d3: 3, keep: [6, 6] as [number, number], fan: 3 },
+        away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+      },
+    };
+    const { events, treasuryUpdates } = buildKickoffEvents(input);
+    // The 80k home team is BELOW the 100k minimum → no em event, no row, no
+    // deduction (a roll 1 minor-incident would otherwise have hurt the balance).
+    const emEvents = events.filter((e) => e.kind === "expensive_mistake");
+    expect(emEvents).toHaveLength(1);
+    expect(emEvents[0].side).toBe("away");
+    expect(treasuryUpdates).toEqual([{ teamId: "away-t", amountLost: 400000 }]);
+    // The fan_factor still covers BOTH teams.
+    const fan = events.find((e) => e.kind === "fan_factor")!;
+    expect(fan.payload).toMatchObject({
+      home: { base: 2, dice: 2, total: 4 },
+      away: { base: 1, dice: 3, total: 4 },
+    });
+  });
+
+  it("skips BOTH teams' expensive_mistake when both treasuries are below 100k (RAU-33)", () => {
+    const input = {
+      now: 3000,
+      half: 1,
+      turnNumber: 1,
+      home: { teamId: "home-t", treasury: 80000, dedicatedFans: 2 },
+      away: { teamId: "away-t", treasury: 5000, dedicatedFans: 1 },
+      dice: {
+        home: { em: 1, d3: 3, keep: [6, 6] as [number, number], fan: 3 },
+        away: { em: 1, d3: 3, keep: [6, 6] as [number, number], fan: 6 },
+      },
+    };
+    const { events, treasuryUpdates } = buildKickoffEvents(input);
+    expect(events.map((e) => e.kind)).toEqual(["fan_factor"]);
+    expect(treasuryUpdates).toEqual([]);
+  });
+
+  it("never emits an expensive_mistake event for any treasury below the 100k minimum, any roll (RAU-33)", () => {
+    for (const treasury of [0, 5000, 80000, 99999]) {
+      for (const roll of [1, 2, 3, 4, 5, 6]) {
+        const { events, treasuryUpdates } = buildKickoffEvents({
+          now: 4000,
+          half: 1,
+          turnNumber: 1,
+          home: { teamId: "home-t", treasury, dedicatedFans: 2 },
+          away: { teamId: "away-t", treasury: 200000, dedicatedFans: 1 },
+          dice: {
+            home: { em: roll, d3: 3, keep: [6, 6] as [number, number], fan: 3 },
+            away: { em: 6, d3: 1, keep: [0, 0] as [number, number], fan: 6 },
+          },
+        });
+        const homeEm = events.find((e) => e.kind === "expensive_mistake" && e.side === "home");
+        expect(homeEm).toBeUndefined();
+        expect(treasuryUpdates.some((u) => u.teamId === "home-t")).toBe(false);
+      }
+    }
   });
 });
