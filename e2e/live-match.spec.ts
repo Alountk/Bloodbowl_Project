@@ -409,15 +409,15 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(homeCoach.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
     await expect(homeCoach.getByRole("button", { name: /Falta/i })).toHaveCount(0);
     await homeCoach.getByRole("button", { name: /Herida/i }).click();
-    await expect(homeCoach.getByLabel("Jugador")).toBeVisible();
-    await homeCoach.getByLabel("Jugador").selectOption({ label: homeScorerName });
+    await expect(homeCoach.getByLabel("Víctima")).toBeVisible();
+    await homeCoach.getByLabel("Víctima").selectOption({ label: homeScorerName });
     // Only self-inflicted causes are offered to the NON-active coach.
     await homeCoach.getByLabel("Causa de la lesión").selectOption({ label: "Esquivando — se cayó" });
     await expect(homeCoach.getByLabel("Autor de la lesión")).toHaveCount(0);
     await expect(homeCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
     await homeCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
     await homeCoach.getByRole("button", { name: "Registrar" }).click();
-    await expect(homeCoach.getByLabel("Jugador")).toHaveCount(0);
+    await expect(homeCoach.getByLabel("Víctima")).toHaveCount(0);
     // The self-inflicted casualty card (victim = own home player) renders with
     // the derived band + roll line, and NO "por …" causer line.
     await expect(
@@ -431,14 +431,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // derived server-side from the roll — the proposal never carries a band.
     await awayCoach.getByRole("button", { name: "+" }).click();
     await awayCoach.getByRole("button", { name: /Herida/i }).click();
-    await expect(awayCoach.getByLabel("Jugador")).toBeVisible();
-    await awayCoach.getByLabel("Jugador").selectOption({ label: homeScorerName });
+    await expect(awayCoach.getByLabel("Víctima")).toBeVisible();
+    await awayCoach.getByLabel("Víctima").selectOption({ label: homeScorerName });
     await awayCoach.getByLabel("Causa de la lesión").selectOption({ label: "Blitz" });
     await awayCoach.getByLabel("Autor de la lesión").selectOption({ label: awayScorerName });
     await awayCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
     await expect(awayCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
     await awayCoach.getByRole("button", { name: /Proponer/i }).click();
-    await expect(awayCoach.getByLabel("Jugador")).toHaveCount(0);
+    await expect(awayCoach.getByLabel("Víctima")).toHaveCount(0);
     // The proposer (away) waits inline; the defender (home) sees the derived
     // details in an EXPLANATORY MODAL (RAU-43) and confirms — the SSE hub
     // converges both pages without a reload.
