@@ -28,6 +28,9 @@ import {
   beginMatch,
   consentStart,
   retractConsent,
+  proposeConcede,
+  declineConcede,
+  acceptConcede,
   toLiveViewState,
   isStartableFixture,
   type FixtureStartState,
@@ -47,6 +50,11 @@ export interface StoreTx {
   };
   team: {
     updateMany(args: Prisma.TeamUpdateManyArgs): Promise<{ count: number }>;
+  };
+  /** RAU-38: the accept-concede transaction closes the fixture (winner + scores)
+   * in the SAME tx as the `concede` event rows. */
+  fixture: {
+    update(args: Prisma.FixtureUpdateArgs): Promise<unknown>;
   };
 }
 
@@ -83,6 +91,8 @@ interface LiveMatchRowFields {
   paused: boolean;
   clockStartedAt: Date | string | null;
   finishedAt: Date | string | null;
+  /** RAU-38: the side that proposed to concede (null until proposed/resolved). */
+  concedeProposedBy: TeamSide | null;
 }
 
 /** Converts a persisted LiveMatch row (ISO statuses/timestamps) into a pure state. */
@@ -105,6 +115,7 @@ export function liveMatchRowToState(
     paused: row.paused,
     clockStartedAt: row.clockStartedAt ? new Date(row.clockStartedAt).getTime() : null,
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
+    concedeProposedBy: row.concedeProposedBy,
     events: [],
   };
 }
@@ -125,6 +136,7 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
     paused: next.paused,
     clockStartedAt: next.clockStartedAt != null ? new Date(next.clockStartedAt) : null,
     finishedAt: next.finishedAt != null ? new Date(next.finishedAt) : null,
+    concedeProposedBy: next.concedeProposedBy,
   };
 }
 
@@ -139,6 +151,10 @@ async function persistAndPublish(
     /** Optional per-team treasury decrements to commit in the SAME transaction as
      * the event rows (LM-23 atomicity): a failure rolls back events AND treasury. */
     treasuryUpdates?: { teamId: string; amountLost: number }[];
+    /** RAU-38: when set, closes the fixture (winner + scores) in the SAME
+     * transaction as the event rows — a concession's victory is atomic with its
+     * `concede` event, never a partial state. */
+    closeFixture?: { winnerId: string; homeScore: number; awayScore: number };
   },
   deps: StoreDeps,
 ): Promise<number> {
@@ -180,6 +196,19 @@ async function persistAndPublish(
       await tx.team.updateMany({
         where: { id: update.teamId },
         data: { treasury: { decrement: update.amountLost } },
+      });
+    }
+    // RAU-38: the conceded match's victory (fixture winner + walkover-style
+    // scores) commits atomically with the `concede` event rows — a failed
+    // fixture write rolls back the events too.
+    if (input.closeFixture) {
+      await tx.fixture.update({
+        where: { id: input.fixtureId },
+        data: {
+          winnerId: input.closeFixture.winnerId,
+          homeScore: input.closeFixture.homeScore,
+          awayScore: input.closeFixture.awayScore,
+        },
       });
     }
   });
@@ -255,6 +284,7 @@ async function createFirstConsent(
     paused: false,
     clockStartedAt: null,
     finishedAt: null,
+    concedeProposedBy: null,
     events: [],
   };
 
@@ -402,6 +432,120 @@ export async function beginLiveMatch(
       next,
       now: input.now,
       treasuryUpdates: kickoff.treasuryUpdates,
+    },
+    deps,
+  );
+  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+export interface ConcedeInput {
+  liveMatchId: string;
+  fixtureId: string;
+  /** The caller's side — for propose the PROPOSER, for decline the responder. */
+  side: TeamSide;
+  now: number;
+}
+
+export interface AcceptConcedeInput extends ConcedeInput {
+  homeTeamId: string;
+  awayTeamId: string;
+}
+
+/**
+ * RAU-38 propose: persists `concedeProposedBy = side` under the optimistic seq
+ * guard. A retried propose from the same side is an idempotent no-op returning
+ * the current view; a double-propose by the other side or a non-live propose is
+ * a state-machine rejection mapped to 409.
+ */
+export async function proposeConcedeLiveMatch(
+  input: ConcedeInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const current = liveMatchRowToState(row);
+  let next: LiveMatchState;
+  try {
+    next = proposeConcede(current, input.side);
+  } catch (error) {
+    // Every pure transition rejection is a state-machine guard → 409.
+    throw Object.assign(error as Error, { status: 409 });
+  }
+  if (next === current) {
+    return { seq: current.seq, view: toLiveViewState(current, input.now) };
+  }
+  const nextSeq = await persistAndPublish(
+    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    deps,
+  );
+  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+/**
+ * RAU-38 decline: the NON-proposer rejects a pending concession, clearing
+ * `concedeProposedBy` so the match continues. A decline with no pending
+ * proposal is an idempotent no-op; the proposer declining their own proposal
+ * is a state-machine rejection → 409.
+ */
+export async function declineConcedeLiveMatch(
+  input: ConcedeInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const current = liveMatchRowToState(row);
+  let next: LiveMatchState;
+  try {
+    next = declineConcede(current, input.side);
+  } catch (error) {
+    throw Object.assign(error as Error, { status: 409 });
+  }
+  if (next === current) {
+    return { seq: current.seq, view: toLiveViewState(current, input.now) };
+  }
+  const nextSeq = await persistAndPublish(
+    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    deps,
+  );
+  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+/**
+ * RAU-38 accept: the NON-proposer accepts a pending concession → the match
+ * finishes and the ACCEPTOR's team wins. The victory is awarded in the SAME
+ * transaction as the `concede` event rows (`closeFixture`): the fixture gets
+ * the acceptor as `winnerId` plus the walkover-style 2-0 scores (forfeit
+ * precedent) so it closes as played and a later result load 409s. A concession
+ * is NOT a played match — NO winnings/PE are computed here (documented choice);
+ * the scoreboard in the live state stays untouched. A retried accept (already
+ * finished) or an accept of one's own proposal is a state-machine rejection
+ * → 409 (the optimistic seq guard catches a concurrent double-accept too).
+ */
+export async function acceptConcedeLiveMatch(
+  input: AcceptConcedeInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const current = liveMatchRowToState(row);
+  let next: LiveMatchState;
+  try {
+    next = acceptConcede(current, input.side, input.now);
+  } catch (error) {
+    throw Object.assign(error as Error, { status: 409 });
+  }
+  const isHome = input.side === "home";
+  const winnerTeamId = isHome ? input.homeTeamId : input.awayTeamId;
+  const homeScore = isHome ? 2 : 0;
+  const awayScore = isHome ? 0 : 2;
+  const nextSeq = await persistAndPublish(
+    {
+      liveMatchId: row.id,
+      fixtureId: input.fixtureId,
+      currentSeq: current.seq,
+      next,
+      now: input.now,
+      closeFixture: { winnerId: winnerTeamId, homeScore, awayScore },
     },
     deps,
   );
