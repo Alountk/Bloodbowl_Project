@@ -624,7 +624,7 @@ describe("POST .../live — consent/retract/begin command handling", () => {
     } as never);
     expect(res.status).toBe(200);
     expect(consentLiveMatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({ fixtureId: "f-1", side: "home", fixture: expect.objectContaining({ scheduled: true }) }),
+      expect.objectContaining({ fixtureId: "f-1", side: "home", fixture: expect.objectContaining({ played: false, result: false }) }),
       expect.anything(),
     );
     const body = await res.json();

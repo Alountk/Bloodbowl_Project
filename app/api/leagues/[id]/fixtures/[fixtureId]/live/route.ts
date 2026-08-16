@@ -205,7 +205,7 @@ function dedicatedFansOf(coaching: unknown): number {
 /** Converts the loaded fixture context to the state machine's start guard input. */
 function fixtureStartState(ctx: FixtureContext): FixtureStartState {
   const played = ctx.homeScore != null || ctx.awayScore != null || ctx.result != null;
-  return { scheduled: ctx.scheduledAt != null, played, result: ctx.result != null };
+  return { played, result: ctx.result != null };
 }
 
 /** Per-viewer side (D19): the session user's team in this fixture, if any. */
