@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+test.use({ locale: "es-ES" });
 
 /**
  * Real-DB leagues E2E (run via `pnpm run test:e2e:auth` with AUTH_MODE=auth and a
@@ -16,29 +17,29 @@ const uniqueEmail = () => `league-${Date.now()}-${Math.floor(Math.random() * 1e6
 
 async function signup(page: Page, email: string, password: string) {
   await page.goto("/signup");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(password);
+  await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 async function createTeam(page: Page) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill("Middenheim Marauders");
-  await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: "Next →" }).click();
+  await page.getByLabel("Nombre del equipo").fill("Middenheim Marauders");
+  await page.getByLabel("Raza").selectOption("human");
+  await page.getByRole("button", { name: "Siguiente →" }).click();
   // Three players so the team is valid.
-  const addLineman = page.getByRole("button", { name: "Add Lineman" }).first();
+  const addLineman = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < 11; i++) await addLineman.click();
-  await page.getByRole("button", { name: "Add Blitzer" }).first().click();
-  await page.getByRole("button", { name: /create team/i }).click();
+  await page.getByRole("button", { name: "Añadir Blitzer" }).first().click();
+  await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
 }
 
 async function createLeague(page: Page, name: string) {
   await page.goto("/leagues");
-  await expect(page.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
   await page.getByRole("button", { name: "+ Nueva liga" }).first().click();
   await page.getByLabel("Nombre").fill(name);
   await page.getByLabel("Descripción").fill("Liga de verano");
@@ -115,11 +116,11 @@ test("deleting an assigned team surfaces the 409 archive guard instead of removi
   // Go home and attempt to delete the member team.
   await page.goto("/");
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
-  await page.getByRole("button", { name: "Delete Middenheim Marauders" }).click();
+  await page.getByRole("button", { name: "Eliminar Middenheim Marauders" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 
   // Confirm the delete → the API returns 409 and the guard message appears.
-  await page.getByRole("button", { name: "Eliminar" }).click();
+  await page.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(page.getByText(leagueName)).toBeVisible();
   await expect(
     page.getByText(
@@ -140,20 +141,20 @@ const archiveGuardPassword = "password-123";
 async function archiveGuardSignup(page: import("@playwright/test").Page) {
   const email = `guard-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
   await page.goto("/signup");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(archiveGuardPassword);
-  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(archiveGuardPassword);
+  await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 async function archiveGuardCreateTeam(page: import("@playwright/test").Page, name: string) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill(name);
-  await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: "Next →" }).click();
-  const add = page.getByRole("button", { name: "Add Lineman" }).first();
+  await page.getByLabel("Nombre del equipo").fill(name);
+  await page.getByLabel("Raza").selectOption("human");
+  await page.getByRole("button", { name: "Siguiente →" }).click();
+  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < 11; i++) await add.click();
-  await page.getByRole("button", { name: /create team/i }).click();
+  await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
 }
 
@@ -180,8 +181,8 @@ async function openLeagueCard(page: import("@playwright/test").Page, name: strin
 
 async function archiveGuardArchive(page: import("@playwright/test").Page, name: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: `Delete ${name}` }).click();
-  await page.getByRole("button", { name: "Eliminar" }).click();
+  await page.getByRole("button", { name: `Eliminar ${name}` }).click();
+  await page.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByRole("link", { name: new RegExp(name) })).not.toBeVisible();
 }

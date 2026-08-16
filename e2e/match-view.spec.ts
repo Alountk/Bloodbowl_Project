@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Browser } from "@playwright/test";
+test.use({ locale: "es-ES" });
 
 /**
  * Real-DB match-view E2E journeys (run via `pnpm run test:e2e:auth` with
@@ -31,27 +32,27 @@ const uniqueEmail = (prefix: string) =>
 
 async function signup(page: Page, email: string) {
   await page.goto("/signup");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(PASSWORD);
+  await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill(name);
-  await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: "Next →" }).click();
-  const add = page.getByRole("button", { name: "Add Lineman" }).first();
+  await page.getByLabel("Nombre del equipo").fill(name);
+  await page.getByLabel("Raza").selectOption("human");
+  await page.getByRole("button", { name: "Siguiente →" }).click();
+  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
-  await page.getByRole("button", { name: /create team/i }).click();
+  await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText(name)).toBeVisible();
 }
 
 async function createLeague(page: Page, name: string, tag: string) {
   await page.goto("/leagues");
-  await expect(page.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
   await page.getByRole("button", { name: "+ Nueva liga" }).first().click();
   await page.getByLabel("Nombre").fill(name);
   await page.getByLabel("Descripción").fill(`Liga match-view ${tag}`);
@@ -82,8 +83,8 @@ async function buildTwoMemberStartedLeague(
   browser: Browser,
   tag: string,
 ): Promise<TwoMemberLeague> {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
   const admin = await contextA.newPage();
   const rival = await contextB.newPage();
 

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+test.use({ locale: "es-ES" });
 
 /**
  * Real-DB league-season E2E (run via `pnpm run test:e2e:auth` with AUTH_MODE=auth
@@ -25,28 +26,28 @@ const PASSWORD = "password-123";
 
 async function signup(page: Page, email: string) {
   await page.goto("/signup");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(PASSWORD);
+  await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 /** Creates a human team of the given size (default 11, the BB2025 minimum). */
 async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill(name);
-  await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: "Next →" }).click();
-  const add = page.getByRole("button", { name: "Add Lineman" }).first();
+  await page.getByLabel("Nombre del equipo").fill(name);
+  await page.getByLabel("Raza").selectOption("human");
+  await page.getByRole("button", { name: "Siguiente →" }).click();
+  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
-  await page.getByRole("button", { name: /create team/i }).click();
+  await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText(name)).toBeVisible();
 }
 
 async function createLeague(page: Page, name: string) {
   await page.goto("/leagues");
-  await expect(page.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
   await page.getByRole("button", { name: "+ Nueva liga" }).first().click();
   await page.getByLabel("Nombre").fill(name);
   await page.getByLabel("Descripción").fill("Liga de verano multi-jugador");
@@ -68,9 +69,9 @@ async function openLeagueCard(page: Page, leagueName: string) {
 test("multi-user journey: join open league, start season, jornadas, post-start locks", async ({
   browser,
 }) => {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
-  const contextC = await browser.newContext();
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
+  const contextC = await browser.newContext({ locale: "es-ES" });
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
   const pageC = await contextC.newPage();
@@ -100,7 +101,7 @@ test("multi-user journey: join open league, start season, jornadas, post-start l
     await createTeam(pageB, teamBName);
 
     await pageB.goto("/leagues");
-    await expect(pageB.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await expect(pageB.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
     // B's open-leagues section lists A's OPEN league.
     await expect(
       pageB.getByRole("heading", { name: "Ligas abiertas" }),
@@ -172,8 +173,8 @@ test("multi-user journey: join open league, start season, jornadas, post-start l
  * league a member had JOINED was invisible and unreachable.
  */
 test("started-league member sees the league in their own /leagues list", async ({ browser }) => {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
 
@@ -194,7 +195,7 @@ test("started-league member sees the league in their own /leagues list", async (
     const teamBName = `B-Contempladores ${Date.now()}`;
     await createTeam(pageB, teamBName);
     await pageB.goto("/leagues");
-    await expect(pageB.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await expect(pageB.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
     await openLeagueCard(pageB, leagueName);
     await pageB.getByLabel("Tu equipo").selectOption({ label: teamBName });
     await pageB.getByRole("button", { name: "Apuntarse" }).click();
@@ -217,7 +218,7 @@ test("started-league member sees the league in their own /leagues list", async (
     // B is a member, not the owner — the started league belongs under "Mis
     // Ligas" and must be openable (that is how B accepts the match proposal).
     await pageB.goto("/leagues");
-    await expect(pageB.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await expect(pageB.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
     const mySection = pageB
       .getByRole("heading", { level: 2, name: "Mis Ligas" })
       .locator("..");

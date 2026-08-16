@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
+test.use({ locale: "es-ES" });
 
 /**
  * Real-DB full-league-flow E2E (run via `pnpm run test:e2e:auth` with
@@ -48,28 +49,28 @@ const uniqueEmail = (prefix: string) =>
 /** Signs up and lands on the home page with an active session. */
 async function signup(page: Page, email: string) {
   await page.goto("/signup");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(PASSWORD);
+  await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 /** Creates a human team of `playerCount` (default 11, the BB2025 minimum). */
 async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill(name);
-  await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: "Next →" }).click();
-  const add = page.getByRole("button", { name: "Add Lineman" }).first();
+  await page.getByLabel("Nombre del equipo").fill(name);
+  await page.getByLabel("Raza").selectOption("human");
+  await page.getByRole("button", { name: "Siguiente →" }).click();
+  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
-  await page.getByRole("button", { name: /create team/i }).click();
+  await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText(name)).toBeVisible();
 }
 
 async function createLeague(page: Page, name: string) {
   await page.goto("/leagues");
-  await expect(page.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
   await page.getByRole("button", { name: "+ Nueva liga" }).first().click();
   await page.getByLabel("Nombre").fill(name);
   await page.getByLabel("Descripción").fill("Liga completa multi-jugador");
@@ -120,8 +121,8 @@ async function buildTwoMemberStartedLeague(
   browser: Browser,
   tag: string,
 ): Promise<TwoMemberLeague> {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
   const admin = await contextA.newPage();
   const rival = await contextB.newPage();
   const close = async () => {
@@ -379,8 +380,8 @@ async function loadResultViaModal(
 test("complete lifecycle: join → start → schedule → result → progression → correction", async ({
   browser,
 }) => {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
   const pageA = await contextA.newPage();
   const pageB = await contextB.newPage();
 
@@ -403,7 +404,7 @@ test("complete lifecycle: join → start → schedule → result → progression
     const teamBName = `FLCB ${Date.now()}`;
     await createTeam(pageB, teamBName);
     await pageB.goto("/leagues");
-    await expect(pageB.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await expect(pageB.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
     await expect(pageB.getByRole("heading", { name: "Ligas abiertas" })).toBeVisible();
     await expect(
       pageB.locator("section").filter({ hasText: "Ligas abiertas" }).getByText(leagueName),
@@ -491,7 +492,7 @@ test("complete lifecycle: join → start → schedule → result → progression
 
     // --- Progression: B (owner) spends the scorer's 7 PE on élite Block ---
     await pageB.goto(`/teams/${teamBId}`);
-    await expect(pageB.getByRole("heading", { name: "Progression" })).toBeVisible();
+    await expect(pageB.getByRole("heading", { name: "Progresión" })).toBeVisible();
     const p1Id = snap.teams.find((t) => t.id === teamBId)!.roster[0].id;
     const peTestId = `pe-${p1Id}`;
     const valueTestId = `value-${p1Id}`;
@@ -501,7 +502,7 @@ test("complete lifecycle: join → start → schedule → result → progression
     const peBefore = Number((await pageB.getByTestId(peTestId).first().textContent())?.trim());
     expect(peBefore).toBeGreaterThanOrEqual(6);
     await expect(pageB.getByTestId(valueTestId).first()).toHaveText("0");
-    await pageB.getByRole("button", { name: "Improve" }).first().click();
+    await pageB.getByRole("button", { name: "Mejorar" }).first().click();
     await pageB.getByLabel("Primaria").first().selectOption("block");
     await pageB.getByRole("button", { name: "Comprar primaria" }).first().click();
     await expect(pageB.getByTestId("skill-block").first()).toBeVisible();
@@ -555,7 +556,7 @@ test("outsider gets 404 on the started detail, proposals, and result routes", as
   browser,
 }) => {
   const league = await buildTwoMemberStartedLeague(browser, "outsider");
-  const contextC = await browser.newContext();
+  const contextC = await browser.newContext({ locale: "es-ES" });
   const pageC = await contextC.newPage();
   try {
     await signup(pageC, uniqueEmail("flc-outsider"));
@@ -699,7 +700,7 @@ test("a captain loads a result and corrects it (UI control + PUT 200)", async ({
 
 // --- Journey 6: unauthenticated result POST → 401 -----------------------------
 test("unauthenticated result POST returns 401", async ({ browser }) => {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ locale: "es-ES" });
   try {
     const page = await context.newPage();
     const res = await page.request.post("/api/leagues/bogus/fixtures/bogus/result", {
