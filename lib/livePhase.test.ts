@@ -30,6 +30,13 @@ describe("resolveEventPermission — ACTIVE coach records any event (LM-12)", ()
       expect(resolveEventPermission({ callerSide: "away", activeSide: "away", kind, victimSide })).toBe("allow");
     }
   });
+
+  it("lets the ACTIVE coach record a casualty on an OPPONENT-side victim (RAU-34)", () => {
+    // home active: the home coach records the injury they inflicted on an away player.
+    expect(resolveEventPermission({ callerSide: "home", activeSide: "home", kind: "casualty", victimSide: "away" })).toBe("allow");
+    // mirror: away active: the away coach records the injury they inflicted on a home player.
+    expect(resolveEventPermission({ callerSide: "away", activeSide: "away", kind: "casualty", victimSide: "home" })).toBe("allow");
+  });
 });
 
 describe("resolveEventPermission — NON-ACTIVE coach is side-gated (LM-12)", () => {

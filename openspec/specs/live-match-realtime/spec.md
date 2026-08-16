@@ -483,8 +483,9 @@ A pure derivation over the display-worthy events MUST return, per team: TD count
 
 ### Requirement: LM-20 · Event Recording Controls
 
-The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster and a band select for casualty/injury. The Falta form MUST additionally capture the victim (select from the OPPONENT roster) and submit `victimRosterId`; the Baja/Herida form MUST additionally capture `cause` (one of the six causes) and, except for `dodge`/`crowd`, the causer (select from the OPPONENT roster, submitted as `causerRosterId`). The NON-ACTIVE coach MUST be offered ONLY Herida (casualty to their OWN player, with cause and optional causer). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
+The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster and a band select for casualty/injury. The Falta form MUST additionally capture the victim (select from the OPPONENT roster) and submit `victimRosterId`; the Baja/Herida form MUST additionally capture `cause` (one of the six causes) and, except for `dodge`/`crowd`, the causer (submitted as `causerRosterId`). The casualty victim and causer pools MUST be role-aware (RAU-34): the ACTIVE coach records the injury THEY inflicted, so the victim select draws from the OPPONENT roster (opposite-side victim), the causer select from their OWN roster, and the command's `side` is the VICTIM's side (the OPPONENT side for the ACTIVE coach); the NON-ACTIVE coach records the wound done to their OWN player, so the victim select draws from their OWN roster, the causer from the OPPONENT roster, and `side` stays their own side. The NON-ACTIVE coach MUST be offered ONLY Herida (casualty to their OWN player, with cause and optional causer). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
 (Previously: the foul form captured only the aggressor and the casualty form captured only the band.)
+(Previously: the casualty victim was always the viewer's OWN roster and the causer always the OPPONENT roster, so the ACTIVE coach could not record an injury they inflicted on a rival player.)
 
 #### Scenario: Active coach opens the menu
 
@@ -524,9 +525,21 @@ The live UI MUST render a floating "+" button that opens an event-type menu and 
 
 #### Scenario: Casualty form captures cause and causer
 
-- GIVEN a coach opens the Baja/Herida form
+- GIVEN the NON-ACTIVE coach opens the Baja/Herida form
 - WHEN they pick the band, the cause, and (unless `dodge`/`crowd`) the causer from the OPPONENT roster
 - THEN the casualty command carries `cause` and `causerRosterId` and the card shows the three actors
+
+#### Scenario: Active coach records a casualty they inflicted (RAU-34)
+
+- GIVEN the ACTIVE coach opens the Baja/Herida form
+- WHEN they pick the victim from the OPPONENT roster, the band, the cause, and (unless `dodge`/`crowd`) the causer from their OWN roster
+- THEN the casualty command carries `side` = the VICTIM's (OPPONENT) side plus `victimRosterId`, `cause`, and `causerRosterId`, and the feed card shows the three actors
+
+#### Scenario: Non-active coach records a casualty to their own player (RAU-34)
+
+- GIVEN the NON-ACTIVE coach opens the Baja/Herida form
+- WHEN they pick the victim from their OWN roster, the band, the cause, and (unless `dodge`/`crowd`) the causer from the OPPONENT roster
+- THEN the casualty command carries `side` = their own side plus `victimRosterId`, `cause`, and `causerRosterId`, and the feed card shows the three actors
 
 ### Requirement: LM-21 · Kickoff Event Generation
 
