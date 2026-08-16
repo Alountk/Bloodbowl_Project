@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { StartLeagueModal } from "./StartLeagueModal";
 import { useLeagueDetail } from "./useLeagueDetail";
@@ -51,6 +52,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
     correct,
   } = useLeagueDetail(leagueId);
   const { data: session } = useSession();
+  const { t } = useI18n();
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [startOpen, setStartOpen] = useState(false);
@@ -63,12 +65,12 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
   if (!loading && notFound) {
     return (
       <div className="border border-slate-200 bg-white p-8 text-center">
-        <p className="text-sm text-slate-600">Liga no encontrada o sin acceso.</p>
+        <p className="text-sm text-slate-600">{t("leagues.notFound")}</p>
         <Link
           href="/leagues"
           className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
         >
-          Volver a mis ligas
+          {t("leagues.backToLeagues")}
         </Link>
       </div>
     );
@@ -77,7 +79,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
   if (!loading && !league) {
     return (
       <div className="border border-slate-200 bg-white p-8 text-center">
-        <p className="text-sm text-slate-600">{error ?? "No se pudo cargar la liga."}</p>
+        <p className="text-sm text-slate-600">{error ?? t("leagues.loadError")}</p>
       </div>
     );
   }
@@ -86,7 +88,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
     return (
       <div className="flex min-h-[200px] items-center justify-center bg-white p-8">
         <p className="text-sm text-slate-500" role="status">
-          Cargando liga…
+          {t("leagues.loading")}
         </p>
       </div>
     );
@@ -106,10 +108,10 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
       const status = (e as { status?: number }).status;
       setActionError(
         status === 409
-          ? "Ese equipo ya pertenece a una liga."
+          ? t("leagues.assignAlreadyInLeague")
           : e instanceof Error
             ? e.message
-            : "No se pudo apuntar el equipo.",
+            : t("leagues.assignError"),
       );
     }
   };
@@ -119,7 +121,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
     try {
       await expel(teamId);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "No se pudo expulsar el equipo.");
+      setActionError(e instanceof Error ? e.message : t("leagues.expelError"));
     }
   };
 
@@ -129,7 +131,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
     try {
       await leave(userMemberTeam.id);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "No se pudo desapuntar.");
+      setActionError(e instanceof Error ? e.message : t("leagues.leaveError"));
     }
   };
 
@@ -158,22 +160,24 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                     : "rounded-full bg-green-600 px-2.5 py-0.5 text-[11px] font-bold text-white"
                 }
               >
-                {started ? "Iniciada" : "Abierta"}
+                {started ? t("leagues.status.started") : t("leagues.status.open")}
               </span>
             </div>
             <p className="mt-1 text-[13px] text-[#cbd5e1]">
-              {league?.description ?? "Sin descripción"}
+              {league?.description ?? t("leagues.noDescription")}
             </p>
             <p className="mt-1 text-[12px] text-[#cbd5e1]">
-              {league?.ownerName ?? "Sin propietario"} · {memberCount}{" "}
-              {memberCount === 1 ? "equipo" : "equipos"}
+              {league?.ownerName ?? t("leagues.noOwner")} ·{" "}
+              {t(memberCount === 1 ? "leagues.membersOne" : "leagues.membersMany", {
+                count: memberCount,
+              })}
             </p>
           </div>
           <Link
             href="/leagues"
             className="rounded-md border border-white/40 px-3 py-1.5 text-xs font-semibold text-white hover:border-white"
           >
-            Volver
+            {t("leagues.back")}
           </Link>
         </div>
       </header>
@@ -205,15 +209,15 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
           {!isMember ? (
             <form onSubmit={onJoin} className="rounded-md border border-[#e2e8f0] bg-white p-4">
               <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-                Unirse
+                {t("leagues.join")}
               </h3>
               {unassigned.length === 0 ? (
-                <p className="text-sm text-slate-600">Crea un equipo para unirte a esta liga.</p>
+                <p className="text-sm text-slate-600">{t("leagues.joinHint")}</p>
               ) : (
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="min-w-[220px] flex-1">
                     <label htmlFor="league-team-select" className="mb-1 block text-sm font-medium text-slate-700">
-                      Tu equipo
+                      {t("leagues.yourTeam")}
                     </label>
                     <select
                       id="league-team-select"
@@ -221,7 +225,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                       onChange={(event) => setSelectedTeamId(event.target.value)}
                       className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
                     >
-                      <option value="">Seleccionar equipo…</option>
+                      <option value="">{t("leagues.selectTeam")}</option>
                       {unassigned.map((team) => (
                         <option key={team.id} value={team.id}>
                           {team.name}
@@ -233,7 +237,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                     type="submit"
                     className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
                   >
-                    Apuntarse
+                    {t("leagues.joinAction")}
                   </button>
                 </div>
               )}
@@ -250,7 +254,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                 onClick={onLeave}
                 className="rounded-md border border-[#d11938] px-4 py-2 text-sm font-semibold text-[#d11938] hover:bg-[#d11938] hover:text-white"
               >
-                Desapuntarse
+                {t("leagues.leave")}
               </button>
             </div>
           ) : isOwner ? (
@@ -262,7 +266,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                   onClick={() => setStartOpen(true)}
                   className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Iniciar liga
+                  {t("leagues.start")}
                 </button>
               </div>
               <StartLeagueModal
@@ -290,10 +294,11 @@ function MemberList({
   onExpel: (teamId: string) => void;
   canExpel: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <ul className="divide-y divide-[#e2e8f0] rounded-md border border-[#e2e8f0] bg-white">
       {teams.length === 0 ? (
-        <li className="p-6 text-center text-sm text-slate-600">Aún no hay equipos en esta liga.</li>
+        <li className="p-6 text-center text-sm text-slate-600">{t("leagues.noMembers")}</li>
       ) : (
         teams.map((team) => {
           const race = getRaceById(team.raceId);
@@ -306,8 +311,10 @@ function MemberList({
               <div className="min-w-0">
                 <p className="font-semibold text-[#12225a]">{team.name}</p>
                 <p className="text-xs text-slate-500">
-                  {race?.name ?? team.raceId} · {playerCount}{" "}
-                  {playerCount === 1 ? "jugador" : "jugadores"}
+                  {race?.name ?? team.raceId} ·{" "}
+                  {t(playerCount === 1 ? "leagues.playersOne" : "leagues.playersMany", {
+                    count: playerCount,
+                  })}
                 </p>
               </div>
               {canExpel ? (
@@ -316,7 +323,7 @@ function MemberList({
                   onClick={() => onExpel(team.id)}
                   className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-[#d11938] hover:border-[#d11938] hover:bg-[#d11938] hover:text-white"
                 >
-                  Expulsar
+                  {t("leagues.expel")}
                 </button>
               ) : null}
             </li>
@@ -389,6 +396,7 @@ function Jornadas({
   const [negotiateFixture, setNegotiateFixture] = useState<FixtureDraft | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [forfeitFixture, setForfeitFixture] = useState<FixtureDraft | null>(null);
+  const { t } = useI18n();
 
   // The fixture whose ResultModal is open, plus its mode ("load" on a scheduled
   // fixture by a captain/admin; "correct" by admin on a played result).
@@ -406,7 +414,7 @@ function Jornadas({
   if (roundNumbers.length === 0) {
     return (
       <div className="border border-slate-200 bg-white p-8 text-center">
-        <p className="text-sm text-slate-600">La liga se inició sin jornadas.</p>
+        <p className="text-sm text-slate-600">{t("leagues.noRounds")}</p>
       </div>
     );
   }
@@ -418,14 +426,14 @@ function Jornadas({
   return (
     <div>
       {/* Round tabs — defaults to the current (first incomplete) round. */}
-      <div role="tablist" aria-label="Jornadas" className="flex gap-1 overflow-x-auto border-b border-[#e2e8f0]">
+      <div role="tablist" aria-label={t("leagues.rounds")} className="flex gap-1 overflow-x-auto border-b border-[#e2e8f0]">
         {roundNumbers.map((round) => (
           <button
             key={round}
             type="button"
             role="tab"
             aria-selected={round === activeRound}
-            aria-label={`Jornada ${round}`}
+            aria-label={t("leagues.jornada", { round })}
             onClick={() => setSelectedRound(round)}
             className={`whitespace-nowrap px-4 py-2 text-[13px] font-bold ${
               round === activeRound
@@ -433,7 +441,7 @@ function Jornadas({
                 : "text-slate-400 hover:text-slate-600"
             }`}
           >
-            Jornada {round}
+            {t("leagues.jornada", { round })}
           </button>
         ))}
       </div>
@@ -441,17 +449,17 @@ function Jornadas({
       {/* Round completion badge */}
       <div className="mt-3 flex items-center justify-between px-1">
         <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500">
-          Jornada {activeRound}
+          {t("leagues.jornada", { round: activeRound })}
         </h3>
         {roundComplete ? (
           <span className="rounded-full bg-green-600 px-2.5 py-0.5 text-[11px] font-bold text-white">
-            Jornada completa
+            {t("leagues.roundComplete")}
           </span>
         ) : null}
       </div>
 
       {/* Match cards for the active round */}
-      <div role="region" aria-label={`Jornada ${activeRound}`} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div role="region" aria-label={t("leagues.jornada", { round: activeRound })} className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
         {roundFixtures.map((fixture) => (
           <MatchCard
             key={fixture.id}
@@ -495,8 +503,8 @@ function Jornadas({
             } catch (e) {
               setProposalError(
                 e instanceof Error
-                  ? `No se pudo proponer la fecha. ${e.message}`
-                  : "No se pudo proponer la fecha.",
+                  ? t("negotiation.proposeErrorWithMsg", { message: e.message })
+                  : t("negotiation.proposeError"),
               );
             }
           }}
@@ -508,8 +516,8 @@ function Jornadas({
             } catch (e) {
               setProposalError(
                 e instanceof Error
-                  ? `No se pudo aceptar la fecha. ${e.message}`
-                  : "No se pudo aceptar la fecha.",
+                  ? t("negotiation.acceptErrorWithMsg", { message: e.message })
+                  : t("negotiation.acceptError"),
               );
             }
           }}

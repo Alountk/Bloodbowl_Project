@@ -1,3 +1,4 @@
+import { useI18n } from "@/lib/i18n";
 import type { FixtureDraft, ScheduleProposal } from "./api";
 
 /** Pure: builds a UTC ISO timestamp from a YYYY-MM-DD date and HH:MM time. */
@@ -55,6 +56,7 @@ export function NegotiationPanel({
   onClose,
   submitError,
 }: NegotiationPanelProps) {
+  const { t } = useI18n();
   const canNegotiate = isParticipant;
   // Re-negotiation (rejornar) stays open for a scheduled-but-not-played fixture;
   // only a pending OR scheduled participant may propose/accept before play.
@@ -63,19 +65,20 @@ export function NegotiationPanel({
     (fixture.status === "pending" || fixture.status === "scheduled");
   const active = latestActiveProposal(fixture.proposals);
   const otherActive = active && active.userId !== currentUserId ? active : null;
-  const homeName = teamNameById.get(fixture.homeTeamId) ?? "Equipo";
-  const awayName = teamNameById.get(fixture.awayTeamId) ?? "Equipo";
+  const homeName = teamNameById.get(fixture.homeTeamId) ?? t("match.teamFallback");
+  const awayName = teamNameById.get(fixture.awayTeamId) ?? t("match.teamFallback");
   // Resolve proposer display names from the two participants (home/away owners).
   const ownerNameByUserId = new Map<string, string>();
   for (const owner of [fixture.homeOwner, fixture.awayOwner]) {
     if (owner) ownerNameByUserId.set(owner.id, owner.name ?? owner.id);
   }
+  const title = t("negotiation.title", { home: homeName, away: awayName });
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`Acordar fecha · ${homeName} vs ${awayName}`}
+      aria-label={title}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
@@ -84,22 +87,20 @@ export function NegotiationPanel({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
-          <h3 className="text-sm font-bold">
-            Acordar fecha · {homeName} vs {awayName}
-          </h3>
+          <h3 className="text-sm font-bold">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar panel de negociación"
+            aria-label={t("negotiation.closeAria")}
             className="text-xs font-semibold text-white/80 hover:text-white"
           >
-            ✕ Cerrar
+            ✕ {t("common.close")}
           </button>
         </header>
 
         <div className="px-4 py-3">
           <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-            Historial de propuestas
+            {t("negotiation.history")}
           </h4>
           {submitError ? (
             <p role="alert" className="mb-2 text-xs text-red-600">
@@ -109,7 +110,7 @@ export function NegotiationPanel({
           <ul className="divide-y divide-[#f1f5f9]">
             {fixture.proposals.length === 0 ? (
               <li className="py-2 text-sm text-slate-500">
-                Todavía no hay propuestas de fecha.
+                {t("negotiation.noProposals")}
               </li>
             ) : (
               fixture.proposals.map((proposal) => (
@@ -123,17 +124,17 @@ export function NegotiationPanel({
                     {ownerNameByUserId.get(proposal.userId) ?? proposal.userId}
                   </span>
                   <span className="text-[#475569]">
-                    {formatProposalDateTime(proposal.date)} · {authorDisplay(proposal)}
+                    {formatProposalDateTime(proposal.date)} · {authorDisplay(proposal, t)}
                   </span>
                   {proposal.acceptedAt ? (
-                    <span className="font-bold text-green-600">✓ Acordado</span>
+                    <span className="font-bold text-green-600">{t("negotiation.accepted")}</span>
                   ) : otherActive?.id === proposal.id && negotiationOpen ? (
                     <button
                       type="button"
                       onClick={() => onAccept(proposal.id)}
                       className="rounded-sm bg-[#12225a] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#0f1d4d]"
                     >
-                      Aceptar
+                      {t("negotiation.accept")}
                     </button>
                   ) : null}
                 </li>
@@ -143,7 +144,7 @@ export function NegotiationPanel({
 
           {fixture.status === "scheduled" && canNegotiate ? (
             <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
-              Re-programar
+              {t("negotiation.reschedule")}
             </p>
           ) : null}
 
@@ -151,7 +152,7 @@ export function NegotiationPanel({
             <ProposeForm onPropose={onPropose} />
           ) : canNegotiate ? (
             <p className="mt-3 text-xs text-slate-500">
-              La negociación quedó cerrada — el partido ya se jugó.
+              {t("negotiation.closed")}
             </p>
           ) : null}
         </div>
@@ -160,8 +161,8 @@ export function NegotiationPanel({
   );
 }
 
-function authorDisplay(proposal: ScheduleProposal): string {
-  return proposal.acceptedAt ? "acepta" : "propone";
+function authorDisplay(proposal: ScheduleProposal, t: (key: string, params?: Record<string, string | number>) => string): string {
+  return proposal.acceptedAt ? t("negotiation.authorAccepts") : t("negotiation.authorProposes");
 }
 
 /** Pure: formats a proposal ISO date for the history list with its time. */
@@ -178,6 +179,7 @@ export function formatProposalDateTime(iso: string): string {
 }
 
 function ProposeForm({ onPropose }: { onPropose: (date: string) => void }) {
+  const { t } = useI18n();
   return (
     <form
       className="mt-3 border-t border-[#e2e8f0] pt-3"
@@ -193,22 +195,22 @@ function ProposeForm({ onPropose }: { onPropose: (date: string) => void }) {
     >
       <div className="flex gap-2">
         <label className="flex-1 text-xs font-medium text-slate-600">
-          Fecha
+          {t("negotiation.date")}
           <input
             name="date"
             type="date"
             required
-            aria-label="Fecha propuesta"
+            aria-label={t("negotiation.proposedDate")}
             className="mt-1 w-full rounded-sm border border-slate-300 px-2 py-1.5 text-sm text-slate-800"
           />
         </label>
         <label className="flex-1 text-xs font-medium text-slate-600">
-          Hora
+          {t("negotiation.time")}
           <input
             name="time"
             type="time"
             required
-            aria-label="Hora propuesta"
+            aria-label={t("negotiation.proposedTime")}
             className="mt-1 w-full rounded-sm border border-slate-300 px-2 py-1.5 text-sm text-slate-800"
           />
         </label>
@@ -216,7 +218,7 @@ function ProposeForm({ onPropose }: { onPropose: (date: string) => void }) {
           type="submit"
           className="self-end rounded-sm bg-[#12225a] px-4 py-1.5 text-sm font-bold text-white hover:bg-[#0f1d4d]"
         >
-          Proponer
+          {t("negotiation.propose")}
         </button>
       </div>
     </form>
