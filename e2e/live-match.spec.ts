@@ -336,10 +336,12 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const liveRows = admin.getByTestId("live-event-row");
     await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(0);
     await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
-    // The fan_factor row shares the begin instant with `startedAt`, so deriveMinute
-    // clamps it to 0' (MVT-6 "kickoff rows at minute zero").
+    // MVT-6 "kickoff rows at minute zero": the home turnStart card (RAU-36/37)
+    // shares the begin instant with `startedAt`, so deriveMinute clamps it to
+    // 0'. The v7 fan_factor center card carries no right minute, so the zero-
+    // minute check lands on the turnStart card instead.
     await expect(
-      liveRows.filter({ hasText: /Error costoso|Factor de aficionados/ }).first(),
+      liveRows.filter({ hasText: `Turno ${homeTeamName}` }).first(),
     ).toContainText("0'");
 
     // LM-21 "begin retry is idempotent": a second begin after an already-live
