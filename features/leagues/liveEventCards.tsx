@@ -123,6 +123,8 @@ function deriveActionCard(
   event: LiveMatchView["events"][number],
   causerTeam: MatchTeamDetail,
   causerRef: Map<string, number>,
+  victimTeam: MatchTeamDetail,
+  victimRef: Map<string, number>,
   fn: TFunc,
 ): { player: Exclude<RosterLookup, undefined>; label: string; sub: string | null } | null {
   const causerId = event.payload.causerRosterId;
@@ -130,10 +132,15 @@ function deriveActionCard(
   const player = findPlayer(causerTeam, causerId, causerRef);
   if (!player) return null;
   const cause = typeof event.payload.cause === "string" ? event.payload.cause : "";
+  // The action card reads "{causer} hace una herida a {victim}": the causer
+  // earns the SPP stars, so the victim's NAME rides here; the ROLL + band stay
+  // on the injury card (victim side).
+  const victimId = typeof event.payload.victimRosterId === "string" ? event.payload.victimRosterId : null;
+  const victim = victimId ? findPlayer(victimTeam, victimId, victimRef) : undefined;
   return {
     player,
     label: causeLabel(cause, fn),
-    sub: casualtyActionLine(event.payload, fn),
+    sub: victim ? casualtyActionLine(event.payload, player.name, victim.name, fn) : null,
   };
 }
 
@@ -325,7 +332,9 @@ export function LiveEventCards({
         // with the cause label + the band/roll sub-line. Self-inflicted
         // (dodge/crowd) casualties have no causer → no action card.
         const actionCard =
-          isTeamCard && event.kind === "casualty" && oppositeTeam ? deriveActionCard(event, oppositeTeam, oppositeRef, t) : null;
+          isTeamCard && event.kind === "casualty" && oppositeTeam && team && ref
+            ? deriveActionCard(event, oppositeTeam, oppositeRef, team, ref, t)
+            : null;
         // Kickoff wall-clock subs: the `start` row from the kickoff anchor (omitted
         // gracefully when the data is unavailable), the `endMatch` row from its own
         // event timestamp. NOTE (v7): the preview's `ctv-strip` on the start card is
@@ -430,7 +439,12 @@ export function LiveEventCards({
                         <Icon name={iconName} className="h-[15px] w-[15px]" />
                       </span>
                       {label}
-                      {spp > 0 ? <span className={c.stars}>(★{spp})</span> : null}
+                      {/* The SPP stars ride on the CAUSER's action card for a
+                          casualty (the victim gains no XP); TD/completion/MVP
+                          keep them here. */}
+                      {spp > 0 && event.kind !== "casualty" ? (
+                        <span className={c.stars}>(★{spp})</span>
+                      ) : null}
                     </span>
                     {partial ? (
                       <span className={c.scoreNote}>
@@ -516,6 +530,8 @@ export function LiveEventCards({
                         <Icon name={iconName} className="h-[15px] w-[15px]" />
                       </span>
                       {actionCard.label}
+                      {/* The causer earns the SPP stars for the injury. */}
+                      {spp > 0 ? <span className={c.stars}>(★{spp})</span> : null}
                     </span>
                     {actionCard.sub ? <span className={c.sub}>{actionCard.sub}</span> : null}
                   </span>

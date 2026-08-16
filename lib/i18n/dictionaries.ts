@@ -290,6 +290,7 @@ const es: Dict = {
   "match.casualty.grave": "Herida grave",
   "match.casualty.permanent": "Permanente",
   "match.casualty.dead": "Muerto",
+  "match.casualty.doesInjury": "{causer} hace una herida a {victim}",
 
   // Batch E — Live match / feed
   "match.loadError": "No se pudo cargar el partido.",
@@ -694,6 +695,7 @@ const en: Dict = {
   "match.casualty.grave": "Serious injury",
   "match.casualty.permanent": "Permanent",
   "match.casualty.dead": "Dead",
+  "match.casualty.doesInjury": "{causer} injures {victim}",
 
   // Batch E — Live match / feed
   "match.loadError": "Could not load the match.",

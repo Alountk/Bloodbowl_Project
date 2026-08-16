@@ -140,11 +140,6 @@ export function casualtyBandLabel(band: string, fn: TFunc = esT): string {
   }
 }
 
-/** RAU-39: a permanent injury attribute's short display form (ar→AR etc.). */
-function attributeLabel(attribute: string): string {
-  return attribute.toUpperCase();
-}
-
 /**
  * RAU-39: the roll sub-line for the INJURY card — "Tirada 1D16: {roll16}" (the
  * band is already conveyed by the label + band sub-line). Missing/non-numeric
@@ -157,22 +152,19 @@ export function casualtyRollLine(payload: Record<string, unknown>, fn: TFunc = e
 }
 
 /**
- * RAU-39: the roll sub-line for the DERIVED ACTION card on the CAUSER's side —
- * "Tirada 1D16: {roll16} · {band}" with the reduced attribute for a permanent
- * injury ("Tirada 1D16: 13 · Permanente (−PS)"). The action card's label is the
- * CAUSE, so the band rides here. Missing/non-numeric rolls → null.
+ * RAU-39: the sub-line for the DERIVED ACTION card on the CAUSER's side —
+ * "{causer} hace una herida a {victim}" (the causer earns the SPP; the roll and
+ * band belong to the INJURY card on the victim's side). Either name missing →
+ * null (the bare cause label renders, never throws).
  */
-export function casualtyActionLine(payload: Record<string, unknown>, fn: TFunc = esT): string | null {
-  const roll16 = payload.roll16;
-  if (typeof roll16 !== "number") return null;
-  const band = typeof payload.band === "string" ? payload.band : null;
-  let line = fn("match.roll16", { roll: roll16 });
-  if (band) line += ` · ${casualtyBandLabel(band, fn)}`;
-  const attribute = payload.permanentAttribute;
-  if (band === "permanent" && typeof attribute === "string") {
-    line += ` (−${attributeLabel(attribute)})`;
-  }
-  return line;
+export function casualtyActionLine(
+  payload: Record<string, unknown>,
+  causerName: string,
+  victimName: string,
+  fn: TFunc = esT,
+): string | null {
+  if (!causerName || !victimName) return null;
+  return fn("match.casualty.doesInjury", { causer: causerName, victim: victimName });
 }
 
 /**

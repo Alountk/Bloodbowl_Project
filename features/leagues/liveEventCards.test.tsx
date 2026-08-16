@@ -413,12 +413,16 @@ describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)",
     expect(injury!.textContent).toContain("Se pierde el próximo partido");
     expect(injury!.textContent).toContain("Tirada 1D16: 13");
     expect(injury!.textContent).toContain("por Arnau (#2) · Blitz");
-    // Action card: causer side (home, navy) + cause label + roll/band sub-line.
+    // Action card: causer side (home, navy) + cause label + "{causer} hace una
+    // herida a {victim}" sub-line + the ★2 SPP the CAUSER earns.
     expect(action!.className).toContain("ev--home");
     expect(action!.textContent).toContain("Blitz");
-    expect(action!.textContent).toContain("Tirada 1D16: 13 · Permanente (−PS)");
-    // The ★2 SPP belongs to the injury card ONLY — no stars on the action card.
-    expect(action!.textContent).not.toContain("★");
+    expect(action!.textContent).toContain("Arnau hace una herida a Blitzer B");
+    expect(action!.textContent).toContain("(★2)");
+    // The ROLL belongs to the injury card; the INJURY card carries NO stars
+    // (the victim gains no XP).
+    expect(injury!.textContent).toContain("Tirada 1D16: 13");
+    expect(injury!.textContent).not.toContain("★");
   });
 
   it("renders NO action card for a self-inflicted (dodge/crowd) casualty — only the injury card", () => {
