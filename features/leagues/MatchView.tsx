@@ -156,6 +156,104 @@ function rivalRequestsTurn(
   return nudge?.side != null && nudge.side !== viewerSide;
 }
 
+/**
+ * RAU-38 concession controls in the turn zone (visible to BOTH coaches while
+ * live): the "Conceder" outline-red button expands to an inline confirm
+ * ("¿Conceder el partido?" → "Sí, conceder" / "Cancelar") before firing the
+ * proposal. Once a proposal is pending the PROPOSER sees "Esperando respuesta
+ * del rival…" and the rival sees "El rival se rinde" with "Aceptar" /
+ * "Rechazar". The server stays authoritative — the POST route enforces live +
+ * side + responder roles (a bypass returns 409).
+ */
+function ConcedeControls({
+  viewerSide,
+  proposedBy,
+  submitting,
+  onPropose,
+  onRespond,
+}: {
+  viewerSide: "home" | "away";
+  proposedBy: "home" | "away" | null;
+  submitting: boolean;
+  onPropose: () => void;
+  onRespond: (accept: boolean) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (proposedBy != null) {
+    if (proposedBy === viewerSide) {
+      return (
+        <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
+          Esperando respuesta del rival…
+        </span>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
+          El rival se rinde
+        </span>
+        <button
+          type="button"
+          onClick={() => onRespond(true)}
+          disabled={submitting}
+          className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+        >
+          Aceptar
+        </button>
+        <button
+          type="button"
+          onClick={() => onRespond(false)}
+          disabled={submitting}
+          className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
+        >
+          Rechazar
+        </button>
+      </div>
+    );
+  }
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
+          ¿Conceder el partido?
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setConfirming(false);
+            onPropose();
+          }}
+          disabled={submitting}
+          className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+        >
+          Sí, conceder
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirming(false)}
+          disabled={submitting}
+          className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setConfirming(true)}
+      disabled={submitting}
+      className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
+    >
+      Conceder
+    </button>
+  );
+}
+
 /** The two-team matchup header shown in the centered consent panel. */
 function MatchupLine({ names }: { names: { home: string; away: string } }) {
   return (
@@ -350,6 +448,7 @@ function LiveTopBar({
   names,
   leagueId,
   turnControls,
+  concedeControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
@@ -357,6 +456,9 @@ function LiveTopBar({
   names: { home: string; away: string };
   leagueId: string;
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
+  /** RAU-38: the turn-zone concede controls (null when the viewer has no side
+   * or the match is not live — the FinishedLiveView passes nothing). */
+  concedeControls?: React.ReactNode;
 }) {
   const live = state.status === "live";
   const globalTurn = state.half === 2 ? state.turnNumber + 8 : state.turnNumber;
@@ -407,6 +509,9 @@ function LiveTopBar({
             Dar el turno
           </button>
         ) : null}
+        {/* RAU-38: the concede controls sit in the turn zone next to the turn
+            button — both coaches see them while live (submitting disabled). */}
+        {concedeControls}
         <TurnTrack
           sideName={names.away}
           current={globalTurn}
@@ -633,6 +738,7 @@ function TourplayHeader({
   homeTeam,
   awayTeam,
   turnControls,
+  concedeControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
@@ -647,6 +753,7 @@ function TourplayHeader({
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
+  concedeControls?: React.ReactNode;
 }) {
   return (
     <div
@@ -660,6 +767,7 @@ function TourplayHeader({
         names={names}
         leagueId={leagueId}
         turnControls={turnControls}
+        concedeControls={concedeControls}
       />
       <LiveHero
         state={state}
@@ -757,6 +865,19 @@ function LiveActiveMatch({
   const events = hookLive != null && hookLive.events.length > 0 ? hookLive.events : live?.events ?? [];
   const showNudgeBanner = rivalRequestsTurn(events, state.viewerSide, state.activeSide);
 
+  // RAU-38: the concede controls render only while the match is LIVE and the
+  // viewer has a side (a spectator/admin or a finished match never sees them).
+  const concedeControls =
+    state.status === "live" && state.viewerSide != null ? (
+      <ConcedeControls
+        viewerSide={state.viewerSide}
+        proposedBy={state.concedeProposedBy}
+        submitting={submitting}
+        onPropose={() => void act({ type: "concede" })}
+        onRespond={(accept) => void act({ type: "concedeRespond", accept })}
+      />
+    ) : null;
+
   return (
     <div className="bg-white border border-[#e2e8f0]">
       {/* Uniform sticky match header: renders in EVERY fixture state. */}
@@ -778,6 +899,7 @@ function LiveActiveMatch({
           submitting,
           onEndTurn: () => void act({ type: "endTurn", side: state.activeSide }),
         }}
+        concedeControls={concedeControls}
       />
 
       {state.status === "pending" || state.status === "ready" ? (
