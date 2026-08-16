@@ -4,7 +4,7 @@
 
 ### Requirement: LM-6 · Event Persistence and Sequence
 
-Every TD, completion, casualty, foul, end-of-half, and end-of-match MUST persist a `LiveEvent` row with monotonic `seq` and a JSON payload; the database MUST be the source of truth and an in-memory hub MUST fan out behind a narrow interface. Catch-up by `seq` MUST NEVER be stale. A `foul` payload MUST carry `victimRosterId`; a `casualty` payload MUST carry `band`, `cause` (one of `blitz|foul|dodge|crowd|penetration|block`), and `causerRosterId` (absent when the crowd or the player's own dodge caused it). Because payloads are JSON and `LiveEvent.kind` is TEXT, this MUST NOT require a migration (LM-14 precedent); legacy events with `{}`/`{band}` payloads MUST still render as fallback rows without victim/cause detail.
+Every TD, completion, casualty, foul, end-of-half, and end-of-match MUST persist a `LiveEvent` row with monotonic `seq` and a JSON payload; the database MUST be the source of truth and an in-memory hub MUST fan out behind a narrow interface. Catch-up by `seq` MUST NEVER be stale. A `foul` payload MUST carry `victimRosterId`; a `casualty` payload MUST carry `band`, `cause` (one of `blitz|foul|dodge|crowd|block`), and `causerRosterId` (absent when the crowd or the player's own dodge caused it). Because payloads are JSON and `LiveEvent.kind` is TEXT, this MUST NOT require a migration (LM-14 precedent); legacy events with `{}`/`{band}` payloads MUST still render as fallback rows without victim/cause detail.
 (Previously: the `foul` payload was `{}` and the `casualty` payload carried only `band`.)
 
 #### Scenario: Event recorded with sequence
@@ -141,13 +141,13 @@ The live UI MUST render a floating "+" button that opens an event-type menu and 
 
 ### Requirement: MVT-5 · Casualty Cause and Actor Rendering Data
 
-Cause→label MUST map: `blitz` → "Blitz", `foul` → "Falta", `dodge` → "Esquivando — se cayó", `crowd` → "El público", `penetration` → "Penetración", `block` → "Bloqueo". A casualty card MUST render three actors: the victim (main row), the cause label, and the causer line — "por {name} (#{dorsal}) · {cause}" when `causerRosterId` resolves to a roster player, "El público" when the causer is absent with cause `crowd`, and the bare cause label when absent otherwise. A foul card MUST render the victim line "a {name} (#{dorsal})" resolved from `victimRosterId`. Unknown causes MUST pass through unchanged and never throw.
+Cause→label MUST map: `blitz` → "Blitz", `foul` → "Falta", `dodge` → "Esquivando — se cayó", `crowd` → "El público", `block` → "Bloqueo" (`penetration` folded into `blitz`, RAU-41). A casualty card MUST render three actors: the victim (main row), the cause label, and the causer line — "por {name} (#{dorsal}) · {cause}" when `causerRosterId` resolves to a roster player, "El público" when the causer is absent with cause `crowd`, and the bare cause label when absent otherwise. A foul card MUST render the victim line "a {name} (#{dorsal})" resolved from `victimRosterId`. Unknown causes MUST pass through unchanged and never throw.
 
 #### Scenario: Cause labels
 
-- GIVEN the six valid causes
+- GIVEN the five valid causes
 - WHEN the label derives
-- THEN `blitz|foul|dodge|crowd|penetration|block` render "Blitz", "Falta", "Esquivando — se cayó", "El público", "Penetración", "Bloqueo"
+- THEN `blitz|foul|dodge|crowd|block` render "Blitz", "Falta", "Esquivando — se cayó", "El público", "Bloqueo"
 
 #### Scenario: Causer line
 

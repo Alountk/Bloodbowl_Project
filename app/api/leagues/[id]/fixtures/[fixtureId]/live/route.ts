@@ -518,7 +518,7 @@ type ControlCommand =
       type: "proposeCasualty";
       victimRosterId: string;
       causerRosterId: string;
-      /** One of blitz|foul|penetration|block (causer-required causes — the
+      /** One of blitz|foul|block (causer-required causes — the
        * dodge/crowd path is the direct self-inflicted `casualty`). */
       cause: CasualtyCause;
       roll16: number;
