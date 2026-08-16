@@ -366,12 +366,12 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(header.getByTestId("match-timeline")).toBeVisible();
 
     // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
-    // home). Only the ACTIVE coach sees the "Tu turno" STATUS + "Dar el turno";
-    // the non-active coach sees "Pedir turno" and never "Dar el turno". The
-    // timeline ALSO labels the home turn-start "Tu turno", so target the
-    // role=status element (Chromium does not expose a name for live-region
-    // roles, hence no `name:` filter).
-    await expect(homeCoach.getByRole("status")).toHaveText("Tu turno");
+    // home). Only the ACTIVE coach sees the "Turno {team}" STATUS + "Dar el
+    // turno"; the non-active coach sees "Pedir turno" and never "Dar el turno".
+    // The timeline turn-start card ALSO reads "Turno {homeTeamName}" (RAU-36/37),
+    // so target the role=status element (Chromium does not expose a name for
+    // live-region roles, hence no `name:` filter).
+    await expect(homeCoach.getByRole("status")).toHaveText(`Turno ${homeTeamName}`);
     await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
     await expect(awayCoach.getByRole("status")).toHaveCount(0);
@@ -392,8 +392,9 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
     await expect(awayCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
     // Regression: exactly one flip — turn 3 never appears, the away coach is
-    // the one now active ("Tu turno"), and the home coach's status is gone.
-    await expect(awayCoach.getByRole("status")).toHaveText("Tu turno");
+    // the one now active ("Turno {awayTeamName}"), and the home coach's status
+    // is gone.
+    await expect(awayCoach.getByRole("status")).toHaveText(`Turno ${awayTeamName}`);
     await expect(homeCoach.getByText(/Mitad 1 · Turno 3/)).toHaveCount(0);
     await expect(homeCoach.getByRole("status")).toHaveCount(0);
 

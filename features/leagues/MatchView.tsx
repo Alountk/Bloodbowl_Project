@@ -346,7 +346,7 @@ function TurnTrack({
  * the SAME global numbers with the ACTIVE side's current turn highlighted ONLY
  * while live (inert otherwise — no `aria-current`), the clocks show H:MM:SS
  * while live (or the frozen base value once it carries real time) and "–"
- * before kickoff, and the ACTIVE coach's "Tu turno" STATUS + the red TURNO
+ * before kickoff, and the ACTIVE coach's "Turno {team}" STATUS + the red TURNO
  * ("Dar el turno") button render ONLY when `status === "live"` AND the viewer
  * is the active participant (spectator/admin → hidden). The "Mitad H · Turno N"
  * line stays always-visible (all strings stay byte-identical — e2e/unit suites
@@ -410,7 +410,7 @@ function LiveTopBar({
         {showTurnControls ? (
           <>
             <p role="status" className="text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
-              Tu turno
+              Turno {names[state.activeSide]}
             </p>
             <button
               type="button"

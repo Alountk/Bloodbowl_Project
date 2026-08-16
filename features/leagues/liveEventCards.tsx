@@ -7,10 +7,13 @@ import type { LiveMatchView, MatchTeamDetail } from "./api";
  * The Design-A per-event kind surface that renders as a TEAM card at 68% width
  * (MVT-1): a wide-event usually names a player on one side, so the card sits on
  * that team's side with a navy (home) / red (away) internal gradient. The
- * kickoff `expensive_mistake` is a team card too (MVT-6/LM-24). Every other
+ * kickoff `expensive_mistake` is a team card too (MVT-6/LM-24), and `turnStart`
+ * is a team card for the side whose turn starts (RAU-36/37). Every other
  * display kind (start/endHalf/endMatch/fan_factor) is a GENERIC event at 100%.
+ * The `turn` ("Fin de turno") kind is NOT in the set — it is skipped outright
+ * in the render map so the feed never surfaces it (RAU-36/37).
  */
-const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake"]);
+const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake", "turnStart"]);
 
 /** A roster player lookup for a side: id → { name, dorsal } or undefined. */
 type RosterLookup = { name: string; dorsal: number } | undefined;
@@ -157,6 +160,10 @@ export function LiveEventCards({
       className="flex flex-col gap-0.5 border-t border-[#e2e8f0] bg-[#eef1f6] p-1.5"
     >
       {ordered.map((event) => {
+        // RAU-36/37: the generic "Fin de turno" row is noise — the turn change
+        // is conveyed ONLY by the team-assigned turnStart card of the side
+        // taking over, so the `turn` event never becomes a card.
+        if (event.kind === "turn") return null;
         const isTeamCard = TEAM_EVENT_KINDS.has(event.kind);
         const side = event.side;
         const isHome = side === "home";
@@ -167,7 +174,10 @@ export function LiveEventCards({
         const oppositeRef = isAway ? homeRef : awayRef;
         const player = team && event.playerRosterId ? findPlayer(team, event.playerRosterId, ref!) : undefined;
         const minute = deriveMinute(event.at, startedAt ?? 0);
-        const label = liveEventLabel(event);
+        // The turnStart card is TEAM-assigned (RAU-36/37): it reads "Turno
+        // {team}" instead of the generic audit label ("Tu turno").
+        const label =
+          event.kind === "turnStart" && team ? `Turno ${team.name}` : liveEventLabel(event);
         const glyph =
           event.kind === "casualty"
             ? casualtyGlyph(event.payload)
