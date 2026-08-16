@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { INJURY_OUTCOMES } from "@/lib/rules/injuries";
+import { resolveInjury } from "@/lib/rules/injuries";
 import { CASUALTY_CAUSES } from "@/lib/livePhase";
 import type { CasualtyCause } from "@/lib/livePhase";
 import { casualtyKindLabel } from "./matchSummary";
@@ -13,26 +13,34 @@ import type { LiveCommand, MatchPlayer } from "./api";
  * `viewerSide != null && status === "live"` (the server matrix stays the
  * authority — a bypass POST returns 409, proven by the route tests). The menu
  * derives from `viewerSide` vs `activeSide`: the ACTIVE coach may record TD /
- * Pase completo / Baja / Herida / Falta; the NON-active coach is offered ONLY
- * the casualty action (their own player). The Falta form additionally captures
- * the VICTIM from `opponentRoster` (LM-20). The Baja/Herida form captures the
- * six-part `cause` plus a CAUSER select that is hidden for `dodge`/`crowd` and
- * never sent with those causes (LM-12 strict). The casualty pools are
- * role-aware (RAU-34): the ACTIVE coach records the injury THEY inflicted, so
- * the victim select draws from the OPPONENT roster, the causer select from
- * their OWN roster, and the command's `side` is the VICTIM's side (the
- * OPPONENT side for the ACTIVE coach); the NON-active coach records the wound
- * done to their OWN player, so the victim draws from their roster, the causer
- * from the rival's, and `side` stays their own side. Labels stay DISTINCT from
- * "Jugador" so `getByLabelText(/Jugador/i)` remains unambiguous (D7). Submit
- * passes through the parent's `act`/`sendCommand`/`busyRef`; a server 409
- * surfaces via the existing error alert.
+ * Pase completo / Baja / Falta; the NON-active coach is offered ONLY the
+ * casualty action (their own player).
+ *
+ * RAU-39 two-phase casualty: the ACTIVE coach (the attacker) PROPOSES the
+ * injury THEY inflicted — causer (OWN alive roster), victim (OPPONENT roster),
+ * a causer-required cause (blitz/foul/penetration/block) and the 1D16 roll. The
+ * BAND is DERIVED server-side from the roll (NO band select — the client only
+ * mirrors `resolveInjury` to show the derived band live and to surface the
+ * required 1D6 attribute roll when the band is `permanent`). The NON-active
+ * coach CONFIRMS the proposal in the turn zone instead of recording. The only
+ * DIRECT casualty left is a SELF-INFLICTED dodge/crowd injury to the viewer's
+ * OWN player (recorded with roll16, band derived, NO confirmation).
+ *
+ * Labels stay DISTINCT from "Jugador" so `getByLabelText(/Jugador/i)` remains
+ * unambiguous (D7). Submit passes through the parent's `act`/`sendCommand`/
+ * `busyRef`; a server 409 surfaces via the existing error alert.
  */
 
 type EventKindOption = "td" | "completion" | "casualty" | "foul";
 
 /** Causes that require an explicit causer (opposite victim); dodge/crowd are self-inflicted (LM-12). */
 const CAUSE_REQUIRES_CAUSER = new Set<CasualtyCause>(["blitz", "foul", "penetration", "block"]);
+
+/** The ACTIVE coach proposes only causer-required causes (the dodge/crowd path
+ * is the direct self-inflicted casualty of the victim's own side, RAU-39). */
+const ACTIVE_CAUSES = CASUALTY_CAUSES.filter((c) => CAUSE_REQUIRES_CAUSER.has(c));
+/** The NON-active coach records only self-inflicted (dodge/crowd) injuries. */
+const SELF_CAUSES = CASUALTY_CAUSES.filter((c) => !CAUSE_REQUIRES_CAUSER.has(c));
 
 /** Spanish labels for the six causes (MVT-5). */
 const CAUSE_LABELS: Record<CasualtyCause, string> = {
@@ -44,6 +52,9 @@ const CAUSE_LABELS: Record<CasualtyCause, string> = {
   block: "Bloqueo",
 };
 
+const ROLL16_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1);
+const ROLL6_OPTIONS = Array.from({ length: 6 }, (_, i) => i + 1);
+
 interface EventControlsProps {
   viewerSide: "home" | "away" | null;
   activeSide: "home" | "away";
@@ -51,7 +62,7 @@ interface EventControlsProps {
   status: "pending" | "ready" | "live" | "finished";
   /** The viewer's OWN roster (the side's players) — only alive players are offered. */
   roster: MatchPlayer[];
-  /** The RIVAL roster (opposite the viewer): Falta victim; casualty VICTIM for the ACTIVE coach and casualty CAUSER for the NON-active coach (LM-20, RAU-34). */
+  /** The RIVAL roster (opposite the viewer): Falta victim; casualty VICTIM for the ACTIVE coach (RAU-34/39). */
   opponentRoster: MatchPlayer[];
   /** Wraps `act`: `/api/.../live` POST command. */
   onSubmit: (cmd: LiveCommand) => Promise<void>;
@@ -80,10 +91,11 @@ export function EventControls({
   const [menuOpen, setMenuOpen] = useState(false);
   const [kind, setKind] = useState<EventKindOption | null>(null);
   const [playerRosterId, setPlayerRosterId] = useState("");
-  const [band, setBand] = useState<string>("bruise");
   const [cause, setCause] = useState<CasualtyCause | "">("");
   const [causerRosterId, setCauserRosterId] = useState("");
   const [victimRosterId, setVictimRosterId] = useState("");
+  const [roll16, setRoll16] = useState<number | "">("");
+  const [roll6, setRoll6] = useState<number | "">("");
 
   // LM-20: no controls for a spectator/admin (no side) or outside a live match.
   if (viewerSide == null || status !== "live") return null;
@@ -92,55 +104,68 @@ export function EventControls({
   const menuItems = isActive ? ACTIVE_MENU : NON_ACTIVE_MENU;
   const alivePlayers = roster.filter((p) => p.alive);
   const aliveOpponentPlayers = opponentRoster.filter((p) => p.alive);
-  // RAU-34 role-aware casualty pools: the ACTIVE coach records the injury THEY
-  // inflicted (victim from the rival, causer from their OWN roster); the
-  // NON-active coach records the wound done to their OWN player (victim own,
-  // causer rival). Alive-only, matching the "Jugador" select's semantics.
+  // RAU-39 role-aware pools: the ACTIVE coach proposes the injury THEY inflicted
+  // (victim from the rival, causer from their OWN roster); the NON-active coach
+  // records a SELF-INFLICTED wound on their OWN player (victim own, no causer).
   const victimPool = isActive ? aliveOpponentPlayers : alivePlayers;
-  const causerPool = isActive ? alivePlayers : aliveOpponentPlayers;
+  const causerPool = alivePlayers;
 
-  const requiresCauser = cause !== "" && CAUSE_REQUIRES_CAUSER.has(cause);
+  const causeOptions = isActive ? ACTIVE_CAUSES : SELF_CAUSES;
+  const derivedBand = roll16 === "" ? null : resolveInjury(Number(roll16)).kind;
+  const needsRoll6 = derivedBand === "permanent";
 
   const reset = () => {
     setMenuOpen(false);
     setKind(null);
     setPlayerRosterId("");
-    setBand("bruise");
     setCause("");
     setCauserRosterId("");
     setVictimRosterId("");
+    setRoll16("");
+    setRoll6("");
   };
 
   // Cancelar returns to the open menu (does not close it); submit closes all.
   const cancel = () => {
     setKind(null);
     setPlayerRosterId("");
-    setBand("bruise");
     setCause("");
     setCauserRosterId("");
     setVictimRosterId("");
+    setRoll16("");
+    setRoll6("");
   };
 
   const submit = () => {
     const side = viewerSide;
     if (kind === "casualty") {
-      // Strict client rule (LM-12/D7): a cause requiring a causer is mandatory;
-      // dodge/crowd NEVER send a causer (the select is hidden for them).
-      if (!playerRosterId || cause === "") return;
-      if (requiresCauser && !causerRosterId) return;
-      // RAU-34: the casualty `side` is the VICTIM's side — the OPPONENT side for
-      // the ACTIVE coach (they record the injury they inflicted on a rival), the
-      // viewer's OWN side for the NON-active coach.
-      const casualtySide: "home" | "away" = isActive ? (viewerSide === "home" ? "away" : "home") : viewerSide;
-      const cmd: LiveCommand = {
-        type: "casualty",
-        side: casualtySide,
-        victimRosterId: playerRosterId,
-        band,
-        cause,
-      };
-      if (requiresCauser) cmd.causerRosterId = causerRosterId;
-      void onSubmit(cmd);
+      if (!playerRosterId || cause === "" || roll16 === "") return;
+      if (needsRoll6 && roll6 === "") return;
+      if (isActive) {
+        // The ACTIVE coach PROPOSES: the defender confirms in the turn zone.
+        if (!causerRosterId) return;
+        const cmd: LiveCommand = {
+          type: "proposeCasualty",
+          victimRosterId: playerRosterId,
+          causerRosterId,
+          cause,
+          roll16: Number(roll16),
+        };
+        if (needsRoll6) cmd.roll6 = Number(roll6);
+        void onSubmit(cmd);
+      } else {
+        // The NON-active coach records a SELF-INFLICTED (dodge/crowd) casualty
+        // to their OWN player directly — band derived server-side, no confirm.
+        const cmd: LiveCommand = {
+          type: "casualty",
+          side,
+          victimRosterId: playerRosterId,
+          cause,
+          roll16: Number(roll16),
+        };
+        if (needsRoll6) cmd.roll6 = Number(roll6);
+        void onSubmit(cmd);
+      }
     } else if (kind === "td") {
       if (!playerRosterId) return;
       void onSubmit({ type: "td", side, playerRosterId });
@@ -158,7 +183,11 @@ export function EventControls({
 
   const canSubmit =
     playerRosterId !== "" &&
-    (kind !== "casualty" || (cause !== "" && (!requiresCauser || causerRosterId !== ""))) &&
+    (kind !== "casualty" ||
+      (cause !== "" &&
+        roll16 !== "" &&
+        (!isActive || causerRosterId !== "") &&
+        (!needsRoll6 || roll6 !== ""))) &&
     (kind !== "foul" || victimRosterId !== "");
 
   return (
@@ -193,21 +222,6 @@ export function EventControls({
           {kind === "casualty" ? (
             <>
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                Tipo de lesión
-              </label>
-              <select
-                aria-label="Tipo de lesión"
-                value={band}
-                onChange={(e) => setBand(e.target.value)}
-                className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
-              >
-                {INJURY_OUTCOMES.map((b) => (
-                  <option key={b} value={b}>
-                    {casualtyKindLabel(b)}
-                  </option>
-                ))}
-              </select>
-              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 Causa de la lesión
               </label>
               <select
@@ -222,16 +236,15 @@ export function EventControls({
                 <option value="" disabled>
                   Selecciona…
                 </option>
-                {CASUALTY_CAUSES.map((c) => (
+                {causeOptions.map((c) => (
                   <option key={c} value={c}>
                     {CAUSE_LABELS[c]}
                   </option>
                 ))}
               </select>
-              {/* Causer select: ONLY for causes that require one (blitz/foul/
-                  penetration/block). dodge/crowd hide it and never send it
-                  (LM-12 strict client rule). */}
-              {requiresCauser ? (
+              {/* Causer select: ONLY for the ACTIVE coach's proposal (causer
+                  required). The NON-active self-inflicted path has no causer. */}
+              {isActive ? (
                 <>
                   <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
                     Autor de la lesión
@@ -248,6 +261,61 @@ export function EventControls({
                     {causerPool.map((p) => (
                       <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
                         {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                Tirada 1D16
+              </label>
+              <select
+                aria-label="Tirada 1D16"
+                value={roll16}
+                onChange={(e) => {
+                  setRoll16(e.target.value === "" ? "" : Number(e.target.value));
+                  setRoll6("");
+                }}
+                className="mb-2 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="" disabled>
+                  Selecciona…
+                </option>
+                {ROLL16_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              {/* The DERIVED band (client mirrors resolveInjury for UX; the
+                  server is authoritative). NO band select — the band comes from
+                  the 1D16 table, never from the form. */}
+              <p className="mb-2 text-[11px] font-semibold text-[#12225a]">
+                {derivedBand ? (
+                  <>Banda: {casualtyKindLabel(derivedBand)}{needsRoll6 ? " · tira 1D6" : ""}</>
+                ) : (
+                  "La banda se calcula de la tirada"
+                )}
+              </p>
+              {/* The 1D6 attribute roll appears LIVE only when the derived band
+                  is permanent (13-14) — it is REQUIRED then. */}
+              {needsRoll6 ? (
+                <>
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    Tirada 1D6 (atributo)
+                  </label>
+                  <select
+                    aria-label="Tirada 1D6"
+                    value={roll6}
+                    onChange={(e) => setRoll6(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
+                  >
+                    <option value="" disabled>
+                      Selecciona…
+                    </option>
+                    {ROLL6_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
                       </option>
                     ))}
                   </select>
@@ -291,7 +359,7 @@ export function EventControls({
               disabled={!canSubmit}
               className="rounded bg-[#12225a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f1d48] disabled:opacity-40"
             >
-              Registrar
+              {isActive && kind === "casualty" ? "Proponer" : "Registrar"}
             </button>
           </div>
         </div>
