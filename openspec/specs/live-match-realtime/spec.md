@@ -406,14 +406,15 @@ The live route MUST accept `{ type: "completion"; side; playerRosterId }` from t
 
 ### Requirement: LM-16 · Server-Side Feed Filtering
 
-The history feed DTOs (`toEventDtos` and `serializeLive`) MUST include only `start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor`. `turn`, `turnStart`, and `requestTurn` MUST remain persisted in the DB for audit/replay and MUST stay live-only (nudge banner); they MUST NOT appear in any feed DTO.
+The history feed DTOs (`toEventDtos` and `serializeLive`) MUST include only `start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede`. `turn`, `turnStart`, and `requestTurn` MUST remain persisted in the DB for audit/replay and MUST stay live-only (nudge banner); they MUST NOT appear in any feed DTO.
 (Previously: the display surface was the 8 kinds `start|td|completion|casualty|foul|endHalf|endMatch|mvp`.)
+(Previously: 10 kinds — the concession event (RAU-38) joined the display surface.)
 
 #### Scenario: Feed carries display kinds only
 
-- GIVEN a persisted history containing all 13 kinds
+- GIVEN a persisted history containing all 14 kinds
 - WHEN a snapshot or fixture DTO is produced
-- THEN exactly the 10 display kinds appear and no turn rows do
+- THEN exactly the 11 display kinds appear and no turn rows do
 
 #### Scenario: Turn rows stay for audit
 
@@ -634,6 +635,58 @@ For each team the begin transition MUST roll 1D6 and resolve against the treasur
 - GIVEN an `expensive_mistake` event without treasury fields
 - WHEN the row renders
 - THEN it shows the label with no treasury line and no error
+
+### Requirement: LM-25 · Concession
+
+A coach MAY propose to concede while the match is LIVE; the proposal persists on the LiveMatch row (`concedeProposedBy` = the proposing side, additive column). The rival MAY accept or decline: an ACCEPT finishes the match immediately — the ACCEPTOR's team is recorded as the fixture winner with walkover-style 2-0 scores (forfeit precedent), the fixture closes as played (a later result load MUST 409), and a `concede` feed event (`side` = the SURRENDERING side, payload `{ winnerSide }`) persists ATOMICALLY with the victory in the SAME transaction. A concession is NOT a played match: NO winnings, PE, or fan-factor effects are computed (documented choice). A DECLINE clears the proposal and the match continues untouched. Only fixture coaches MAY propose/respond (the control gate 403s a spectator member per LM-2; the side-less league admin is rejected with 409); the PROPOSER MUST NOT respond to their own proposal; a retried propose from the SAME side is an idempotent no-op. The concede event MUST render as a centered 100% card labeled "Concesión" with the "{surrendering team} se rinde · Victoria de {acceptor team}" sub-line (match-view MVT-1).
+
+#### Scenario: Propose only while live
+
+- GIVEN a live match with no pending proposal
+- WHEN a coach proposes to concede
+- THEN `concedeProposedBy` persists as that side, no event persists, and the match keeps running
+
+#### Scenario: Double-propose by the other side rejected
+
+- GIVEN a pending concession proposal
+- WHEN the OTHER coach proposes to concede
+- THEN it returns 409 and the proposal stays unchanged
+
+#### Scenario: Proposal retry is idempotent
+
+- GIVEN a pending concession proposal
+- WHEN the SAME side retries the propose
+- THEN it is a no-op returning the current view with no duplicate state
+
+#### Scenario: Accept finishes with victory to the acceptor
+
+- GIVEN a pending concession proposal
+- WHEN the NON-proposer accepts
+- THEN the match becomes finished, the fixture records the ACCEPTOR's team as winner (walkover scores, played), the `concede` event (side = the surrendering side) and the victory commit in the SAME transaction, and a later result load returns 409
+
+#### Scenario: Decline clears and the match continues
+
+- GIVEN a pending concession proposal
+- WHEN the NON-proposer declines
+- THEN `concedeProposedBy` clears, the match stays live, and no event persists
+
+#### Scenario: Non-live or no-proposal commands rejected
+
+- GIVEN a finished match or one with no pending proposal
+- WHEN a concede propose or respond command arrives
+- THEN it returns 409 with no mutation
+
+#### Scenario: Spectator and admin denied
+
+- GIVEN a spectator member or the league admin (no side)
+- WHEN they propose or respond to a concession
+- THEN the spectator member is 403'd by the control gate (LM-2) and the side-less admin gets 409, with no state changes
+
+#### Scenario: Proposer cannot respond to their own proposal
+
+- GIVEN a pending concession proposal
+- WHEN the PROPOSER tries to accept or decline it
+- THEN it returns 409 and the proposal stays unchanged
 
 ### Requirement: MVT-5 · Casualty Cause and Actor Rendering Data
 
