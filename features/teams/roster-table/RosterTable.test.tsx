@@ -120,7 +120,7 @@ describe("RosterTable", () => {
     it("does not render a qty cell in editable mode — first cell is POSICIÓN, no min-max text", () => {
       render(<RosterTable players={[{ id: "p3", name: "Min", positionalKey: "minman" }]} race={mockRace} />);
       // First body row cell is the POSICIÓN cell containing the player-name input.
-      const row = screen.getByLabelText("Player name for Min").closest("tr") as HTMLTableRowElement;
+      const row = screen.getByLabelText("Nombre del jugador para Min").closest("tr") as HTMLTableRowElement;
       expect(row.cells[0].textContent).toContain("Human");
       // No min-max range string renders anywhere (2-4 nor 0-16).
       expect(screen.queryByText("2-4")).toBeNull();
@@ -149,7 +149,7 @@ describe("RosterTable", () => {
       // Player p2's positional is Blitzer -> subtext "Blitzer · (Human, Blitzer)".
       expect(screen.getByText("Blitzer · (Human, Blitzer)")).toBeTruthy();
       // The editable input still carries the preserved aria-label.
-      expect(screen.getByLabelText("Player name for Grak")).toBeTruthy();
+      expect(screen.getByLabelText("Nombre del jugador para Grak")).toBeTruthy();
       // ReadOnly subtitle text (without the positional name) must NOT render in editable mode.
       expect(screen.queryByText("(Human, Línea)")).toBeNull();
     });
@@ -256,13 +256,13 @@ describe("RosterTable", () => {
       const inputs = screen.getAllByRole("textbox");
       expect(inputs).toHaveLength(2);
       expect((inputs[0] as HTMLInputElement).value).toBe("Grak");
-      expect(screen.getByLabelText("Player name for Grak")).toBeTruthy();
+      expect(screen.getByLabelText("Nombre del jugador para Grak")).toBeTruthy();
     });
 
     it("renders a remove button for each player and calls onRemove", () => {
       const onRemove = vi.fn();
       render(<RosterTable players={mockPlayers} race={mockRace} onRemove={onRemove} />);
-      const deleteButtons = screen.getAllByRole("button", { name: /remove/i });
+      const deleteButtons = screen.getAllByRole("button", { name: /eliminar/i });
       expect(deleteButtons).toHaveLength(2);
       fireEvent.click(deleteButtons[0]);
       expect(onRemove).toHaveBeenCalledWith("p1");
@@ -290,8 +290,8 @@ describe("RosterTable", () => {
 
     it("keeps formatGold budget text in editable totals and spans 11 columns (label 9 + cost 1 + budget 1)", () => {
       render(<RosterTable players={mockPlayers} race={mockRace} remainingBudget={690_000} />);
-      expect(screen.getByText("2 players")).toBeTruthy();
-      expect(screen.getByText("690k left")).toBeTruthy();
+      expect(screen.getByText("2 jugadores")).toBeTruthy();
+      expect(screen.getByText("Quedan 690k")).toBeTruthy();
       const totalRow = screen.getAllByRole("row").at(-1) as HTMLTableRowElement;
       const cells = Array.from(totalRow.cells) as HTMLTableCellElement[];
       const sum = cells.reduce((acc, c) => acc + (c.colSpan || 1), 0);
@@ -335,7 +335,7 @@ describe("RosterTable", () => {
   describe("empty state", () => {
     it("renders an empty state message when players list is empty", () => {
       render(<RosterTable players={[]} race={mockRace} />);
-      expect(screen.getByText(/no players in roster yet/i)).toBeTruthy();
+      expect(screen.getByText(/todavía no hay jugadores en la plantilla/i)).toBeTruthy();
     });
   });
 
@@ -377,7 +377,7 @@ describe("RosterTable", () => {
       // Lineman: ma 6 st 3 ag 3+ pa 4+ av 8+, cost 50 000.
       expect(screen.getByText("50 000")).toBeTruthy();
       // Labeled sections.
-      expect(screen.getByText("SKILLS")).toBeTruthy();
+      expect(screen.getByText("HABILIDADES")).toBeTruthy();
       expect(screen.getByText("PRIMARIAS")).toBeTruthy();
       expect(screen.getByText("SECUNDARIAS")).toBeTruthy();
     });
@@ -409,10 +409,10 @@ describe("RosterTable", () => {
       renderMobile(
         <RosterTable players={mockPlayers} race={mockRace} onRename={onRename} onRemove={onRemove} />,
       );
-      const nameInput = screen.getByLabelText("Player name for Grak") as HTMLInputElement;
+      const nameInput = screen.getByLabelText("Nombre del jugador para Grak") as HTMLInputElement;
       fireEvent.change(nameInput, { target: { value: "Crusher" } });
       expect(onRename).toHaveBeenCalledWith("p1", "Crusher");
-      fireEvent.click(screen.getByRole("button", { name: "Remove Smash" }));
+      fireEvent.click(screen.getByRole("button", { name: "Eliminar Smash" }));
       expect(onRemove).toHaveBeenCalledWith("p2");
     });
 
@@ -426,7 +426,7 @@ describe("RosterTable", () => {
         <RosterTable players={mockPlayers} race={mockRace} bannerText="Reikland Reavers" remainingBudget={690_000} />,
       );
       expect(screen.getByText("Reikland Reavers")).toBeTruthy();
-      expect(screen.getByText("690k left")).toBeTruthy();
+      expect(screen.getByText("Quedan 690k")).toBeTruthy();
     });
 
     it("renders the apothecary footer info on readOnly mobile cards when apothecary is provided", () => {

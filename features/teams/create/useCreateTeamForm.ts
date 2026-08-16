@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "../data/races";
 import { createId } from "../id";
 import {
@@ -33,6 +34,7 @@ interface FormErrors {
 type Step = 1 | 2;
 
 export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promise<void>) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [raceId, setRaceId] = useState("");
   const [players, setPlayers] = useState<PlayerEntry[]>([]);
@@ -78,8 +80,8 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
   /** Advances to step 2 only when a name and race are present; otherwise shows errors. */
   const nextStep = () => {
     const nextErrors: FormErrors = {};
-    if (!name.trim()) nextErrors.name = "Team name is required";
-    if (!raceId) nextErrors.race = "Select a race";
+    if (!name.trim()) nextErrors.name = t("create.errors.nameRequired");
+    if (!raceId) nextErrors.race = t("create.errors.selectRace");
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     setStep(2);
@@ -125,11 +127,11 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     const nextErrors: FormErrors = {};
-    if (!name.trim()) nextErrors.name = "Team name is required";
+    if (!name.trim()) nextErrors.name = t("create.errors.nameRequired");
     if (playerCount < MIN_PLAYERS) {
-      nextErrors.players = `Select at least ${MIN_PLAYERS} players`;
+      nextErrors.players = t("create.errors.minPlayers", { min: MIN_PLAYERS });
     }
-    if (totalCost > STARTING_TREASURY) nextErrors.budget = "Roster exceeds the 1,000,000 gc budget";
+    if (totalCost > STARTING_TREASURY) nextErrors.budget = t("create.errors.budget");
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0 || !race) return;
