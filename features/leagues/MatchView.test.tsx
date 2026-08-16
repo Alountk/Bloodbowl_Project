@@ -288,7 +288,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
 
     // Top bar: label + half badge + the always-visible Mitad · Turno line.
     expect(screen.getByText(/Jornada 1/)).toBeTruthy();
-    expect(screen.getByText(/1ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/1ª PARTE/i)).toBeTruthy();
     expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
     // Pre-kickoff clocks are inert "–" (no H:MM:SS digits).
     expect(screen.getAllByText("–").length).toBeGreaterThan(0);
@@ -314,7 +314,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     // The header shares the exact same chrome (top bar + hero + meta row).
     expect(screen.getByTestId("tourplay-header")).toBeTruthy();
     expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
-    expect(screen.getByText(/1ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/1ª PARTE/i)).toBeTruthy();
     expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
     // The consent panel stays in the BODY below the header.
     expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
@@ -330,7 +330,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
 
     expect(screen.getByTestId("tourplay-header")).toBeTruthy();
     expect(screen.getByTestId("live-score").textContent).toMatch(/2\s*:\s*1/);
-    expect(screen.getByText(/2ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/2ª PARTE/i)).toBeTruthy();
     expect(screen.getByText(/Mitad 2 · Turno 8/)).toBeTruthy();
     // Frozen base clocks render H:MM:SS (finished values carry real time).
     expect(container.textContent).toMatch(/0:00:01/);
@@ -722,7 +722,7 @@ describe("MatchView — mockup layout + client ticking clock", () => {
 
     // Top bar: league/jornada label + half indicator.
     expect(container.textContent).toMatch(/Jornada 1/);
-    expect(container.textContent).toMatch(/1ª PARTE/);
+    expect(container.textContent).toMatch(/1ª PARTE/i);
 
     // Turn tracks: 8 cells per team (16 total), the SAME GLOBAL sequence 1-8 on
     // BOTH tracks (Tourplay), with exactly ONE highlighted cell — the ACTIVE
@@ -840,7 +840,7 @@ describe("MatchView — casi Tourplay hero (Design 10)", () => {
     await screen.findAllByText(/Mitad 1 · Turno 3/);
 
     // The top bar is navy (Design 10) and hosts the red turn button + status.
-    expect(container.textContent).toMatch(/1ª PARTE/);
+    expect(container.textContent).toMatch(/1ª PARTE/i);
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
     expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
     // The active coach sees no "Pedir turno" (it stays in the bottom controls).
