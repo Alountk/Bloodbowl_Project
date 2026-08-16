@@ -1,22 +1,33 @@
+import { getRaceById } from "@/features/teams/data/races";
 import { deriveMinute, playerRef, turnTag, derivePartialScore } from "@/lib/liveFeed";
-import { CAUSE_LABELS, EVENT_GLYPH, KICKOFF_OUTCOME_LABELS, formatTreasury } from "./liveEventLabels";
-import { liveEventLabel, eventSpp } from "./liveEventLabels";
+import {
+  CAUSE_LABELS,
+  EVENT_GLYPH,
+  KICKOFF_OUTCOME_LABELS,
+  formatTreasury,
+  liveEventLabel,
+  eventSpp,
+  casualtyIcon,
+  bandSubLabel,
+} from "./liveEventLabels";
+import { Icon, type IconName } from "./icons";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
 
 /**
  * The Design-A per-event kind surface that renders as a TEAM card at 68% width
  * (MVT-1): a wide-event usually names a player on one side, so the card sits on
  * that team's side with a navy (home) / red (away) internal gradient. The
- * kickoff `expensive_mistake` is a team card too (MVT-6/LM-24), and `turnStart`
- * is a team card for the side whose turn starts (RAU-36/37). Every other
- * display kind (start/endHalf/endMatch/fan_factor) is a GENERIC event at 100%.
- * The `turn` ("Fin de turno") kind is NOT in the set — it is skipped outright
- * in the render map so the feed never surfaces it (RAU-36/37).
+ * kickoff `expensive_mistake` is a team card too (MVT-6/LM-24, no turn tag /
+ * minute per the preview's team-assigned kickoff row), and `turnStart` is a
+ * team card for the side whose turn starts (RAU-36/37). Every other display
+ * kind (start/endHalf/endMatch/fan_factor) is a GENERIC event at 100%. The
+ * `turn` ("Fin de turno") kind is NOT in the set — it is skipped outright in
+ * the render map so the feed never surfaces it (RAU-36/37).
  */
 const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake", "turnStart"]);
 
-/** A roster player lookup for a side: id → { name, dorsal } or undefined. */
-type RosterLookup = { name: string; dorsal: number } | undefined;
+/** A roster player lookup for a side: id → { name, dorsal, positionalKey }. */
+type RosterLookup = { name: string; dorsal: number; positionalKey: string } | undefined;
 
 /** The served players array of a match side, mapped via playerRef (D21). */
 function sideLookup(team: MatchTeamDetail): Map<string, number> {
@@ -28,56 +39,58 @@ function findPlayer(team: MatchTeamDetail, rosterPlayerId: string, ref: Map<stri
   if (!p) return undefined;
   const dorsal = ref.get(p.rosterPlayerId);
   if (dorsal == null) return undefined;
-  return { name: p.name, dorsal };
+  return { name: p.name, dorsal, positionalKey: p.positionalKey };
+}
+
+/** The positional display name for a player line ("blitzer" → "Blitzer"). */
+function positionName(team: MatchTeamDetail, positionalKey: string): string {
+  const race = getRaceById(team.raceId);
+  return race?.positionals.find((pos) => pos.key === positionalKey)?.name ?? positionalKey;
 }
 
 /**
- * MVT-5 foul victim line: "a {name} (#{dorsal})" resolved from the payload's
- * `victimRosterId` against the OPPOSITE roster (LM-12 invariant: the victim of
- * a foul is an opponent). Absent/unresolvable → null (no line, legacy fallback).
+ * MVT-5 foul victim: resolved from the payload's `victimRosterId` against the
+ * OPPOSITE roster (LM-12 invariant: the victim of a foul is an opponent).
+ * Absent/unresolvable → null (no victim line, legacy fallback).
  */
-export function foulVictimLine(
+function foulVictim(
   payload: Record<string, unknown>,
   oppositeTeam: MatchTeamDetail,
   oppositeRef: Map<string, number>,
-): string | null {
+): { name: string; dorsal: number } | null {
   const victimId = payload.victimRosterId;
   if (typeof victimId !== "string") return null;
   const v = findPlayer(oppositeTeam, victimId, oppositeRef);
-  return v ? `a ${v.name} (#${v.dorsal})` : null;
+  return v ? { name: v.name, dorsal: v.dorsal } : null;
 }
 
 /**
- * MVT-5 casualty cause+causer line: the causer, when resolved, reads
- * "por {name} (#{dorsal}) · {cause}"; a `crowd` casualty with no causer reads
- * "El público"; a `dodge` (or any causer-less casualty) shows the bare cause
- * label. An unknown cause passes through unchanged (MVT-5, never throws).
+ * MVT-5 casualty cause+causer parts: the causer, when resolved, reads
+ * "por {name} (#{dorsal}) · {cause}" (name in `<b>` at the render site); a
+ * `crowd` casualty with no causer reads "El público"; a `dodge` (or any
+ * causer-less casualty) shows the bare cause label. An unknown cause passes
+ * through unchanged (MVT-5, never throws).
  */
-export function casualtyCauseLine(
+function casualtyCauseParts(
   payload: Record<string, unknown>,
   oppositeTeam: MatchTeamDetail,
   oppositeRef: Map<string, number>,
-): string {
+): { causer: { name: string; dorsal: number } | null; cause: string } {
   const cause = typeof payload.cause === "string" ? payload.cause : "";
   // Crowd/self-inflicted omit the causer by server invariant (LM-12) — the
   // cause label already IS the whole line ("El público" / "Esquivando — se cayó").
   if (cause === "crowd" || cause === "dodge") {
-    return CAUSE_LABELS[cause] ?? cause;
+    return { causer: null, cause: CAUSE_LABELS[cause] ?? cause };
   }
   const causerId = payload.causerRosterId;
   if (typeof causerId === "string") {
     const c = findPlayer(oppositeTeam, causerId, oppositeRef);
     const label = CAUSE_LABELS[cause] ?? cause;
-    if (c) return `por ${c.name} (#${c.dorsal}) · ${label}`;
+    if (c) return { causer: { name: c.name, dorsal: c.dorsal }, cause: label };
     // Causer present but unresolvable → fall back to the bare cause (never throw).
-    return label;
+    return { causer: null, cause: label };
   }
-  return CAUSE_LABELS[cause] ?? cause;
-}
-
-/** The render-time glyph for a casualty: skull (lasting) vs cross (bruise). */
-function casualtyGlyph(payload: Record<string, unknown>): string {
-  return typeof payload.band === "string" && payload.band === "bruise" ? "🏥" : "⚰️";
+  return { causer: null, cause: CAUSE_LABELS[cause] ?? cause };
 }
 
 /**
@@ -105,13 +118,11 @@ function outcomeLabel(payload: Record<string, unknown>): string | null {
 
 /**
  * The compact per-team fan-factor copy for the centered `fan_factor` row
- * (LM-24): `Local: 👥2 + 🎲2 = 4 · Visitante: 👥1 + 🎲3 = 4`. A missing/malformed
- * per-team object falls back to a bare `Local: ? · Visitante: ?` marker so the
- * row always renders and never throws.
+ * (LM-24, kept verbatim): `Local: 👥2 + 🎲2 = 4 · Visitante: 👥1 + 🎲3 = 4`.
+ * A missing/malformed per-team object falls back to a bare `Local: ? ·
+ * Visitante: ?` marker so the row always renders and never throws.
  */
 function fanTotalsLine(payload: Record<string, unknown>): string {
-  const people = EVENT_GLYPH.people ?? "👥";
-  const dice = EVENT_GLYPH.fan_factor ?? "🎲";
   const fmt = (side: unknown): string => {
     if (typeof side !== "object" || side === null) return "?";
     const o = side as Record<string, unknown>;
@@ -121,17 +132,25 @@ function fanTotalsLine(payload: Record<string, unknown>): string {
     const b = typeof base === "number" ? String(base) : "?";
     const d = typeof roll === "number" ? String(roll) : "?";
     const t = typeof total === "number" ? String(total) : "?";
-    return `${people}${b} + ${dice}${d} = ${t}`;
+    return `👥${b} + 🎲${d} = ${t}`;
   };
   return `Local: ${fmt(payload.home)} · Visitante: ${fmt(payload.away)}`;
 }
 
+/** The kickoff wall-clock sub-line for the `start` row ("HH:MM", v7). */
+function kickoffTime(startedAt: number): string {
+  const date = new Date(startedAt);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+}
+
 /**
- * The Tourplay chronology as a card grid (MVT-1/D3): a gray box (`#eef1f6`)
- * with 2px gaps and 4px-radius white cards. Team events sit at 68% with the
- * side gradient and grid-template-areas (turn tag top on the team's side,
- * minute bottom on the opposite side); generic events span 100% centered.
- * `live-event-row` is preserved on each card `li` (spec continuity).
+ * The Tourplay chronology as a card grid (v7): a gray box (`#eef1f6`) with a
+ * full 1px border, `12px 14px` inner padding and 2px gaps. Team events sit at
+ * 68% with the side gradient and grid-template-areas (turn tag top on the
+ * team's side, minute bottom on the opposite side); generic events span 100%
+ * left-aligned with the icon left + expanded content + a right side. `live-event-row`
+ * is preserved on each card `li` (spec continuity).
  */
 export function LiveEventCards({
   events,
@@ -157,7 +176,7 @@ export function LiveEventCards({
   return (
     <ol
       aria-label="Cronología del partido"
-      className="flex flex-col gap-0.5 border-t border-[#e2e8f0] bg-[#eef1f6] p-1.5"
+      className="flex flex-col gap-[2px] border border-[#e2e8f0] bg-[#eef1f6] px-[14px] py-[12px]"
     >
       {ordered.map((event) => {
         // RAU-36/37: the generic "Fin de turno" row is noise — the turn change
@@ -165,9 +184,8 @@ export function LiveEventCards({
         // taking over, so the `turn` event never becomes a card.
         if (event.kind === "turn") return null;
         const isTeamCard = TEAM_EVENT_KINDS.has(event.kind);
-        const side = event.side;
-        const isHome = side === "home";
-        const isAway = side === "away";
+        const isHome = event.side === "home";
+        const isAway = event.side === "away";
         const team = isAway ? awayTeam : isHome ? homeTeam : null;
         const ref = isAway ? awayRef : isHome ? homeRef : null;
         const oppositeTeam = isAway ? homeTeam : awayTeam;
@@ -178,95 +196,152 @@ export function LiveEventCards({
         // {team}" instead of the generic audit label ("Tu turno").
         const label =
           event.kind === "turnStart" && team ? `Turno ${team.name}` : liveEventLabel(event);
-        const glyph =
-          event.kind === "casualty"
-            ? casualtyGlyph(event.payload)
-            : EVENT_GLYPH[event.kind] ?? "•";
+        const iconName: IconName =
+          event.kind === "casualty" ? casualtyIcon(event.payload) : EVENT_GLYPH[event.kind] ?? "football";
         const partial = event.kind === "td" ? partialScores.get(event.seq) : undefined;
         const spp = eventSpp(event);
-
         // MVT-5 actors (only on the wide team cards they belong to).
-        const victim = isTeamCard && event.kind === "foul" && team
-          ? foulVictimLine(event.payload, oppositeTeam, oppositeRef)
-          : null;
-        const causeLine = isTeamCard && event.kind === "casualty" && team
-          ? casualtyCauseLine(event.payload, oppositeTeam, oppositeRef)
-          : null;
+        const victim =
+          isTeamCard && event.kind === "foul" && team
+            ? foulVictim(event.payload, oppositeTeam, oppositeRef)
+            : null;
+        const causeParts =
+          isTeamCard && event.kind === "casualty" && team
+            ? casualtyCauseParts(event.payload, oppositeTeam, oppositeRef)
+            : null;
+        const bandSub = event.kind === "casualty" ? bandSubLabel(event.payload) : null;
+        const startSub = event.kind === "start" && startedAt != null ? kickoffTime(startedAt) : null;
 
-        return (
-          <li
-            key={event.seq}
-            data-testid="live-event-row"
-            className={`${
-              isTeamCard
-                ? `w-[68%] max-w-[68%] self-${isHome ? "start" : "end"} grid grid-cols-[auto_1fr_auto] grid-rows-[auto_1fr_auto] gap-y-0 ${
-                    isHome
-                      ? "bg-gradient-to-r from-[#12225a]/[0.12] via-[#12225a]/[0.06] to-white"
-                      : "bg-gradient-to-l from-[#d11938]/[0.12] via-[#d11938]/[0.06] to-white"
-                  } [grid-template-areas:'tag_body_._''tag_body_._'_.body_min]`
-                : "w-full max-w-full self-stretch justify-self-stretch flex items-center gap-3"
-            } rounded-[4px] border border-[#e2e8f0] bg-white p-1.5 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)]`}
-          >
-            {isTeamCard && team ? (
-              <>
-                {/* Turn tag: grid-area tag (top, own side — home left / away right). */}
-                <span
-                  className={`self-start whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold text-white [grid-area:tag] ${
-                    isAway ? "bg-[#d11938]" : "bg-[#12225a]"
-                  }`}
-                >
-                  {turnTag(event.half, event.turnNumber)}
-                </span>
-                {/* Minute: grid-area min (bottom, OPPOSITE side). */}
-                <span
-                  className={`self-end text-[11px] tabular-nums text-slate-500 [grid-area:min] ${
-                    isHome ? "text-right" : "text-left"
-                  }`}
-                >
-                  {minute}
-                </span>
-                <div
-                  className={`flex min-w-0 items-center gap-3 [grid-area:body] ${
-                    isAway ? "flex-row-reverse" : ""
-                  }`}
-                >
-                  <span className="shrink-0 text-center" aria-hidden="true">
-                    {glyph}
+        const cardBase =
+          "rounded-[4px] bg-white py-1.5 px-2.5 text-[13px] shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
+
+        if (isTeamCard && team) {
+          const gradient = isHome
+            ? "bg-[linear-gradient(90deg,rgba(18,34,90,0.12),rgba(255,255,255,0)_45%)]"
+            : "bg-[linear-gradient(270deg,rgba(209,25,56,0.12),rgba(255,255,255,0)_45%)]";
+          const areas = isHome
+            ? "[grid-template-areas:'tag_body_._''tag_body_._'_.body_min]"
+            : "[grid-template-areas:'_.body_tag''_.body_tag'min_body_.]";
+          // LM-24: the expensive-mistake kickoff row keeps NO turn tag/minute
+          // (the preview's team-assigned kickoff row); turnStart keeps the
+          // tag + minute corners (RAU-36/37).
+          const showCorners = event.kind !== "expensive_mistake";
+          return (
+            <li
+              key={event.seq}
+              data-testid="live-event-row"
+              className={`w-[68%] max-w-[68%] self-${isHome ? "start" : "end"} grid grid-cols-[auto_1fr_auto] grid-rows-[auto_1fr_auto] gap-x-2 gap-y-0 ${gradient} ${areas} border border-[#e2e8f0] ${cardBase}`}
+            >
+              {showCorners ? (
+                <>
+                  {/* Turn tag: grid-area tag (top, own side — home left / away right). */}
+                  <span
+                    className={`self-start whitespace-nowrap rounded-[3px] px-1.5 py-[1px] text-[10px] font-black text-white [grid-area:tag] ${
+                      isAway ? "bg-[#d11938]" : "bg-[#12225a]"
+                    }`}
+                  >
+                    {turnTag(event.half, event.turnNumber)}
                   </span>
-                  {player ? (
-                    <div className="min-w-0">
-                      <p className="truncate font-bold text-[#0f172a]">
-                        {player.name}
-                        <span className="ml-1 text-[11px] font-semibold text-slate-400">
-                          #{player.dorsal}
-                        </span>
+                  {/* Minute: grid-area min (bottom, OPPOSITE side). */}
+                  <span
+                    className={`self-end text-[11px] tabular-nums text-slate-500 [grid-area:min] ${
+                      isHome ? "text-right" : "text-left"
+                    }`}
+                  >
+                    {minute}
+                  </span>
+                </>
+              ) : null}
+              <div
+                className={`flex min-w-0 items-center gap-2 [grid-area:body] ${
+                  isAway ? "flex-row-reverse" : ""
+                }`}
+              >
+                {player ? (
+                  <>
+                    {/* Standalone dorsal column (24px, 13px, 900, slate). */}
+                    <span className="w-6 shrink-0 text-center text-[13px] font-black tabular-nums text-slate-500">
+                      #{player.dorsal}
+                    </span>
+                    {/* Helmet token: 30×30 rounded, side tint. */}
+                    <span
+                      title={player.name}
+                      aria-hidden="true"
+                      className={`flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[7px] ${
+                        isHome
+                          ? "bg-[rgba(18,34,90,0.13)] text-[#12225a]"
+                          : "bg-[rgba(209,25,56,0.11)] text-[#d11938]"
+                      }`}
+                    >
+                      <Icon name="helmet" className="h-[18px] w-[18px]" />
+                    </span>
+                    {/* Name (800, ink) + position line below (11px slate). */}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-extrabold text-[#0f172a]">{player.name}</p>
+                      <p className="truncate text-[11px] text-slate-500">
+                        {positionName(team, player.positionalKey)}
                       </p>
-                      <p className="truncate text-[11px] text-slate-500">{label}</p>
-                      {partial ? (
-                        <p className="text-[11px] font-bold text-[#12225a]">
-                          ({partial.home} - {partial.away})
-                        </p>
-                      ) : null}
-                      {victim ? (
-                        <p className="truncate text-[11px] font-semibold text-[#b0142f]">{victim}</p>
-                      ) : null}
-                      {causeLine ? (
-                        <p className="truncate text-[11px] font-medium text-slate-600">{causeLine}</p>
-                      ) : null}
-                      {spp > 0 ? (
-                        <p className="text-[11px] font-semibold text-[#b8860b]" aria-label="SPP">
-                          ★{spp}
-                        </p>
-                      ) : null}
                     </div>
-                  ) : (
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-[#0f172a]">{label}</p>
+                    {/* Right detail column: event icon + label + SPP stars, then
+                        partial score / band sub / victim / cause lines. */}
+                    <span
+                      className={`flex min-w-0 flex-col ${
+                        isHome ? "items-end text-right" : "items-start text-left"
+                      }`}
+                    >
+                      <span className="flex items-center gap-[5px] font-extrabold text-[#0f172a]">
+                        <span
+                          className={`flex h-[19px] w-[19px] items-center justify-center ${
+                            isHome ? "text-[#12225a]" : "text-[#d11938]"
+                          }`}
+                        >
+                          <Icon name={iconName} className="h-[15px] w-[15px]" />
+                        </span>
+                        {label}
+                        {spp > 0 ? (
+                          <span className="text-[11px] font-bold text-[#b8860b]">(★{spp})</span>
+                        ) : null}
+                      </span>
                       {partial ? (
-                        <p className="text-[11px] font-bold text-[#12225a]">
+                        <span className="text-[11px] font-bold tabular-nums text-slate-500">
                           ({partial.home} - {partial.away})
+                        </span>
+                      ) : null}
+                      {bandSub ? <span className="text-[11px] text-slate-500">{bandSub}</span> : null}
+                      {victim ? (
+                        <span className="mt-[1px] flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                          <span
+                            className={`flex h-4 w-4 items-center justify-center rounded-[4px] ${
+                              isHome
+                                ? "bg-[rgba(209,25,56,0.14)] text-[#d11938]"
+                                : "bg-[rgba(18,34,90,0.16)] text-[#12225a]"
+                            }`}
+                          >
+                            <Icon name="helmet" className="h-2.5 w-2.5" />
+                          </span>
+                          a {victim.name} (#{victim.dorsal})
+                        </span>
+                      ) : null}
+                      {causeParts && causeParts.cause ? (
+                        <p className="mt-[1px] text-[11px] font-bold text-slate-500">
+                          {causeParts.causer ? (
+                            <>
+                              por <b className="font-extrabold text-[#0f172a]">{causeParts.causer.name}</b> (#{causeParts.causer.dorsal}) · {causeParts.cause}
+                            </>
+                          ) : (
+                            causeParts.cause
+                          )}
                         </p>
                       ) : null}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] text-[#12225a]">
+                      <Icon name={iconName} className="h-[15px] w-[15px]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-extrabold text-[#0f172a]">{label}</p>
                       {event.kind === "expensive_mistake" ? (
                         <>
                           {outcomeLabel(event.payload) ? (
@@ -282,25 +357,37 @@ export function LiveEventCards({
                         </>
                       ) : null}
                     </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <span className="shrink-0 text-center" aria-hidden="true">
-                  {glyph}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-[#0f172a]">{label}</p>
-                  {event.kind === "fan_factor" ? (
-                    <p className="truncate text-[11px] text-slate-600">{fanTotalsLine(event.payload)}</p>
-                  ) : null}
-                </div>
-                <span className="shrink-0 text-[11px] font-bold tabular-nums text-slate-500">
-                  {minute}
-                </span>
-              </>
-            )}
+                  </>
+                )}
+              </div>
+            </li>
+          );
+        }
+
+        // Generic centered card: full width, icon left + content flex-1 + right
+        // side, no left/right borders (v7). The kickoff-time sub replaces the
+        // right minute on the `start` row; endMatch/fan_factor keep it.
+        return (
+          <li
+            key={event.seq}
+            data-testid="live-event-row"
+            className={`w-full max-w-full self-stretch justify-self-stretch flex items-center gap-[9px] border-x-0 border-y border-[#e2e8f0] ${cardBase}`}
+          >
+            <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] text-[#12225a]">
+              <Icon name={iconName} className="h-[15px] w-[15px]" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-extrabold text-[#0f172a]">{label}</p>
+              {startSub ? <p className="truncate text-[11px] text-slate-500">{startSub}</p> : null}
+              {event.kind === "fan_factor" ? (
+                <p className="truncate text-[11px] text-slate-600">{fanTotalsLine(event.payload)}</p>
+              ) : null}
+            </div>
+            {event.kind !== "start" ? (
+              <span className="shrink-0 text-[11px] font-bold tabular-nums text-slate-500">
+                {minute}
+              </span>
+            ) : null}
           </li>
         );
       })}

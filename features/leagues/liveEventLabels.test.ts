@@ -7,6 +7,8 @@ import {
   EVENT_GLYPH,
   KICKOFF_OUTCOME_LABELS,
   formatTreasury,
+  casualtyIcon,
+  bandSubLabel,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -149,19 +151,52 @@ describe("CAUSE_LABELS — six casualty causes to display labels (MVT-5)", () =>
   });
 });
 
-describe("EVENT_GLYPH — per-kind inline glyph map (MV-7, no icon lib)", () => {
-  it("maps the display kinds to a glyph and falls back to a neutral bullet", () => {
-    expect(EVENT_GLYPH.td).toBeTruthy();
-    expect(EVENT_GLYPH.start).toBeTruthy();
-    expect(EVENT_GLYPH.endMatch).toBeTruthy();
-    // Unknown kinds have no glyph entry → the caller falls back to "•".
+describe("EVENT_GLYPH — per-kind inline SVG icon map (MV-7, no icon lib)", () => {
+  it("maps the display kinds to an icon name and falls back to the football glyph", () => {
+    expect(EVENT_GLYPH.td).toBe("football");
+    expect(EVENT_GLYPH.start).toBe("timer");
+    expect(EVENT_GLYPH.endMatch).toBe("flag");
+    expect(EVENT_GLYPH.completion).toBe("hand");
+    expect(EVENT_GLYPH.foul).toBe("cleat");
+    expect(EVENT_GLYPH.mvp).toBe("trophy");
+    // Unknown kinds have no glyph entry → the caller falls back to "football".
     expect(EVENT_GLYPH["interception" as keyof typeof EVENT_GLYPH]).toBeUndefined();
   });
 
-  it("maps the kickoff glyphs exactly (LM-24): money-bag for expensive_mistake, dice for fan_factor, people for the fan row", () => {
-    expect(EVENT_GLYPH.expensive_mistake).toBe("💰");
-    expect(EVENT_GLYPH.fan_factor).toBe("🎲");
-    expect(EVENT_GLYPH.people).toBe("👥");
+  it("maps the kickoff icons exactly (v7): money-bag for expensive_mistake, account-group for the fan row", () => {
+    expect(EVENT_GLYPH.expensive_mistake).toBe("money-bag");
+    expect(EVENT_GLYPH.fan_factor).toBe("account-group");
+    expect(EVENT_GLYPH.people).toBe("account-group");
+  });
+});
+
+describe("casualtyIcon — band → SVG trio (v7: grave / helmet / hospital)", () => {
+  it("uses the grave for a dead band, the hospital for a bruise and the helmet for every lasting Baja", () => {
+    expect(casualtyIcon({ band: "dead" })).toBe("grave");
+    expect(casualtyIcon({ band: "bruise" })).toBe("hospital");
+    expect(casualtyIcon({ band: "apaleado" })).toBe("helmet");
+    expect(casualtyIcon({ band: "grave" })).toBe("helmet");
+    expect(casualtyIcon({ band: "permanent" })).toBe("helmet");
+  });
+
+  it("defaults to the helmet for a missing/unknown band", () => {
+    expect(casualtyIcon({})).toBe("helmet");
+    expect(casualtyIcon({ band: "meteorite" })).toBe("helmet");
+  });
+});
+
+describe("bandSubLabel — band sub-lines under the casualty label (v7)", () => {
+  it("maps dead / lasting non-dead / bruise to their sub-lines", () => {
+    expect(bandSubLabel({ band: "dead" })).toBe("¡Muerto!");
+    expect(bandSubLabel({ band: "apaleado" })).toBe("Se pierde el próximo partido");
+    expect(bandSubLabel({ band: "grave" })).toBe("Se pierde el próximo partido");
+    expect(bandSubLabel({ band: "permanent" })).toBe("Se pierde el próximo partido");
+    expect(bandSubLabel({ band: "bruise" })).toBe("Lesión molesta");
+  });
+
+  it("returns null for a missing/unknown band (no sub-line)", () => {
+    expect(bandSubLabel({})).toBeNull();
+    expect(bandSubLabel({ band: "meteorite" })).toBeNull();
   });
 });
 

@@ -198,7 +198,7 @@ describe("LiveEventCards — turn transition (RAU-36/37)", () => {
     expect(row).toBeTruthy();
     // Team-card treatment: 68% width, home (navy) side gradient, self-start.
     expect(row.className).toContain("w-[68%]");
-    expect(row.className).toContain("from-[#12225a]/[0.12]");
+    expect(row.className).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
     expect(row.className).toContain("self-start");
     // Team-specific text instead of the generic audit label.
     expect(row.textContent).toContain("Turno Reavers");
@@ -210,7 +210,7 @@ describe("LiveEventCards — turn transition (RAU-36/37)", () => {
     const { container } = renderCards([ev(6, "turnStart", "away", {}, null, 5, 4500)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row.className).toContain("w-[68%]");
-    expect(row.className).toContain("from-[#d11938]/[0.12]");
+    expect(row.className).toContain("linear-gradient(270deg,rgba(209,25,56,0.12)");
     expect(row.className).toContain("self-end");
     expect(row.textContent).toContain("Turno Dwarves");
     expect(row.textContent).not.toContain("Tu turno");
@@ -233,7 +233,7 @@ describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)",
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     // MVT-6: team card width + the navy (home) side gradient.
     expect(row.className).toContain("w-[68%]");
-    expect(row.className).toContain("from-[#12225a]/[0.12]");
+    expect(row.className).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
     // Label, outcome label and the es-ES treasury line.
     expect(row.textContent).toContain("Error costoso");
     expect(row.textContent).toContain("Incidente grave");
@@ -254,7 +254,7 @@ describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)",
     ]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row.className).toContain("w-[68%]");
-    expect(row.className).toContain("from-[#d11938]/[0.12]");
+    expect(row.className).toContain("linear-gradient(270deg,rgba(209,25,56,0.12)");
     expect(row.textContent).toContain("Error costoso");
     expect(row.textContent).toContain("Incidente menor");
   });

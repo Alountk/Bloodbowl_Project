@@ -10,6 +10,8 @@
  * team-specific "Turno {team}" text (RAU-36/37).
  */
 
+import type { IconName } from "./icons";
+
 export interface LiveEventLabelInput {
   kind: string;
   half: number;
@@ -33,23 +35,58 @@ export const CAUSE_LABELS: Record<string, string> = {
 };
 
 /**
- * Design-A per-kind glyph (rulebook-light — inline text glyphs, no icon
- * library, MV-7). The casualty sub-buckets reuse the band (skull for a lasting
- * Baja, cross for a bruise) at the card render site; unknown kinds fall back
- * to a neutral "•". Moved here from MatchView (D3) so cards reuse it.
+ * Design-A per-kind inline SVG icon name (rulebook-light, no icon library,
+ * MV-7): the kind maps to a Material-Design-Icons-style path in `./icons`.
+ * The casualty sub-buckets are resolved by `casualtyIcon` (grave for a death,
+ * helmet for a lasting Baja, hospital for a bruise Herida) at the render site;
+ * unknown kinds fall back to the football glyph (never throws).
  */
-export const EVENT_GLYPH: Record<string, string> = {
-  start: "🌤️",
-  td: "⚽",
-  completion: "🤝",
-  foul: "👟",
-  mvp: "⭐",
-  endHalf: "⏱️",
-  endMatch: "🏁",
-  expensive_mistake: "💰",
-  fan_factor: "🎲",
-  people: "👥",
+export const EVENT_GLYPH: Record<string, IconName> = {
+  start: "timer",
+  td: "football",
+  completion: "hand",
+  foul: "cleat",
+  mvp: "trophy",
+  endHalf: "timer",
+  endMatch: "flag",
+  expensive_mistake: "money-bag",
+  fan_factor: "account-group",
+  turnStart: "hand",
+  people: "account-group",
 };
+
+/**
+ * The casualty band → inline SVG icon trio (MVT-5/v7): a `dead` band renders
+ * the grave, a `bruise` the hospital (Herida), and every other lasting band
+ * (apaleado/grave/permanent) — plus unknown/missing — the helmet (Baja).
+ */
+export function casualtyIcon(payload: Record<string, unknown>): IconName {
+  const band = typeof payload.band === "string" ? payload.band : null;
+  if (band === "dead") return "grave";
+  if (band === "bruise") return "hospital";
+  return "helmet";
+}
+
+/**
+ * The casualty band sub-line rendered under the label (v7): "¡Muerto!" for a
+ * death, "Se pierde el próximo partido" for every lasting non-dead band, and
+ * "Lesión molesta" for a bruise. Unknown/missing bands → null (no sub-line).
+ */
+export function bandSubLabel(payload: Record<string, unknown>): string | null {
+  const band = typeof payload.band === "string" ? payload.band : null;
+  switch (band) {
+    case "dead":
+      return "¡Muerto!";
+    case "bruise":
+      return "Lesión molesta";
+    case "apaleado":
+    case "grave":
+    case "permanent":
+      return "Se pierde el próximo partido";
+    default:
+      return null;
+  }
+}
 
 /**
  * The kickoff expensive-mistake outcome → Spanish display label (LM-24):
