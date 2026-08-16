@@ -59,7 +59,7 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
   const add = page.getByRole("button", { name: "Add Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
   await page.getByRole("button", { name: /create team/i }).click();
@@ -491,7 +491,7 @@ test("complete lifecycle: join → start → schedule → result → progression
 
     // --- Progression: B (owner) spends the scorer's 7 PE on élite Block ---
     await pageB.goto(`/teams/${teamBId}`);
-    await expect(pageB.getByRole("heading", { name: "Progresión" })).toBeVisible();
+    await expect(pageB.getByRole("heading", { name: "Progression" })).toBeVisible();
     const p1Id = snap.teams.find((t) => t.id === teamBId)!.roster[0].id;
     const peTestId = `pe-${p1Id}`;
     const valueTestId = `value-${p1Id}`;
@@ -501,7 +501,7 @@ test("complete lifecycle: join → start → schedule → result → progression
     const peBefore = Number((await pageB.getByTestId(peTestId).first().textContent())?.trim());
     expect(peBefore).toBeGreaterThanOrEqual(6);
     await expect(pageB.getByTestId(valueTestId).first()).toHaveText("0");
-    await pageB.getByRole("button", { name: "Mejorar" }).first().click();
+    await pageB.getByRole("button", { name: "Improve" }).first().click();
     await pageB.getByLabel("Primaria").first().selectOption("block");
     await pageB.getByRole("button", { name: "Comprar primaria" }).first().click();
     await expect(pageB.getByTestId("skill-block").first()).toBeVisible();

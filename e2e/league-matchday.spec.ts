@@ -56,7 +56,7 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
   const add = page.getByRole("button", { name: "Add Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
   await page.getByRole("button", { name: /create team/i }).click();
@@ -612,7 +612,7 @@ test("scouting: a member views a rival's roster read-only; an outsider gets a 40
     await expect(
       member.getByRole("heading", { name: new RegExp(league.teamNames[0]) }),
     ).toBeVisible();
-    await expect(member.getByRole("heading", { name: "Plantilla" })).toBeVisible();
+    await expect(member.getByRole("heading", { name: "Roster" })).toBeVisible();
     await expect(
       member.getByRole("button", { name: /eliminar|renombrar|editar|delete/i }),
     ).toHaveCount(0);
@@ -626,7 +626,7 @@ test("scouting: a member views a rival's roster read-only; an outsider gets a 40
       await signup(pageD, uniqueEmail("outsider-scout"));
       await pageD.goto(adminTeamHref);
       await expect(pageD.getByText("Team not found")).toBeVisible();
-      await expect(pageD.getByRole("heading", { name: /Plantilla/ })).not.toBeVisible();
+      await expect(pageD.getByRole("heading", { name: /Roster/ })).not.toBeVisible();
       await expect(pageD.getByText(league.teamNames[0])).not.toBeVisible();
     } finally {
       await contextD.close();

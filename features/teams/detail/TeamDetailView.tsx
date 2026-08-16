@@ -11,12 +11,13 @@ import {
 import { formatRulebookCost } from "../format";
 import { ProgressionPanel } from "./ProgressionPanel";
 import type { ImproveBody, PlayerProgression } from "@/lib/progression";
+import { useI18n } from "@/lib/i18n";
 
 const COACHING_LABELS: Record<string, string> = {
-  rerolls: "Segundas oportunidades",
-  dedicatedFans: "Fanáticos dedicados",
-  assistantCoaches: "Entrenadores asistentes",
-  cheerleaders: "Animadoras",
+  rerolls: "coaching.rerolls",
+  dedicatedFans: "coaching.dedicatedFans",
+  assistantCoaches: "coaching.assistantCoaches",
+  cheerleaders: "coaching.cheerleaders",
 };
 
 export interface TeamDetailViewProps {
@@ -47,11 +48,12 @@ export interface TeamDetailViewProps {
 
 export function TeamDetailView({ team, race, leagueName, progression, onImprove }: TeamDetailViewProps) {
   const isDesktop = useIsDesktop();
+  const { t } = useI18n();
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
   const coachingCost = computeCoachingCost(race, team.coaching);
   const treasury = STARTING_TREASURY - rosterCost - coachingCost;
   const coachingItems = computeCoachingCostItems(race, team.coaching);
-  const leagueLabel = team.leagueId ? (leagueName ?? "Sin liga") : "Sin liga";
+  const leagueLabel = team.leagueId ? (leagueName ?? t("detail.sinLiga")) : t("detail.sinLiga");
 
   const accessOf = (positionalKey: string): { primary: string[]; secondary: string[] } => {
     const positional = race.positionals.find((p) => p.key === positionalKey);
@@ -92,10 +94,10 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
         </p>
         <div className="mt-3">
           <span className="mr-[6px] inline-block rounded-full border border-white/25 bg-white/10 px-[10px] py-[3px] text-[12px] font-bold text-white">
-            Equipo listo
+            {t("detail.equipoListo")}
           </span>
           <span className="inline-block rounded-full border-[#d11938] bg-[#d11938] px-[10px] py-[3px] text-[12px] font-bold text-white">
-            Tesorería: {formatRulebookCost(treasury)}
+            {t("detail.treasuryTag", { amount: formatRulebookCost(treasury) })}
           </span>
         </div>
       </header>
@@ -107,7 +109,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
             id="plantilla-heading"
             className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
           >
-            Plantilla
+            {t("detail.plantilla")}
           </h2>
           <div className="mx-auto max-w-[860px]">
             <RosterTable readOnly players={team.roster} race={race} />
@@ -121,7 +123,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
               id="progression-heading"
               className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
             >
-              Progresión
+              {t("detail.progresion")}
             </h2>
             <div className="space-y-2.5">
               {panels.map((panel) => (
@@ -141,7 +143,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
             id="coaching-heading"
             className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
           >
-            Cuerpo técnico
+            {t("detail.cuerpoTecnico")}
           </h2>
           {isDesktop ? (
             <div className="overflow-x-auto">
@@ -150,16 +152,16 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
             <thead>
               <tr className="bg-[#12225a] text-white">
                 <th scope="col" className="px-[10px] py-[7px] text-left text-[12px] font-bold uppercase">
-                  Concepto
+                  {t("detail.coachingConcept")}
                 </th>
                 <th scope="col" className="px-[10px] py-[7px] text-left text-[12px] font-bold uppercase">
-                  Cantidad
+                  {t("detail.coachingQty")}
                 </th>
                 <th scope="col" className="px-[10px] py-[7px] text-right text-[12px] font-bold uppercase">
-                  Coste unitario
+                  {t("detail.coachingUnitCost")}
                 </th>
                 <th scope="col" className="px-[10px] py-[7px] text-right text-[12px] font-bold uppercase">
-                  Total
+                  {t("detail.coachingTotal")}
                 </th>
               </tr>
             </thead>
@@ -169,7 +171,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
                   key={item.key}
                   className="border-b border-[#e2e8f0] odd:bg-white even:bg-[#f1f5f9]"
                 >
-                  <td className="px-[10px] py-[7px]">{COACHING_LABELS[item.key] ?? item.key}</td>
+                  <td className="px-[10px] py-[7px]">{t(COACHING_LABELS[item.key])}</td>
                   <td className="px-[10px] py-[7px]">{item.quantity}</td>
                   <td className="px-[10px] py-[7px] text-right tabular-nums">
                     {formatRulebookCost(item.unitCost)}
@@ -180,9 +182,9 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
                 </tr>
               ))}
               <tr className="border-b border-[#e2e8f0] odd:bg-white even:bg-[#f1f5f9]">
-                <td className="px-[10px] py-[7px]">Apotecario</td>
+                <td className="px-[10px] py-[7px]">{t("coaching.apothecary")}</td>
                 <td className={`px-[10px] py-[7px] font-bold ${team.coaching.apothecary ? "text-green-600" : ""}`}>
-                  {team.coaching.apothecary ? "SÍ" : "NO"}
+                  {team.coaching.apothecary ? t("common.yes") : t("common.no")}
                 </td>
                 <td className="px-[10px] py-[7px] text-right tabular-nums">
                   {formatRulebookCost(APOTHECARY_COST)}
@@ -192,7 +194,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
                 </td>
               </tr>
               <tr className="bg-[#e2e8f0] font-bold">
-                <td colSpan={3} className="px-[10px] py-[7px]">Total cuerpo técnico</td>
+                <td colSpan={3} className="px-[10px] py-[7px]">{t("detail.coachingTotalRow")}</td>
                 <td className="px-[10px] py-[7px] text-right tabular-nums">
                   {formatRulebookCost(coachingCost)}
                 </td>
@@ -207,7 +209,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
                 <div key={item.key} className="flex items-center justify-between gap-3 px-3 py-2">
                   <div className="min-w-0">
                     <p className="text-[13px] font-medium text-[#1a1a1a]">
-                      {COACHING_LABELS[item.key] ?? item.key}
+                      {t(COACHING_LABELS[item.key])}
                     </p>
                     <p className="text-[11px] text-[#64748b]">
                       {item.quantity} × {formatRulebookCost(item.unitCost)}
@@ -220,7 +222,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
               ))}
               <div className="flex items-center justify-between gap-3 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-[#1a1a1a]">Apotecario</p>
+                  <p className="text-[13px] font-medium text-[#1a1a1a]">{t("coaching.apothecary")}</p>
                   <p className="text-[11px] text-[#64748b]">50 000</p>
                 </div>
                 <p
@@ -228,11 +230,11 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
                     team.coaching.apothecary ? "text-green-600" : "text-[#1a1a1a]"
                   }`}
                 >
-                  {team.coaching.apothecary ? "SÍ" : "NO"}
+                  {team.coaching.apothecary ? t("common.yes") : t("common.no")}
                 </p>
               </div>
               <div className="flex items-center justify-between gap-3 bg-[#e2e8f0] px-3 py-2">
-                <p className="text-[13px] font-bold text-[#1a1a1a]">Total cuerpo técnico</p>
+                <p className="text-[13px] font-bold text-[#1a1a1a]">{t("detail.coachingTotalRow")}</p>
                 <p className="text-[13px] font-bold tabular-nums text-[#12225a]">
                   {formatRulebookCost(coachingCost)}
                 </p>
@@ -247,23 +249,23 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
             id="treasury-heading"
             className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
           >
-            Tesorería
+            {t("detail.treasury")}
           </h2>
           <div className="flex flex-wrap gap-2.5">
             <div className="flex-1 rounded border border-[#e2e8f0] bg-[#f1f5f9] p-2.5 text-center">
-              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">Coste plantilla</p>
+              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">{t("detail.treasuryRoster")}</p>
               <p className="mt-0.5 text-[18px] font-extrabold text-[#12225a]">
                 {formatRulebookCost(rosterCost)}
               </p>
             </div>
             <div className="flex-1 rounded border border-[#e2e8f0] bg-[#f1f5f9] p-2.5 text-center">
-              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">Cuerpo técnico</p>
+              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">{t("detail.cuerpoTecnico")}</p>
               <p className="mt-0.5 text-[18px] font-extrabold text-[#12225a]">
                 {formatRulebookCost(coachingCost)}
               </p>
             </div>
             <div className="flex-1 rounded border border-[#e2e8f0] bg-[#f1f5f9] p-2.5 text-center">
-              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">Tesorería restante</p>
+              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">{t("detail.treasuryRemaining")}</p>
               <p className="mt-0.5 text-[18px] font-extrabold text-[#d11938]">
                 {formatRulebookCost(treasury)}
               </p>

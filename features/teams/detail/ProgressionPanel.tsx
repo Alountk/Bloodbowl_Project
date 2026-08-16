@@ -7,22 +7,23 @@ import type { ImproveBody, PlayerProgression } from "@/lib/progression";
 import type { PlayerAttribute } from "@/lib/rules/improvements";
 import type { SkillColumn } from "@/lib/rules/skills";
 import { formatRulebookCost } from "@/features/teams/format";
+import { useI18n } from "@/lib/i18n";
 
-const RANDOM_CATEGORY_NAMES: Record<SkillColumn, string> = {
-  A: "Agilidad",
-  F: "Fuerza",
-  G: "Generales",
-  M: "Mutación",
-  P: "Pase",
-  T: "Triquiñuelas",
+const RANDOM_CATEGORY_KEYS: Record<SkillColumn, string> = {
+  A: "prog.category.A",
+  F: "prog.category.F",
+  G: "prog.category.G",
+  M: "prog.category.M",
+  P: "prog.category.P",
+  T: "prog.category.T",
 };
 
-const ATTRIBUTE_NAMES: Record<PlayerAttribute, string> = {
-  ma: "Movimiento",
-  st: "Fuerza",
-  ag: "Agilidad",
-  pa: "Pase",
-  av: "Armadura",
+const ATTRIBUTE_KEYS: Record<PlayerAttribute, string> = {
+  ma: "prog.attr.ma",
+  st: "prog.attr.st",
+  ag: "prog.attr.ag",
+  pa: "prog.attr.pa",
+  av: "prog.attr.av",
 };
 
 const DEFAULT_ACCESS = ["G", "A", "F", "M", "P", "T"] as SkillColumn[];
@@ -62,6 +63,7 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
   const [pendingCategory, setPendingCategory] = useState<SkillColumn | null>(null);
   const [candidates, setCandidates] = useState<string[]>([]);
   const [pendingRoll, setPendingRoll] = useState(false);
+  const { t } = useI18n();
 
   const accessibleLetters = [
     ...new Set([...player.accessPrimary, ...player.accessSecondary]),
@@ -99,10 +101,10 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
         <div>
           <p className="text-[13px] font-bold text-[#12225a]">{player.name}</p>
           <p className="text-[12px] text-[#64748b]">
-            PE <span data-testid={`pe-${player.rosterPlayerId}`}>{pe}</span>
-            {" · "}Mejoras{" "}
+            {t("prog.pe")} <span data-testid={`pe-${player.rosterPlayerId}`}>{pe}</span>
+            {" · "}{t("prog.improvements")}{" "}
             <span data-testid={`improvements-${player.rosterPlayerId}`}>{player.improvements}</span>
-            {" · "}Valor{" "}
+            {" · "}{t("prog.value")}{" "}
             <span data-testid={`value-${player.rosterPlayerId}`}>
               {formatRulebookCost(player.valueBonus)}
             </span>
@@ -114,7 +116,7 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
             onClick={() => setOpen(true)}
             className="rounded bg-[#12225a] px-3 py-1 text-[12px] font-bold text-white"
           >
-            Mejorar
+            {t("prog.improve")}
           </button>
         )}
       </div>
@@ -128,7 +130,7 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
             <li
               key={ref}
               data-testid={`skill-${ref}`}
-              title={elite ? "Élite" : undefined}
+              title={elite ? t("prog.elite") : undefined}
               className={`rounded px-2 py-0.5 text-[12px] ${elite ? "bg-[#fef3c7] text-[#92400e]" : "bg-[#e2e8f0] text-[#334155]"}`}
             >
               {display}
@@ -142,7 +144,7 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
         <div className="mt-3 space-y-3 border-t border-[#e2e8f0] pt-3">
           {/* Random roll per accessible category */}
           <div>
-            <p className="text-[12px] font-semibold text-[#12225a]">Tirada al azar</p>
+            <p className="text-[12px] font-semibold text-[#12225a]">{t("prog.randomRoll")}</p>
             <div className="mt-1 flex flex-wrap gap-1.5">
               {(accessibleLetters.length ? accessibleLetters : DEFAULT_ACCESS).map((letter) => (
                 <button
@@ -152,14 +154,14 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
                   onClick={() => startRoll(letter)}
                   className="rounded border border-[#cbd5e1] px-2 py-1 text-[12px] font-medium text-[#334155] disabled:opacity-50"
                 >
-                  Tirada a {RANDOM_CATEGORY_NAMES[letter] ?? letter}
+                  {t("prog.rollOn", { category: t(RANDOM_CATEGORY_KEYS[letter]) })}
                 </button>
               ))}
             </div>
             {pendingRoll && pendingCategory && candidates.length > 0 && (
               <div className="mt-2">
                 <p className="text-[12px] text-[#64748b]">
-                  Elige uno ({RANDOM_CATEGORY_NAMES[pendingCategory]})
+                  {t("prog.pickOne", { category: t(RANDOM_CATEGORY_KEYS[pendingCategory]) })}
                 </p>
                 <div className="mt-1 flex gap-2">
                   {candidates.map((candidate) => (
@@ -185,11 +187,11 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
           {primarySkills.length > 0 && (
             <div className="flex items-center gap-2">
               <label htmlFor={`primary-${player.rosterPlayerId}`} className="text-[12px] font-semibold text-[#12225a]">
-                Primaria
+                {t("prog.primary")}
               </label>
               <select
                 id={`primary-${player.rosterPlayerId}`}
-                aria-label="Primaria"
+                aria-label={t("prog.primary")}
                 className="rounded border border-[#cbd5e1] px-2 py-1 text-[12px]"
               >
                 {primarySkills.map((skill) => (
@@ -209,7 +211,7 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
                 }}
                 className="rounded bg-[#12225a] px-2 py-1 text-[12px] font-bold text-white disabled:opacity-50"
               >
-                Comprar primaria
+                {t("prog.buyPrimary")}
               </button>
             </div>
           )}
@@ -218,11 +220,11 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
           {secondarySkills.length > 0 && (
             <div className="flex items-center gap-2">
               <label htmlFor={`secondary-${player.rosterPlayerId}`} className="text-[12px] font-semibold text-[#12225a]">
-                Secundaria
+                {t("prog.secondary")}
               </label>
               <select
                 id={`secondary-${player.rosterPlayerId}`}
-                aria-label="Secundaria"
+                aria-label={t("prog.secondary")}
                 className="rounded border border-[#cbd5e1] px-2 py-1 text-[12px]"
               >
                 {secondarySkills.map((skill) => (
@@ -242,16 +244,16 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
                 }}
                 className="rounded bg-[#12225a] px-2 py-1 text-[12px] font-bold text-white disabled:opacity-50"
               >
-                Comprar secundaria
+                {t("prog.buySecondary")}
               </button>
             </div>
           )}
 
           {/* Attribute */}
           <div>
-            <p className="text-[12px] font-semibold text-[#12225a]">Atributo</p>
+            <p className="text-[12px] font-semibold text-[#12225a]">{t("prog.attribute")}</p>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              {(Object.keys(ATTRIBUTE_NAMES) as PlayerAttribute[]).map((attr) => (
+              {(Object.keys(ATTRIBUTE_KEYS) as PlayerAttribute[]).map((attr) => (
                 <button
                   key={attr}
                   type="button"
@@ -259,7 +261,7 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
                   onClick={() => run({ type: "attribute", attribute: attr })}
                   className="rounded border border-[#cbd5e1] px-2 py-1 text-[12px] font-medium text-[#334155] disabled:opacity-50"
                 >
-                  Atributo: {ATTRIBUTE_NAMES[attr]}
+                  {t("prog.attributeButton", { attribute: t(ATTRIBUTE_KEYS[attr]) })}
                 </button>
               ))}
             </div>
@@ -277,7 +279,7 @@ export function ProgressionPanel({ player, onImprove }: ProgressionPanelProps) {
               onClick={() => setOpen(false)}
               className="text-[12px] text-[#64748b] underline"
             >
-              Cerrar
+              {t("prog.close")}
             </button>
           )}
         </div>

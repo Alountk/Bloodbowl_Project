@@ -22,7 +22,7 @@ function guardMessageFor(leagueName: string): string {
 
 export function TeamList() {
   const { teams, isHydrated, searchQuery, removeTeam } = useApp();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [pendingTeam, setPendingTeam] = useState<Team | null>(null);
   const [guardMessage, setGuardMessage] = useState<string | null>(null);
   const query = searchQuery.trim().toLowerCase();
@@ -119,7 +119,7 @@ export function TeamList() {
                   <h3 className="text-[15px] font-extrabold text-[#12225a]">{team.name}</h3>
                   <p className="mt-0.5 text-xs text-slate-500">{race?.name ?? team.raceId}</p>
                   <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-400">
-                    {summarizeRosterFromEntries(team, RACES)}
+                    {summarizeRosterFromEntries(team, RACES, locale)}
                   </p>
                 </Link>
                 <div className="mt-auto flex justify-end px-3 pb-3">

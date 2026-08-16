@@ -86,7 +86,7 @@ describe("roster helpers", () => {
         ],
       };
       expect(summarizeRosterFromEntries(team, [getRaceById("human")!])).toBe(
-        "11 players · 7x Lineman · 4x Blitzer",
+        "11 jugadores · 7x Lineman · 4x Blitzer",
       );
     });
 
@@ -105,7 +105,7 @@ describe("roster helpers", () => {
         roster: players,
       };
       expect(summarizeRosterFromEntries(team, [getRaceById("orc")!])).toBe(
-        "11 players · 11x Blitzer",
+        "11 jugadores · 11x Blitzer",
       );
     });
   });
@@ -167,7 +167,7 @@ describe("roster helpers", () => {
         roster: players,
       };
       expect(summarizeRosterFromEntries(team, [human])).toBe(
-        "3 players · 2x Lineman · 1x Thrower",
+        "3 jugadores · 2x Lineman · 1x Thrower",
       );
     });
 
@@ -181,7 +181,7 @@ describe("roster helpers", () => {
         leagueId: null,
         roster: [],
       };
-      expect(summarizeRosterFromEntries(team, [human])).toBe("0 players");
+      expect(summarizeRosterFromEntries(team, [human])).toBe("0 jugadores");
     });
   });
 
