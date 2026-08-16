@@ -162,13 +162,53 @@ function rivalRequestsTurn(
 }
 
 /**
+ * RAU-43: the shared explanatory modal for INCOMING two-phase events — the
+ * rival's concede proposal, or a casualty proposal the rival inflicted. A
+ * centered white card over a semi-transparent backdrop (`fixed inset-0 z-50`,
+ * above the sticky z-40 header) keeps the match visible behind it. Dismissible
+ * ONLY via the action buttons — there is deliberately no backdrop/close click
+ * (the two-phase contract: the responder decides, never the backdrop).
+ */
+function IncomingEventModal({
+  ariaLabel,
+  title,
+  body,
+  actions,
+}: {
+  ariaLabel: string;
+  title: string;
+  body: React.ReactNode;
+  actions: React.ReactNode;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={ariaLabel}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    >
+      <div className="w-full max-w-md border border-[#e2e8f0] bg-white shadow-xl">
+        <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
+          <h3 className="text-sm font-bold">{title}</h3>
+        </header>
+        <div className="px-4 py-3">
+          {body}
+          <div className="mt-4 flex justify-end gap-2">{actions}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * RAU-38 concession controls in the turn zone (visible to BOTH coaches while
  * live): the "Conceder" outline-red button expands to an inline confirm
  * ("¿Conceder el partido?" → "Sí, conceder" / "Cancelar") before firing the
  * proposal. Once a proposal is pending the PROPOSER sees "Esperando respuesta
- * del rival…" and the rival sees "El rival se rinde" with "Aceptar" /
- * "Rechazar". The server stays authoritative — the POST route enforces live +
- * side + responder roles (a bypass returns 409).
+ * del rival…" inline, and the rival sees an EXPLANATORY MODAL ("El rival se
+ * rinde") with "Aceptar" / "Rechazar" (RAU-43). The server stays authoritative
+ * — the POST route enforces live + side + responder roles (a bypass returns
+ * 409).
  */
 function ConcedeControls({
   viewerSide,
@@ -186,36 +226,43 @@ function ConcedeControls({
   const [confirming, setConfirming] = useState(false);
   const { t } = useI18n();
 
-  if (proposedBy != null) {
-    if (proposedBy === viewerSide) {
-      return (
-        <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-          {t("match.concede.waiting")}
-        </span>
-      );
-    }
+  // RAU-43: a PENDING proposal from the rival opens the explanatory modal
+  // (the proposer's waiting copy below stays inline, no modal).
+  if (proposedBy != null && proposedBy !== viewerSide) {
     return (
-      <div className="flex items-center gap-1.5">
-        <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-          {t("match.concede.rivalSurrenders")}
-        </span>
-        <button
-          type="button"
-          onClick={() => onRespond(true)}
-          disabled={submitting}
-          className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
-        >
-          {t("match.concede.accept")}
-        </button>
-        <button
-          type="button"
-          onClick={() => onRespond(false)}
-          disabled={submitting}
-          className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
-        >
-          {t("match.concede.reject")}
-        </button>
-      </div>
+      <IncomingEventModal
+        ariaLabel={t("match.concede.modalAria")}
+        title={t("match.concede.rivalSurrenders")}
+        body={<p className="text-sm text-slate-600">{t("match.concede.modalBody")}</p>}
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => onRespond(false)}
+              disabled={submitting}
+              className="rounded-[4px] border border-[#d11938] bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
+            >
+              {t("match.concede.reject")}
+            </button>
+            <button
+              type="button"
+              onClick={() => onRespond(true)}
+              disabled={submitting}
+              className="rounded-[4px] bg-[#d11938] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+            >
+              {t("match.concede.accept")}
+            </button>
+          </>
+        }
+      />
+    );
+  }
+
+  if (proposedBy === viewerSide) {
+    return (
+      <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
+        {t("match.concede.waiting")}
+      </span>
     );
   }
 
@@ -261,14 +308,15 @@ function ConcedeControls({
 }
 
 /**
- * RAU-39 casualty confirm panel in the turn zone: while a casualty proposal is
- * pending, the PROPOSER (the attacker) sees "Esperando confirmación del
- * rival…"; the defender (perjudicado) sees "El rival registra una baja" with the
- * derived details (víctima, causa, tirada 1D16, banda derivada — the band is
- * DERIVED client-side for display ONLY, the server is authoritative) and a
- * "Confirmar" button that fires `{ type: "confirmCasualty" }`. There is NO
- * reject — the defender can only confirm. The server stays authoritative — a
- * bypass POST by the proposer returns 409.
+ * RAU-39 casualty confirm flow: while a casualty proposal is pending, the
+ * PROPOSER (the attacker) sees "Esperando confirmación del rival…" inline; the
+ * defender (perjudicado) sees an EXPLANATORY MODAL (RAU-43) — "El rival
+ * registra una baja" with the derived details (víctima, causa, tirada 1D16,
+ * banda derivada — the band is DERIVED client-side for display ONLY, the server
+ * is authoritative) and a "Confirmar" button that fires
+ * `{ type: "confirmCasualty" }`. There is NO reject — the defender can only
+ * confirm. The server stays authoritative — a bypass POST by the proposer
+ * returns 409.
  */
 function CasualtyConfirmControls({
   viewerSide,
@@ -316,27 +364,33 @@ function CasualtyConfirmControls({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <span className="text-[10px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-        {t("match.casualty.rivalRegisters")}
-      </span>
-      <span className="max-w-[220px] text-right text-[10px] font-semibold text-white">
-        {t("match.casualty.details", {
-          victim: victim?.name ?? "?",
-          cause: causeLabel(pending.cause, t),
-          roll: pending.roll16,
-          band: bandLabel,
-        })}
-      </span>
-      <button
-        type="button"
-        onClick={onConfirm}
-        disabled={submitting}
-        className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
-      >
-        {t("match.casualty.confirm")}
-      </button>
-    </div>
+    <IncomingEventModal
+      ariaLabel={t("match.casualty.modalAria")}
+      title={t("match.casualty.rivalRegisters")}
+      body={
+        <>
+          <p className="mb-3 text-sm text-slate-600">{t("match.casualty.modalBody")}</p>
+          <p className="text-sm font-semibold text-[#12225a]">
+            {t("match.casualty.details", {
+              victim: victim?.name ?? "?",
+              cause: causeLabel(pending.cause, t),
+              roll: pending.roll16,
+              band: bandLabel,
+            })}
+          </p>
+        </>
+      }
+      actions={
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={submitting}
+          className="rounded-[4px] bg-[#d11938] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+        >
+          {t("match.casualty.confirm")}
+        </button>
+      }
+    />
   );
 }
 

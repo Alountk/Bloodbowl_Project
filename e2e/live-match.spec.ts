@@ -439,12 +439,15 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
     await awayCoach.getByRole("button", { name: /Proponer/i }).click();
     await expect(awayCoach.getByLabel("Jugador")).toHaveCount(0);
-    // The proposer (away) waits; the defender (home) sees the derived details
-    // and confirms — the SSE hub converges both pages without a reload.
+    // The proposer (away) waits inline; the defender (home) sees the derived
+    // details in an EXPLANATORY MODAL (RAU-43) and confirms — the SSE hub
+    // converges both pages without a reload.
     await expect(awayCoach.getByText(/Esperando confirmación del rival/)).toBeVisible();
+    await expect(homeCoach.getByRole("dialog", { name: /Baja registrada por el rival/i })).toBeVisible();
     await expect(homeCoach.getByText(/El rival registra una baja/)).toBeVisible();
     await expect(homeCoach.getByText(/1D16 9/)).toBeVisible();
     await homeCoach.getByRole("button", { name: "Confirmar" }).click();
+    await expect(homeCoach.getByRole("dialog", { name: /Baja registrada por el rival/i })).toHaveCount(0);
     // The ONE casualty event renders the injury card on the victim's (home) side
     // with the MVT-5 causer line AND the derived action card on the causer's
     // (away) side — both feeds converge via the hub.

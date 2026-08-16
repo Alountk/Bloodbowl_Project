@@ -344,11 +344,15 @@ const es: Dict = {
   "match.concede.rivalSurrenders": "El rival se rinde",
   "match.concede.accept": "Aceptar",
   "match.concede.reject": "Rechazar",
+  "match.concede.modalAria": "Propuesta de rendición del rival",
+  "match.concede.modalBody": "El rival propone rendirse. Si aceptas, el partido termina con la victoria para tu equipo; si rechazas, el partido continúa.",
 
   "match.casualty.waiting": "Esperando confirmación del rival…",
   "match.casualty.rivalRegisters": "El rival registra una baja",
   "match.casualty.details": "{victim} · {cause} · 1D16 {roll} · {band}",
   "match.casualty.confirm": "Confirmar",
+  "match.casualty.modalAria": "Baja registrada por el rival",
+  "match.casualty.modalBody": "El rival ha registrado una baja sobre uno de tus jugadores. Revisa el detalle y confirma la lesión para aplicarla.",
 
   "match.menu.td": "Touchdown",
   "match.menu.completion": "Pase completo",
@@ -750,11 +754,15 @@ const en: Dict = {
   "match.concede.rivalSurrenders": "The rival surrenders",
   "match.concede.accept": "Accept",
   "match.concede.reject": "Decline",
+  "match.concede.modalAria": "Rival surrender proposal",
+  "match.concede.modalBody": "The rival proposes to surrender. If you accept, the match ends with victory for your team; if you decline, the match continues.",
 
   "match.casualty.waiting": "Waiting for the rival's confirmation…",
   "match.casualty.rivalRegisters": "The rival records a casualty",
   "match.casualty.details": "{victim} · {cause} · 1D16 {roll} · {band}",
   "match.casualty.confirm": "Confirm",
+  "match.casualty.modalAria": "Casualty recorded by the rival",
+  "match.casualty.modalBody": "The rival recorded a casualty on one of your players. Review the detail and confirm to apply the injury.",
 
   "match.menu.td": "Touchdown",
   "match.menu.completion": "Pass completion",
