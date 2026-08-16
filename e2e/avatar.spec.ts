@@ -49,7 +49,7 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
   const add = page.getByRole("button", { name: "Add Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
   await page.getByRole("button", { name: /create team/i }).click();
@@ -60,14 +60,14 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
 /** Uploads an avatar through the real /profile UI (picker → crop → Guardar). */
 async function uploadAvatarViaProfile(page: Page) {
   await page.goto("/profile");
-  await page.getByRole("button", { name: "Subir foto" }).click();
+  await page.getByRole("button", { name: "Upload photo" }).click();
   await page.locator('input[type="file"]').setInputFiles({
     name: "avatar.png",
     mimeType: "image/png",
     buffer: Buffer.from(AVATAR_PNG, "base64"),
   });
-  await page.getByRole("dialog", { name: "Recortar foto" }).waitFor();
-  await page.getByRole("dialog", { name: "Recortar foto" }).getByRole("button", { name: "Guardar" }).click();
+  await page.getByRole("dialog", { name: "Crop photo" }).waitFor();
+  await page.getByRole("dialog", { name: "Crop photo" }).getByRole("button", { name: "Save" }).click();
   // The preview img appears once the server-issued value comes back.
   await expect(page.getByRole("img", { name: "Avatar del entrenador" })).toBeVisible();
 }
@@ -161,7 +161,7 @@ test.describe("Avatar E2E (real Postgres)", () => {
     // Fresh user has no avatar: no coach-avatar img renders (scoped to the
     // avatar alt — the shell chrome has its own logo img, not the avatar).
     await page.goto("/profile");
-    await expect(page.getByRole("heading", { name: "Mi Perfil" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Avatar del entrenador" })).toHaveCount(0);
 
     // Upload through the real crop UI; the preview updates from GET /api/me.

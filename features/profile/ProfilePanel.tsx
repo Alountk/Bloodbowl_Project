@@ -5,6 +5,7 @@ import { getMe, uploadAvatar, type Profile } from "./api";
 import { cropImageToBlob } from "./crop";
 import { CropDialog } from "./CropDialog";
 import { UserAvatar } from "@/components/UserAvatar";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * Client profile panel for `/profile` (Spanish copy). Loads the session profile
@@ -14,6 +15,9 @@ import { UserAvatar } from "@/components/UserAvatar";
  * the avatar preview updates from the adapter-issued value.
  */
 export function ProfilePanel() {
+  const { t } = useI18n();
+  const loadError = t("profile.loadError");
+  const uploadError = t("profile.uploadError");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
   const [pickerSrc, setPickerSrc] = useState<string | null>(null);
@@ -29,8 +33,8 @@ export function ProfilePanel() {
         setProfile(p);
         setAvatarSrc(p.avatar);
       })
-      .catch(() => setError("No se pudo cargar tu perfil."));
-  }, []);
+      .catch(() => setError(loadError));
+  }, [loadError]);
 
   function handleFileSelected(file: File | undefined) {
     if (!file) return;
@@ -52,7 +56,7 @@ export function ProfilePanel() {
       setCropOpen(false);
       setPickerSrc(null);
     } catch {
-      setError("No se pudo subir la foto.");
+      setError(uploadError);
     } finally {
       setPending(false);
     }
@@ -60,9 +64,9 @@ export function ProfilePanel() {
 
   return (
     <section className="mx-auto max-w-md">
-      <h1 className="mb-1 text-2xl font-black text-[#12225a]">Mi Perfil</h1>
+      <h1 className="mb-1 text-2xl font-black text-[#12225a]">{t("nav.profile")}</h1>
       <p className="mb-6 text-sm text-slate-500">
-        Sube una foto como avatar; se mostrará junto a tu nombre en los partidos.
+        {t("profile.subtitle")}
       </p>
 
       <div className="flex items-center gap-4 border border-[#e2e8f0] bg-white p-4">
@@ -74,7 +78,7 @@ export function ProfilePanel() {
             disabled={pending}
             className="rounded-sm border border-slate-300 px-3 py-1.5 text-sm font-semibold text-[#12225a] hover:border-[#d11938] hover:text-[#d11938] disabled:opacity-50"
           >
-            Subir foto
+            {t("profile.upload")}
           </button>
           <input
             ref={fileInputRef}

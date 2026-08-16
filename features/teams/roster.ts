@@ -1,4 +1,5 @@
 import type { CoachingStaff, PlayerEntry, Race, Team } from "./types";
+import { DEFAULT_LOCALE, t as translate, type Locale } from "@/lib/i18n/dictionaries";
 
 export const STARTING_TREASURY = 1_000_000;
 export const MIN_PLAYERS = 11;
@@ -85,11 +86,11 @@ export function countPlayersFromEntries(players: PlayerEntry[]): number {
   return players.length;
 }
 
-export function summarizeRosterFromEntries(team: Team, races: Race[]): string {
+export function summarizeRosterFromEntries(team: Team, races: Race[], locale: Locale = DEFAULT_LOCALE): string {
   const race = races.find((candidate) => candidate.id === team.raceId);
   const total = team.roster.length;
 
-  if (total === 0) return "0 players";
+  if (total === 0) return translate(locale, "teams.summaryNone");
 
   // Count by positional key, preserving insertion order
   const counts = new Map<string, number>();
@@ -103,5 +104,8 @@ export function summarizeRosterFromEntries(team: Team, races: Race[]): string {
     parts.push(`${count}x ${positional?.name ?? key}`);
   }
 
-  return `${total} player${total === 1 ? "" : "s"}${parts.length > 0 ? ` · ${parts.join(" · ")}` : ""}`;
+  const countLabel = translate(locale, total === 1 ? "teams.summaryOne" : "teams.summaryMany", {
+    count: total,
+  });
+  return `${countLabel}${parts.length > 0 ? ` · ${parts.join(" · ")}` : ""}`;
 }

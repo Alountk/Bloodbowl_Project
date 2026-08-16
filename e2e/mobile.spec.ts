@@ -48,7 +48,7 @@ test.describe("Mobile", () => {
     await expect(page.getByText("Player 1")).toBeVisible();
     await expectNoHorizontalOverflow(page, "detail");
     // Coaching breakdown visible with apothecary SÍ
-    await expect(page.getByText("Segundas oportunidades")).toBeVisible();
+    await expect(page.getByText("Rerolls")).toBeVisible();
   });
 
   test("create team wizard has no horizontal overflow and stacked availability rows", async ({ page }) => {
@@ -56,7 +56,7 @@ test.describe("Mobile", () => {
     await page.waitForLoadState("networkidle");
     await page.getByLabel("Team name").fill("Mobile New Team");
     await page.getByLabel("Race").selectOption("human");
-    await page.getByRole("button", { name: /siguiente/i }).click();
+    await page.getByRole("button", { name: /next/i }).click();
 
     // Availability rows are stacked (Add buttons always visible) and no page overflow
     await expect(page.getByRole("button", { name: "Add Lineman" }).first()).toBeVisible();
@@ -89,7 +89,7 @@ test.describe("Mobile", () => {
     await select.selectOption("orc");
     await expect(select).toHaveValue("orc");
     await page.getByLabel("Team name").fill("Orc Mobile");
-    await page.getByRole("button", { name: /siguiente/i }).click();
+    await page.getByRole("button", { name: /next/i }).click();
     await expect(page.getByRole("button", { name: "Add Lineman" }).first()).toBeVisible();
     await expectNoHorizontalOverflow(page, "orc create step2");
   });

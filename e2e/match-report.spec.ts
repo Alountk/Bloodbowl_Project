@@ -47,7 +47,7 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: /siguiente/i }).click();
+  await page.getByRole("button", { name: /next/i }).click();
   const add = page.getByRole("button", { name: "Add Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
   await page.getByRole("button", { name: /create team/i }).click();
@@ -249,11 +249,11 @@ test("result + progression: load a win through the modal → score + jornada com
     const adminTeam = teams.find((t) => t.name === league.teamAName);
     expect(adminTeam).toBeDefined();
     await league.admin.goto(`/teams/${adminTeam!.id}`);
-    await expect(league.admin.getByRole("heading", { name: "Progresión" })).toBeVisible();
+    await expect(league.admin.getByRole("heading", { name: "Progression" })).toBeVisible();
 
     // The first panel is Player 1 (roster order); open it and buy Block as a
     // primary skill (élite, G access on a human lineman).
-    await league.admin.getByRole("button", { name: "Mejorar" }).first().click();
+    await league.admin.getByRole("button", { name: "Improve" }).first().click();
     await league.admin.getByLabel("Primaria").first().selectOption("block");
     await league.admin.getByRole("button", { name: "Comprar primaria" }).first().click();
 
