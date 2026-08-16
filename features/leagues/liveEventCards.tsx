@@ -12,6 +12,7 @@ import {
 } from "./liveEventLabels";
 import { Icon, type IconName } from "./icons";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
+import styles from "./liveEventCards.module.css";
 
 /**
  * The validated Tourplay v7 card set (`previews/cards-tourplay-duplicado.html`).
@@ -26,6 +27,15 @@ import type { LiveMatchView, MatchTeamDetail } from "./api";
  * GENERIC event card at 100% (icon left + content flex-1 + optional right data).
  * The `turn` ("Fin de turno") kind is NOT in the set — it is skipped outright
  * (RAU-36/37).
+ *
+ * LAYOUT SOURCE OF TRUTH: `liveEventCards.module.css`, which ports the
+ * duplicate's plain CSS VERBATIM. The previous Tailwind arbitrary-value classes
+ * (`[grid-template-areas:'tag_body_._'…]`, `bg-[linear-gradient(…)]`) generated
+ * INVALID CSS — Tailwind turns every `_` in an arbitrary value into a space, so
+ * the quoted `grid-template-areas` strings collapsed and the declaration was
+ * dropped, and the grid then auto-placed children in DOM order (broken layout).
+ * A CSS module cannot be mangled that way, so the grid, gradients and per-side
+ * mirroring live there; Tailwind remains only for simple utilities.
  */
 const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake", "turnStart"]);
 
@@ -166,6 +176,54 @@ export function LiveEventCards({
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
 }) {
+  // Module class map: kebab-case CSS source keys → readable locals (the class
+  // names come straight from the duplicate, so the rendered markup mirrors it).
+  const c = {
+    ev: styles.ev,
+    home: styles["ev--home"],
+    away: styles["ev--away"],
+    center: styles["ev--center"],
+    turnTag: styles["turn-tag"],
+    turnTagHome: styles["turn-tag--home"],
+    turnTagAway: styles["turn-tag--away"],
+    minute: styles.minute,
+    cardBody: styles["card-body"],
+    kbody: styles.kbody,
+    token: styles.token,
+    tokenHome: styles["token--home"],
+    tokenAway: styles["token--away"],
+    dorsal: styles.dorsal,
+    who: styles.who,
+    name: styles.name,
+    pos: styles.pos,
+    detail: styles.detail,
+    dline: styles.dline,
+    dlineHome: styles["dline--home"],
+    dlineAway: styles["dline--away"],
+    dicon: styles.dicon,
+    stars: styles.stars,
+    scoreNote: styles["score-note"],
+    sub: styles.sub,
+    victimLine: styles["victim-line"],
+    vtoken: styles.vtoken,
+    vtokenHome: styles["vtoken--home"],
+    vtokenAway: styles["vtoken--away"],
+    causeLine: styles["cause-line"],
+    kcicon: styles.kcicon,
+    kciconHome: styles["kcicon--home"],
+    kciconAway: styles["kcicon--away"],
+    kwho: styles.kwho,
+    ktitle: styles.ktitle,
+    ksub: styles.ksub,
+    ktreasury: styles.ktreasury,
+    cicon: styles.cicon,
+    cbody: styles.cbody,
+    ctitle: styles.ctitle,
+    csub: styles.csub,
+    ffLine: styles["ff-line"],
+    cright: styles.cright,
+  };
+
   if (events.length === 0) return null;
   // D21 dorsal maps + per-TD partial scores (D5), formed from the SAME events
   // array the feed renders — a reload reproduces both.
@@ -220,25 +278,7 @@ export function LiveEventCards({
         const startSub = event.kind === "start" && startedAt != null ? wallClockTime(startedAt) : null;
         const endSub = event.kind === "endMatch" ? wallClockTime(event.at) : null;
 
-        const cardBase =
-          "rounded-[4px] bg-white py-1.5 px-2.5 text-[13px] shadow-[0_1px_2px_rgba(15,23,42,0.05)]";
-
         if (isTeamCard && team) {
-          const gradient = isHome
-            ? "bg-[linear-gradient(90deg,rgba(18,34,90,0.12),rgba(255,255,255,0)_45%)]"
-            : "bg-[linear-gradient(270deg,rgba(209,25,56,0.12),rgba(255,255,255,0)_45%)]";
-          const areas = isHome
-            ? "[grid-template-areas:'tag_body_._''tag_body_._'_.body_min]"
-            : "[grid-template-areas:'_.body_tag''_.body_tag'min_body_.]";
-          const sideClass = isAway ? "turn-tag--away bg-[#d11938]" : "turn-tag--home bg-[#12225a]";
-          const tinted = isAway
-            ? "bg-[rgba(209,25,56,0.11)] text-[#d11938]"
-            : "bg-[rgba(18,34,90,0.13)] text-[#12225a]";
-          // The foul victim is on the OPPOSITE side (LM-12), so its mini token
-          // carries the RIVAL tint (home card → red victim, away card → navy).
-          const victimTint = isAway
-            ? "bg-[rgba(18,34,90,0.13)] text-[#12225a]"
-            : "bg-[rgba(209,25,56,0.11)] text-[#d11938]";
           // LM-24: the expensive-mistake kickoff row keeps NO turn tag/minute
           // (the preview's team-assigned kickoff row); turnStart keeps the
           // tag + minute corners (RAU-36/37).
@@ -247,56 +287,36 @@ export function LiveEventCards({
             <li
               key={event.seq}
               data-testid="live-event-row"
-              className={`ev w-[68%] max-w-[68%] self-${isHome ? "start" : "end"} grid grid-cols-[auto_1fr_auto] grid-rows-[auto_1fr_auto] gap-x-2 gap-y-0 ${gradient} ${areas} border border-[#e2e8f0] ${cardBase}`}
+              className={`${c.ev} ${isHome ? c.home : c.away}`}
             >
               {showCorners ? (
                 <>
                   {/* Turn tag: grid-area tag (top, own side — home left / away right). */}
-                  <span
-                    className={`turn-tag ${sideClass} self-start whitespace-nowrap rounded-[3px] px-1.5 py-[1px] text-[10px] font-black text-white [grid-area:tag]`}
-                  >
+                  <span className={`${c.turnTag} ${isAway ? c.turnTagAway : c.turnTagHome}`}>
                     {turnTag(event.half, event.turnNumber)}
                   </span>
                   {/* Minute: grid-area min (bottom, OPPOSITE side). */}
-                  <span
-                    className={`minute self-end text-[11px] tabular-nums text-slate-500 [grid-area:min] ${
-                      isHome ? "text-right" : "text-left"
-                    }`}
-                  >
-                    {minute}
-                  </span>
+                  <span className={c.minute}>{minute}</span>
                 </>
               ) : null}
 
               {/* turnStart team card (RAU-36/37): token + team line + hand detail,
                   no dorsal — exactly the validated card. */}
               {event.kind === "turnStart" ? (
-                <div
-                  className={`card-body flex min-w-0 items-center gap-2 [grid-area:body] ${
-                    isAway ? "flex-row-reverse" : ""
-                  }`}
-                >
+                <div className={c.cardBody}>
                   <span
                     aria-hidden="true"
-                    className={`token ${isAway ? "token--away" : "token--home"} ${tinted} flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[7px]`}
+                    className={`${c.token} ${isAway ? c.tokenAway : c.tokenHome}`}
                   >
                     <Icon name={iconName} className="h-[18px] w-[18px]" />
                   </span>
-                  <div className={`who min-w-0 flex-1 ${isAway ? "text-right" : ""}`}>
-                    <p className="name truncate font-extrabold text-[#0f172a]">{label}</p>
-                    <p className="pos truncate text-[11px] text-slate-500">Empieza el turno</p>
+                  <div className={c.who}>
+                    <p className={c.name}>{label}</p>
+                    <p className={c.pos}>Empieza el turno</p>
                   </div>
-                  <span
-                    className={`detail flex min-w-0 flex-col ${
-                      isHome ? "items-end text-right" : "items-start text-left"
-                    }`}
-                  >
-                    <span className="dline flex items-center gap-[5px] font-extrabold text-[#0f172a]">
-                      <span
-                        className={`dicon flex h-[19px] w-[19px] items-center justify-center ${
-                          isHome ? "text-[#12225a]" : "text-[#d11938]"
-                        }`}
-                      >
+                  <span className={c.detail}>
+                    <span className={`${c.dline} ${isHome ? c.dlineHome : c.dlineAway}`}>
+                      <span className={c.dicon}>
                         <Icon name={iconName} className="h-[15px] w-[15px]" />
                       </span>
                       {label}
@@ -306,28 +326,22 @@ export function LiveEventCards({
               ) : event.kind === "expensive_mistake" ? (
                 // LM-24: no turn tag/minute/player — money-bag icon + title +
                 // "{team} · {outcome}" + treasury before → after.
-                <div
-                  className={`kbody flex min-w-0 items-center gap-2 [grid-area:body] ${
-                    isAway ? "flex-row-reverse" : ""
-                  }`}
-                >
+                <div className={c.kbody}>
                   <span
                     aria-hidden="true"
-                    className={`kcicon ${isAway ? "kcicon--away" : "kcicon--home"} ${tinted} flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[7px]`}
+                    className={`${c.kcicon} ${isAway ? c.kciconAway : c.kciconHome}`}
                   >
                     <Icon name="money-bag" className="h-[18px] w-[18px]" />
                   </span>
-                  <div className={`kwho min-w-0 flex-1 ${isAway ? "text-right" : ""}`}>
-                    <p className="ktitle truncate text-[13px] font-extrabold text-[#0f172a]">{label}</p>
+                  <div className={c.kwho}>
+                    <p className={c.ktitle}>{label}</p>
                     {outcomeLabel(event.payload) ? (
-                      <p className="ksub truncate text-[11px] text-slate-500">
+                      <p className={c.ksub}>
                         {team.name} · {outcomeLabel(event.payload)}
                       </p>
                     ) : null}
                     {treasuryLine(event.payload) ? (
-                      <p className="ktreasury truncate text-[11px] font-bold tabular-nums text-slate-500">
-                        {treasuryLine(event.payload)}
-                      </p>
+                      <p className={c.ktreasury}>{treasuryLine(event.payload)}</p>
                     ) : null}
                   </div>
                 </div>
@@ -335,78 +349,52 @@ export function LiveEventCards({
                 /* The standard player team card: token (30×30, own-side tint) →
                    dorsal (#n) → who (name + position) → detail (icon + label +
                    SPP stars, then partial score / band sub / victim / cause). */
-                <div
-                  className={`card-body flex min-w-0 items-center gap-2 [grid-area:body] ${
-                    isAway ? "flex-row-reverse" : ""
-                  }`}
-                >
+                <div className={c.cardBody}>
                   <span
                     title={player.name}
                     aria-hidden="true"
-                    className={`token ${isAway ? "token--away" : "token--home"} ${tinted} flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[7px]`}
+                    className={`${c.token} ${isAway ? c.tokenAway : c.tokenHome}`}
                   >
                     <Icon name="helmet" className="h-[18px] w-[18px]" />
                   </span>
                   {/* Standalone dorsal column (24px, 13px, 900, slate). */}
-                  <span className="dorsal w-6 shrink-0 text-center text-[13px] font-black text-slate-500">
-                    #{player.dorsal}
-                  </span>
+                  <span className={c.dorsal}>#{player.dorsal}</span>
                   {/* Name (800, ink) + position line below (11px slate). */}
-                  <div className={`who min-w-0 flex-1 ${isAway ? "text-right" : ""}`}>
-                    <p className="name truncate font-extrabold text-[#0f172a]">{player.name}</p>
-                    <p className="pos truncate text-[11px] text-slate-500">
-                      {positionName(team, player.positionalKey)}
-                    </p>
+                  <div className={c.who}>
+                    <p className={c.name}>{player.name}</p>
+                    <p className={c.pos}>{positionName(team, player.positionalKey)}</p>
                   </div>
                   {/* Right detail column: event icon + label + SPP stars, then
                       partial score / band sub / victim / cause lines. */}
-                  <span
-                    className={`detail flex min-w-0 flex-col ${
-                      isHome ? "items-end text-right" : "items-start text-left"
-                    }`}
-                  >
-                    <span className="dline flex items-center gap-[5px] font-extrabold text-[#0f172a]">
-                      <span
-                        className={`dicon flex h-[19px] w-[19px] items-center justify-center ${
-                          isHome ? "text-[#12225a]" : "text-[#d11938]"
-                        }`}
-                      >
+                  <span className={c.detail}>
+                    <span className={`${c.dline} ${isHome ? c.dlineHome : c.dlineAway}`}>
+                      <span className={c.dicon}>
                         <Icon name={iconName} className="h-[15px] w-[15px]" />
                       </span>
                       {label}
-                      {spp > 0 ? (
-                        <span className="stars text-[11px] font-bold text-[#b8860b]">(★{spp})</span>
-                      ) : null}
+                      {spp > 0 ? <span className={c.stars}>(★{spp})</span> : null}
                     </span>
                     {partial ? (
-                      <span className="score-note text-[11px] font-bold tabular-nums text-slate-500">
+                      <span className={c.scoreNote}>
                         ({partial.home} - {partial.away})
                       </span>
                     ) : null}
-                    {bandSub ? <span className="sub text-[11px] text-slate-500">{bandSub}</span> : null}
+                    {bandSub ? <span className={c.sub}>{bandSub}</span> : null}
                     {victim ? (
-                      <span
-                        className={`victim-line mt-[1px] flex items-center gap-1 text-[11px] font-bold text-slate-500 ${
-                          isHome ? "justify-end" : "justify-start"
-                        }`}
-                      >
+                      <span className={c.victimLine}>
                         {/* The victim is on the OPPOSITE side (LM-12), so the mini
                             token carries the rival tint. */}
-                        <span
-                          className={`vtoken ${
-                            isHome ? "vtoken--away" : "vtoken--home"
-                          } ${victimTint} flex h-4 w-4 items-center justify-center rounded-[4px]`}
-                        >
+                        <span className={`${c.vtoken} ${isHome ? c.vtokenAway : c.vtokenHome}`}>
                           <Icon name="helmet" className="h-2.5 w-2.5" />
                         </span>
                         a {victim.name} (#{victim.dorsal})
                       </span>
                     ) : null}
                     {causeParts && causeParts.cause ? (
-                      <p className="cause-line mt-[1px] text-[11px] font-bold text-slate-500">
+                      <p className={c.causeLine}>
                         {causeParts.causer ? (
                           <>
-                            por <b className="font-extrabold text-[#0f172a]">{causeParts.causer.name}</b> (#{causeParts.causer.dorsal}) · {causeParts.cause}
+                            por <b>{causeParts.causer.name}</b> (#{causeParts.causer.dorsal}) · {causeParts.cause}
                           </>
                         ) : (
                           causeParts.cause
@@ -418,11 +406,7 @@ export function LiveEventCards({
               ) : (
                 /* Defensive fallback for a player-less team card (unresolvable
                    roster): the label only, never throws. */
-                <div
-                  className={`card-body flex min-w-0 items-center gap-2 [grid-area:body] ${
-                    isAway ? "flex-row-reverse" : ""
-                  }`}
-                >
+                <div className={c.cardBody}>
                   <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] text-[#12225a]">
                     <Icon name={iconName} className="h-[15px] w-[15px]" />
                   </span>
@@ -441,25 +425,21 @@ export function LiveEventCards({
           <li
             key={event.seq}
             data-testid="live-event-row"
-            className={`ev ev--center w-full max-w-full self-stretch justify-self-stretch flex items-center border-x-0 border-y border-[#e2e8f0] ${cardBase}`}
+            className={`${c.ev} ${c.center}`}
           >
-            <span className="cicon flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] text-[#12225a]">
+            <span className={c.cicon}>
               <Icon name={iconName} className="h-[15px] w-[15px]" />
             </span>
-            <div className="cbody min-w-0 flex-1">
-              <p className="ctitle truncate font-extrabold text-[#0f172a]">{label}</p>
-              {startSub ? <p className="csub mt-[1px] truncate text-[11px] text-slate-500">{startSub}</p> : null}
-              {endSub ? <p className="csub mt-[1px] truncate text-[11px] text-slate-500">{endSub}</p> : null}
+            <div className={c.cbody}>
+              <p className={c.ctitle}>{label}</p>
+              {startSub ? <p className={c.csub}>{startSub}</p> : null}
+              {endSub ? <p className={c.csub}>{endSub}</p> : null}
               {event.kind === "fan_factor" ? (
-                <p className="ff-line mt-[3px] truncate text-[11px] font-semibold tabular-nums text-[#0f172a]">
-                  {fanTotalsLine(event.payload)}
-                </p>
+                <p className={c.ffLine}>{fanTotalsLine(event.payload)}</p>
               ) : null}
             </div>
             {event.kind === "endMatch" || event.kind === "endHalf" ? (
-              <span className="cright shrink-0 text-[11px] font-bold tabular-nums text-slate-500">
-                {minute}
-              </span>
+              <span className={c.cright}>{minute}</span>
             ) : null}
           </li>
         );

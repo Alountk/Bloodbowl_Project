@@ -1343,10 +1343,11 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(visitorRow).toBeTruthy();
 
     // Tourplay mirroring (MVT-1/D3): the LOCAL (home) 68% card sits on the left
-    // edge (`self-start`) and the VISITOR (away) card on the right edge
-    // (`self-end`), so each team reads its chronology from its own side.
-    expect(localRow!.className).toContain("self-start");
-    expect(visitorRow!.className).toContain("self-end");
+    // edge and the VISITOR (away) card on the right edge (module `.ev--home` /
+    // `.ev--away` own the `align-self`), so each team reads its chronology from
+    // its own side.
+    expect(localRow!.className).toContain("ev--home");
+    expect(visitorRow!.className).toContain("ev--away");
     // Both team cards still carry the preserved turn tag + minute; the away card
     // keeps the red (visitor) gradient as its side identity.
     expect(localRow!.textContent).toContain("T3");
@@ -1422,11 +1423,13 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
     expect(reportedCls).toContain("text-green-700");
 
     // Cards: navy (home) / red (away) internal gradients over the white base.
+    // The gradients + white base moved to the CSS module (`.ev--home` /
+    // `.ev--away` / `.ev`), so assert the side module classes here.
     const cards = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const cls = cards.map((c) => c.getAttribute("class") ?? "").join(" ");
-    expect(cls).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
-    expect(cls).toContain("linear-gradient(270deg,rgba(209,25,56,0.12)");
-    expect(cls).toContain("bg-white");
+    expect(cls).toContain("ev--home");
+    expect(cls).toContain("ev--away");
+    expect(cls).toMatch(/\bev\b/);
   });
 
   it("collapses to the not-found view when the API returns 404", async () => {
@@ -1493,13 +1496,13 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const emHome = rows.find((li) => li.textContent?.includes("234.000 → 214.000 M.O."));
     const emAway = rows.find((li) => li.textContent?.includes("334.000 → 319.000 M.O."));
-    // Both em cards carry their side gradient + outcome label (MVT-6).
+    // Both em cards carry their side gradient + outcome label (MVT-6). The
+    // gradient + 68% width live in the module (`.ev--home` / `.ev--away`).
     expect(emHome).toBeTruthy();
     expect(emAway).toBeTruthy();
-    expect(emHome!.className).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
-    expect(emHome!.className).toContain("w-[68%]");
+    expect(emHome!.className).toContain("ev--home");
     expect(emHome!.textContent).toContain("Incidente grave");
-    expect(emAway!.className).toContain("linear-gradient(270deg,rgba(209,25,56,0.12)");
+    expect(emAway!.className).toContain("ev--away");
     expect(emAway!.textContent).toContain("Incidente menor");
   });
 
@@ -1512,8 +1515,8 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const fan = rows.find((li) => li.textContent?.includes("Factor de aficionados"));
     expect(fan).toBeTruthy();
-    // Centered 100% width (generic branch).
-    expect(fan!.className).toContain("w-full");
+    // Centered 100% width (generic branch, module `.ev--center`).
+    expect(fan!.className).toContain("ev--center");
     expect(fan!.textContent).toContain("Local: 👥2 + 🎲2 = 4");
     expect(fan!.textContent).toContain("Visitante: 👥1 + 🎲3 = 4");
   });
@@ -1537,7 +1540,7 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     expect(rows.length).toBeGreaterThanOrEqual(4);
     const turnStart = rows.find((li) => li.textContent?.includes("Turno Reavers"));
     expect(turnStart).toBeTruthy();
-    expect(turnStart!.className).toContain("w-[68%]");
-    expect(turnStart!.className).toContain("linear-gradient(90deg,rgba(18,34,90,0.12)");
+    expect(turnStart!.className).toContain("ev--home");
+    expect(turnStart!.className).toMatch(/\bev\b/);
   });
 });
