@@ -17,8 +17,14 @@ import type { LiveMatchState, TeamSide } from "./liveMatch";
  * pause/resume unified-clock segment handling (LM-7).
  */
 
-const scheduledFixture = { scheduled: true, played: false, result: false };
-const playedFixture = { scheduled: true, played: true, result: false };
+/**
+ * Start-target fixtures (LM-3): an agreed date is NOT required — an unscheduled
+ * fixture with no score/result is a valid start target. Only a played or
+ * result-loaded fixture is rejected.
+ */
+const startableFixture = { played: false, result: false };
+const playedFixture = { played: true, result: false };
+const resultedFixture = { played: false, result: true };
 
 function fakeRow(): LiveMatchState {
   return {
@@ -109,8 +115,10 @@ describe("consentLiveMatch — create-on-first-consent, ready on second (LM-11, 
     const { deps, liveMatchCreate, publish } = makeDeps(1);
     liveMatchCreate.mockResolvedValue({ id: "lm-new" });
 
+    // An unscheduled fixture (no agreed date, `{ played: false, result: false }`)
+    // IS a valid start target — the date negotiation never gates the start.
     const result = await consentLiveMatch(
-      { fixtureId: "f-1", fixture: scheduledFixture, side: "home", now: 500 },
+      { fixtureId: "f-1", fixture: startableFixture, side: "home", now: 500 },
       deps,
     );
 
@@ -147,7 +155,7 @@ describe("consentLiveMatch — create-on-first-consent, ready on second (LM-11, 
     liveMatchFindFirst.mockResolvedValue(existingRow);
 
     const result = await consentLiveMatch(
-      { fixtureId: "f-1", fixture: scheduledFixture, side: "away", now: 600 },
+      { fixtureId: "f-1", fixture: startableFixture, side: "away", now: 600 },
       deps,
     );
 
@@ -159,10 +167,19 @@ describe("consentLiveMatch — create-on-first-consent, ready on second (LM-11, 
     expect(result.liveMatchId).toBe("lm-1");
   });
 
-  it("rejects consent on a played/result-loaded fixture with 409 and creates nothing", async () => {
+  it("rejects consent on a played fixture with 409 and creates nothing", async () => {
     const { deps, liveMatchCreate, publish } = makeDeps(1);
     await expect(
       consentLiveMatch({ fixtureId: "f-1", fixture: playedFixture, side: "home", now: 500 }, deps),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(liveMatchCreate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("rejects consent on a result-loaded fixture with 409 and creates nothing", async () => {
+    const { deps, liveMatchCreate, publish } = makeDeps(1);
+    await expect(
+      consentLiveMatch({ fixtureId: "f-1", fixture: resultedFixture, side: "away", now: 500 }, deps),
     ).rejects.toMatchObject({ status: 409 });
     expect(liveMatchCreate).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();

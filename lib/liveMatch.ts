@@ -70,9 +70,12 @@ export function isDisplayEvent(kind: string): boolean {
  */
 export const REQUEST_TURN_COOLDOWN_MS = 60_000;
 
-/** Whether a fixture is a valid start target (LM-3): scheduled, not played, no result. */
+/**
+ * Whether a fixture is a valid start target (LM-3): not played and with no
+ * result. An agreed date is NOT required — the date negotiation is an optional
+ * reminder (avisador), never a gate on starting the match.
+ */
 export interface FixtureStartState {
-  scheduled: boolean;
   played: boolean;
   result: boolean;
 }
@@ -142,9 +145,13 @@ function throwInvalid(reason: string): never {
   throw new Error(reason);
 }
 
-/** True when the fixture is a valid start target (LM-3): scheduled, not played, no result. */
+/**
+ * True when the fixture is a valid start target (LM-3): not played and with no
+ * result. An agreed date is NOT required — the date negotiation is just an
+ * optional reminder, never a gate on starting the match.
+ */
 export function isStartableFixture(fixture: FixtureStartState): boolean {
-  return fixture.scheduled && !fixture.played && !fixture.result;
+  return !fixture.played && !fixture.result;
 }
 
 /**
@@ -152,7 +159,7 @@ export function isStartableFixture(fixture: FixtureStartState): boolean {
  * on FIRST consent. Sets the side's boolean; later consents are idempotent no-ops.
  * When BOTH booleans are true the status becomes `ready`; otherwise it stays
  * `pending` and waits indefinitely (no timeout, no clock). Consent is only valid
- * on a scheduled, un-played, un-resulted fixture while the match is pre-live.
+ * on an un-played, un-resulted fixture while the match is pre-live.
  */
 export function consentStart(
   state: LiveMatchState,
