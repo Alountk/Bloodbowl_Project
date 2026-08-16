@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { resolveInjury } from "@/lib/rules/injuries";
 import { CASUALTY_CAUSES } from "@/lib/livePhase";
 import type { CasualtyCause } from "@/lib/livePhase";
 import { casualtyKindLabel } from "./matchSummary";
+import { causeLabel } from "./liveEventLabels";
 import type { LiveCommand, MatchPlayer } from "./api";
 
 /**
@@ -42,16 +44,6 @@ const ACTIVE_CAUSES = CASUALTY_CAUSES.filter((c) => CAUSE_REQUIRES_CAUSER.has(c)
 /** The NON-active coach records only self-inflicted (dodge/crowd) injuries. */
 const SELF_CAUSES = CASUALTY_CAUSES.filter((c) => !CAUSE_REQUIRES_CAUSER.has(c));
 
-/** Spanish labels for the six causes (MVT-5). */
-const CAUSE_LABELS: Record<CasualtyCause, string> = {
-  blitz: "Blitz",
-  foul: "Falta",
-  dodge: "Esquivando — se cayó",
-  crowd: "El público",
-  penetration: "Penetración",
-  block: "Bloqueo",
-};
-
 const ROLL16_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1);
 const ROLL6_OPTIONS = Array.from({ length: 6 }, (_, i) => i + 1);
 
@@ -68,16 +60,16 @@ interface EventControlsProps {
   onSubmit: (cmd: LiveCommand) => Promise<void>;
 }
 
-/** The FAB + menu item labels (Spanish, rulebook-light). */
-const ACTIVE_MENU: { kind: EventKindOption; label: string }[] = [
-  { kind: "td", label: "Touchdown" },
-  { kind: "completion", label: "Pase completo" },
-  { kind: "casualty", label: "Baja · Herida" },
-  { kind: "foul", label: "Falta" },
+/** The FAB + menu item labels, keyed into the i18n dictionaries (rulebook-light). */
+const ACTIVE_MENU: { kind: EventKindOption; key: string }[] = [
+  { kind: "td", key: "match.menu.td" },
+  { kind: "completion", key: "match.menu.completion" },
+  { kind: "casualty", key: "match.menu.casualty" },
+  { kind: "foul", key: "match.menu.foul" },
 ];
 
-const NON_ACTIVE_MENU: { kind: EventKindOption; label: string }[] = [
-  { kind: "casualty", label: "Herida" },
+const NON_ACTIVE_MENU: { kind: EventKindOption; key: string }[] = [
+  { kind: "casualty", key: "match.menu.injury" },
 ];
 
 export function EventControls({
@@ -88,6 +80,7 @@ export function EventControls({
   opponentRoster,
   onSubmit,
 }: EventControlsProps) {
+  const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
   const [kind, setKind] = useState<EventKindOption | null>(null);
   const [playerRosterId, setPlayerRosterId] = useState("");
@@ -199,19 +192,19 @@ export function EventControls({
       {kind != null ? (
         <div className="w-64 rounded-md border border-[#e2e8f0] bg-white p-4 shadow-lg">
           <p className="mb-2 text-sm font-bold text-[#12225a]">
-            {menuItems.find((m) => m.kind === kind)?.label ?? "Registrar evento"}
+            {t(menuItems.find((m) => m.kind === kind)?.key ?? "match.controls.recordEvent")}
           </p>
           <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-            Jugador
+            {t("match.controls.player")}
           </label>
           <select
-            aria-label="Jugador"
+            aria-label={t("match.controls.player")}
             value={playerRosterId}
             onChange={(e) => setPlayerRosterId(e.target.value)}
             className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
           >
             <option value="" disabled>
-              Selecciona…
+              {t("match.controls.select")}
             </option>
             {(kind === "casualty" ? victimPool : alivePlayers).map((p) => (
               <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
@@ -222,10 +215,10 @@ export function EventControls({
           {kind === "casualty" ? (
             <>
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                Causa de la lesión
+                {t("match.controls.injuryCause")}
               </label>
               <select
-                aria-label="Causa de la lesión"
+                aria-label={t("match.controls.injuryCause")}
                 value={cause}
                 onChange={(e) => {
                   setCause(e.target.value as CasualtyCause | "");
@@ -234,11 +227,11 @@ export function EventControls({
                 className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
               >
                 <option value="" disabled>
-                  Selecciona…
+                  {t("match.controls.select")}
                 </option>
                 {causeOptions.map((c) => (
                   <option key={c} value={c}>
-                    {CAUSE_LABELS[c]}
+                    {causeLabel(c, t)}
                   </option>
                 ))}
               </select>
@@ -247,16 +240,16 @@ export function EventControls({
               {isActive ? (
                 <>
                   <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    Autor de la lesión
+                    {t("match.controls.injuryAuthor")}
                   </label>
                   <select
-                    aria-label="Autor de la lesión"
+                    aria-label={t("match.controls.injuryAuthor")}
                     value={causerRosterId}
                     onChange={(e) => setCauserRosterId(e.target.value)}
                     className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
                   >
                     <option value="" disabled>
-                      Selecciona…
+                      {t("match.controls.select")}
                     </option>
                     {causerPool.map((p) => (
                       <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
@@ -267,10 +260,10 @@ export function EventControls({
                 </>
               ) : null}
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                Tirada 1D16
+                {t("match.controls.roll16")}
               </label>
               <select
-                aria-label="Tirada 1D16"
+                aria-label={t("match.controls.roll16")}
                 value={roll16}
                 onChange={(e) => {
                   setRoll16(e.target.value === "" ? "" : Number(e.target.value));
@@ -279,7 +272,7 @@ export function EventControls({
                 className="mb-2 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
               >
                 <option value="" disabled>
-                  Selecciona…
+                  {t("match.controls.select")}
                 </option>
                 {ROLL16_OPTIONS.map((n) => (
                   <option key={n} value={n}>
@@ -292,9 +285,12 @@ export function EventControls({
                   the 1D16 table, never from the form. */}
               <p className="mb-2 text-[11px] font-semibold text-[#12225a]">
                 {derivedBand ? (
-                  <>Banda: {casualtyKindLabel(derivedBand)}{needsRoll6 ? " · tira 1D6" : ""}</>
+                  <>
+                    {t("match.controls.band", { band: casualtyKindLabel(derivedBand, t) })}
+                    {needsRoll6 ? t("match.controls.roll6Suffix") : ""}
+                  </>
                 ) : (
-                  "La banda se calcula de la tirada"
+                  t("match.controls.bandDerived")
                 )}
               </p>
               {/* The 1D6 attribute roll appears LIVE only when the derived band
@@ -302,7 +298,7 @@ export function EventControls({
               {needsRoll6 ? (
                 <>
                   <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                    Tirada 1D6 (atributo)
+                    {t("match.controls.roll6Attribute")}
                   </label>
                   <select
                     aria-label="Tirada 1D6"
@@ -311,7 +307,7 @@ export function EventControls({
                     className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
                   >
                     <option value="" disabled>
-                      Selecciona…
+                      {t("match.controls.select")}
                     </option>
                     {ROLL6_OPTIONS.map((n) => (
                       <option key={n} value={n}>
@@ -326,16 +322,16 @@ export function EventControls({
           {kind === "foul" ? (
             <>
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                Víctima de la falta
+                {t("match.controls.foulVictim")}
               </label>
               <select
-                aria-label="Víctima de la falta"
+                aria-label={t("match.controls.foulVictim")}
                 value={victimRosterId}
                 onChange={(e) => setVictimRosterId(e.target.value)}
                 className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
               >
                 <option value="" disabled>
-                  Selecciona…
+                  {t("match.controls.select")}
                 </option>
                 {opponentRoster.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
@@ -351,7 +347,7 @@ export function EventControls({
               onClick={cancel}
               className="rounded border border-[#e2e8f0] px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-[#f8fafc]"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -359,7 +355,7 @@ export function EventControls({
               disabled={!canSubmit}
               className="rounded bg-[#12225a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f1d48] disabled:opacity-40"
             >
-              {isActive && kind === "casualty" ? "Proponer" : "Registrar"}
+              {isActive && kind === "casualty" ? t("match.controls.propose") : t("match.controls.record")}
             </button>
           </div>
         </div>
@@ -375,7 +371,7 @@ export function EventControls({
               onClick={() => setKind(item.kind)}
               className="rounded px-3 py-1.5 text-left text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
             >
-              {item.label}
+              {t(item.key)}
             </button>
           ))}
         </div>

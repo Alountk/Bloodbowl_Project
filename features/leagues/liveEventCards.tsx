@@ -1,10 +1,11 @@
 import { Fragment } from "react";
+import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveMinute, playerRef, turnTag, derivePartialScore } from "@/lib/liveFeed";
 import {
-  CAUSE_LABELS,
+  causeLabel,
+  outcomeLabel,
   EVENT_GLYPH,
-  KICKOFF_OUTCOME_LABELS,
   formatTreasury,
   liveEventLabel,
   eventSpp,
@@ -12,6 +13,7 @@ import {
   bandSubLabel,
   casualtyRollLine,
   casualtyActionLine,
+  type TFunc,
 } from "./liveEventLabels";
 import { Icon, type IconName } from "./icons";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
@@ -91,22 +93,23 @@ function casualtyCauseParts(
   payload: Record<string, unknown>,
   oppositeTeam: MatchTeamDetail,
   oppositeRef: Map<string, number>,
+  fn: TFunc,
 ): { causer: { name: string; dorsal: number } | null; cause: string } {
   const cause = typeof payload.cause === "string" ? payload.cause : "";
   // Crowd/self-inflicted omit the causer by server invariant (LM-12) — the
   // cause label already IS the whole line ("El público" / "Esquivando — se cayó").
   if (cause === "crowd" || cause === "dodge") {
-    return { causer: null, cause: CAUSE_LABELS[cause] ?? cause };
+    return { causer: null, cause: causeLabel(cause, fn) };
   }
   const causerId = payload.causerRosterId;
   if (typeof causerId === "string") {
     const c = findPlayer(oppositeTeam, causerId, oppositeRef);
-    const label = CAUSE_LABELS[cause] ?? cause;
+    const label = causeLabel(cause, fn);
     if (c) return { causer: { name: c.name, dorsal: c.dorsal }, cause: label };
     // Causer present but unresolvable → fall back to the bare cause (never throw).
     return { causer: null, cause: label };
   }
-  return { causer: null, cause: CAUSE_LABELS[cause] ?? cause };
+  return { causer: null, cause: causeLabel(cause, fn) };
 }
 
 /**
@@ -120,6 +123,7 @@ function deriveActionCard(
   event: LiveMatchView["events"][number],
   causerTeam: MatchTeamDetail,
   causerRef: Map<string, number>,
+  fn: TFunc,
 ): { player: Exclude<RosterLookup, undefined>; label: string; sub: string | null } | null {
   const causerId = event.payload.causerRosterId;
   if (typeof causerId !== "string") return null;
@@ -128,8 +132,8 @@ function deriveActionCard(
   const cause = typeof event.payload.cause === "string" ? event.payload.cause : "";
   return {
     player,
-    label: CAUSE_LABELS[cause] ?? cause,
-    sub: casualtyActionLine(event.payload),
+    label: causeLabel(cause, fn),
+    sub: casualtyActionLine(event.payload, fn),
   };
 }
 
@@ -139,21 +143,14 @@ function deriveActionCard(
  * missing/non-numeric so the caller renders the label WITHOUT the line and
  * never throws (LM-24 fallback).
  */
-function treasuryLine(payload: Record<string, unknown>): string | null {
+function treasuryLine(payload: Record<string, unknown>, fn: TFunc): string | null {
   const before = payload.treasuryBefore;
   const after = payload.treasuryAfter;
   if (typeof before !== "number" || typeof after !== "number") return null;
   // es-ES dot-thousands BEFORE (no suffix) → formatTreasury AFTER (carries the
   // single trailing " M.O."), per LM-24 "234.000 → 214.000 M.O.".
   const beforeText = new Intl.NumberFormat("es-ES").format(before);
-  return `${beforeText} → ${formatTreasury(after)}`;
-}
-
-/** The outcome display label for an `expensive_mistake` card (LM-24). */
-function outcomeLabel(payload: Record<string, unknown>): string | null {
-  const outcome = payload.outcome;
-  if (typeof outcome !== "string") return null;
-  return KICKOFF_OUTCOME_LABELS[outcome] ?? outcome;
+  return `${beforeText} → ${formatTreasury(after, fn)}`;
 }
 
 /**
@@ -162,7 +159,7 @@ function outcomeLabel(payload: Record<string, unknown>): string | null {
  * A missing/malformed per-team object falls back to a bare `Local: ? ·
  * Visitante: ?` marker so the row always renders and never throws.
  */
-function fanTotalsLine(payload: Record<string, unknown>): string {
+function fanTotalsLine(payload: Record<string, unknown>, fn: TFunc): string {
   const fmt = (side: unknown): string => {
     if (typeof side !== "object" || side === null) return "?";
     const o = side as Record<string, unknown>;
@@ -174,7 +171,7 @@ function fanTotalsLine(payload: Record<string, unknown>): string {
     const t = typeof total === "number" ? String(total) : "?";
     return `👥${b} + 🎲${d} = ${t}`;
   };
-  return `Local: ${fmt(payload.home)} · Visitante: ${fmt(payload.away)}`;
+  return fn("match.fanTotals", { home: fmt(payload.home), away: fmt(payload.away) });
 }
 
 /**
@@ -187,12 +184,13 @@ function concedeLine(
   event: LiveMatchView["events"][number],
   homeTeam: MatchTeamDetail,
   awayTeam: MatchTeamDetail,
+  fn: TFunc,
 ): string | null {
   const surrenderTeam = event.side === "away" ? awayTeam : event.side === "home" ? homeTeam : null;
   const winnerSide = event.payload.winnerSide;
   const winnerTeam = winnerSide === "away" ? awayTeam : winnerSide === "home" ? homeTeam : null;
   if (!surrenderTeam || !winnerTeam) return null;
-  return `${surrenderTeam.name} se rinde · Victoria de ${winnerTeam.name}`;
+  return fn("match.concedeLine", { team: surrenderTeam.name, winner: winnerTeam.name });
 }
 
 /** The wall-clock HH:MM sub-line for the start / endMatch rows (v7). */
@@ -221,6 +219,7 @@ export function LiveEventCards({
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
 }) {
+  const { t } = useI18n();
   // Module class map: kebab-case CSS source keys → readable locals (the class
   // names come straight from the duplicate, so the rendered markup mirrors it).
   const c = {
@@ -281,7 +280,7 @@ export function LiveEventCards({
 
   return (
     <ol
-      aria-label="Cronología del partido"
+      aria-label={t("match.chronologyAria")}
       className="flex flex-col gap-[2px] border border-[#e2e8f0] bg-[#eef1f6] px-[14px] py-[12px]"
     >
       {ordered.map((event) => {
@@ -301,7 +300,9 @@ export function LiveEventCards({
         // The turnStart card is TEAM-assigned (RAU-36/37): it reads "Turno
         // {team}" instead of the generic audit label ("Tu turno").
         const label =
-          event.kind === "turnStart" && team ? `Turno ${team.name}` : liveEventLabel(event);
+          event.kind === "turnStart" && team
+            ? t("match.turnOfTeam", { team: team.name })
+            : liveEventLabel(event, t);
         const iconName: IconName =
           event.kind === "casualty" ? casualtyIcon(event.payload) : EVENT_GLYPH[event.kind] ?? "football";
         const partial = event.kind === "td" ? partialScores.get(event.seq) : undefined;
@@ -313,18 +314,18 @@ export function LiveEventCards({
             : null;
         const causeParts =
           isTeamCard && event.kind === "casualty" && team
-            ? casualtyCauseParts(event.payload, oppositeTeam, oppositeRef)
+            ? casualtyCauseParts(event.payload, oppositeTeam, oppositeRef, t)
             : null;
-        const bandSub = event.kind === "casualty" ? bandSubLabel(event.payload) : null;
+        const bandSub = event.kind === "casualty" ? bandSubLabel(event.payload, t) : null;
         // RAU-39: the injury card's roll line ("Tirada 1D16: {roll16}") — the
         // band is server-derived from this roll, shown as the sub-line/cause.
-        const rollLine = event.kind === "casualty" ? casualtyRollLine(event.payload) : null;
+        const rollLine = event.kind === "casualty" ? casualtyRollLine(event.payload, t) : null;
         // RAU-39: the DERIVED action card on the CAUSER's side — the causer is
         // an OPPONENT of the victim (LM-12), so it renders on the OPPOSITE team
         // with the cause label + the band/roll sub-line. Self-inflicted
         // (dodge/crowd) casualties have no causer → no action card.
         const actionCard =
-          isTeamCard && event.kind === "casualty" && oppositeTeam ? deriveActionCard(event, oppositeTeam, oppositeRef) : null;
+          isTeamCard && event.kind === "casualty" && oppositeTeam ? deriveActionCard(event, oppositeTeam, oppositeRef, t) : null;
         // Kickoff wall-clock subs: the `start` row from the kickoff anchor (omitted
         // gracefully when the data is unavailable), the `endMatch` row from its own
         // event timestamp. NOTE (v7): the preview's `ctv-strip` on the start card is
@@ -332,7 +333,7 @@ export function LiveEventCards({
         const startSub = event.kind === "start" && startedAt != null ? wallClockTime(startedAt) : null;
         const endSub = event.kind === "endMatch" ? wallClockTime(event.at) : null;
         const concedeSub =
-          event.kind === "concede" ? concedeLine(event, homeTeam, awayTeam) : null;
+          event.kind === "concede" ? concedeLine(event, homeTeam, awayTeam, t) : null;
 
         if (isTeamCard && team) {
           // LM-24: the expensive-mistake kickoff row keeps NO turn tag/minute
@@ -369,7 +370,7 @@ export function LiveEventCards({
                   </span>
                   <div className={c.who}>
                     <p className={c.name}>{label}</p>
-                    <p className={c.pos}>Empieza el turno</p>
+                    <p className={c.pos}>{t("match.turnStarts")}</p>
                   </div>
                   <span className={c.detail}>
                     <span className={`${c.dline} ${isHome ? c.dlineHome : c.dlineAway}`}>
@@ -392,13 +393,13 @@ export function LiveEventCards({
                   </span>
                   <div className={c.kwho}>
                     <p className={c.ktitle}>{label}</p>
-                    {outcomeLabel(event.payload) ? (
+                    {typeof event.payload.outcome === "string" ? (
                       <p className={c.ksub}>
-                        {team.name} · {outcomeLabel(event.payload)}
+                        {team.name} · {outcomeLabel(event.payload.outcome, t)}
                       </p>
                     ) : null}
-                    {treasuryLine(event.payload) ? (
-                      <p className={c.ktreasury}>{treasuryLine(event.payload)}</p>
+                    {treasuryLine(event.payload, t) ? (
+                      <p className={c.ktreasury}>{treasuryLine(event.payload, t)}</p>
                     ) : null}
                   </div>
                 </div>
@@ -445,14 +446,19 @@ export function LiveEventCards({
                         <span className={`${c.vtoken} ${isHome ? c.vtokenAway : c.vtokenHome}`}>
                           <Icon name="helmet" className="h-2.5 w-2.5" />
                         </span>
-                        a {victim.name} (#{victim.dorsal})
+                        {t("match.victimLine", { name: victim.name, dorsal: victim.dorsal })}
                       </span>
                     ) : null}
                     {causeParts && causeParts.cause ? (
                       <p className={c.causeLine}>
                         {causeParts.causer ? (
                           <>
-                            por <b>{causeParts.causer.name}</b> (#{causeParts.causer.dorsal}) · {causeParts.cause}
+                            {t("match.causeBy")}
+                            <b>{causeParts.causer.name}</b>
+                            {t("match.causeTail", {
+                              dorsal: causeParts.causer.dorsal,
+                              cause: causeParts.cause,
+                            })}
                           </>
                         ) : (
                           causeParts.cause
@@ -539,7 +545,7 @@ export function LiveEventCards({
               {endSub ? <p className={c.csub}>{endSub}</p> : null}
               {concedeSub ? <p className={c.csub}>{concedeSub}</p> : null}
               {event.kind === "fan_factor" ? (
-                <p className={c.ffLine}>{fanTotalsLine(event.payload)}</p>
+                <p className={c.ffLine}>{fanTotalsLine(event.payload, t)}</p>
               ) : null}
             </div>
             {event.kind === "endMatch" || event.kind === "endHalf" ? (

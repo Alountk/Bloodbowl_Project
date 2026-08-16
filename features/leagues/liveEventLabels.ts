@@ -10,13 +10,42 @@
  * team-specific "Turno {team}" text (RAU-36/37).
  */
 
+import { DEFAULT_LOCALE, t as translate } from "@/lib/i18n/dictionaries";
 import type { IconName } from "./icons";
+
+/** The translator shape used by the label functions (es default fallback). */
+export type TFunc = (key: string, params?: Record<string, string | number>) => string;
+
+/** The es-default translator used when a caller passes no `t` (test/audit). */
+const esT: TFunc = (key, params) => translate(DEFAULT_LOCALE, key, params);
 
 export interface LiveEventLabelInput {
   kind: string;
   half: number;
   turnNumber: number;
   payload: Record<string, unknown>;
+}
+
+/**
+ * Resolves a cause code to its display label. `t` carries the active locale;
+ * unknown causes fall back to the Spanish map index (never throws). The
+ * `match.cause.*` keys mirror the `CAUSE_LABELS` es map byte-for-byte.
+ */
+export function causeLabel(cause: string, fn: TFunc = esT): string {
+  const key = `match.cause.${cause}`;
+  const translated = fn(key);
+  return translated === key ? CAUSE_LABELS[cause] ?? cause : translated;
+}
+
+/**
+ * Resolves a kickoff expensive-mistake outcome code to its display label. `t`
+ * carries the active locale; unknown outcomes fall back to the Spanish map
+ * index (never throws). Mirrors `KICKOFF_OUTCOME_LABELS`.
+ */
+export function outcomeLabel(outcome: string, fn: TFunc = esT): string {
+  const key = `match.outcome.${outcome}`;
+  const translated = fn(key);
+  return translated === key ? KICKOFF_OUTCOME_LABELS[outcome] ?? outcome : translated;
 }
 
 /**
@@ -73,17 +102,17 @@ export function casualtyIcon(payload: Record<string, unknown>): IconName {
  * death, "Se pierde el próximo partido" for every lasting non-dead band, and
  * "Lesión molesta" for a bruise. Unknown/missing bands → null (no sub-line).
  */
-export function bandSubLabel(payload: Record<string, unknown>): string | null {
+export function bandSubLabel(payload: Record<string, unknown>, fn: TFunc = esT): string | null {
   const band = typeof payload.band === "string" ? payload.band : null;
   switch (band) {
     case "dead":
-      return "¡Muerto!";
+      return fn("match.band.dead");
     case "bruise":
-      return "Lesión molesta";
+      return fn("match.band.bruise");
     case "apaleado":
     case "grave":
     case "permanent":
-      return "Se pierde el próximo partido";
+      return fn("match.band.lasting");
     default:
       return null;
   }
@@ -94,18 +123,18 @@ export function bandSubLabel(payload: Record<string, unknown>): string | null {
  * the feed's roll sub-lines ("Tirada 1D16: 13 · Permanente"). Mirrors the
  * result-summary `casualtyKindLabel` mapping; unknown bands pass through.
  */
-export function casualtyBandLabel(band: string): string {
+export function casualtyBandLabel(band: string, fn: TFunc = esT): string {
   switch (band) {
     case "bruise":
-      return "Magullado";
+      return fn("match.casualty.bruise");
     case "apaleado":
-      return "Apaleado";
+      return fn("match.casualty.apaleado");
     case "grave":
-      return "Herida grave";
+      return fn("match.casualty.grave");
     case "permanent":
-      return "Permanente";
+      return fn("match.casualty.permanent");
     case "dead":
-      return "Muerto";
+      return fn("match.casualty.dead");
     default:
       return band;
   }
@@ -121,10 +150,10 @@ function attributeLabel(attribute: string): string {
  * band is already conveyed by the label + band sub-line). Missing/non-numeric
  * rolls → null (legacy payloads keep the bare card, never throw).
  */
-export function casualtyRollLine(payload: Record<string, unknown>): string | null {
+export function casualtyRollLine(payload: Record<string, unknown>, fn: TFunc = esT): string | null {
   const roll16 = payload.roll16;
   if (typeof roll16 !== "number") return null;
-  return `Tirada 1D16: ${roll16}`;
+  return fn("match.roll16", { roll: roll16 });
 }
 
 /**
@@ -133,13 +162,12 @@ export function casualtyRollLine(payload: Record<string, unknown>): string | nul
  * injury ("Tirada 1D16: 13 · Permanente (−PS)"). The action card's label is the
  * CAUSE, so the band rides here. Missing/non-numeric rolls → null.
  */
-export function casualtyActionLine(payload: Record<string, unknown>): string | null {
+export function casualtyActionLine(payload: Record<string, unknown>, fn: TFunc = esT): string | null {
   const roll16 = payload.roll16;
   if (typeof roll16 !== "number") return null;
   const band = typeof payload.band === "string" ? payload.band : null;
-  const bandText = band ? casualtyBandLabel(band) : "";
-  let line = `Tirada 1D16: ${roll16}`;
-  if (bandText) line += ` · ${bandText}`;
+  let line = fn("match.roll16", { roll: roll16 });
+  if (band) line += ` · ${casualtyBandLabel(band, fn)}`;
   const attribute = payload.permanentAttribute;
   if (band === "permanent" && typeof attribute === "string") {
     line += ` (−${attributeLabel(attribute)})`;
@@ -165,8 +193,8 @@ export const KICKOFF_OUTCOME_LABELS: Record<string, string> = {
  * " M.O." (LM-24). Pure — callers decide whether a missing field renders the
  * line at all.
  */
-export function formatTreasury(value: number): string {
-  return `${new Intl.NumberFormat("es-ES").format(value)} M.O.`;
+export function formatTreasury(value: number, fn: TFunc = esT): string {
+  return `${new Intl.NumberFormat("es-ES").format(value)}${fn("match.treasuryUnit")}`;
 }
 
 /** A casualty band mapped to its Design-A display bucket (LM-18). */
@@ -181,15 +209,15 @@ export interface BandDisplay {
  * renders "Baja" (★2). Unknown bands pass through with zero stars (never
  * throws, forward-compatible with new bands).
  */
-export function bandToDisplay(band: string): BandDisplay {
+export function bandToDisplay(band: string, fn: TFunc = esT): BandDisplay {
   switch (band) {
     case "bruise":
-      return { label: "Herida", stars: 0 };
+      return { label: fn("match.event.casualty.bruise"), stars: 0 };
     case "apaleado":
     case "grave":
     case "permanent":
     case "dead":
-      return { label: "Baja", stars: 2 };
+      return { label: fn("match.event.casualty.lasting"), stars: 2 };
     default:
       return { label: band, stars: 0 };
   }
@@ -215,40 +243,40 @@ export function eventSpp(event: LiveEventLabelInput): number {
 }
 
 /** A label for a single live event; casualty payloads reuse the rulebook band. */
-export function liveEventLabel(event: LiveEventLabelInput): string {
+export function liveEventLabel(event: LiveEventLabelInput, fn: TFunc = esT): string {
   switch (event.kind) {
     case "start":
-      return "Inicio del partido";
+      return fn("match.event.start");
     case "turn":
-      return "Fin de turno";
+      return fn("match.event.turn");
     case "turnStart":
-      return "Tu turno";
+      return fn("match.event.turnStart");
     case "requestTurn":
-      return "Te piden el turno";
+      return fn("match.event.requestTurn");
     case "td":
-      return "Touchdown";
+      return fn("match.event.td");
     case "completion":
-      return "Pase completo";
+      return fn("match.event.completion");
     case "mvp":
-      return "Jugador más valioso";
+      return fn("match.event.mvp");
     case "casualty": {
       // LM-18: the Design-A bucket label — a bruise renders "Herida", every
       // lasting band (apaleado|grave|permanent|dead) renders "Baja".
       const band = typeof event.payload.band === "string" ? event.payload.band : null;
-      return band ? bandToDisplay(band).label : "Baja";
+      return band ? bandToDisplay(band, fn).label : fn("match.event.casualty.lasting");
     }
     case "foul":
-      return "Falta";
+      return fn("match.event.foul");
     case "expensive_mistake":
-      return "Error costoso";
+      return fn("match.event.expensiveMistake");
     case "fan_factor":
-      return "Factor de aficionados";
+      return fn("match.event.fanFactor");
     case "endHalf":
-      return "Fin de la mitad";
+      return fn("match.event.endHalf");
     case "endMatch":
-      return "Fin del partido";
+      return fn("match.event.endMatch");
     case "concede":
-      return "Concesión";
+      return fn("match.event.concede");
     default:
       return event.kind;
   }

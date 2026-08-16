@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
 import { resolveInjury } from "@/lib/rules/injuries";
 import { getRaceById } from "@/features/teams/data/races";
@@ -10,7 +11,7 @@ import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, buildSummaryFeedRows, casualtyKindLabel, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
 import { LiveEventCards } from "./liveEventCards";
-import { CAUSE_LABELS } from "./liveEventLabels";
+import { causeLabel } from "./liveEventLabels";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
 import { EventControls } from "./liveControls";
@@ -29,6 +30,7 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const { t } = useI18n();
 
   const refresh = useCallback(async () => {
     try {
@@ -41,12 +43,12 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
       if (status === 404) {
         setNotFound(true);
       } else {
-        setError(e instanceof Error ? e.message : "No se pudo cargar el partido.");
+        setError(e instanceof Error ? e.message : t("match.loadError"));
       }
     } finally {
       setLoading(false);
     }
-  }, [leagueId, fixtureId]);
+  }, [leagueId, fixtureId, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +62,7 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
         if (status === 404) {
           setNotFound(true);
         } else {
-          setError(e instanceof Error ? e.message : "No se pudo cargar el partido.");
+          setError(e instanceof Error ? e.message : t("match.loadError"));
         }
       })
       .finally(() => {
@@ -69,7 +71,7 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
     return () => {
       cancelled = true;
     };
-  }, [leagueId, fixtureId]);
+  }, [leagueId, fixtureId, t]);
 
   return { detail, loading, error, notFound, refresh };
 }
@@ -182,19 +184,20 @@ function ConcedeControls({
   onRespond: (accept: boolean) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const { t } = useI18n();
 
   if (proposedBy != null) {
     if (proposedBy === viewerSide) {
       return (
         <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-          Esperando respuesta del rival…
+          {t("match.concede.waiting")}
         </span>
       );
     }
     return (
       <div className="flex items-center gap-1.5">
         <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-          El rival se rinde
+          {t("match.concede.rivalSurrenders")}
         </span>
         <button
           type="button"
@@ -202,7 +205,7 @@ function ConcedeControls({
           disabled={submitting}
           className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
         >
-          Aceptar
+          {t("match.concede.accept")}
         </button>
         <button
           type="button"
@@ -210,7 +213,7 @@ function ConcedeControls({
           disabled={submitting}
           className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
         >
-          Rechazar
+          {t("match.concede.reject")}
         </button>
       </div>
     );
@@ -220,7 +223,7 @@ function ConcedeControls({
     return (
       <div className="flex items-center gap-1.5">
         <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-          ¿Conceder el partido?
+          {t("match.concede.confirm")}
         </span>
         <button
           type="button"
@@ -231,7 +234,7 @@ function ConcedeControls({
           disabled={submitting}
           className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
         >
-          Sí, conceder
+          {t("match.concede.yes")}
         </button>
         <button
           type="button"
@@ -239,7 +242,7 @@ function ConcedeControls({
           disabled={submitting}
           className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
         >
-          Cancelar
+          {t("common.cancel")}
         </button>
       </div>
     );
@@ -252,7 +255,7 @@ function ConcedeControls({
       disabled={submitting}
       className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
     >
-      Conceder
+      {t("match.concede.action")}
     </button>
   );
 }
@@ -282,6 +285,7 @@ function CasualtyConfirmControls({
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
 }) {
+  const { t } = useI18n();
   if (pending == null) return null;
   // The victim is on the side OPPOSITE the proposer (LM-12 invariant).
   const victimTeam = pending.proposerSide === "home" ? awayTeam : homeTeam;
@@ -300,12 +304,13 @@ function CasualtyConfirmControls({
               : "ST"
       : null
     : null;
-  const bandLabel = attribute ? `${casualtyKindLabel(band.kind)} (−${attribute})` : casualtyKindLabel(band.kind);
+  const bandText = casualtyKindLabel(band.kind, t);
+  const bandLabel = attribute ? `${bandText} (−${attribute})` : bandText;
 
   if (pending.proposerSide === viewerSide) {
     return (
       <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-        Esperando confirmación del rival…
+        {t("match.casualty.waiting")}
       </span>
     );
   }
@@ -313,10 +318,15 @@ function CasualtyConfirmControls({
   return (
     <div className="flex flex-col items-end gap-1">
       <span className="text-[10px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-        El rival registra una baja
+        {t("match.casualty.rivalRegisters")}
       </span>
       <span className="max-w-[220px] text-right text-[10px] font-semibold text-white">
-        {victim?.name ?? "?"} · {CAUSE_LABELS[pending.cause] ?? pending.cause} · 1D16 {pending.roll16} · {bandLabel}
+        {t("match.casualty.details", {
+          victim: victim?.name ?? "?",
+          cause: causeLabel(pending.cause, t),
+          roll: pending.roll16,
+          band: bandLabel,
+        })}
       </span>
       <button
         type="button"
@@ -324,7 +334,7 @@ function CasualtyConfirmControls({
         disabled={submitting}
         className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
       >
-        Confirmar
+        {t("match.casualty.confirm")}
       </button>
     </div>
   );
@@ -364,6 +374,7 @@ function LiveConsentPanel({
   onBegin: () => void;
   submitting: boolean;
 }) {
+  const { t } = useI18n();
   const side = state?.viewerSide ?? null;
   const pending = state == null || state.status === "pending";
   const ready = state?.status === "ready";
@@ -373,7 +384,7 @@ function LiveConsentPanel({
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
         <MatchupLine names={names} />
         <p className="mt-3 text-sm font-semibold text-slate-600">
-          Esperando a los entrenadores para iniciar el partido.
+          {t("match.consent.waiting")}
         </p>
       </div>
     );
@@ -385,10 +396,10 @@ function LiveConsentPanel({
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
         <MatchupLine names={names} />
         <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
-          {scheduled ? "Partido programado" : "Partido sin programar"}
+          {scheduled ? t("match.consent.scheduled") : t("match.consent.unscheduled")}
         </p>
         <p className="mt-2 text-sm text-slate-700">
-          {names[side]} quiere empezar. {side === "home" ? names.away : names.home} aún no ha confirmado.
+          {t("match.consent.sideWants", { team: names[side], rival: side === "home" ? names.away : names.home })}
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           {meConsented ? (
@@ -398,7 +409,7 @@ function LiveConsentPanel({
               disabled={submitting}
               className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
             >
-              Retirar consentimiento
+              {t("match.consent.retract")}
             </button>
           ) : (
             <button
@@ -407,12 +418,12 @@ function LiveConsentPanel({
               disabled={submitting}
               className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
             >
-              Iniciar partido
+              {t("match.consent.start")}
             </button>
           )}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          {meConsented ? "Listo, esperando al rival." : "El partido comenzará cuando ambos entrenadores confirmen."}
+          {meConsented ? t("match.consent.ready") : t("match.consent.bothConfirm")}
         </p>
       </div>
     );
@@ -422,8 +433,8 @@ function LiveConsentPanel({
     return (
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
         <MatchupLine names={names} />
-        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">Listo para empezar</p>
-        <p className="mt-2 text-sm text-slate-700">Ambos entrenadores han confirmado.</p>
+        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">{t("match.consent.readyToStart")}</p>
+        <p className="mt-2 text-sm text-slate-700">{t("match.consent.bothConfirmed")}</p>
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           <button
             type="button"
@@ -431,7 +442,7 @@ function LiveConsentPanel({
             disabled={submitting}
             className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
           >
-            Empezar partido
+            {t("match.consent.begin")}
           </button>
           <button
             type="button"
@@ -439,7 +450,7 @@ function LiveConsentPanel({
             disabled={submitting}
             className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
           >
-            Retirar consentimiento
+            {t("match.consent.retract")}
           </button>
         </div>
       </div>
@@ -450,8 +461,8 @@ function LiveConsentPanel({
     return (
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
         <MatchupLine names={names} />
-        <p className="mt-3 text-sm font-bold text-[#12225a]">Listos para empezar</p>
-        <p className="mt-2 text-xs text-slate-500">Ambos entrenadores han confirmado.</p>
+        <p className="mt-3 text-sm font-bold text-[#12225a]">{t("match.consent.readyToStartBoth")}</p>
+        <p className="mt-2 text-xs text-slate-500">{t("match.consent.bothConfirmed")}</p>
       </div>
     );
   }
@@ -475,15 +486,16 @@ function TurnTrack({
   current: number;
   isActive: boolean;
 }) {
+  const { t } = useI18n();
   const first = current > 8 ? 9 : 1;
   return (
-    <div aria-label={`Turnos de ${sideName}`} className="flex items-center gap-1">
+    <div aria-label={t("match.turnsOf", { team: sideName })} className="flex items-center gap-1">
       {Array.from({ length: 8 }, (_, i) => first + i).map((n) => {
         const active = isActive && n === current;
         return (
           <span
             key={n}
-            aria-label={`Turno ${n}`}
+            aria-label={t("match.turnOfNumber", { n })}
             aria-current={active ? "true" : undefined}
             className={`flex h-[21px] w-[21px] items-center justify-center rounded-[3px] text-[10px] font-bold ${
               active ? "bg-[#d11938] text-white" : "bg-[#1f3a7a] text-[#9fb3d8]"
@@ -538,6 +550,7 @@ function LiveTopBar({
   /** RAU-39: the turn-zone casualty confirm panel (same gating as concede). */
   casualtyControls?: React.ReactNode;
 }) {
+  const { t } = useI18n();
   const live = state.status === "live";
   const globalTurn = state.half === 2 ? state.turnNumber + 8 : state.turnNumber;
   // Inert pre-kickoff clocks render "–"; once a value exists (live or finished)
@@ -551,7 +564,7 @@ function LiveTopBar({
         {/* MVT-3 back arrow to the jornada (UI-only, existing DTO). */}
         <Link
           href={`/leagues/${leagueId}`}
-          aria-label="Volver a la jornada"
+          aria-label={t("match.backToJornada")}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/[0.08] text-white hover:border-white"
         >
           <Icon name="back" className="h-[18px] w-[18px]" />
@@ -582,9 +595,9 @@ function LiveTopBar({
               role="status"
               className="text-[9px] font-bold uppercase tracking-[0.03em] text-[#ffd9e0]"
             >
-              Turno {names[state.activeSide]}
+              {t("match.turnOfTeam", { team: names[state.activeSide] })}
             </small>
-            Dar el turno
+            {t("match.endTurn")}
           </button>
         ) : null}
         {/* RAU-38: the concede controls sit in the turn zone next to the turn
@@ -606,10 +619,10 @@ function LiveTopBar({
         </span>
         <span className="flex items-center gap-2">
           <span className="rounded-[3px] border border-[rgba(209,25,56,0.45)] bg-[rgba(209,25,56,0.25)] px-2 py-[1px] text-[10px] font-black uppercase tracking-[0.05em] text-white">
-            {state.half === 2 ? "2ª Parte" : "1ª Parte"}
+            {state.half === 2 ? t("match.halfTwo") : t("match.halfOne")}
           </span>
           <span className="text-[11px] font-semibold text-[#cbd5e1]">
-            Mitad {state.half} · Turno {state.turnNumber}
+            {t("match.halfTurn", { half: state.half, turn: state.turnNumber })}
           </span>
         </span>
         <span className="flex items-center gap-1 text-white">
@@ -694,12 +707,13 @@ function LiveTeamBlock({
  * inert noise on a pre-live or finished page).
  */
 function LiveScoreboard({ state, clock }: { state: LiveMatchViewState; clock: DisplayClock }) {
+  const { t } = useI18n();
   const played = state.status === "live" || state.status === "finished";
   return (
     <div className="px-1.5 text-center">
       <p
         data-testid="live-score"
-        aria-label="Marcador"
+        aria-label={t("match.scoreboard")}
         className="text-[46px] font-black leading-none tracking-[0.05em] text-white tabular-nums"
       >
         {played ? state.homeScore : "-"}
@@ -708,7 +722,7 @@ function LiveScoreboard({ state, clock }: { state: LiveMatchViewState; clock: Di
       </p>
       {state.status === "live" ? (
         <p className="mt-[7px] text-[10px] font-bold uppercase tracking-[0.04em] text-[#cbd5e1]">
-          En juego · Tiempo <FormatHms ms={clock.elapsed} />
+          {t("match.inPlay")} <FormatHms ms={clock.elapsed} />
         </p>
       ) : null}
     </div>
@@ -782,14 +796,15 @@ function LiveHero({
  * none yet; the stadium has no data source → the rulebook-neutral
  * "Reglamentario" always renders. Inline SVG icons flank the two meta labels. */
 function LiveMetaRow() {
+  const { t } = useI18n();
   return (
     <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-[#e2e8f0] bg-[#f8fafc] px-3.5 py-1.5 text-[11px] text-slate-500">
       <span className="flex items-center gap-1.5">
         <Icon name="weather" className="h-[15px] w-[15px] text-[#12225a]" />
-        Clima · Estándar
+        {t("match.clima")}
       </span>
       <span className="flex items-center gap-1.5">
-        Estadio · Reglamentario
+        {t("match.estadio")}
         <Icon name="helmet" className="h-[15px] w-[15px] text-[#12225a]" />
       </span>
     </div>
@@ -919,6 +934,7 @@ function LiveActiveMatch({
   const clock = useLiveClock(state);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { t } = useI18n();
 
   // Synchronous in-flight lock: a second invocation while a command is pending
   // (e.g. the second click of a double-click) is dropped — the `submitting`
@@ -934,7 +950,7 @@ function LiveActiveMatch({
     try {
       await sendCommand(cmd);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo ejecutar.");
+      setError(e instanceof Error ? e.message : t("match.executeError"));
     } finally {
       busyRef.current = false;
       setSubmitting(false);
@@ -1025,7 +1041,7 @@ function LiveActiveMatch({
               role="status"
               className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
             >
-              Tu rival pide el turno
+              {t("match.rivalRequestsTurn")}
             </p>
           ) : null}
           <LiveEventCards
@@ -1053,7 +1069,7 @@ function LiveActiveMatch({
                   disabled={state.status !== "live" || submitting}
                   className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
                 >
-                  Pedir turno
+                  {t("match.requestTurn")}
                 </button>
               ) : null}
             </div>
@@ -1106,6 +1122,7 @@ function formatCoins(value: number): string {
  * event cards. Derived from the `MatchResult` snapshot — never a new event kind
  * (MV-6/LM-16) and never duplicating the event-derived MVP rows. */
 function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
+  const { t } = useI18n();
   switch (row.type) {
     case "reported":
       return (
@@ -1116,7 +1133,7 @@ function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
           <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600/15 text-green-700">
             ✓
           </span>
-          <span className="flex-1">Partido reportado</span>
+          <span className="flex-1">{t("match.reported")}</span>
           <span className="tabular-nums">{row.date}</span>
         </li>
       );
@@ -1131,7 +1148,7 @@ function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
             {row.type === "winnings" ? "💰" : "👥"}
           </span>
           <span className="flex-1 font-bold uppercase tracking-wide text-slate-500">
-            {row.type === "winnings" ? "Ganancias" : "Fanáticos dedicados"}
+            {row.type === "winnings" ? t("match.winnings") : t("match.fans")}
           </span>
           <span className="flex flex-col items-end gap-0.5 text-right tabular-nums">
             <span className="leading-tight">{row.type === "winnings" ? formatCoins(row.home) : `+${row.home}`}</span>
@@ -1147,7 +1164,7 @@ function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
         >
           <span aria-hidden="true" className="shrink-0 text-center">💰</span>
           <span className="flex-1">
-            <span className="block font-bold uppercase tracking-wide text-slate-500">Incentivos</span>
+            <span className="block font-bold uppercase tracking-wide text-slate-500">{t("match.incentives")}</span>
             {/* The snapshot stores a single pettyCash — the inducement chips are
                 deferred (MVT-4 open question). */}
             <span className="block text-[11px] font-semibold text-slate-600">{formatCoins(row.value)}</span>
@@ -1236,6 +1253,7 @@ function SectionRow({ label, children }: { label: string; children: React.ReactN
 }
 
 function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
+  const { t } = useI18n();
   const score = sections.find((s): s is Extract<MatchSummarySection, { type: "score" }> => s.type === "score");
   const teams = sections.find((s): s is Extract<MatchSummarySection, { type: "teams" }> => s.type === "teams");
   const fans = sections.find((s): s is Extract<MatchSummarySection, { type: "fans" }> => s.type === "fans");
@@ -1278,18 +1296,18 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
 
       <ul className="px-4 pb-4">
         {fans ? (
-          <SectionRow label="Afición">
+          <SectionRow label={t("match.fansSection")}>
             {fans.home} · {fans.away}
           </SectionRow>
         ) : null}
         {winnings ? (
-          <SectionRow label="Ganancias">
+          <SectionRow label={t("match.winnings")}>
             <Coins value={winnings.home} /> · <Coins value={winnings.away} />
           </SectionRow>
         ) : null}
-        {weather ? <SectionRow label="Clima">{weather.label}</SectionRow> : null}
+        {weather ? <SectionRow label={t("match.weatherSection")}>{weather.label}</SectionRow> : null}
         {casualties ? (
-          <SectionRow label="Heridas">
+          <SectionRow label={t("match.casualtiesSection")}>
             {casualties.items.map((c) => (
               <span key={`${c.label}:${c.playerName}`} className="block">
                 {c.playerName} · {c.label}
@@ -1301,7 +1319,7 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
 
       {pe && pe.home.concat(pe.away).length > 0 ? (
         <div className="border-t border-[#e2e8f0] px-4 py-3">
-          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">PE</h3>
+          <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">{t("match.peSection")}</h3>
           <ul className="grid grid-cols-2 gap-x-6 gap-y-1">
             {pe.home.map((row, i) => (
               <li key={`home:${row.playerName}:${i}`} className="flex justify-between text-sm">
@@ -1321,7 +1339,7 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
 
       {mvp ? (
         <div className="border-t-2 border-[#d11938] bg-[#12225a] px-4 py-3 text-white">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[#cbd5e1]">Jugador del partido</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-[#cbd5e1]">{t("match.playerOfMatch")}</p>
           <div className="mt-1 flex flex-wrap justify-between gap-2">
             <p className="text-sm font-bold">
               {mvp.home ? `${mvp.home.playerName} · +${PE_MVP} PE` : "—"}
@@ -1344,6 +1362,7 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
 export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId: string }) {
   const { detail, loading, error, notFound } = useMatchDetail(leagueId, fixtureId);
   const leagueName = useLeagueName(leagueId);
+  const { t } = useI18n();
   // D19: when no LiveMatch row exists yet, the per-viewer side is deduced from
   // the session user against the two team owners (the DTO carries it otherwise).
   const { data: session } = useSession();
@@ -1359,12 +1378,12 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
   if (notFound) {
     return (
       <div className="border border-[#e2e8f0] bg-white p-8 text-center">
-        <p className="text-sm text-slate-600">Partido no encontrado.</p>
+        <p className="text-sm text-slate-600">{t("match.notFound")}</p>
         <Link
           href="/leagues"
           className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
         >
-          Volver a mis ligas
+          {t("leagues.backToLeagues")}
         </Link>
       </div>
     );
@@ -1373,7 +1392,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
   if (!loading && !detail) {
     return (
       <div className="border border-[#e2e8f0] bg-white p-8 text-center">
-        <p className="text-sm text-slate-600">{error ?? "No se pudo cargar el partido."}</p>
+        <p className="text-sm text-slate-600">{error ?? t("match.loadError")}</p>
       </div>
     );
   }
@@ -1382,17 +1401,17 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     return (
       <div className="flex min-h-[200px] items-center justify-center bg-white p-8">
         <p className="text-sm text-slate-500" role="status">
-          Cargando partido…
+          {t("match.loading")}
         </p>
       </div>
     );
   }
 
-  const summary = buildMatchSummary(detail);
+  const summary = buildMatchSummary(detail, t);
   const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
   // Mockup top-bar label: "{league} · Jornada {round}" (league name resolved
   // client-side; falls back to "Jornada {round}" when unavailable).
-  const leagueLabel = `${leagueName ? `${leagueName} · ` : ""}Jornada ${detail.fixture.round}`;
+  const leagueLabel = `${leagueName ? `${leagueName} · ` : ""}${t("match.jornada", { round: detail.fixture.round })}`;
   // Hero team subtitles: race name · coach name (matchSummary's teams-line).
   const homeSubtitle = `${getRaceById(detail.homeTeam.raceId)?.name ?? "—"} · ${detail.homeTeam.user?.name ?? "—"}`;
   const awaySubtitle = `${getRaceById(detail.awayTeam.raceId)?.name ?? "—"} · ${detail.awayTeam.user?.name ?? "—"}`;
@@ -1438,7 +1457,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         <p className="text-3xl font-black text-[#12225a]">
           {detail.fixture.homeScore} <span className="text-[#d11938]">–</span> {detail.fixture.awayScore}
         </p>
-        <p className="mt-2 text-sm font-semibold text-[#d11938]">Victoria por incomparecencia.</p>
+        <p className="mt-2 text-sm font-semibold text-[#d11938]">{t("match.walkover")}</p>
       </div>
     );
   } else if (detail.fixture.status === "scheduled") {
@@ -1486,6 +1505,6 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     // v7: the duplicated "Partido {round}" + Volver page header is GONE — the
     // back navigation lives in the sticky Tourplay header's back arrow (only
     // the notFound/error/loading panels keep their own chrome).
-    <section aria-label={`Partido ${detail.fixture.round}`}>{body}</section>
+    <section aria-label={t("match.pageAria", { round: detail.fixture.round })}>{body}</section>
   );
 }
