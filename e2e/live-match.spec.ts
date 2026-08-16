@@ -415,7 +415,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await homeCoach.getByLabel("Causa de la lesión").selectOption({ label: "Esquivando — se cayó" });
     await expect(homeCoach.getByLabel("Autor de la lesión")).toHaveCount(0);
     await expect(homeCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
-    await homeCoach.getByLabel("Tirada 1D16").selectOption({ label: "9" });
+    await homeCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
     await homeCoach.getByRole("button", { name: "Registrar" }).click();
     await expect(homeCoach.getByLabel("Jugador")).toHaveCount(0);
     // The self-inflicted casualty card (victim = own home player) renders with
@@ -435,7 +435,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await awayCoach.getByLabel("Jugador").selectOption({ label: homeScorerName });
     await awayCoach.getByLabel("Causa de la lesión").selectOption({ label: "Blitz" });
     await awayCoach.getByLabel("Autor de la lesión").selectOption({ label: awayScorerName });
-    await awayCoach.getByLabel("Tirada 1D16").selectOption({ label: "9" });
+    await awayCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
     await expect(awayCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
     await awayCoach.getByRole("button", { name: /Proponer/i }).click();
     await expect(awayCoach.getByLabel("Jugador")).toHaveCount(0);
