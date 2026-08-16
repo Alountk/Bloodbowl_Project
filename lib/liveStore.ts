@@ -34,6 +34,7 @@ import {
   type LiveMatchState,
   type TeamSide,
 } from "./liveMatch";
+import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
 export interface StoreTx {
@@ -43,6 +44,9 @@ export interface StoreTx {
   };
   liveEvent: {
     create(args: Prisma.LiveEventCreateArgs): Promise<LiveEvent>;
+  };
+  team: {
+    updateMany(args: Prisma.TeamUpdateManyArgs): Promise<{ count: number }>;
   };
 }
 
@@ -126,15 +130,24 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
 
 /** Shared optimistic-guard persistence: bump seq, write fields, append delta events. */
 async function persistAndPublish(
-  input: { liveMatchId: string; fixtureId: string; currentSeq: number; next: LiveMatchState; now: number },
+  input: {
+    liveMatchId: string;
+    fixtureId: string;
+    currentSeq: number;
+    next: LiveMatchState;
+    now: number;
+    /** Optional per-team treasury decrements to commit in the SAME transaction as
+     * the event rows (LM-23 atomicity): a failure rolls back events AND treasury. */
+    treasuryUpdates?: { teamId: string; amountLost: number }[];
+  },
   deps: StoreDeps,
 ): Promise<number> {
   const eventsToPersist = input.next.events.filter((e) => e.seq > input.currentSeq);
   // Advance the row seq past BOTH the previous value and every newly-appended
   // delta event. Most transitions emit exactly one event (seq = currentSeq+1),
-  // but `beginMatch` emits TWO (`start` + `turnStart`), so the row must advance
-  // to the highest event seq — otherwise the next transition's event collides
-  // on `@@unique([liveMatchId, seq])` (P2002).
+  // but `beginMatch` emits the kickoff-plus-start/turnStart set, so the row must
+  // advance to the highest event seq — otherwise the next transition's event
+  // collides on `@@unique([liveMatchId, seq])` (P2002).
   const highestEventSeq = eventsToPersist.reduce((max, e) => Math.max(max, e.seq), input.currentSeq);
   const nextSeq = Math.max(input.currentSeq + 1, highestEventSeq);
 
@@ -158,6 +171,15 @@ async function persistAndPublish(
           turnNumber: event.turnNumber,
           payload: event.payload as never,
         },
+      });
+    }
+    // LM-23: the treasury decrements are part of the SAME transaction as the
+    // event rows, so a failure rolls BOTH back. The delta is ≤ half treasury
+    // (serious-incident) or the kept remainder (catastrophe), never negative.
+    for (const update of input.treasuryUpdates ?? []) {
+      await tx.team.updateMany({
+        where: { id: update.teamId },
+        data: { treasury: { decrement: update.amountLost } },
       });
     }
   });
@@ -336,11 +358,18 @@ export interface BeginLiveMatchInput {
   liveMatchId: string;
   fixtureId: string;
   now: number;
+  /** Optional kickoff input (LM-21/22/23): when present, the begin transition
+   * builds the em/em/fan_factor events and commits the treasury deltas atomically. */
+  kickoff?: BuildKickoffEventsInput;
 }
 
 /**
  * Begins the first turn: `ready → live` ONLY via `beginMatch` (LM-3/LM-11).
- * Persists the live state + the `start`/`turnStart` events atomically.
+ * When a kickoff input is supplied, builds the kickoff events via
+ * `buildKickoffEvents` (LM-21) and passes the treasury deltas into
+ * `persistAndPublish` so they commit in the same transaction as the event rows
+ * (LM-23). A retried begin (already-live) is mapped to 409 (LM-21 idempotency);
+ * the optimistic seq guard also returns 409 on a concurrent double-begin.
  */
 export async function beginLiveMatch(
   input: BeginLiveMatchInput,
@@ -349,9 +378,31 @@ export async function beginLiveMatch(
   const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
   if (!row) throw Object.assign(new Error("not found"), { status: 404 });
   const current = liveMatchRowToState(row);
-  const next = beginMatch(current, input.now);
+
+  const kickoff = input.kickoff
+    ? buildKickoffEvents(input.kickoff)
+    : { events: [], treasuryUpdates: [] as { teamId: string; amountLost: number }[] };
+
+  let next: LiveMatchState;
+  try {
+    next = beginMatch(current, input.now, kickoff.events);
+  } catch (error) {
+    // LM-21: a begin on an already-live match is a retry → 409, never a 500.
+    if (error instanceof Error && error.message.includes("begin only from ready")) {
+      throw Object.assign(error, { status: 409 });
+    }
+    throw error;
+  }
+
   const nextSeq = await persistAndPublish(
-    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    {
+      liveMatchId: row.id,
+      fixtureId: input.fixtureId,
+      currentSeq: current.seq,
+      next,
+      now: input.now,
+      treasuryUpdates: kickoff.treasuryUpdates,
+    },
     deps,
   );
   return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };

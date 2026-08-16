@@ -47,16 +47,19 @@ function makeDeps(updateCount: number): {
   liveEventCreate: ReturnType<typeof vi.fn>;
   liveMatchCreate: ReturnType<typeof vi.fn>;
   liveMatchFindFirst: ReturnType<typeof vi.fn>;
+  teamUpdateMany: ReturnType<typeof vi.fn>;
   publish: ReturnType<typeof vi.fn>;
 } {
   const updateMany = vi.fn().mockResolvedValue({ count: updateCount });
   const liveEventCreate = vi.fn().mockResolvedValue({ id: "ev-1" });
   const liveMatchCreate = vi.fn();
   const liveMatchFindFirst = vi.fn().mockResolvedValue(null);
+  const teamUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const publish = vi.fn();
   const tx = {
     liveMatch: { updateMany, create: liveMatchCreate },
     liveEvent: { create: liveEventCreate },
+    team: { updateMany: teamUpdateMany },
   };
   const $transaction = vi
     .fn()
@@ -68,7 +71,7 @@ function makeDeps(updateCount: number): {
     },
     hub: { publish },
   };
-  return { deps, updateMany, liveEventCreate, liveMatchCreate, liveMatchFindFirst, publish };
+  return { deps, updateMany, liveEventCreate, liveMatchCreate, liveMatchFindFirst, teamUpdateMany, publish };
 }
 
 describe("liveMatchRowToState", () => {
@@ -272,6 +275,169 @@ describe("beginLiveMatch — ready→live ONLY via the first turn (LM-3)", () =>
     expect(createCalls).toContain("turnStart");
     expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "live", startedAt: 1000 }));
     expect(result.view.status).toBe("live");
+  });
+
+  it("builds the kickoff events and commits the treasury decrements in the SAME $transaction (LM-23)", async () => {
+    const { deps, updateMany, liveEventCreate, liveMatchFindFirst, teamUpdateMany, publish } = makeDeps(1);
+    const readyRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 2,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(readyRow);
+
+    const result = await beginLiveMatch(
+      {
+        liveMatchId: "lm-1",
+        fixtureId: "f-1",
+        now: 1000,
+        kickoff: {
+          now: 1000,
+          half: 1,
+          turnNumber: 1,
+          home: { teamId: "home-t", treasury: 234000, dedicatedFans: 2 },
+          away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+          dice: {
+            home: { em: 1, d3: 2, keep: [0, 0] as [number, number], fan: 3 },
+            away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+          },
+        },
+      },
+      deps,
+    );
+
+    // begin emits 5 events (em-home, em-away, fan_factor, start, turnStart),
+    // so the row seq advances from 2 to 7.
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "lm-1", seq: 2 }, data: expect.objectContaining({ seq: 7, status: "live" }) }),
+    );
+    // The event rows appended in the SAME tx include the 3 kickoff kinds + start + turnStart.
+    const createCalls = liveEventCreate.mock.calls.map((c: { data: { kind: string } }[]) => c[0].data.kind);
+    expect(createCalls).toEqual(["expensive_mistake", "expensive_mistake", "fan_factor", "start", "turnStart"]);
+    // The treasury decrements commit in the SAME transaction (LM-23 atomicity).
+    expect(teamUpdateMany).toHaveBeenCalledWith({
+      where: { id: "home-t" },
+      data: { treasury: { decrement: 20000 } },
+    });
+    expect(teamUpdateMany).toHaveBeenCalledWith({
+      where: { id: "away-t" },
+      data: { treasury: { decrement: 400000 } },
+    });
+    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "live" }));
+    expect(result.view.status).toBe("live");
+  });
+
+  it("rolls back the whole transaction (events + treasury) when an event row fails (LM-23 atomicity)", async () => {
+    const { deps, liveEventCreate, liveMatchFindFirst, teamUpdateMany, publish } = makeDeps(1);
+    const readyRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 2,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(readyRow);
+    // The failure mock aborts `$transaction` BEFORE the treasury update writes.
+    liveEventCreate.mockRejectedValue(Object.assign(new Error("db down"), { code: "P2028" }));
+
+    await expect(
+      beginLiveMatch(
+        {
+          liveMatchId: "lm-1",
+          fixtureId: "f-1",
+          now: 1000,
+          kickoff: {
+            now: 1000,
+            half: 1,
+            turnNumber: 1,
+            home: { teamId: "home-t", treasury: 234000, dedicatedFans: 2 },
+            away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+            dice: {
+              home: { em: 1, d3: 2, keep: [0, 0] as [number, number], fan: 3 },
+              away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+            },
+          },
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ code: "P2028" });
+    // Neither the treasury decrement nor a publish happened (whole tx aborted).
+    expect(teamUpdateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("maps a retried begin on an already-live match to a 409 (LM-21 idempotency)", async () => {
+    const { deps, liveMatchFindFirst, teamUpdateMany, publish } = makeDeps(1);
+    const liveRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 7,
+      paused: false,
+      clockStartedAt: new Date(1000).toISOString(),
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(liveRow);
+
+    await expect(
+      beginLiveMatch(
+        {
+          liveMatchId: "lm-1",
+          fixtureId: "f-1",
+          now: 2000,
+          kickoff: {
+            now: 2000,
+            half: 1,
+            turnNumber: 1,
+            home: { teamId: "home-t", treasury: 234000, dedicatedFans: 2 },
+            away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+            dice: {
+              home: { em: 1, d3: 2, keep: [0, 0] as [number, number], fan: 3 },
+              away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+            },
+          },
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(teamUpdateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
   });
 });
 

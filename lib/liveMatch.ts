@@ -32,7 +32,9 @@ export type LiveEventKind =
   | "endMatch"
   | "turnStart"
   | "requestTurn"
-  | "mvp";
+  | "mvp"
+  | "expensive_mistake"
+  | "fan_factor";
 
 /**
  * The display-worthy kinds that reach the feed DTOs (LM-16): the history shows
@@ -53,6 +55,8 @@ export function isDisplayEvent(kind: string): boolean {
     case "endHalf":
     case "endMatch":
     case "mvp":
+    case "expensive_mistake":
+    case "fan_factor":
       return true;
     default:
       return false;
@@ -186,18 +190,39 @@ export function retractConsent(
 }
 
 /**
+ * A live event row without its `seq` — the shape callers pass into a transition
+ * that assigns monotonic seqs (e.g. `beginMatch` splices the kickoff events).
+ */
+export type LiveMatchTransitionEvent = Omit<LiveEventRecord, "seq">;
+
+/**
  * Begins the FIRST turn (LM-3/LM-11): `ready → live` happens ONLY here. Requires
  * status ready (both coaches consented). Sets the kickoff anchor `startedAt` and
  * the running segment start `clockStartedAt`, starts half 1 turn 1 on the home
- * side, and appends the `start` and `turnStart("home")` events.
+ * side, and appends the kickoff events (LM-21) BEFORE the `start` and
+ * `turnStart("home")` events, so the persisted seq order is em(home), em(away),
+ * fan_factor, start, turnStart — all sharing the same `at` (= now, minute 0′).
+ * `kickoffEvents` are optional so legacy 2-param callers/tests still compile.
  */
-export function beginMatch(state: LiveMatchState, now: number): LiveMatchState {
+export function beginMatch(
+  state: LiveMatchState,
+  now: number,
+  kickoffEvents: LiveMatchTransitionEvent[] = [],
+): LiveMatchState {
   if (state.status === "live" || state.status === "finished") {
     throwInvalid("begin only from ready");
   }
   if (state.status !== "ready" || !state.homeConsented || !state.awayConsented) {
     throwInvalid("match not ready");
   }
+  // The kickoff events are assigned seqs +1..+N first; start/turnStart follow at
+  // seq +N+1/+N+2 so begin emits `2 + kickoffEvents.length` events total.
+  const normalizedKickoff: LiveEventRecord[] = kickoffEvents.map((event, i) => ({
+    ...event,
+    seq: state.seq + 1 + i,
+  }));
+  const startSeq = state.seq + 1 + normalizedKickoff.length;
+  const turnStartSeq = startSeq + 1;
   return {
     ...state,
     status: "live",
@@ -212,8 +237,9 @@ export function beginMatch(state: LiveMatchState, now: number): LiveMatchState {
     finishedAt: null,
     events: [
       ...state.events,
+      ...normalizedKickoff,
       {
-        seq: state.seq + 1,
+        seq: startSeq,
         kind: "start",
         side: null,
         playerRosterId: null,
@@ -223,7 +249,7 @@ export function beginMatch(state: LiveMatchState, now: number): LiveMatchState {
         at: now,
       },
       {
-        seq: state.seq + 2,
+        seq: turnStartSeq,
         kind: "turnStart",
         side: "home",
         playerRosterId: null,
