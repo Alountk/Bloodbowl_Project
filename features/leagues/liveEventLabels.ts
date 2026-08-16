@@ -5,6 +5,9 @@
  * The minimum taxonomy: start, turn, touchdown, completion, casualty (with the
  * Design-A band bucket), foul, mvp, end of half, end of match, plus the kickoff
  * kinds expensive_mistake/fan_factor (LM-24). Unknown kinds pass through unchanged.
+ * `turn` and `turnStart` labels are AUDIT labels (LM-16): the feed never renders
+ * the `turn` row, and the `turnStart` card overrides this label with the
+ * team-specific "Turno {team}" text (RAU-36/37).
  */
 
 export interface LiveEventLabelInput {

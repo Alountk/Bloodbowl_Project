@@ -179,6 +179,44 @@ describe("LiveEventCards — legacy fallback (LM-6) and unknown cause pass-throu
   });
 });
 
+describe("LiveEventCards — turn transition (RAU-36/37)", () => {
+  it("does NOT render the generic 'turn' (Fin de turno) event as a card", () => {
+    const { container } = renderCards([
+      ev(5, "turn", null, {}, null, 4, 4000),
+      ev(6, "td", "home", {}, "p1", 4, 4100),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    // Only the TD survives — the turn-pass noise is dropped from the feed.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("Touchdown");
+    expect(container.textContent).not.toContain("Fin de turno");
+  });
+
+  it("renders a home turnStart as a team-assigned 68% card labeled 'Turno Reavers'", () => {
+    const { container } = renderCards([ev(5, "turnStart", "home", {}, null, 4, 4000)]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row).toBeTruthy();
+    // Team-card treatment: 68% width, home (navy) side gradient, self-start.
+    expect(row.className).toContain("w-[68%]");
+    expect(row.className).toContain("from-[#12225a]/[0.12]");
+    expect(row.className).toContain("self-start");
+    // Team-specific text instead of the generic audit label.
+    expect(row.textContent).toContain("Turno Reavers");
+    expect(row.textContent).toContain("T4");
+    expect(row.textContent).not.toContain("Tu turno");
+  });
+
+  it("renders an away turnStart with the away (red) gradient and 'Turno Dwarves'", () => {
+    const { container } = renderCards([ev(6, "turnStart", "away", {}, null, 5, 4500)]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.className).toContain("w-[68%]");
+    expect(row.className).toContain("from-[#d11938]/[0.12]");
+    expect(row.className).toContain("self-end");
+    expect(row.textContent).toContain("Turno Dwarves");
+    expect(row.textContent).not.toContain("Tu turno");
+  });
+});
+
 describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)", () => {
   it("renders a home em as a 68% team card with the money-bag glyph, outcome label and treasury before → after (LM-24)", () => {
     const { container } = renderCards([

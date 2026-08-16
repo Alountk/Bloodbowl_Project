@@ -77,6 +77,8 @@ describe("liveEventLabel", () => {
   });
 
   it("labels a turn change", () => {
+    // Audit label (LM-16): the feed never renders the `turn` row as a card
+    // (RAU-36/37), but the label stays for replay/audit consumers.
     expect(liveEventLabel(ev("turn"))).toBe("Fin de turno");
   });
 
@@ -116,6 +118,9 @@ describe("liveEventLabel", () => {
   });
 
   it("labels a turn-start notice and a request-turn nudge (LM-13)", () => {
+    // Audit labels: the visible turnStart CARD overrides the label with the
+    // team-specific "Turno {team}" text (RAU-36/37); the map keeps the generic
+    // form for audit/fallback and for the requestTurn nudge.
     expect(liveEventLabel(ev("turnStart"))).toBe("Tu turno");
     expect(liveEventLabel(ev("requestTurn"))).toBe("Te piden el turno");
   });
