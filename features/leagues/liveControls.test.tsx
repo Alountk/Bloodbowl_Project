@@ -100,17 +100,30 @@ describe("EventControls — mini-form player + roll selects (LM-20, RAU-39)", ()
     expect(Array.from(roll16.options).map((o) => o.value).filter(Boolean)).toEqual(
       Array.from({ length: 16 }, (_, i) => String(i + 1)),
     );
+    // RAU-42: the option LABELS carry the derived band beside the number (the
+    // value stays the raw roll, so the numeric-value assertions above still hold).
+    const labels = Array.from(roll16.options).map((o) => o.textContent ?? "");
+    expect(labels).toContain("9 → Apaleado");
+    expect(labels).toContain("12 → Herida grave");
+    expect(labels).toContain("14 → Permanente (tira 1D6)");
+    expect(labels).toContain("16 → Muerto");
     // A non-permanent roll (1-8 → bruise) shows the derived band, no 1D6.
     fireEvent.change(roll16, { target: { value: "8" } });
-    expect(screen.getByText(/Magullado/)).toBeTruthy();
+    expect(screen.getByText(/Banda: Magullado/)).toBeTruthy();
     expect(screen.queryByLabelText(/Tirada 1D6/i)).toBeNull();
     // A permanent roll (13-14) surfaces the REQUIRED 1D6 attribute select.
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "14" } });
-    expect(screen.getByText(/Permanente/)).toBeTruthy();
+    expect(screen.getByText(/Banda: Permanente/)).toBeTruthy();
     const roll6 = screen.getByLabelText(/Tirada 1D6/i) as HTMLSelectElement;
     expect(Array.from(roll6.options).map((o) => o.value).filter(Boolean)).toEqual(
       Array.from({ length: 6 }, (_, i) => String(i + 1)),
     );
+    // RAU-42: the 1D6 option labels carry the reduced attribute (1 and 2 → −AR).
+    const roll6Labels = Array.from(roll6.options).map((o) => o.textContent ?? "");
+    expect(roll6Labels).toContain("1 → −AR");
+    expect(roll6Labels).toContain("3 → −MV");
+    expect(roll6Labels).toContain("5 → −AG");
+    expect(roll6Labels).toContain("6 → −ST");
   });
 });
 

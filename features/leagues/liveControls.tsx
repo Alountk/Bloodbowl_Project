@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
-import { resolveInjury } from "@/lib/rules/injuries";
+import { resolveInjury, permanentAttribute } from "@/lib/rules/injuries";
 import { CASUALTY_CAUSES } from "@/lib/livePhase";
 import type { CasualtyCause } from "@/lib/livePhase";
 import { casualtyKindLabel } from "./matchSummary";
-import { causeLabel } from "./liveEventLabels";
+import { causeLabel, casualtyBandLabel, type TFunc } from "./liveEventLabels";
 import type { LiveCommand, MatchPlayer } from "./api";
 
 /**
@@ -44,8 +44,27 @@ const ACTIVE_CAUSES = CASUALTY_CAUSES.filter((c) => CAUSE_REQUIRES_CAUSER.has(c)
 /** The NON-active coach records only self-inflicted (dodge/crowd) injuries. */
 const SELF_CAUSES = CASUALTY_CAUSES.filter((c) => !CAUSE_REQUIRES_CAUSER.has(c));
 
-const ROLL16_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1);
-const ROLL6_OPTIONS = Array.from({ length: 6 }, (_, i) => i + 1);
+/** The raw 1D16 / 1D6 values offered by the roll selects. The select VALUE stays
+ * the raw number; the OPTION LABEL shows the derived outcome (RAU-42). */
+const ROLL16_VALUES = Array.from({ length: 16 }, (_, i) => i + 1);
+const ROLL6_VALUES = Array.from({ length: 6 }, (_, i) => i + 1);
+
+/**
+ * RAU-42: the 1D16 option label — "{roll} → {band}" ("8 → Magullado"), with the
+ * required-1D6 hint appended to the permanent band ("13 → Permanente (tira
+ * 1D6)"). Display-only; the option value stays the raw roll.
+ */
+function roll16OptionLabel(n: number, t: TFunc): string {
+  const kind = resolveInjury(n).kind;
+  const suffix = kind === "permanent" ? t("match.controls.roll6Suffix") : "";
+  return t("match.controls.roll16Option", { roll: n, band: casualtyBandLabel(kind, t) }) + suffix;
+}
+
+/** RAU-42: the 1D6 option label — "{roll} → −{attr}" ("5 → −AG"). Display-only;
+ * the option value stays the raw roll. */
+function roll6OptionLabel(n: number, t: TFunc): string {
+  return t("match.controls.roll6Option", { roll: n, attr: permanentAttribute(n).toUpperCase() });
+}
 
 interface EventControlsProps {
   viewerSide: "home" | "away" | null;
@@ -300,9 +319,9 @@ export function EventControls({
                 <option value="" disabled>
                   {t("match.controls.select")}
                 </option>
-                {ROLL16_OPTIONS.map((n) => (
+                {ROLL16_VALUES.map((n) => (
                   <option key={n} value={n}>
-                    {n}
+                    {roll16OptionLabel(n, t)}
                   </option>
                 ))}
               </select>
@@ -335,9 +354,9 @@ export function EventControls({
                     <option value="" disabled>
                       {t("match.controls.select")}
                     </option>
-                    {ROLL6_OPTIONS.map((n) => (
+                    {ROLL6_VALUES.map((n) => (
                       <option key={n} value={n}>
-                        {n}
+                        {roll6OptionLabel(n, t)}
                       </option>
                     ))}
                   </select>
