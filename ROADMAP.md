@@ -76,6 +76,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 - Exportar equipo a hoja de plantilla (PDF/imagen).
 - Múltiples ligas por equipo (hoy es una por equipo).
 - Invitaciones por enlace para ligas privadas.
+- Compartir partido en vivo por link (webcam/móvil/segunda pantalla) — RAU-7: link único efímero view-only; WebRTC P2P (API nativa + señalización propia + coturn self-hosted) solo si hace falta streaming de cámara entre dispositivos.
 
 ---
 
