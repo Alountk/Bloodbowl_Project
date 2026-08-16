@@ -593,7 +593,7 @@ export type LiveCommand =
       type: "proposeCasualty";
       victimRosterId: string;
       causerRosterId: string;
-      /** One of blitz|foul|penetration|block (causer-required causes). */
+      /** One of blitz|foul|block (causer-required causes). */
       cause: CasualtyCause;
       roll16: number;
       roll6?: number;

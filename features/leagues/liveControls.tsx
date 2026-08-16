@@ -20,7 +20,7 @@ import type { LiveCommand, MatchPlayer } from "./api";
  *
  * RAU-39 two-phase casualty: the ACTIVE coach (the attacker) PROPOSES the
  * injury THEY inflicted — causer (OWN alive roster), victim (OPPONENT roster),
- * a causer-required cause (blitz/foul/penetration/block) and the 1D16 roll. The
+ * a causer-required cause (blitz/foul/block) and the 1D16 roll. The
  * BAND is DERIVED server-side from the roll (NO band select — the client only
  * mirrors `resolveInjury` to show the derived band live and to surface the
  * required 1D6 attribute roll when the band is `permanent`). The NON-active
@@ -36,7 +36,7 @@ import type { LiveCommand, MatchPlayer } from "./api";
 type EventKindOption = "td" | "completion" | "casualty" | "foul";
 
 /** Causes that require an explicit causer (opposite victim); dodge/crowd are self-inflicted (LM-12). */
-const CAUSE_REQUIRES_CAUSER = new Set<CasualtyCause>(["blitz", "foul", "penetration", "block"]);
+const CAUSE_REQUIRES_CAUSER = new Set<CasualtyCause>(["blitz", "foul", "block"]);
 
 /** The ACTIVE coach proposes only causer-required causes (the dodge/crowd path
  * is the direct self-inflicted casualty of the victim's own side, RAU-39). */

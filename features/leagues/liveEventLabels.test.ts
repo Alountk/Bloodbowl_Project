@@ -136,14 +136,13 @@ describe("liveEventLabel", () => {
   });
 });
 
-describe("CAUSE_LABELS — six casualty causes to display labels (MVT-5)", () => {
+describe("CAUSE_LABELS — five casualty causes to display labels (MVT-5)", () => {
   it("maps every cause exactly", () => {
     expect(CAUSE_LABELS).toEqual({
       blitz: "Blitz",
       foul: "Falta",
       dodge: "Esquivando — se cayó",
       crowd: "El público",
-      penetration: "Penetración",
       block: "Bloqueo",
     });
   });

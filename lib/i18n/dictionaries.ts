@@ -373,7 +373,6 @@ const es: Dict = {
   "match.cause.foul": "Falta",
   "match.cause.dodge": "Esquivando — se cayó",
   "match.cause.crowd": "El público",
-  "match.cause.penetration": "Penetración",
   "match.cause.block": "Bloqueo",
 
   "match.event.start": "Inicio del partido",
@@ -778,7 +777,6 @@ const en: Dict = {
   "match.cause.foul": "Foul",
   "match.cause.dodge": "Dodging — fell over",
   "match.cause.crowd": "The crowd",
-  "match.cause.penetration": "Penetration",
   "match.cause.block": "Block",
 
   "match.event.start": "Match start",

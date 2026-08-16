@@ -49,17 +49,17 @@ export function outcomeLabel(outcome: string, fn: TFunc = esT): string {
 }
 
 /**
- * The six casualty causes mapped to their display labels (MVT-5): `blitz` →
+ * The five casualty causes mapped to their display labels (MVT-5): `blitz` →
  * "Blitz", `foul` → "Falta", `dodge` → "Esquivando — se cayó", `crowd` → "El
- * público", `penetration` → "Penetración", `block` → "Bloqueo". Callers map an
- * unknown cause through the index so it never throws (bare value fallback).
+ * público", `block` → "Bloqueo". `penetration` was folded into `blitz` (RAU-41).
+ * Callers map an unknown cause through the index so it never throws (bare value
+ * fallback).
  */
 export const CAUSE_LABELS: Record<string, string> = {
   blitz: "Blitz",
   foul: "Falta",
   dodge: "Esquivando — se cayó",
   crowd: "El público",
-  penetration: "Penetración",
   block: "Bloqueo",
 };
 

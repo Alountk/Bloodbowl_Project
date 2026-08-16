@@ -183,13 +183,13 @@ describe("EventControls — Falta form captures the VICTIM (LM-20, D7)", () => {
 });
 
 describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
-  it("offers ONLY causer-required causes (blitz/foul/penetration/block) — never dodge/crowd", () => {
+  it("offers ONLY causer-required causes (blitz/foul/block) — never dodge/crowd", () => {
     renderControls(); // viewer home, active home → ACTIVE
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     const cause = screen.getByLabelText(/Causa de la lesión/i) as HTMLSelectElement;
     const causes = Array.from(cause.options).map((o) => o.value.trim()).filter(Boolean);
-    expect(causes).toEqual(["blitz", "foul", "penetration", "block"]);
+    expect(causes).toEqual(["blitz", "foul", "block"]);
   });
 
   it("submits proposeCasualty with an OPPONENT victim, an OWN causer, the cause and roll16 (NO band)", async () => {

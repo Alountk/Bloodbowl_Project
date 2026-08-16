@@ -120,13 +120,12 @@ export function checkActorInvariant(input: ActorInvariantInput): EventPermission
   return playerSide(rosters, opponentId) === null ? "deny" : "allow";
 }
 
-/** The six casualty causes (MVT-5/LM-6). */
+/** The five casualty causes (MVT-5/LM-6; `penetration` folded into `blitz`). */
 export const CASUALTY_CAUSES = [
   "blitz",
   "foul",
   "dodge",
   "crowd",
-  "penetration",
   "block",
 ] as const;
 export type CasualtyCause = (typeof CASUALTY_CAUSES)[number];

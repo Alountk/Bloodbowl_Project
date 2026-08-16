@@ -49,7 +49,7 @@ export function timelinePercent(at: number, start: number, end: number): number;
 export function buildSummaryFeedRows(detail: MatchDetail): SummaryFeedRow[]; // reported|winnings|fans|incentives
 ```
 
-Commands: `foul { victimRosterId: string }` (now REQUIRED); `casualty { cause?: "blitz"|"foul"|"dodge"|"crowd"|"penetration"|"block"; causerRosterId?: string }`. Payloads: foul `{ victimRosterId }`, casualty `{ band, cause, causerRosterId }`. Legacy events keep rendering without detail (LM-6 fallback).
+Commands: `foul { victimRosterId: string }` (now REQUIRED); `casualty { cause?: "blitz"|"foul"|"dodge"|"crowd"|"block"; causerRosterId?: string }` (`penetration` folded into `blitz`, RAU-41). Payloads: foul `{ victimRosterId }`, casualty `{ band, cause, causerRosterId }`. Legacy events keep rendering without detail (LM-6 fallback).
 
 ## File Changes
 

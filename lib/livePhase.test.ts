@@ -183,9 +183,9 @@ describe("checkActorInvariant — crowd/self-inflicted casualties must NOT carry
   });
 });
 
-describe("CASUALTY_CAUSES — the six valid causes (MVT-5/LM-6)", () => {
-  it("contains blitz|foul|dodge|crowd|penetration|block and nothing else", () => {
-    expect(CASUALTY_CAUSES).toEqual(["blitz", "foul", "dodge", "crowd", "penetration", "block"]);
+describe("CASUALTY_CAUSES — the five valid causes (MVT-5/LM-6)", () => {
+  it("contains blitz|foul|dodge|crowd|block and nothing else", () => {
+    expect(CASUALTY_CAUSES).toEqual(["blitz", "foul", "dodge", "crowd", "block"]);
   });
 
   it("rejects a foul when the victim id is empty-string (REQUIRED, LM-6)", () => {
