@@ -369,8 +369,9 @@ describe("B. LiveEventCards — validated v7 rendered structure", () => {
     expect(action!.querySelector(".dorsal")?.textContent).toBe("#2");
     expect(action!.querySelector(".name")?.textContent).toBe("Arnau");
     expect(action!.querySelector(".dline")?.className).toContain("dline--home");
-    expect(action!.querySelector(".dline")?.textContent).toBe("Blitz");
-    expect(action!.querySelector(".sub")?.textContent).toBe("Tirada 1D16: 14 · Permanente (−AG)");
+    expect(action!.querySelector(".dline")?.textContent).toBe("Blitz(★2)");
+    expect(action!.querySelector(".sub")?.textContent).toBe("Arnau hace una herida a Blitzer B");
+    expect(action!.querySelector(".stars")?.textContent).toBe("(★2)");
     // The injury card keeps its band sub-line + the roll line + the cause line.
     expect(injury!.querySelectorAll(".sub").length).toBeGreaterThanOrEqual(2);
     expect(injury!.querySelector(".cause-line")?.textContent).toBe("por Arnau (#2) · Blitz");
