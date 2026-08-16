@@ -71,12 +71,43 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Refactor `enrichFixture`** | Deuda técnica de live-match (D7): la ruta GET de fixture importa `enrichFixture` desde `app/api/leagues/[id]/route.ts` (cast estructural porque `FixtureWithMatchday` no se exporta). Extraer a `lib/fixtures.ts` y exportar el tipo — refactor no bloqueante, verificado en verify-report. |
 
 ### Backlog de producto (ideas)
+
+**Gestión de plantilla**
+- Renombrar jugadores de un equipo existente (hoy solo editable al crear).
+- Reordenar la plantilla: flechas primero, luego drag & drop.
+- Retirar jugadores siguiendo las reglas de liga.
+- Contratar nuevos jugadores después de la creación (mercado).
+- Bajas por lesión: jugadores no disponibles la siguiente jornada.
+- Jugadores prestados: si en liga no llegas al mínimo de jugadores, préstamo temporal.
+- PE/SPP (experiencia) visible en todas las vistas de plantilla (hoy ya está en el panel Progresión del detalle).
+
+**En la mesa (partido)**
+- Reloj a pantalla completa / semáforo de turno.
+- Log de dados persistente por partido.
+- Modo delegado: un tercero opera turnos/reloj desde el link view-only (amplía RAU-7).
+
+**Liga y competición**
 - Partidos amistosos fuera de liga.
-- Historial de equipos por usuario (temporadas anteriores).
-- Exportar equipo a hoja de plantilla (PDF/imagen).
-- Múltiples ligas por equipo (hoy es una por equipo).
+- Múltiples ligas por equipo (hoy una por equipo).
 - Invitaciones por enlace para ligas privadas.
-- Compartir partido en vivo por link (webcam/móvil/segunda pantalla) — RAU-7: link único efímero view-only; WebRTC P2P (API nativa + señalización propia + coturn self-hosted) solo si hace falta streaming de cámara entre dispositivos.
+- Play-offs / bracket tras la liga regular.
+- Estadísticas por temporada (TDs, bajas, SPP acumulado).
+- Sanciones de liga (suspensión por N partidos).
+- Incentivos por equipo (chips) — RAU-5.
+- Historial de equipos por usuario (temporadas anteriores).
+
+**Contenido y rejugabilidad**
+- Exportar equipo a hoja de plantilla (PDF/imagen).
+- Generador de equipos aleatorio / draft.
+- Banco de nombres fantásticos por raza.
+- Guía de reglas integrada (búsqueda de skill/regla).
+
+**Plataforma y venta**
+- Compartir partido en vivo por link (webcam/móvil/segunda pantalla) — RAU-7.
+- Páginas públicas de liga (resultados/standings sin cuenta).
+- PWA instalable.
+- Import/export de equipos JSON.
+- i18n completo ES/EN.
 
 ---
 
