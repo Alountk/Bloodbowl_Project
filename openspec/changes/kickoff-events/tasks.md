@@ -41,6 +41,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: E2E + Verification (S3)
 
-- [ ] 3.1 `e2e/live-match.spec.ts`: after "Empezar partido" assert 2 "Error costoso" rows + "Factor de aficionados" at 0'; retry begin → 409; preserve stable assertions ("Inicio del partido", "Tu turno", "Dar el turno", `live-event-row`, MVP rows, "por … · Blitz")
-- [ ] 3.2 Verification checklist map: LM-21 (seq order, server dice, retry 409), LM-22 (FF base+dice+total), LM-23 (matrix, rounding, atomicity, payload), LM-24 (labels/glyphs/treasury line), MVT-6 (em card/fan centered/0'), MV-6 (weather+summary out, 10-kind surface preserved)
-- [ ] 3.3 Full sweep: `pnpm test`, `npx tsc --noEmit`, `pnpm lint`, `pnpm run test:e2e:auth` green
+- [x] 3.1 `e2e/live-match.spec.ts`: after "Empezar partido" assert 2 "Error costoso" rows + "Factor de aficionados" at 0'; retry begin → 409; preserve stable assertions ("Inicio del partido", "Tu turno", "Dar el turno", `live-event-row`, MVP rows, "por … · Blitz")
+- [x] 3.2 Verification checklist map: LM-21 (seq order, server dice, retry 409), LM-22 (FF base+dice+total), LM-23 (matrix, rounding, atomicity, payload), LM-24 (labels/glyphs/treasury line), MVT-6 (em card/fan centered/0'), MV-6 (weather+summary out, 10-kind surface preserved)
+- [x] 3.3 Full sweep: `pnpm test`, `npx tsc --noEmit`, `pnpm lint`, `pnpm run test:e2e:auth` green
