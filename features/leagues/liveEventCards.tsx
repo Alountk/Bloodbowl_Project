@@ -150,6 +150,24 @@ function fanTotalsLine(payload: Record<string, unknown>): string {
   return `Local: ${fmt(payload.home)} · Visitante: ${fmt(payload.away)}`;
 }
 
+/**
+ * RAU-38 concede sub-line for the centered card: "{surrendering team} se rinde
+ * · Victoria de {acceptor team}". The surrendering side is the event `side` and
+ * the acceptor comes from `payload.winnerSide` (both set server-side); either
+ * unresolved → null (bare label only, never throws).
+ */
+function concedeLine(
+  event: LiveMatchView["events"][number],
+  homeTeam: MatchTeamDetail,
+  awayTeam: MatchTeamDetail,
+): string | null {
+  const surrenderTeam = event.side === "away" ? awayTeam : event.side === "home" ? homeTeam : null;
+  const winnerSide = event.payload.winnerSide;
+  const winnerTeam = winnerSide === "away" ? awayTeam : winnerSide === "home" ? homeTeam : null;
+  if (!surrenderTeam || !winnerTeam) return null;
+  return `${surrenderTeam.name} se rinde · Victoria de ${winnerTeam.name}`;
+}
+
 /** The wall-clock HH:MM sub-line for the start / endMatch rows (v7). */
 function wallClockTime(at: number): string {
   const date = new Date(at);
@@ -277,6 +295,8 @@ export function LiveEventCards({
         // intentionally NOT rendered — live events carry no team-value data here.
         const startSub = event.kind === "start" && startedAt != null ? wallClockTime(startedAt) : null;
         const endSub = event.kind === "endMatch" ? wallClockTime(event.at) : null;
+        const concedeSub =
+          event.kind === "concede" ? concedeLine(event, homeTeam, awayTeam) : null;
 
         if (isTeamCard && team) {
           // LM-24: the expensive-mistake kickoff row keeps NO turn tag/minute
@@ -434,6 +454,7 @@ export function LiveEventCards({
               <p className={c.ctitle}>{label}</p>
               {startSub ? <p className={c.csub}>{startSub}</p> : null}
               {endSub ? <p className={c.csub}>{endSub}</p> : null}
+              {concedeSub ? <p className={c.csub}>{concedeSub}</p> : null}
               {event.kind === "fan_factor" ? (
                 <p className={c.ffLine}>{fanTotalsLine(event.payload)}</p>
               ) : null}
