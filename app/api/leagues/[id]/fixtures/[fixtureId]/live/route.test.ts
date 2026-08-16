@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 
 const authMock = vi.hoisted(() => vi.fn());
 const isAuthEnabledMock = vi.hoisted(() => vi.fn());
+const rollD6Mock = vi.hoisted(() => vi.fn());
+const rollD3Mock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn() },
   league: { findFirst: vi.fn() },
@@ -30,6 +32,9 @@ const hubMock = vi.hoisted(() => ({
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/auth-mode", () => ({ isAuthEnabled: isAuthEnabledMock }));
+// Server-owned dice are deterministic under the mocked random so the route's
+// fabricate-body-rolls test can assert the kickoff dice derive from the server.
+vi.mock("@/lib/random", () => ({ rollD6: rollD6Mock, rollD3: rollD3Mock }));
 vi.mock("@/lib/liveHub", () => ({
   liveHub: hubMock,
 }));
@@ -646,20 +651,95 @@ describe("POST .../live — consent/retract/begin command handling", () => {
     beginLiveMatchMock.mockResolvedValue({ seq: 3, view: liveView({ status: "live", viewerSide: "home" }) });
     prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
     prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(2));
-    // Begin materializes both teams' rosters (idempotent); empty teams → no-op.
-    prismaMock.team.findMany.mockResolvedValue([]);
+    rollD6Mock.mockReturnValue(1);
+    rollD3Mock.mockReturnValue(1);
+    // Begin materializes both teams (idempotent) to build the kickoff input.
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 } },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 } },
+    ]);
     const res = await POST(req({ type: "begin" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(200);
     expect(prismaMock.team.findMany).toHaveBeenCalled();
     expect(beginLiveMatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({ liveMatchId: "lm-1", fixtureId: "f-1" }),
+      expect.objectContaining({
+        liveMatchId: "lm-1",
+        fixtureId: "f-1",
+        kickoff: expect.objectContaining({
+          home: expect.objectContaining({ teamId: "home-t", treasury: 234000, dedicatedFans: 2 }),
+          away: expect.objectContaining({ teamId: "away-t", treasury: 500000, dedicatedFans: 1 }),
+        }),
+      }),
       expect.anything(),
     );
     const body = await res.json();
     expect(body.view.status).toBe("live");
     expect(body.view.viewerSide).toBe("home");
+  });
+
+  it("begin ignores fabricated body rolls — the kickoff dice derive from server rolls (LM-21/LM-16)", async () => {
+    beginLiveMatchMock.mockResolvedValue({ seq: 3, view: liveView({ status: "live", viewerSide: "home" }) });
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(2));
+    // The server "rolls": home em=3 d3=2 keep[4,1] fan=5; away em=6 d3=3 keep[2,6] fan=1.
+    rollD6Mock
+      .mockReturnValueOnce(3) // home em
+      .mockReturnValueOnce(4) // home keep[0]
+      .mockReturnValueOnce(1) // home keep[1]
+      .mockReturnValueOnce(5) // home fan
+      .mockReturnValueOnce(6) // away em
+      .mockReturnValueOnce(2) // away keep[0]
+      .mockReturnValueOnce(6) // away keep[1]
+      .mockReturnValueOnce(1); // away fan
+    rollD3Mock.mockReturnValueOnce(2).mockReturnValueOnce(3); // home d3, away d3
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 } },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 } },
+    ]);
+    // The client body fabricates completely different dice.
+    const res = await POST(
+      req({
+        type: "begin",
+        dice: { home: { em: 6, fan: 1 }, away: { em: 1, fan: 6 } },
+      }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    const kickoffArg = beginLiveMatchMock.mock.calls[0][0].kickoff;
+    expect(kickoffArg.dice.home.em).toBe(3);
+    expect(kickoffArg.dice.home.d3).toBe(2);
+    expect(kickoffArg.dice.home.keep).toEqual([4, 1]);
+    expect(kickoffArg.dice.home.fan).toBe(5);
+    expect(kickoffArg.dice.away.em).toBe(6);
+    expect(kickoffArg.dice.away.d3).toBe(3);
+    expect(kickoffArg.dice.away.keep).toEqual([2, 6]);
+    expect(kickoffArg.dice.away.fan).toBe(1);
+  });
+
+  it("returns 409 on a retried begin against an already-live match (LM-21 idempotency)", async () => {
+    beginLiveMatchMock.mockRejectedValue(Object.assign(new Error("begin only from ready"), { status: 409 }));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(7),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    rollD6Mock.mockReturnValue(1);
+    rollD3Mock.mockReturnValue(1);
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 } },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 } },
+    ]);
+    const res = await POST(req({ type: "begin" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(prismaMock.liveEvent.create).not.toHaveBeenCalled();
   });
 
   it("returns 409 on a seq-conflict during a live transition (double-action)", async () => {
@@ -828,6 +908,18 @@ describe("POST .../live — completion command (LM-15) + mvp-not-a-command (LM-1
     expect(res.status).toBe(400);
     expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(prismaMock.liveEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 with no mutation for the kickoff kinds as commands (they are begin-only, LM-14/LM-21)", async () => {
+    liveSetup("coach-home");
+    for (const type of ["expensive_mistake", "fan_factor"]) {
+      const res = await POST(req({ type, side: type === "expensive_mistake" ? "home" : null }), {
+        params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+      } as never);
+      expect(res.status).toBe(400);
+      expect(applyTransitionMock).not.toHaveBeenCalled();
+      expect(prismaMock.liveEvent.create).not.toHaveBeenCalled();
+    }
   });
 });
 

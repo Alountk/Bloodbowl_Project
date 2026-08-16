@@ -11,6 +11,7 @@ import {
   deriveLiveClock,
   isDisplayEvent,
   type LiveMatchState,
+  type LiveMatchTransitionEvent,
 } from "./liveMatch";
 
 /**
@@ -151,6 +152,69 @@ describe("beginMatch — ready→live ONLY via the first turn (LM-3/LM-11)", () 
   it("rejects a begin on an already-live match", () => {
     expect(() => beginMatch(state(), 1000)).toThrow("begin");
   });
+
+  it("splices kickoff events BEFORE start/turnStart with monotonic seqs and shares the same `at`", () => {
+    const ready = pending({ homeConsented: true, awayConsented: true, status: "ready" });
+    const kickoff: LiveMatchTransitionEvent[] = [
+      {
+        kind: "expensive_mistake" as const,
+        side: "home",
+        playerRosterId: null,
+        half: 1,
+        turnNumber: 1,
+        payload: { side: "home", roll: 1, bracket: "200k-295k", outcome: "minor-incident", amountLost: 20000, treasuryBefore: 234000, treasuryAfter: 214000 },
+        at: 1000,
+      },
+      {
+        kind: "expensive_mistake" as const,
+        side: "away",
+        playerRosterId: null,
+        half: 1,
+        turnNumber: 1,
+        payload: { side: "away", roll: 1, bracket: "500k-595k", outcome: "catastrophe", amountLost: 400000, treasuryBefore: 500000, treasuryAfter: 100000 },
+        at: 1000,
+      },
+      {
+        kind: "fan_factor" as const,
+        side: null,
+        playerRosterId: null,
+        half: 1,
+        turnNumber: 1,
+        payload: { home: { base: 2, dice: 2, total: 4 }, away: { base: 1, dice: 3, total: 4 } },
+        at: 1000,
+      },
+    ];
+    const next = beginMatch(ready, 1000, kickoff);
+    // seq order: em(home), em(away), fan_factor, start, turnStart (LM-21).
+    expect(next.events.map((e) => e.kind)).toEqual([
+      "expensive_mistake",
+      "expensive_mistake",
+      "fan_factor",
+      "start",
+      "turnStart",
+    ]);
+    const withSeq = next.events.map((e) => [e.seq, e.kind]);
+    expect(withSeq).toEqual([
+      [1, "expensive_mistake"],
+      [2, "expensive_mistake"],
+      [3, "fan_factor"],
+      [4, "start"],
+      [5, "turnStart"],
+    ]);
+    // all five share the same `at` (= now) and half/turn 1/1.
+    expect(next.events.every((e) => e.at === 1000)).toBe(true);
+    expect(next.events.every((e) => e.half === 1 && e.turnNumber === 1)).toBe(true);
+    const start = next.events.find((e) => e.kind === "start");
+    const turnStart = next.events.find((e) => e.kind === "turnStart");
+    expect(turnStart?.side).toBe("home");
+    expect(start?.side).toBeNull();
+  });
+
+  it("begins without kickoff events (legacy/2-param call) with only start + turnStart", () => {
+    const ready = pending({ homeConsented: true, awayConsented: true, status: "ready" });
+    const next = beginMatch(ready, 1000);
+    expect(next.events.map((e) => e.kind)).toEqual(["start", "turnStart"]);
+  });
 });
 
 describe("applyEndTurn — alternation + turn cap + half flip (LM-4)", () => {
@@ -240,8 +304,8 @@ describe("applyCompletion — records a ★1 completion event WITHOUT flipping t
 });
 
 describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
-  it("accepts exactly the 8 display kinds (start|td|completion|casualty|foul|endHalf|endMatch|mvp)", () => {
-    const displayKinds = ["start", "td", "completion", "casualty", "foul", "endHalf", "endMatch", "mvp"];
+  it("accepts exactly the 10 display kinds incl. the kickoff kinds (start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor)", () => {
+    const displayKinds = ["start", "td", "completion", "casualty", "foul", "endHalf", "endMatch", "mvp", "expensive_mistake", "fan_factor"];
     for (const kind of displayKinds) {
       expect(isDisplayEvent(kind)).toBe(true);
     }
