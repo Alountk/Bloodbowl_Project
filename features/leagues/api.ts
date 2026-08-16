@@ -1,8 +1,9 @@
 import type { Team } from "@/features/teams/types";
 import type { CasualtyCause } from "@/lib/livePhase";
 
-/** Lifecycle state of a league: joinable/open or locked after a season starts. */
-export type LeagueStatus = "open" | "started";
+/** Lifecycle state of a league: joinable/open, locked after a season starts, or
+ * definitively closed once every fixture is played (champion declared, RAU-40). */
+export type LeagueStatus = "open" | "started" | "finished";
 
 /** Derived matchday lifecycle of a fixture: pending → scheduled → played. */
 export type FixtureStatus = "pending" | "scheduled" | "played";
@@ -81,6 +82,9 @@ export interface League {
   status: LeagueStatus;
   seasonLength: number | null;
   startedAt: string | null;
+  /** RAU-40: the season champion's team id when the league finished; null while
+   * open/started or when no result was ever recorded. */
+  championTeamId: string | null;
   /** Resolved owner display name (falls back to the owner's email). */
   ownerName: string | null;
   /** Number of non-archived member teams, computed server-side (no N+1). */

@@ -47,6 +47,7 @@ describe("League lifecycle types", () => {
       status: "started",
       seasonLength: 2,
       startedAt: "2026-02-01",
+      championTeamId: null,
       ownerName: "Coach",
       memberCount: 4,
       isMember: false,
@@ -71,6 +72,27 @@ describe("League lifecycle types", () => {
     expect(disabled.turnClockSeconds).toBe(120);
   });
 
+  it("LeagueStatus includes finished and carries the championTeamId (RAU-40)", () => {
+    const league: League = {
+      id: "l1",
+      name: "Liga",
+      description: null,
+      ownerId: "u1",
+      createdAt: "2026-01-01",
+      status: "finished",
+      seasonLength: 1,
+      startedAt: "2026-02-01",
+      championTeamId: "t1",
+      ownerName: "Coach",
+      memberCount: 2,
+      isMember: true,
+      turnClockEnabled: true,
+      turnClockSeconds: 240,
+    };
+    expect(league.status).toBe("finished");
+    expect(league.championTeamId).toBe("t1");
+  });
+
   it("LeagueDetail carries member teams plus fixtures", () => {
     const detail: LeagueDetail = {
       id: "l1",
@@ -81,6 +103,7 @@ describe("League lifecycle types", () => {
       status: "started",
       seasonLength: 2,
       startedAt: "2026-02-01",
+      championTeamId: null,
       ownerName: "Coach",
       memberCount: 2,
       isMember: false,
@@ -123,6 +146,7 @@ describe("League lifecycle types", () => {
       status: "started",
       seasonLength: 2,
       startedAt: "2026-02-01",
+      championTeamId: null,
       ownerName: "Coach",
       memberCount: 2,
       isMember: false,

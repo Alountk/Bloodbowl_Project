@@ -91,6 +91,21 @@ const leaguesResponse = [
     memberCount: 4,
     isMember: true,
   },
+  // My FINISHED league (RAU-40) → "Mis Ligas" with the gold 🏆 Finalizada badge.
+  {
+    id: "l6",
+    name: "Finished Cup",
+    description: null,
+    ownerId: me,
+    createdAt: "2026-06-01",
+    status: "finished",
+    seasonLength: 1,
+    startedAt: "2026-06-02",
+    championTeamId: "t1",
+    ownerName: "Coach A",
+    memberCount: 2,
+    isMember: false,
+  },
 ];
 
 function stubFetch() {
@@ -145,7 +160,6 @@ describe("LeagueList", () => {
     render(<LeagueList />);
 
     await waitFor(() => expect(screen.getByText("Joined Started Cup")).toBeTruthy());
-
     const ownSection = screen.getByRole("heading", { level: 2, name: "Mis Ligas" }).closest("section") as HTMLElement;
     const openSection = screen.getByRole("heading", { level: 2, name: "Ligas abiertas" }).closest("section") as HTMLElement;
 
@@ -188,6 +202,17 @@ describe("LeagueList", () => {
     const startedCard = screen.getByText("Middenheim Cup").closest("li") as HTMLElement;
     expect(within(startedCard).getByText("Iniciada")).toBeTruthy();
     expect(within(startedCard).getByText("2 equipos")).toBeTruthy();
+  });
+
+  it("shows the gold 🏆 Finalizada badge on a finished league card (RAU-40)", async () => {
+    stubFetch();
+    render(<LeagueList />);
+
+    await waitFor(() => expect(screen.getByText("Finished Cup")).toBeTruthy());
+
+    const finishedCard = screen.getByText("Finished Cup").closest("li") as HTMLElement;
+    expect(within(finishedCard).getByText(/Finalizada/)).toBeTruthy();
+    expect(within(finishedCard).getByRole("link", { name: "Ver" }).getAttribute("href")).toBe("/leagues/l6");
   });
 
   it("no longer fetches per-league details for member counts (no N+1)", async () => {
