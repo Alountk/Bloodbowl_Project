@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import type { FixtureDraft } from "./api";
 
 export interface ForfeitModalProps {
@@ -23,10 +24,11 @@ export function ForfeitModal({
   onClose,
 }: ForfeitModalProps) {
   const [selected, setSelected] = useState<string | null>(null);
+  const { t } = useI18n();
   if (!open) return null;
 
-  const homeName = teamNameById.get(fixture.homeTeamId) ?? "Equipo";
-  const awayName = teamNameById.get(fixture.awayTeamId) ?? "Equipo";
+  const homeName = teamNameById.get(fixture.homeTeamId) ?? t("match.teamFallback");
+  const awayName = teamNameById.get(fixture.awayTeamId) ?? t("match.teamFallback");
 
   const confirm = () => {
     if (selected) onAward(selected);
@@ -36,7 +38,7 @@ export function ForfeitModal({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Otorgar victoria por no presentación"
+      aria-label={t("forfeit.dialogAria")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
@@ -45,19 +47,19 @@ export function ForfeitModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
-          <h3 className="text-sm font-bold">Otorgar victoria</h3>
+          <h3 className="text-sm font-bold">{t("forfeit.title")}</h3>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
+            aria-label={t("common.close")}
             className="text-xs font-semibold text-white/80 hover:text-white"
           >
-            ✕ Cerrar
+            ✕ {t("common.close")}
           </button>
         </header>
         <div className="px-4 py-3">
           <p className="mb-3 text-sm text-slate-600">
-            Elige qué equipo gana por no presentación del rival:
+            {t("forfeit.prompt")}
           </p>
           <div className="grid grid-cols-2 gap-2">
             <OptionButton
@@ -77,7 +79,7 @@ export function ForfeitModal({
               onClick={onClose}
               className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -85,7 +87,7 @@ export function ForfeitModal({
               onClick={confirm}
               className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {selected ? `Otorgar victoria a ${teamNameById.get(selected) ?? ""}` : "Elige un equipo"}
+              {selected ? t("forfeit.award", { team: teamNameById.get(selected) ?? "" }) : t("forfeit.pickTeam")}
             </button>
           </div>
         </div>

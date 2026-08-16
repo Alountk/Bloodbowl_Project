@@ -1,16 +1,24 @@
 import Link from "next/link";
+import { DEFAULT_LOCALE, t as translate } from "@/lib/i18n/dictionaries";
+import { useI18n } from "@/lib/i18n";
 import type { FixtureDraft, FixtureStatus } from "./api";
 import { TeamEmblem } from "./TeamEmblem";
 
+/** The translator shape used by the pure helpers (es default fallback). */
+type CardTFunc = (key: string, params?: Record<string, string | number>) => string;
+
+const esT: CardTFunc = (key, params) => translate(DEFAULT_LOCALE, key, params);
+
 /**
- * Pure: resolves the Spanish status label shown on a match card from the
- * server-derived fixture status. `played` means a score/result was recorded —
- * winnerId alone never labels a match Jugado (league-season delta).
+ * Pure: resolves the status label shown on a match card from the server-derived
+ * fixture status. `played` means a score/result was recorded — winnerId alone
+ * never labels a match Jugado (league-season delta). `t` carries the active
+ * locale and defaults to the Spanish dictionary.
  */
-export function matchStatusLabel(status: FixtureStatus): string {
-  if (status === "played") return "Jugado";
-  if (status === "scheduled") return "Programado";
-  return "Pendiente";
+export function matchStatusLabel(status: FixtureStatus, fn: CardTFunc = esT): string {
+  if (status === "played") return fn("match.status.played");
+  if (status === "scheduled") return fn("match.status.scheduled");
+  return fn("match.status.pending");
 }
 
 /** Pure: formats an agreed ISO timestamp as DD/MM/YYYY HH:MM in the local zone.
@@ -83,11 +91,12 @@ export function MatchCard({
   onLoadResult,
   onCorrectResult,
 }: MatchCardProps) {
+  const { t } = useI18n();
   const isParticipant =
     fixture.homeOwner?.id === currentUserId || fixture.awayOwner?.id === currentUserId;
-  const status = matchStatusLabel(fixture.status);
-  const homeName = teamNameById.get(fixture.homeTeamId) ?? "Equipo";
-  const awayName = teamNameById.get(fixture.awayTeamId) ?? "Equipo";
+  const status = matchStatusLabel(fixture.status, t);
+  const homeName = teamNameById.get(fixture.homeTeamId) ?? t("match.teamFallback");
+  const awayName = teamNameById.get(fixture.awayTeamId) ?? t("match.teamFallback");
   const homeRace = raceNameById?.get(fixture.homeTeamId) ?? "";
   const awayRace = raceNameById?.get(fixture.awayTeamId) ?? "";
   const score = formatMatchScore(fixture.homeScore, fixture.awayScore);
@@ -113,15 +122,15 @@ export function MatchCard({
 
   return (
     <article
-      aria-label={`Partido ${fixture.round} ${homeName} vs ${awayName}`}
+      aria-label={t("match.aria", { round: fixture.round, home: homeName, away: awayName })}
       className="border border-[#e2e8f0] bg-white transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
     >
       <header className="flex flex-wrap items-center justify-between gap-2 bg-[#12225a] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
         <span className="flex items-center gap-2">
-          <span>Partido {fixture.round} · {liveActive ? "En vivo" : status}</span>
+          <span>{t("match.header", { round: fixture.round, status: liveActive ? t("match.liveStatus") : status })}</span>
           {liveActive ? (
             <span className="animate-pulse rounded-sm bg-[#d11938] px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
-              EN VIVO
+              {t("match.liveBadge")}
             </span>
           ) : null}
         </span>
@@ -132,7 +141,7 @@ export function MatchCard({
               onClick={openLoadResult}
               className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
             >
-              Cargar resultado
+              {t("result.loadAction")}
             </button>
           ) : null}
           {(isLeagueOwner || isParticipant) && fixture.status === "played" ? (
@@ -141,7 +150,7 @@ export function MatchCard({
               onClick={openCorrectResult}
               className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
             >
-              Corregir resultado
+              {t("result.correctAction")}
             </button>
           ) : null}
           {isLeagueOwner && fixture.status !== "played" ? (
@@ -150,7 +159,7 @@ export function MatchCard({
               onClick={openForfeit}
               className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
             >
-              Otorgar victoria
+              {t("forfeit.title")}
             </button>
           ) : null}
         </span>
@@ -193,7 +202,7 @@ export function MatchCard({
             {centerScore}
           </span>
           {liveActive ? (
-            <span className="text-[9px] font-extrabold tracking-[0.2em] text-[#d11938]">EN VIVO</span>
+            <span className="text-[9px] font-extrabold tracking-[0.2em] text-[#d11938]">{t("match.liveBadge")}</span>
           ) : null}
         </div>
         <TeamSide
@@ -212,7 +221,7 @@ export function MatchCard({
       </div>
       <footer className="flex items-center justify-between gap-2 border-t border-[#e2e8f0] px-3 py-1.5 text-[11px] text-slate-500">
         {fixture.status === "scheduled" ? (
-          <span>Programado: {formatMatchDate(fixture.scheduledAt)}</span>
+          <span>{t("match.scheduledFooter", { date: formatMatchDate(fixture.scheduledAt) })}</span>
         ) : (
           <span />
         )}
@@ -220,7 +229,7 @@ export function MatchCard({
           href={`/leagues/${fixture.leagueId}/fixtures/${fixture.id}`}
           className="ml-2 inline-block font-semibold text-[#d11938] no-underline hover:opacity-70"
         >
-          Ver partido
+          {t("match.viewMatch")}
         </Link>
       </footer>
     </article>
@@ -242,6 +251,7 @@ function TeamSide({
   emblem: React.ReactNode;
   outcome: "win" | "lose" | "draw" | "none";
 }) {
+  const { t } = useI18n();
   const win = outcome === "win";
   const lose = outcome === "lose";
   return (
@@ -264,7 +274,7 @@ function TeamSide({
       </span>
       {win ? (
         <span className="rounded-sm bg-[#e0e7ff] px-1.5 py-px text-[9px] font-black tracking-[0.15em] text-[#12225a]">
-          VICTORIA
+          {t("match.victoryChip")}
         </span>
       ) : null}
     </div>

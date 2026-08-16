@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { startLeague } from "./api";
 
 interface StartLeagueModalProps {
@@ -24,6 +25,7 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
   const [seasonLength, setSeasonLength] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useI18n();
 
   if (!open) return null;
 
@@ -34,7 +36,7 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!valid) {
-      setError(`Indica un número de jornadas entre 1 y ${max}.`);
+      setError(t("leagues.start.invalidHint", { max }));
       return;
     }
     setSubmitting(true);
@@ -45,7 +47,7 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
       onClose();
       await onStarted();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "No se pudo iniciar la liga.";
+      const message = e instanceof Error ? e.message : t("leagues.start.error");
       setError(message);
     } finally {
       setSubmitting(false);
@@ -56,23 +58,23 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="Close start league"
+        aria-label={t("leagues.start.closeAria")}
         onClick={onClose}
         className="fixed inset-0 bg-slate-900/60"
       />
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Iniciar liga"
+        aria-label={t("leagues.start.title")}
         className="relative z-10 w-full max-w-[480px] border border-slate-200 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
       >
         <header className="border-b-[3px] border-[#d11938] bg-[#12225a] px-5 py-4 text-white">
-          <h2 className="text-lg font-black tracking-[0.02em]">Iniciar liga</h2>
+          <h2 className="text-lg font-black tracking-[0.02em]">{t("leagues.start.title")}</h2>
         </header>
         <form onSubmit={submit} noValidate className="space-y-4 p-5">
           <div>
             <label htmlFor="season-length" className="mb-1 block text-sm font-medium text-slate-700">
-              ¿Cuántas jornadas?
+              {t("leagues.start.howMany")}
             </label>
             <input
               id="season-length"
@@ -84,7 +86,7 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
             />
             <p className="mt-1 text-xs text-slate-500">
-              Máximo {max} {max === 1 ? "jornada" : "jornadas"}: todos contra todos.
+              {t(max === 1 ? "leagues.start.maxHintOne" : "leagues.start.maxHintMany", { max })}
             </p>
           </div>
           {error ? (
@@ -98,14 +100,14 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
               onClick={onClose}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={submitting}
               className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
             >
-              Iniciar liga
+              {t("leagues.start.title")}
             </button>
           </div>
         </form>

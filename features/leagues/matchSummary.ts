@@ -1,8 +1,15 @@
 import { PE_MVP } from "@/lib/rules";
+import { DEFAULT_LOCALE, t as translate } from "@/lib/i18n/dictionaries";
 import { getRaceById } from "@/features/teams/data/races";
 import type { MatchDetail, MatchTeamDetail } from "./api";
 
 export type { MatchDetail } from "./api";
+
+/** The translator shape used by the label helpers (es default fallback). */
+export type SummaryTFunc = (key: string, params?: Record<string, string | number>) => string;
+
+/** The es-default translator used when a caller passes no `t` (tests/audit). */
+const esT: SummaryTFunc = (key, params) => translate(DEFAULT_LOCALE, key, params);
 
 /**
  * Pure snapshot→section mapping for a played match (MV-2). Never fetches, never
@@ -43,25 +50,25 @@ export interface MatchSummary {
 interface TeamLine { name: string; raceName: string | null; coachName: string | null }
 
 /** Spanish copy for a BB2025 weather-kind code (unknown codes pass through). */
-export function weatherLabel(kind: string): string {
+export function weatherLabel(kind: string, fn: SummaryTFunc = esT): string {
   switch (kind) {
-    case "heat": return "Calor asfixiante";
-    case "sunny": return "Muy soleado";
-    case "perfect": return "Perfecto";
-    case "rain": return "Lluvioso";
-    case "blizzard": return "Ventisca";
+    case "heat": return fn("match.weather.heat");
+    case "sunny": return fn("match.weather.sunny");
+    case "perfect": return fn("match.weather.perfect");
+    case "rain": return fn("match.weather.rain");
+    case "blizzard": return fn("match.weather.blizzard");
     default: return kind;
   }
 }
 
 /** Spanish rulebook label for a casualty outcome kind (unknown passes through). */
-export function casualtyKindLabel(kind: string): string {
+export function casualtyKindLabel(kind: string, fn: SummaryTFunc = esT): string {
   switch (kind) {
-    case "bruise": return "Magullado";
-    case "apaleado": return "Apaleado";
-    case "grave": return "Herida grave";
-    case "permanent": return "Permanente";
-    case "dead": return "Muerto";
+    case "bruise": return fn("match.casualty.bruise");
+    case "apaleado": return fn("match.casualty.apaleado");
+    case "grave": return fn("match.casualty.grave");
+    case "permanent": return fn("match.casualty.permanent");
+    case "dead": return fn("match.casualty.dead");
     default: return kind;
   }
 }
@@ -113,7 +120,7 @@ function mvpOf(
 
 type Scoreboard = NonNullable<MatchDetail["result"]>["scores"];
 
-function buildScore(detail: MatchDetail): MatchScoreSection | null {
+function buildScore(detail: MatchDetail, fn: SummaryTFunc): MatchScoreSection | null {
   const home = detail.fixture.homeScore;
   const away = detail.fixture.awayScore;
   if (home == null || away == null) return null;
@@ -121,7 +128,7 @@ function buildScore(detail: MatchDetail): MatchScoreSection | null {
   const winnerName =
     winnerId === detail.homeTeam.id ? detail.homeTeam.name
     : winnerId === detail.awayTeam.id ? detail.awayTeam.name
-    : winnerId === null ? "Empate"
+    : winnerId === null ? fn("match.draw")
     : null;
   return { type: "score", home, away, winnerName };
 }
@@ -140,7 +147,7 @@ function buildWinnings(scoreboard: Scoreboard): MatchWinningsSection | null {
   return { type: "winnings", home: scoreboard.home.winnings, away: scoreboard.away.winnings };
 }
 
-function buildCasualties(detail: MatchDetail, scoreboard: Scoreboard): MatchCasualtiesSection | null {
+function buildCasualties(detail: MatchDetail, scoreboard: Scoreboard, fn: SummaryTFunc): MatchCasualtiesSection | null {
   // Each casualty names the victim's team (where its Player row lives); resolve
   // the display name from that team's roster.
   const teamFor = (side: TeamSide): MatchTeamDetail =>
@@ -148,11 +155,11 @@ function buildCasualties(detail: MatchDetail, scoreboard: Scoreboard): MatchCasu
   const items = [
     ...(scoreboard.home.casualties ?? []).map((c) => ({
       playerName: playerNameOf(teamFor(c.team), c.rosterPlayerId),
-      label: casualtyKindLabel(c.outcome?.kind ?? ""),
+      label: casualtyKindLabel(c.outcome?.kind ?? "", fn),
     })),
     ...(scoreboard.away.casualties ?? []).map((c) => ({
       playerName: playerNameOf(teamFor(c.team), c.rosterPlayerId),
-      label: casualtyKindLabel(c.outcome?.kind ?? ""),
+      label: casualtyKindLabel(c.outcome?.kind ?? "", fn),
     })),
   ];
   const named = items.filter((i) => i.playerName !== null);
@@ -160,9 +167,9 @@ function buildCasualties(detail: MatchDetail, scoreboard: Scoreboard): MatchCasu
   return { type: "casualties", items: named };
 }
 
-function buildWeather(result: NonNullable<MatchDetail["result"]>): MatchWeatherSection | null {
+function buildWeather(result: NonNullable<MatchDetail["result"]>, fn: SummaryTFunc): MatchWeatherSection | null {
   if (result.weather == null || result.weather === "") return null;
-  return { type: "weather", label: weatherLabel(result.weather) };
+  return { type: "weather", label: weatherLabel(result.weather, fn) };
 }
 
 function buildPe(detail: MatchDetail, scoreboard: Scoreboard): MatchPeSection {
@@ -186,7 +193,7 @@ function buildMvp(detail: MatchDetail, scoreboard: Scoreboard): MatchMvpSection 
  * renders the fixture scores + "Victoria por incomparecencia." notice. All
  * other fixtures render only non-empty sections.
  */
-export function buildMatchSummary(detail: MatchDetail): MatchSummary {
+export function buildMatchSummary(detail: MatchDetail, fn: SummaryTFunc = esT): MatchSummary {
   const result = detail.result;
 
   // Walkover: fixture is played (scores present) but there is no persisted
@@ -204,7 +211,7 @@ export function buildMatchSummary(detail: MatchDetail): MatchSummary {
   const scoreboard = result.scores;
   const sections: MatchSummarySection[] = [];
 
-  const score = buildScore(detail);
+  const score = buildScore(detail, fn);
   if (score) sections.push(score);
 
   sections.push(buildTeams(detail));
@@ -215,10 +222,10 @@ export function buildMatchSummary(detail: MatchDetail): MatchSummary {
   const winnings = buildWinnings(scoreboard);
   if (winnings) sections.push(winnings);
 
-  const casualties = buildCasualties(detail, scoreboard);
+  const casualties = buildCasualties(detail, scoreboard, fn);
   if (casualties) sections.push(casualties);
 
-  const weather = buildWeather(result);
+  const weather = buildWeather(result, fn);
   if (weather) sections.push(weather);
 
   const pe = buildPe(detail, scoreboard);

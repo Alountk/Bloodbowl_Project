@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import type { FixtureDraft, ResultPayload } from "./api";
 
 /** A roster player reference (id + name) used to render per-player PE inputs. */
@@ -96,13 +97,14 @@ export function sumDraftedTds(players: Record<string, ResultPlayerDraft>): numbe
 /**
  * Maps an API rejection to a Spanish message for the in-modal alert. The API
  * throws an `Error` carrying a `.status` (see `readJson` in `./api`); a 409 is
- * the captain-loads-while-admin-corrects race, 403 a permission error.
+ * the captain-loads-while-admin-corrects race, 403 a permission error. `t`
+ * carries the active locale (es default).
  */
-function serverMessage(e: unknown): string {
+function serverMessage(e: unknown, t: (key: string, params?: Record<string, string | number>) => string): string {
   const status = (e as { status?: number }).status;
-  if (status === 409) return "Ya hay un resultado cargado para este partido.";
-  if (status === 403) return "No tenés permisos para esta acción.";
-  return e instanceof Error ? e.message : "No se pudo guardar el resultado.";
+  if (status === 409) return t("result.server.alreadyPlayed");
+  if (status === 403) return t("result.server.forbidden");
+  return e instanceof Error ? e.message : t("result.server.saveError");
 }
 
 export interface ResultModalProps {
@@ -154,11 +156,12 @@ export function ResultModal({
     initial?.away ?? emptyTeamDraft(),
   );
   const [error, setError] = useState<string | null>(null);
+  const { t } = useI18n();
 
-  const homeName = teamNameById.get(fixture.homeTeamId) ?? "Local";
-  const awayName = teamNameById.get(fixture.awayTeamId) ?? "Visitante";
-  const title = mode === "correct" ? "Corregir resultado" : "Cargar resultado";
-  const confirmLabel = mode === "correct" ? "Corregir resultado" : "Guardar resultado";
+  const homeName = teamNameById.get(fixture.homeTeamId) ?? t("result.local");
+  const awayName = teamNameById.get(fixture.awayTeamId) ?? t("result.visitor");
+  const title = mode === "correct" ? t("result.correctTitle") : t("result.loadTitle");
+  const confirmLabel = mode === "correct" ? t("result.correctAction") : t("result.saveAction");
 
   const homeRostersByTeam = useMemo(
     () => ({ home: homeRoster, away: awayRoster }),
@@ -171,14 +174,14 @@ export function ResultModal({
     const tdsHome = sumDraftedTds(home.players);
     const tdsAway = sumDraftedTds(away.players);
     if (tdsHome !== home.score || tdsAway !== away.score) {
-      setError("La suma de anotaciones de cada equipo debe coincidir con su marcador final.");
+      setError(t("result.sumMismatch"));
       return;
     }
     // The route requires exactly six MJP nominations per team (deduplicated),
     // so mirror that contract client-side instead of silently hitting a 400.
     const nominationsOf = (list: string[]) => new Set(list.filter(Boolean)).size;
     if (nominationsOf(home.mvpNominations) !== 6 || nominationsOf(away.mvpNominations) !== 6) {
-      setError("Cada equipo debe nominar exactamente 6 jugadores para el MVP.");
+      setError(t("result.mvpExactlySix"));
       return;
     }
     setError(null);
@@ -188,7 +191,7 @@ export function ResultModal({
     try {
       await onSubmit(buildResultPayload(home, away));
     } catch (e) {
-      setError(serverMessage(e));
+      setError(serverMessage(e, t));
     }
   };
 
@@ -206,15 +209,15 @@ export function ResultModal({
       >
         <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
           <h3 className="text-sm font-bold">
-            {title} · {homeName} vs {awayName}
+            {t("result.header", { title, home: homeName, away: awayName })}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
+            aria-label={t("result.close")}
             className="text-xs font-semibold text-white/80 hover:text-white"
           >
-            ✕ Cerrar
+            ✕ {t("result.close")}
           </button>
         </header>
 
@@ -246,7 +249,7 @@ export function ResultModal({
               onClick={onClose}
               className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
             <button
               type="button"
@@ -285,6 +288,7 @@ function TeamResultSection({
   setDraft: React.Dispatch<React.SetStateAction<ResultTeamDraft>>;
   victimSourceRosters: { home: RosterPlayerRef[]; away: RosterPlayerRef[] };
 }) {
+  const { t } = useI18n();
   // Ensure every roster player has an initialized action row.
   const players = { ...draft.players };
   for (const player of roster) {
@@ -320,18 +324,18 @@ function TeamResultSection({
   };
 
   return (
-    <section aria-label={`Resultado ${name}`} className="border border-[#e2e8f0] p-3">
+    <section aria-label={t("result.section", { name })} className="border border-[#e2e8f0] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e2e8f0] pb-2">
         <h4 className="text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h4>
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-slate-600">
-            Goles {name}
+            {t("result.goals", { name })}
             <input
               type="number"
               min={0}
               value={draft.score}
               onChange={(e) => setDraft({ ...draft, score: Number(e.target.value) || 0 })}
-              aria-label={`Goles ${name}`}
+              aria-label={t("result.goals", { name })}
               className="ml-2 w-16 rounded-sm border border-slate-300 px-2 py-1 text-sm text-slate-800"
             />
           </label>
@@ -341,7 +345,7 @@ function TeamResultSection({
               checked={draft.ballHeld}
               onChange={(e) => setDraft({ ...draft, ballHeld: e.target.checked })}
             />
-            Mantuvo el balón
+            {t("result.heldBall")}
           </label>
         </div>
       </div>
@@ -360,11 +364,11 @@ function TeamResultSection({
       <div className="mt-3 flex flex-wrap gap-2">
         {Array.from({ length: 6 }, (_, i) => (
           <label key={i} className="text-xs font-medium text-slate-600">
-            MVP {i + 1} {name}
+            {t("result.mvpSlot", { n: i + 1, name })}
             <select
               value={draft.mvpNominations[i] ?? ""}
               onChange={(e) => setMvp(i, e.target.value)}
-              aria-label={`MVP ${i + 1} ${name}`}
+              aria-label={t("result.mvpSlot", { n: i + 1, name })}
               className="ml-1 rounded-sm border border-slate-300 px-1.5 py-1 text-sm text-slate-800"
             >
               <option value="">—</option>
@@ -377,16 +381,16 @@ function TeamResultSection({
           </label>
         ))}
         <p className="w-full text-[11px] text-slate-500">
-          Mejor jugador: el servidor lanza 1D6 entre las 6 nominaciones.
+          {t("result.mvpNote")}
         </p>
       </div>
 
       {totalCasualties > 0 ? (
         <div className="mt-3 border-t border-[#e2e8f0] pt-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Víctimas</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("result.victims")}</p>
           {victimSlots.map((i) => (
             <label key={i} className="mt-1 block text-xs font-medium text-slate-600">
-              Víctima {i + 1}
+              {t("result.victimSlot", { n: i + 1 })}
               <select
                 value={
                   draft.casualties[i]
@@ -394,14 +398,14 @@ function TeamResultSection({
                     : ""
                 }
                 onChange={(e) => setVictim(i, e.target.value)}
-                aria-label={`Víctima ${i + 1}`}
+                aria-label={t("result.victimSlot", { n: i + 1 })}
                 className="ml-2 rounded-sm border border-slate-300 px-1.5 py-1 text-sm text-slate-800"
               >
                 <option value="">—</option>
                 {(Object.keys(victimSourceRosters) as ("home" | "away")[]).map((team) =>
                   victimSourceRosters[team].map((p) => (
                     <option key={`${team}:${p.id}`} value={`${team}:${p.id}`}>
-                      {p.name} ({team === "home" ? "local" : "visitante"})
+                      {p.name} ({team === "home" ? t("result.homeTeam") : t("result.awayTeam")})
                     </option>
                   )),
                 )}
@@ -424,14 +428,15 @@ function PlayerActionsRow({
   actions: ResultPlayerDraft;
   onActions: (patch: Partial<ResultPlayerDraft>) => void;
 }) {
+  const { t } = useI18n();
   const fields: Array<[keyof ResultPlayerDraft, string]> = [
-    ["tds", "Anotaciones"],
-    ["casualties", "Bajas causadas"],
-    ["completions", "Pases completos"],
-    ["interceptions", "Intercepciones"],
-    ["fouls", "Faltas"],
-    ["throwTeamMates", "Lanzar compañero"],
-    ["landedSafe", "Aterrizar sano"],
+    ["tds", t("result.action.tds")],
+    ["casualties", t("result.action.casualties")],
+    ["completions", t("result.action.completions")],
+    ["interceptions", t("result.action.interceptions")],
+    ["fouls", t("result.action.fouls")],
+    ["throwTeamMates", t("result.action.throwTeamMates")],
+    ["landedSafe", t("result.action.landedSafe")],
   ];
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
