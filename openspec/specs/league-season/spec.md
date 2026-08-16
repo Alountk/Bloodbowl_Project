@@ -8,13 +8,14 @@ Gives a League a lifecycle with public-open joinability and an automatic round-r
 
 ### Requirement: League Status Lifecycle
 
-The League MUST carry `status` ("open"|"started", default "open"), `seasonLength Int?`, `startedAt DateTime?`. Creating persists `status:"open"` with both nulls. Start sets `status:"started"`, `seasonLength`, `startedAt: now()`. A STARTED league MUST return 409 to a repeated start and to DELETE.
+The League MUST carry `status` ("open"|"started"|"finished", default "open"), `seasonLength Int?`, `startedAt DateTime?`, and `championTeamId String?`. Creating persists `status:"open"` with both nulls. Start sets `status:"started"`, `seasonLength`, `startedAt: now()`. A STARTED league MUST return 409 to a repeated start and to DELETE. A FINISHED league MUST also return 409 to start, join, leave, expel and DELETE — a closed season is as immutable as a started one.
+(Previously: status was only "open"|"started"; no champion column.)
 
 #### Scenario: New league is open
 
 - GIVEN an authenticated user creates a league
 - WHEN the League row is stored
-- THEN `status` is "open", `seasonLength` and `startedAt` are null
+- THEN `status` is "open", `seasonLength`, `startedAt` and `championTeamId` are null
 
 #### Scenario: Repeat start rejected
 
@@ -27,6 +28,12 @@ The League MUST carry `status` ("open"|"started", default "open"), `seasonLength
 - GIVEN a STARTED league owned by the session user
 - WHEN they DELETE it
 - THEN it returns 409 and the league row and fixtures remain
+
+#### Scenario: Finished league is immutable too
+
+- GIVEN a FINISHED league owned by the session user
+- WHEN they DELETE it, restart it, join a team, or leave/expel a member
+- THEN each attempt returns 409 with no mutation
 
 ### Requirement: Round-Robin Fixture Generation
 
@@ -174,3 +181,38 @@ League detail responses MUST expose final scores and the winner label for result
 - GIVEN a scheduled fixture whose result is later recorded
 - WHEN league detail renders
 - THEN the fixture shows `played` with scores
+
+### Requirement: Season Close + Champion (RAU-40)
+
+When the LAST fixture of the season receives a result — via the result route, a forfeit (walkover), or a concede acceptance — the league MUST close AUTOMATICALLY and atomically in the SAME transaction that committed the result: `status` becomes `"finished"` and `championTeamId` is set to the season champion. The champion comes from the standings (points 3/1/0, tiebreakers in order: points → TD difference → TDs for → head-to-head → team name for a stable order). `championTeamId` MUST be null when a finished league has no recorded result. Closing is idempotent: re-running the check on an already-finished league is a no-op. A FINISHED league MUST reject further results (POST and PUT), forfeits, concede commands, and negotiation (propose/accept) with 409. Detail GET MUST keep serving the fixtures, rounds and the champion to members/owner of a finished league (a foreign non-member still gets 404).
+(Added: RAU-40.)
+
+#### Scenario: Last fixture auto-closes the league
+
+- GIVEN a STARTED league whose every fixture except one already has a result
+- WHEN the final fixture's result is loaded (or forfeited, or conceded)
+- THEN in that same transaction the league becomes `finished` and `championTeamId` names the standings leader
+
+#### Scenario: League stays open while fixtures remain
+
+- GIVEN a STARTED league with at least one fixture still unplayed
+- WHEN a result is loaded
+- THEN the league status remains `started` and `championTeamId` stays null
+
+#### Scenario: Champion uses 3/1/0 with the tiebreaker chain
+
+- GIVEN a league whose standings end with two teams tied on points, TD difference and TDs for
+- WHEN the champion is derived
+- THEN the winner of the direct match between the tied teams ranks higher (a drawn/missing direct match falls back to team name order)
+
+#### Scenario: Finished league rejects results and negotiation
+
+- GIVEN a FINISHED league
+- WHEN a participant POSTs a result, PUTs a correction, awards a forfeit, sends a live concede command, or proposes/accepts a match date
+- THEN each returns 409 and no mutation occurs
+
+#### Scenario: Finished league detail shows the champion
+
+- GIVEN a FINISHED league visible to its owner or a member
+- WHEN GET detail returns
+- THEN `status` is "finished", `championTeamId` resolves to the champion team, and the fixtures/rounds remain exposed

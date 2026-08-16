@@ -281,8 +281,9 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Started league: owner or any current member only, else identical 404.
-  if (fixture.league.status === "started") {
+  // Started/finished league: owner or any current member only, else identical
+  // 404 (a finished league keeps its member shield, RAU-40).
+  if (fixture.league.status === "started" || fixture.league.status === "finished") {
     const isMember = fixture.league.teams.some((team) => team.userId === userId);
     if (fixture.league.ownerId !== userId && !isMember) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });

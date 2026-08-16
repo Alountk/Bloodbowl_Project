@@ -511,40 +511,25 @@ test("complete lifecycle: join → start → schedule → result → progression
     await expect(pageB.getByTestId(valueTestId).first()).toHaveText("20 000");
     await expect(pageB.getByTestId(peTestId).first()).toHaveText(String(peBefore - 6));
 
-    // --- Correction: admin corrects the played result to a 1–1 draw ---
+    // --- Season close (RAU-40): the loaded result was the season's LAST fixture
+    // (2-member, 1-jornada league) → the league finishes DEFINITIVELY and the
+    // champion (team A, the 2–1 winner) is declared and stored. ---
     await pageA.reload();
-    await pageA.getByRole("button", { name: "Corregir resultado" }).first().click();
-    const correctDialog = pageA.getByRole("dialog", { name: /Corregir resultado/ });
-    await expect(correctDialog).toBeVisible();
-    await fillResultSection(correctDialog.getByLabel(`Resultado ${teamAName}`), {
-      teamName: teamAName,
-      score: 1,
-      actions: { "Player 1": { tds: 1 } },
-    });
-    await fillResultSection(correctDialog.getByLabel(`Resultado ${teamBName}`), {
-      teamName: teamBName,
-      score: 1,
-      actions: { "Player 1": { tds: 1 } },
-    });
-    await correctDialog.getByRole("button", { name: "Corregir resultado" }).click();
-    await expect(correctDialog).not.toBeVisible();
-
-    await expect
-      .poll(
-        async () => {
-          const res = await pageA.request.get(`/api/leagues/${leagueId}`);
-          if (res.status() !== 200) return null;
-          const body = (await res.json()) as {
-            fixtures: { id: string; homeScore: number | null; awayScore: number | null }[];
-          };
-          const f = body.fixtures.find((x) => x.id === fixtureId);
-          return f ? `${f.homeScore}-${f.awayScore}` : null;
-        },
-        { timeout: 20_000 },
-      )
-      .toBe("1-1");
-    await pageA.reload();
-    await expect(pageA.getByRole("region", { name: "Jornada 1" }).getByText(/1 : 1/)).toBeVisible();
+    await expect(pageA.getByText("Finalizada")).toBeVisible();
+    const championPanel = pageA.getByTestId("champion-panel");
+    await expect(championPanel).toBeVisible();
+    await expect(championPanel.getByText("Campeón")).toBeVisible();
+    await expect(championPanel.getByText(teamAName)).toBeVisible();
+    await expect(championPanel.getByText("Temporada finalizada")).toBeVisible();
+    // The played card stays visible, but the correction affordance is gone.
+    await expect(pageA.getByRole("button", { name: "Corregir resultado" })).toHaveCount(0);
+    // A correction PUT is definitively rejected (409) — the champion is final.
+    const snapAfterClose = await snapshotLeague(pageA, leagueId as string);
+    const rejectedCorrection = await pageA.request.put(
+      `/api/leagues/${leagueId}/fixtures/${fixtureId}/result`,
+      { data: resultPayloadFor(snapAfterClose, { homeScore: 1, awayScore: 1, homeTds: 1, awayTds: 1 }) },
+    );
+    expect(rejectedCorrection.status()).toBe(409);
   } finally {
     await contextA.close();
     await contextB.close();
@@ -658,8 +643,11 @@ test("forfeit walkover: admin forfeits a scheduled fixture → Jugado 2–0 → 
   }
 });
 
-// --- Journey 5: a captain CAN load a result AND correct it (PR 4 widening) -----
-test("a captain loads a result and corrects it (UI control + PUT 200)", async ({ browser }) => {
+// --- Journey 5: loading the LAST fixture closes the season — the captain sees
+// the champion panel and a correction is rejected (409, definitive) -------------
+test("loading the final result finishes the league: champion panel shows, corrections are rejected (RAU-40)", async ({
+  browser,
+}) => {
   const league = await buildTwoMemberStartedLeague(browser, "captain");
   try {
     const fixtureId = await scheduleFixture(league.admin, league.rival, league.leagueId);
@@ -669,9 +657,11 @@ test("a captain loads a result and corrects it (UI control + PUT 200)", async ({
     const region = league.rival.getByRole("region", { name: "Jornada 1" });
     await expect(region.getByRole("button", { name: "Cargar resultado" })).toBeVisible();
 
-    // The captain (rival B) loads a 1–0 win through the API.
+    // The captain (rival B) loads a 1–0 win through the API — this is the
+    // season's ONLY fixture, so it auto-closes the league (RAU-40).
     const snap = await snapshotLeague(league.rival, league.leagueId);
-    const bHome = snap.homeTeamId === snap.teams.find((t) => t.name === league.teamBName)?.id;
+    const bTeam = snap.teams.find((t) => t.name === league.teamBName);
+    const bHome = snap.homeTeamId === bTeam?.id;
     const loaded = await league.rival.request.post(
       `/api/leagues/${league.leagueId}/fixtures/${fixtureId}/result`,
       { data: resultPayloadFor(snap, { homeScore: bHome ? 1 : 0, awayScore: bHome ? 0 : 1 }) },
@@ -679,20 +669,30 @@ test("a captain loads a result and corrects it (UI control + PUT 200)", async ({
     expect(loaded.status()).toBe(200);
     await waitForFixtureStatus(league.rival, league.leagueId, fixtureId, "played");
 
-    // The captain's card shows the played result AND a correction control (PR 4).
-    await league.rival.reload();
-    await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    await expect(region.getByRole("button", { name: "Corregir resultado" })).toBeVisible();
+    // The league closed with the captain's team as the stored champion.
+    const detail = await league.rival.request.get(`/api/leagues/${league.leagueId}`);
+    expect(detail.status()).toBe(200);
+    const body = (await detail.json()) as { status: string; championTeamId: string | null };
+    expect(body.status).toBe("finished");
+    expect(body.championTeamId).toBe(bTeam?.id);
 
-    // The captain's PUT (correction) is 200 — the correction commits.
+    // The UI shows the champion panel + the Finalizada badge; the played card
+    // stays visible but the correction affordance is gone (definitive).
+    await league.rival.reload();
+    await expect(league.rival.getByText("Finalizada")).toBeVisible();
+    const championPanel = league.rival.getByTestId("champion-panel");
+    await expect(championPanel).toBeVisible();
+    await expect(championPanel.getByText("Campeón")).toBeVisible();
+    await expect(championPanel.getByText(league.teamBName)).toBeVisible();
+    await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
+    await expect(region.getByRole("button", { name: "Corregir resultado" })).toHaveCount(0);
+
+    // The captain's PUT (correction) is rejected — the champion is definitive.
     const corrected = await league.rival.request.put(
       `/api/leagues/${league.leagueId}/fixtures/${fixtureId}/result`,
       { data: resultPayloadFor(snap, { homeScore: bHome ? 2 : 0, awayScore: bHome ? 0 : 2 }) },
     );
-    expect(corrected.status()).toBe(200);
-    // The corrected score reflects on the card (2–0 or 0–2).
-    await league.rival.reload();
-    await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
+    expect(corrected.status()).toBe(409);
   } finally {
     await league.close();
   }

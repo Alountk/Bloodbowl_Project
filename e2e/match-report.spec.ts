@@ -14,8 +14,15 @@ test.use({ locale: "es-ES" });
  *     same owner then visits their own team detail, spends the scorer's PE on an
  *     élite skill (Block) in the ProgressionPanel, and sees the élite `$` badge
  *     with the recalculated value.
- *  2. correction (match-result R5): the league owner (admin) corrects that
- *     played result through the modal → the MatchCard score updates.
+ *  2. correction (match-result R5): a 3-member, 2-jornada league's round-1
+ *     fixture is played, and the league owner (admin) corrects that result
+ *     through the modal while the season is STILL started (round 2 unplayed) →
+ *     the MatchCard score updates. Since RAU-40, loading the LAST fixture of a
+ *     season closes the league, so a correction must be exercised before the
+ *     season finishes.
+ *  3. finished season (RAU-40): loading the single result of a 2-member league
+ *     closes it — the participant captain sees the champion panel, the
+ *     correction control disappears, and a correction PUT is rejected (409).
  *
  * The 2-member league yields exactly one fixture (no round-robin byes), so the
  * pairing and the "Jornada completa" assertion are deterministic. The fixture's
@@ -163,6 +170,122 @@ async function scheduleFixture(league: TwoMemberLeague) {
   return fixtureId;
 }
 
+/** A 3-member league (A admin+team, B rival, C third) started with 2 jornadas.
+ * A round-robin of 3 teams yields two rounds of one pairing each, so playing a
+ * single fixture leaves the league STARTED — the window where a result
+ * correction is still legal (RAU-40 closes a season only on its LAST fixture). */
+interface ThreeMemberLeague {
+  admin: Page;
+  rival: Page;
+  third: Page;
+  leagueId: string;
+  teamAName: string;
+  teamBName: string;
+  teamCName: string;
+}
+
+async function buildThreeMemberStartedLeague(
+  browser: Browser,
+  tag: string,
+): Promise<ThreeMemberLeague> {
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
+  const contextC = await browser.newContext({ locale: "es-ES" });
+  const admin = await contextA.newPage();
+  const rival = await contextB.newPage();
+  const third = await contextC.newPage();
+
+  try {
+    await signup(admin, uniqueEmail(`mr3-admin-${tag}`));
+    const teamAName = `M3A-${tag} ${Date.now()}`;
+    await createTeam(admin, teamAName);
+    const leagueName = `MR3 Liga ${tag} ${Date.now()}`;
+    await createLeague(admin, leagueName);
+    const leagueUrl = await openLeagueCard(admin, leagueName);
+    const leagueId = /\/leagues\/(.+)$/.exec(leagueUrl)?.[1];
+    expect(leagueId).toBeDefined();
+    await admin.getByLabel("Tu equipo").selectOption({ label: teamAName });
+    await admin.getByRole("button", { name: "Apuntarse" }).click();
+    await expect(admin.getByText(teamAName)).toBeVisible();
+
+    const teamBName = `M3B-${tag} ${Date.now()}`;
+    await signup(rival, uniqueEmail(`mr3-rival-${tag}`));
+    await createTeam(rival, teamBName);
+    await rival.goto("/leagues");
+    await openLeagueCard(rival, leagueName);
+    await rival.getByLabel("Tu equipo").selectOption({ label: teamBName });
+    await rival.getByRole("button", { name: "Apuntarse" }).click();
+    await expect(rival.getByText(teamBName)).toBeVisible();
+
+    const teamCName = `M3C-${tag} ${Date.now()}`;
+    await signup(third, uniqueEmail(`mr3-third-${tag}`));
+    await createTeam(third, teamCName);
+    await third.goto("/leagues");
+    await openLeagueCard(third, leagueName);
+    await third.getByLabel("Tu equipo").selectOption({ label: teamCName });
+    await third.getByRole("button", { name: "Apuntarse" }).click();
+    await expect(third.getByText(teamCName)).toBeVisible();
+
+    await admin.reload();
+    await expect(admin.getByRole("heading", { name: leagueName })).toBeVisible();
+    const startButton = admin.getByRole("button", { name: "Iniciar liga" });
+    await expect(startButton).toBeEnabled();
+    await startButton.click();
+    await expect(admin.getByRole("dialog", { name: "Iniciar liga" })).toBeVisible();
+    // 3 teams → up to 2 jornadas. Two rounds leave a fixture unplayed after the
+    // first result, so the correction journey stays inside a started league.
+    await admin.getByLabel("¿Cuántas jornadas?").fill("2");
+    await admin
+      .getByRole("dialog", { name: "Iniciar liga" })
+      .getByRole("button", { name: "Iniciar liga" })
+      .click();
+    await expect(admin.getByText("Iniciada")).toBeVisible();
+
+    return { admin, rival, third, leagueId: leagueId as string, teamAName, teamBName, teamCName };
+  } catch (error) {
+    await contextA.close();
+    await contextB.close();
+    await contextC.close();
+    throw error;
+  }
+}
+
+/** Resolves the round-1 pairing of a 3-member league (shuffled at start) into
+ * the fixture id and the two TEAM NAMES — the ResultModal labels are name-based. */
+async function roundOnePairing(league: ThreeMemberLeague) {
+  const detail = await league.admin.request.get(`/api/leagues/${league.leagueId}`);
+  expect(detail.status()).toBe(200);
+  const body = (await detail.json()) as {
+    fixtures: { id: string; round: number; homeTeamId: string; awayTeamId: string }[];
+    teams: { id: string; name: string }[];
+  };
+  const fixture = body.fixtures.find((f) => f.round === 1);
+  expect(fixture).toBeDefined();
+  const nameOf = (teamId: string) => body.teams.find((t) => t.id === teamId)?.name ?? teamId;
+  return {
+    fixtureId: fixture!.id,
+    homeName: nameOf(fixture!.homeTeamId),
+    awayName: nameOf(fixture!.awayTeamId),
+  };
+}
+
+/** Schedules a given fixture via API: rival B proposes, admin A accepts. */
+async function scheduleFixtureById(league: ThreeMemberLeague, fixtureId: string) {
+  const { admin, rival, leagueId } = league;
+  const proposal = await rival.request.post(
+    `/api/leagues/${leagueId}/fixtures/${fixtureId}/propose`,
+    { data: { date: new Date(Date.now() + 10 * 86400_000).toISOString() } },
+  );
+  expect(proposal.status()).toBe(200);
+  const prop = (await proposal.json()) as { id: string };
+  const accepted = await admin.request.post(
+    `/api/leagues/${leagueId}/fixtures/${fixtureId}/accept`,
+    { data: { proposalId: prop.id } },
+  );
+  expect(accepted.status()).toBe(200);
+  return fixtureId;
+}
+
 /** Polls the league detail until the given fixture reaches a status. The modal's
  * async POST resolves in the background after the dialog closes; this emulates
  * the UI refresh without racing the commit. */
@@ -271,28 +394,32 @@ test("result + progression: load a win through the modal → score + jornada com
 test("correction: admin corrects a played result → the MatchCard score updates", async ({
   browser,
 }) => {
-  const league = await buildTwoMemberStartedLeague(browser, "corr");
+  // A 3-member, 2-jornada league: playing round 1 leaves the season STARTED
+  // (round 2 unplayed), the window where a correction is still allowed (RAU-40).
+  const league = await buildThreeMemberStartedLeague(browser, "corr");
   try {
-    const fixtureId = await scheduleFixture(league);
+    const { fixtureId, homeName, awayName } = await roundOnePairing(league);
+    await scheduleFixtureById(league, fixtureId);
     await league.admin.reload();
-    await loadResultViaModal(league.admin, league.teamAName, league.teamBName, 2);
+    await loadResultViaModal(league.admin, homeName, awayName, 2);
     await waitForFixtureStatus(league.admin, league.leagueId, fixtureId, "played");
 
-    // Admin corrects the result through the modal: flip the win to a 1–1 draw.
+    // The league is NOT finished (a second-round fixture remains unplayed), so
+    // the admin can still correct the played result through the modal.
     await league.admin.reload();
     await league.admin.getByRole("button", { name: "Corregir resultado" }).first().click();
     const dialog = league.admin.getByRole("dialog", { name: /Corregir resultado/ });
     await expect(dialog).toBeVisible();
-    const homeSection = dialog.getByLabel(`Resultado ${league.teamAName}`);
-    const awaySection = dialog.getByLabel(`Resultado ${league.teamBName}`);
-    await homeSection.getByLabel(`Goles ${league.teamAName}`).fill("1");
-    await awaySection.getByLabel(`Goles ${league.teamBName}`).fill("1");
+    const homeSection = dialog.getByLabel(`Resultado ${homeName}`);
+    const awaySection = dialog.getByLabel(`Resultado ${awayName}`);
+    await homeSection.getByLabel(`Goles ${homeName}`).fill("1");
+    await awaySection.getByLabel(`Goles ${awayName}`).fill("1");
     await homeSection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
     await awaySection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
     for (const section of [homeSection, awaySection]) {
       for (let i = 1; i <= 6; i++) {
         await section
-          .getByLabel(`MVP ${i} ${section === homeSection ? league.teamAName : league.teamBName}`)
+          .getByLabel(`MVP ${i} ${section === homeSection ? homeName : awayName}`)
           .selectOption({ index: i });
       }
     }
@@ -321,10 +448,11 @@ test("correction: admin corrects a played result → the MatchCard score updates
   } finally {
     await league.admin.context()?.close().catch(() => undefined);
     await league.rival.context()?.close().catch(() => undefined);
+    await league.third.context()?.close().catch(() => undefined);
   }
 });
 
-test("correction: a participant captain (rival) corrects a played result → the MatchCard score updates", async ({
+test("correction: a finished league rejects a captain's correction and shows the champion (RAU-40)", async ({
   browser,
 }) => {
   const league = await buildTwoMemberStartedLeague(browser, "captcorr");
@@ -335,49 +463,22 @@ test("correction: a participant captain (rival) corrects a played result → the
     await loadResultViaModal(league.admin, league.teamAName, league.teamBName, 2);
     await waitForFixtureStatus(league.admin, league.leagueId, fixtureId, "played");
 
-    // The rival (a participant captain, NOT the admin) corrects it to a 1–1 draw
-    // through the SAME modal path — the correction gate is admin ∪ participants.
+    // The result was the season's LAST fixture → the league finished. The rival
+    // (a participant captain) sees the champion panel and the Finalizada badge,
+    // and the correction affordance is gone (the champion is definitive).
     await league.rival.reload();
-    const card = league.rival.getByRole("region", { name: "Jornada 1" });
-    await expect(card.getByRole("button", { name: "Corregir resultado" }).first()).toBeVisible();
-    await card.getByRole("button", { name: "Corregir resultado" }).first().click();
-    const dialog = league.rival.getByRole("dialog", { name: /Corregir resultado/ });
-    await expect(dialog).toBeVisible();
-    const homeSection = dialog.getByLabel(`Resultado ${league.teamAName}`);
-    const awaySection = dialog.getByLabel(`Resultado ${league.teamBName}`);
-    await homeSection.getByLabel(`Goles ${league.teamAName}`).fill("1");
-    await awaySection.getByLabel(`Goles ${league.teamBName}`).fill("1");
-    await homeSection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
-    await awaySection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
-    for (const section of [homeSection, awaySection]) {
-      for (let i = 1; i <= 6; i++) {
-        await section
-          .getByLabel(`MVP ${i} ${section === homeSection ? league.teamAName : league.teamBName}`)
-          .selectOption({ index: i });
-      }
-    }
-    await dialog.getByRole("button", { name: "Corregir resultado" }).click();
-    await expect(dialog).not.toBeVisible();
+    await expect(league.rival.getByText("Finalizada")).toBeVisible();
+    await expect(league.rival.getByTestId("champion-panel")).toBeVisible();
+    await expect(
+      league.rival.getByRole("button", { name: "Corregir resultado" }),
+    ).toHaveCount(0);
 
-    // Poll until the corrected score commits, then verify the card shows 1 – 1.
-    await expect
-      .poll(
-        async () => {
-          const res = await league.rival.request.get(`/api/leagues/${league.leagueId}`);
-          if (res.status() !== 200) return null;
-          const body = (await res.json()) as {
-            fixtures: { id: string; homeScore: number | null; awayScore: number | null }[];
-          };
-          const f = body.fixtures.find((x) => x.id === fixtureId);
-          return f ? `${f.homeScore}-${f.awayScore}` : null;
-        },
-        { timeout: 20_000 },
-      )
-      .not.toBe(null);
-    await league.rival.reload();
-    const after = league.rival.getByRole("region", { name: "Jornada 1" });
-    // The corrected draw renders in the CENTER (Design B scorebox).
-    await expect(after.getByText(/1 : 1/)).toBeVisible();
+    // A captain's correction PUT is rejected (409) before any body validation.
+    const rejected = await league.rival.request.put(
+      `/api/leagues/${league.leagueId}/fixtures/${fixtureId}/result`,
+      { data: { home: {}, away: {} } },
+    );
+    expect(rejected.status()).toBe(409);
   } finally {
     await league.admin.context()?.close().catch(() => undefined);
     await league.rival.context()?.close().catch(() => undefined);
