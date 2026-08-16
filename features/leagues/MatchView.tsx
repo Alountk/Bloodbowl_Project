@@ -120,6 +120,7 @@ function emptyPendingView(): LiveMatchViewState {
     homeScore: 0,
     awayScore: 0,
     finishedAt: null,
+    concedeProposedBy: null,
   };
 }
 
