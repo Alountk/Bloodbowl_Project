@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
+test.use({ locale: "es-ES" });
 
 /**
  * Real-DB live-match E2E (auth suite only — `pnpm run test:e2e:auth` with
@@ -56,20 +57,20 @@ function tight(page: Page) {
 
 async function signup(page: Page, email: string) {
   await page.goto("/signup");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(PASSWORD);
+  await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 async function createTeam(page: Page, name: string) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill(name);
-  await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: "Next →" }).click();
-  const add = page.getByRole("button", { name: "Add Lineman" }).first();
+  await page.getByLabel("Nombre del equipo").fill(name);
+  await page.getByLabel("Raza").selectOption("human");
+  await page.getByRole("button", { name: "Siguiente →" }).click();
+  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < 11; i++) await add.click();
-  await page.getByRole("button", { name: /create team/i }).click();
+  await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText(name)).toBeVisible();
 }
@@ -87,8 +88,8 @@ async function buildStartedLeague(
   rivalEmail: string;
   close: () => Promise<void>;
 }> {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
   const admin = tight(await contextA.newPage());
   const rival = tight(await contextB.newPage());
   const close = async () => {
@@ -102,7 +103,7 @@ async function buildStartedLeague(
     await createTeam(admin, adminTeam);
     const leagueName = `LM Liga ${tag} ${Date.now()}`;
     await admin.goto("/leagues");
-    await expect(admin.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await expect(admin.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
     await admin.getByRole("button", { name: "+ Nueva liga" }).first().click();
     await admin.getByLabel("Nombre").fill(leagueName);
     await admin.getByRole("button", { name: "Crear liga" }).click();
@@ -156,9 +157,9 @@ async function buildStartedLeague(
 /** Logs an existing user in on a fresh context (a new-device equivalent). */
 async function login(page: Page, email: string) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(PASSWORD);
+  await page.getByRole("button", { name: "Iniciar sesión" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
@@ -488,7 +489,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
 
     // New-device recovery: B logs in from a FRESH context (same user, a new
     // device equivalent) and gets a snapshot-first live view (turn 2 persisted).
-    const freshContext = await browser.newContext();
+    const freshContext = await browser.newContext({ locale: "es-ES" });
     const freshB = tight(await freshContext.newPage());
     await login(freshB, rivalEmail);
     await freshB.goto(matchUrl);

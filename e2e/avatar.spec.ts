@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Browser } from "@playwright/test";
+test.use({ locale: "es-ES" });
 
 /**
  * Real-DB avatar E2E (run via `pnpm run test:e2e:auth` with AUTH_MODE=auth and a
@@ -38,21 +39,21 @@ const AVATAR_PNG =
 /** Signs up and lands on the home page with an active session. */
 async function signup(page: Page, email: string) {
   await page.goto("/signup");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Correo electrónico").fill(email);
+  await page.getByLabel("Contraseña").fill(PASSWORD);
+  await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 /** Creates a human team of `playerCount` (default 11, BB2025 minimum). */
 async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill(name);
-  await page.getByLabel("Race").selectOption("human");
-  await page.getByRole("button", { name: "Next →" }).click();
-  const add = page.getByRole("button", { name: "Add Lineman" }).first();
+  await page.getByLabel("Nombre del equipo").fill(name);
+  await page.getByLabel("Raza").selectOption("human");
+  await page.getByRole("button", { name: "Siguiente →" }).click();
+  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
-  await page.getByRole("button", { name: /create team/i }).click();
+  await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText(name)).toBeVisible();
 }
@@ -60,14 +61,14 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
 /** Uploads an avatar through the real /profile UI (picker → crop → Guardar). */
 async function uploadAvatarViaProfile(page: Page) {
   await page.goto("/profile");
-  await page.getByRole("button", { name: "Upload photo" }).click();
+  await page.getByRole("button", { name: "Subir foto" }).click();
   await page.locator('input[type="file"]').setInputFiles({
     name: "avatar.png",
     mimeType: "image/png",
     buffer: Buffer.from(AVATAR_PNG, "base64"),
   });
-  await page.getByRole("dialog", { name: "Crop photo" }).waitFor();
-  await page.getByRole("dialog", { name: "Crop photo" }).getByRole("button", { name: "Save" }).click();
+  await page.getByRole("dialog", { name: "Recortar foto" }).waitFor();
+  await page.getByRole("dialog", { name: "Recortar foto" }).getByRole("button", { name: "Guardar" }).click();
   // The preview img appears once the server-issued value comes back.
   await expect(page.getByRole("img", { name: "Avatar del entrenador" })).toBeVisible();
 }
@@ -83,8 +84,8 @@ interface TwoMemberLeague {
 }
 
 async function buildTwoMemberStartedLeague(browser: Browser, tag: string): Promise<TwoMemberLeague> {
-  const contextA = await browser.newContext();
-  const contextB = await browser.newContext();
+  const contextA = await browser.newContext({ locale: "es-ES" });
+  const contextB = await browser.newContext({ locale: "es-ES" });
   const admin = await contextA.newPage();
   const rival = await contextB.newPage();
   const close = async () => {
@@ -99,7 +100,7 @@ async function buildTwoMemberStartedLeague(browser: Browser, tag: string): Promi
     await createTeam(admin, teamAName);
     const leagueName = `Avatar Liga ${tag} ${Date.now()}`;
     await admin.goto("/leagues");
-    await expect(admin.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await expect(admin.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
     await admin.getByRole("button", { name: "+ Nueva liga" }).first().click();
     await admin.getByLabel("Nombre").fill(leagueName);
     await admin.getByLabel("Descripción").fill("Liga avatar e2e");
@@ -121,7 +122,7 @@ async function buildTwoMemberStartedLeague(browser: Browser, tag: string): Promi
     const teamBName = `BB-${tag} ${Date.now()}`;
     await createTeam(rival, teamBName);
     await rival.goto("/leagues");
-    await expect(rival.getByRole("heading", { name: "Mis Ligas" })).toBeVisible();
+    await expect(rival.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
     await rival
       .locator("li")
       .filter({ hasText: leagueName })
@@ -161,7 +162,7 @@ test.describe("Avatar E2E (real Postgres)", () => {
     // Fresh user has no avatar: no coach-avatar img renders (scoped to the
     // avatar alt — the shell chrome has its own logo img, not the avatar).
     await page.goto("/profile");
-    await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mi Perfil" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Avatar del entrenador" })).toHaveCount(0);
 
     // Upload through the real crop UI; the preview updates from GET /api/me.
