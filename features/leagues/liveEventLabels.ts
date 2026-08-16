@@ -3,8 +3,8 @@
  * and SPP derivations (LM-18/LM-19). Pure functions — event payloads stay
  * structured server-side; only the client maps kind+payload to a human label.
  * The minimum taxonomy: start, turn, touchdown, completion, casualty (with the
- * Design-A band bucket), foul, mvp, end of half, end of match. Unknown kinds
- * pass through unchanged.
+ * Design-A band bucket), foul, mvp, end of half, end of match, plus the kickoff
+ * kinds expensive_mistake/fan_factor (LM-24). Unknown kinds pass through unchanged.
  */
 
 export interface LiveEventLabelInput {
@@ -43,7 +43,32 @@ export const EVENT_GLYPH: Record<string, string> = {
   mvp: "⭐",
   endHalf: "⏱️",
   endMatch: "🏁",
+  expensive_mistake: "💰",
+  fan_factor: "🎲",
+  people: "👥",
 };
+
+/**
+ * The kickoff expensive-mistake outcome → Spanish display label (LM-24):
+ * "Crisis evitada" | "Incidente menor" | "Incidente grave" | "Catástrofe".
+ * The card maps an outcome through the index so an unknown outcome never
+ * throws (bare value fallback, forward-compatible).
+ */
+export const KICKOFF_OUTCOME_LABELS: Record<string, string> = {
+  "crisis-evaded": "Crisis evitada",
+  "minor-incident": "Incidente menor",
+  "serious-incident": "Incidente grave",
+  catastrophe: "Catástrofe",
+};
+
+/**
+ * Formats a treasury value in the es-ES style: dot-thousands plus a literal
+ * " M.O." (LM-24). Pure — callers decide whether a missing field renders the
+ * line at all.
+ */
+export function formatTreasury(value: number): string {
+  return `${new Intl.NumberFormat("es-ES").format(value)} M.O.`;
+}
 
 /** A casualty band mapped to its Design-A display bucket (LM-18). */
 export interface BandDisplay {
@@ -115,6 +140,10 @@ export function liveEventLabel(event: LiveEventLabelInput): string {
     }
     case "foul":
       return "Falta";
+    case "expensive_mistake":
+      return "Error costoso";
+    case "fan_factor":
+      return "Factor de aficionados";
     case "endHalf":
       return "Fin de la mitad";
     case "endMatch":

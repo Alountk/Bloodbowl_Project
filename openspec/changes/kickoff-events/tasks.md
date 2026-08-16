@@ -34,10 +34,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Feed Rendering (S2)
 
-- [ ] 2.1 `features/leagues/liveEventLabels.ts`: `EVENT_GLYPH` 💰🎲👥, "Error costoso"/"Factor de aficionados", `KICKOFF_OUTCOME_LABELS`, `formatTreasury` (Intl es-ES dot-thousands + " M.O.")
-- [ ] 2.2 `features/leagues/liveEventCards.tsx`: `TEAM_EVENT_KINDS` + `expensive_mistake` (68% team card, outcome + treasury before→after line, fallback without line, never throw); `fan_factor` 100% centered with compact copy `Local: 👥2 + 🎲2 = 4 · Visitante: 👥1 + 🎲3 = 4`
-- [ ] 2.3 Tests: liveEventCards.test.tsx (em card 68% navy "Error costoso"+"Incidente grave"+"234.000 → 214.000 M.O.", missing-fields fallback no throw; fan centered totals); MatchView.test.tsx (fan 100% centered)
-- [ ] 2.4 `matchTimelineBar.tsx`: NO change (feed-only scope, deliberate)
+- [x] 2.1 `features/leagues/liveEventLabels.ts`: `EVENT_GLYPH` 💰🎲👥, "Error costoso"/"Factor de aficionados", `KICKOFF_OUTCOME_LABELS`, `formatTreasury` (Intl es-ES dot-thousands + " M.O.")
+- [x] 2.2 `features/leagues/liveEventCards.tsx`: `TEAM_EVENT_KINDS` + `expensive_mistake` (68% team card, outcome + treasury before→after line, fallback without line, never throw); `fan_factor` 100% centered with compact copy `Local: 👥2 + 🎲2 = 4 · Visitante: 👥1 + 🎲3 = 4`
+- [x] 2.3 Tests: liveEventCards.test.tsx (em card 68% navy "Error costoso"+"Incidente grave"+"234.000 → 214.000 M.O.", missing-fields fallback no throw; fan centered totals); MatchView.test.tsx (fan 100% centered)
+- [x] 2.4 `matchTimelineBar.tsx`: NO change (feed-only scope, deliberate)
 
 ## Phase 3: E2E + Verification (S3)
 

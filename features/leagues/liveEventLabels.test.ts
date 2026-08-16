@@ -5,6 +5,8 @@ import {
   eventSpp,
   CAUSE_LABELS,
   EVENT_GLYPH,
+  KICKOFF_OUTCOME_LABELS,
+  formatTreasury,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -64,6 +66,8 @@ describe("eventSpp — stars per event kind (LM-19)", () => {
     expect(eventSpp(ev("turn"))).toBe(0);
     expect(eventSpp(ev("foul"))).toBe(0);
     expect(eventSpp(ev("start"))).toBe(0);
+    expect(eventSpp(ev("expensive_mistake"))).toBe(0);
+    expect(eventSpp(ev("fan_factor"))).toBe(0);
   });
 });
 
@@ -95,6 +99,11 @@ describe("liveEventLabel", () => {
 
   it("falls back to a generic label when the casualty payload has no band", () => {
     expect(liveEventLabel(ev("casualty"))).toContain("Baja");
+  });
+
+  it("labels the kickoff kinds (LM-24): Error costoso and Factor de aficionados", () => {
+    expect(liveEventLabel(ev("expensive_mistake"))).toBe("Error costoso");
+    expect(liveEventLabel(ev("fan_factor"))).toBe("Factor de aficionados");
   });
 
   it("labels a foul", () => {
@@ -142,5 +151,38 @@ describe("EVENT_GLYPH — per-kind inline glyph map (MV-7, no icon lib)", () => 
     expect(EVENT_GLYPH.endMatch).toBeTruthy();
     // Unknown kinds have no glyph entry → the caller falls back to "•".
     expect(EVENT_GLYPH["interception" as keyof typeof EVENT_GLYPH]).toBeUndefined();
+  });
+
+  it("maps the kickoff glyphs exactly (LM-24): money-bag for expensive_mistake, dice for fan_factor, people for the fan row", () => {
+    expect(EVENT_GLYPH.expensive_mistake).toBe("💰");
+    expect(EVENT_GLYPH.fan_factor).toBe("🎲");
+    expect(EVENT_GLYPH.people).toBe("👥");
+  });
+});
+
+describe("KICKOFF_OUTCOME_LABELS — outcome → Spanish (LM-24)", () => {
+  it("maps all four outcomes exactly", () => {
+    expect(KICKOFF_OUTCOME_LABELS).toEqual({
+      "crisis-evaded": "Crisis evitada",
+      "minor-incident": "Incidente menor",
+      "serious-incident": "Incidente grave",
+      catastrophe: "Catástrofe",
+    });
+  });
+});
+
+describe("formatTreasury — es-ES dot-thousands + ' M.O.' (LM-24)", () => {
+  it("formats 214000 as '214.000 M.O.' and 234000 as '234.000 M.O.'", () => {
+    expect(formatTreasury(214000)).toBe("214.000 M.O.");
+    expect(formatTreasury(234000)).toBe("234.000 M.O.");
+  });
+
+  it("formats a small sub-100k treasury with the dot-thousands convention", () => {
+    expect(formatTreasury(80000)).toBe("80.000 M.O.");
+  });
+
+  it("keeps hundreds with the same es-ES grouping (no thousands separator needed)", () => {
+    expect(formatTreasury(20_000)).toBe("20.000 M.O.");
+    expect(formatTreasury(0)).toBe("0 M.O.");
   });
 });
