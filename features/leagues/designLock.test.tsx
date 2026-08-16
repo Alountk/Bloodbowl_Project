@@ -345,8 +345,38 @@ describe("B. LiveEventCards — validated v7 rendered structure", () => {
     expect(end!.querySelector(".cright")?.textContent).toBe("8'");
   });
 
-  it("locks the concede centered row: white-flag glyph, 'Concesión', surrender·victory sub-line", () => {
+  it("locks the RAU-39 derived ACTION card: a caused casualty renders the injury card PLUS a causer-side action card (cause label + roll/band sub-line, no stars)", () => {
+    // Victim Blitzer B (away, p2) hit by a blitz from Arnau (home, p4) — the
+    // causer is an OPPONENT of the victim (LM-12), so the action card mirrors
+    // on the home (navy) side with the standard player-card anatomy.
     const { container } = renderCards([
+      ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 14, roll6: 5, band: "permanent", permanentAttribute: "ag" }, "p2", 6, 3000),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    const injury = rows.find((li) => li.textContent?.includes("Blitzer B"));
+    // The action card's MAIN player is the causer (the injury card only names
+    // Arnau inside its "por Arnau" cause line).
+    const action = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau");
+    expect(injury).toBeTruthy();
+    expect(action).toBeTruthy();
+    expect(injury!.className).toContain("ev--away");
+    expect(action!.className).toContain("ev--home");
+    // The action card reuses the exact player-card anatomy (token/dorsal/who/
+    // dline) with the CAUSE label and the band/roll sub-line under it.
+    expect(action!.querySelector(".turn-tag")?.className).toContain("turn-tag--home");
+    expect(action!.querySelector(".token")?.className).toContain("token--home");
+    expect(action!.querySelector(".dorsal")?.textContent).toBe("#2");
+    expect(action!.querySelector(".name")?.textContent).toBe("Arnau");
+    expect(action!.querySelector(".dline")?.className).toContain("dline--home");
+    expect(action!.querySelector(".dline")?.textContent).toBe("Blitz");
+    expect(action!.querySelector(".sub")?.textContent).toBe("Tirada 1D16: 14 · Permanente (−AG)");
+    // The injury card keeps its band sub-line + the roll line + the cause line.
+    expect(injury!.querySelectorAll(".sub").length).toBeGreaterThanOrEqual(2);
+    expect(injury!.querySelector(".cause-line")?.textContent).toBe("por Arnau (#2) · Blitz");
+  });
+
+  it("locks the concede centered row: white-flag glyph, 'Concesión', surrender·victory sub-line", () => {    const { container } = renderCards([
       ev(9, "concede", "home", { winnerSide: "away" }, null, 3, 4000),
     ]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
@@ -438,6 +468,7 @@ function finishedLive(): LiveMatchView {
     paused: false,
     finishedAt: 5000,
     concedeProposedBy: null,
+    pendingCasualty: null,
     events: [
       { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
       { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -466,6 +497,7 @@ function liveMatch(): LiveMatchView {
     paused: false,
     finishedAt: null,
     concedeProposedBy: null,
+    pendingCasualty: null,
     events: [
       { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
       { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },

@@ -135,6 +135,10 @@ model LiveMatch {
   /// RAU-38: the side that proposed to concede, null until proposed / after the
   /// rival accepts or declines. Additive, never re-typed.
   concedeProposedBy TeamSide?
+  /// RAU-39: the ACTIVE coach's pending casualty proposal (causer/victim/cause/
+  /// rolls); null until proposed / after the defender confirms. Additive JSON,
+  /// never re-typed.
+  pendingCasualty   Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   events        LiveEvent[]

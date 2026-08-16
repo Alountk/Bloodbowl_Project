@@ -19,6 +19,10 @@
  * under test; the store passes `Date.now()`.
  */
 
+import { resolveInjury, permanentAttribute as permanentAttributeOf } from "./rules/injuries";
+import type { InjuryOutcomeKind, PermanentAttribute } from "./rules/injuries";
+import type { CasualtyCause } from "./livePhase";
+
 export type TeamSide = "home" | "away";
 export type LiveMatchStatus = "pending" | "ready" | "live" | "finished";
 export type LiveEventKind =
@@ -112,7 +116,29 @@ export interface LiveMatchState {
   finishedAt: number | null;
   /** RAU-38: the side that proposed to concede, or null when none is pending. */
   concedeProposedBy: TeamSide | null;
+  /** RAU-39: the ACTIVE coach's pending casualty proposal (causer/victim/cause/
+   * rolls), or null when none is pending. The defender confirms it to persist
+   * the casualty event (see `confirmCasualty`). */
+  pendingCasualty: PendingCasualty | null;
   events: LiveEventRecord[];
+}
+
+/**
+ * RAU-39: a pending casualty proposed by the ACTIVE coach (the attacker):
+ * `proposerSide` is the attacker's side; `victimRosterId` is an OPPONENT-side
+ * player and `causerRosterId` the attacker's OWN player (LM-12 invariant — the
+ * route enforces the sides). `roll16` is the 1D16 injury roll the players
+ * actually rolled; `roll6` is the 1D6 attribute roll REQUIRED when the derived
+ * band is `permanent` (13-14). The band is DERIVED server-side at confirm via
+ * the rulebook table — never client-chosen.
+ */
+export interface PendingCasualty {
+  proposerSide: TeamSide;
+  victimRosterId: string;
+  causerRosterId: string;
+  cause: CasualtyCause;
+  roll16: number;
+  roll6?: number;
 }
 
 /**
@@ -140,6 +166,8 @@ export interface LiveMatchViewState {
   finishedAt: number | null;
   /** RAU-38: the side that proposed to concede, or null when none is pending. */
   concedeProposedBy: TeamSide | null;
+  /** RAU-39: the pending casualty proposal, or null when none is pending. */
+  pendingCasualty: PendingCasualty | null;
 }
 
 const TURNS_PER_HALF = 8;
@@ -602,6 +630,127 @@ export function acceptConcede(
   };
 }
 
+/**
+ * RAU-39: validates the injury rolls a coach actually rolled. `roll16` MUST be
+ * an integer in 1..16 and `roll6` (when present) an integer in 1..6; any other
+ * value is rejected (the server validates ranges and derives the band, it does
+ * NOT re-roll). Pure — the store/route map the throw to 409.
+ */
+export function validateCasualtyRolls(roll16: number, roll6?: number): void {
+  if (!Number.isInteger(roll16) || roll16 < 1 || roll16 > 16) throwInvalid("invalid roll16");
+  if (roll6 != null && (!Number.isInteger(roll6) || roll6 < 1 || roll6 > 6)) {
+    throwInvalid("invalid roll6");
+  }
+}
+
+/**
+ * RAU-39: derives the casualty band from the 1D16 roll via the rulebook table
+ * (`resolveInjury`, shared with the result path). A `permanent` band (13-14)
+ * REQUIRES the 1D6 attribute roll and resolves the reduced attribute via
+ * `permanentAttribute`; any other band ignores `roll6`. Pure and shared by the
+ * state-machine confirm and the route's self-inflicted record path so the band
+ * table lives in exactly one place.
+ */
+export function deriveCasualtyOutcome(
+  roll16: number,
+  roll6?: number,
+): { band: InjuryOutcomeKind; permanentAttribute?: PermanentAttribute } {
+  const outcome = resolveInjury(roll16);
+  if (outcome.kind === "permanent") {
+    if (roll6 == null) throwInvalid("permanent casualty requires a roll6");
+    return { band: outcome.kind, permanentAttribute: permanentAttributeOf(roll6) };
+  }
+  return { band: outcome.kind };
+}
+
+/**
+ * RAU-39: the ACTIVE coach (the attacker) proposes a casualty they inflicted.
+ * Only valid while the match is LIVE, no casualty proposal is pending, and the
+ * caller IS the active side (a non-active propose is out-of-turn). The rolls are
+ * validated but the band is NOT derived yet — the defender confirms and the
+ * band resolves server-side from the 1D16 table at confirm time. A second
+ * proposal while one is pending is rejected (no idempotent retry: the proposal
+ * carries the rolls, so a duplicate is always a state-machine rejection → 409).
+ */
+export function proposeCasualty(
+  state: LiveMatchState,
+  input: {
+    side: TeamSide;
+    victimRosterId: string;
+    causerRosterId: string;
+    cause: CasualtyCause;
+    roll16: number;
+    roll6?: number;
+  },
+): LiveMatchState {
+  if (state.status !== "live") throwInvalid("casualty only while live");
+  if (state.pendingCasualty != null) throwInvalid("casualty already proposed");
+  if (input.side !== state.activeSide) throwInvalid("casualty propose requires the active side");
+  validateCasualtyRolls(input.roll16, input.roll6);
+  return {
+    ...state,
+    pendingCasualty: {
+      proposerSide: input.side,
+      victimRosterId: input.victimRosterId,
+      causerRosterId: input.causerRosterId,
+      cause: input.cause,
+      roll16: input.roll16,
+      ...(input.roll6 != null ? { roll6: input.roll6 } : {}),
+    },
+  };
+}
+
+/**
+ * RAU-39: the NON-proposer (the defender/perjudicado) CONFIRMS a pending
+ * casualty — there is no reject, the proposal can only be confirmed. Only valid
+ * while LIVE, with a pending proposal, and the caller is NOT the proposer (the
+ * proposer cannot confirm their own casualty). The band is DERIVED server-side
+ * from the pending 1D16 roll via the rulebook table (a `permanent` band also
+ * resolves the 1D6 attribute roll; roll6 was validated at propose and is
+ * re-validated here). Appends the `casualty` event with `side` = the VICTIM's
+ * side (the OPPOSITE of the proposer) and clears `pendingCasualty`; the match
+ * continues on the same turn (no flip, no clock change).
+ */
+export function confirmCasualty(
+  state: LiveMatchState,
+  side: TeamSide,
+  now: number,
+): LiveMatchState {
+  if (state.status !== "live") throwInvalid("casualty only while live");
+  if (state.pendingCasualty == null) throwInvalid("no casualty proposal");
+  if (side === state.pendingCasualty.proposerSide) throwInvalid("proposer cannot confirm own casualty");
+  const pending = state.pendingCasualty;
+  const { band, permanentAttribute: permanentAttributeOutcome } = deriveCasualtyOutcome(
+    pending.roll16,
+    pending.roll6,
+  );
+  return {
+    ...state,
+    pendingCasualty: null,
+    events: [
+      ...state.events,
+      {
+        seq: state.seq + 1,
+        kind: "casualty",
+        side: other(pending.proposerSide),
+        playerRosterId: pending.victimRosterId,
+        half: state.half,
+        turnNumber: state.turnNumber,
+        payload: {
+          victimRosterId: pending.victimRosterId,
+          causerRosterId: pending.causerRosterId,
+          cause: pending.cause,
+          roll16: pending.roll16,
+          ...(pending.roll6 != null ? { roll6: pending.roll6 } : {}),
+          band,
+          ...(permanentAttributeOutcome != null ? { permanentAttribute: permanentAttributeOutcome } : {}),
+        },
+        at: now,
+      },
+    ],
+  };
+}
+
 /** The row fields the unified-clock derivation needs (see `deriveLiveClock`). */
 export interface ClockRowFields {
   status: LiveMatchStatus;
@@ -674,5 +823,6 @@ export function toLiveViewState(
     awayScore: state.awayScore,
     finishedAt: state.finishedAt,
     concedeProposedBy: state.concedeProposedBy,
+    pendingCasualty: state.pendingCasualty,
   };
 }

@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { PE_MVP } from "@/lib/rules";
+import { resolveInjury } from "@/lib/rules/injuries";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
-import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
+import { buildMatchSummary, buildSummaryFeedRows, casualtyKindLabel, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
 import { LiveEventCards } from "./liveEventCards";
+import { CAUSE_LABELS } from "./liveEventLabels";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
 import { EventControls } from "./liveControls";
@@ -121,6 +123,7 @@ function emptyPendingView(): LiveMatchViewState {
     awayScore: 0,
     finishedAt: null,
     concedeProposedBy: null,
+    pendingCasualty: null,
   };
 }
 
@@ -254,8 +257,80 @@ function ConcedeControls({
   );
 }
 
-/** The two-team matchup header shown in the centered consent panel. */
-function MatchupLine({ names }: { names: { home: string; away: string } }) {
+/**
+ * RAU-39 casualty confirm panel in the turn zone: while a casualty proposal is
+ * pending, the PROPOSER (the attacker) sees "Esperando confirmación del
+ * rival…"; the defender (perjudicado) sees "El rival registra una baja" with the
+ * derived details (víctima, causa, tirada 1D16, banda derivada — the band is
+ * DERIVED client-side for display ONLY, the server is authoritative) and a
+ * "Confirmar" button that fires `{ type: "confirmCasualty" }`. There is NO
+ * reject — the defender can only confirm. The server stays authoritative — a
+ * bypass POST by the proposer returns 409.
+ */
+function CasualtyConfirmControls({
+  viewerSide,
+  pending,
+  submitting,
+  onConfirm,
+  homeTeam,
+  awayTeam,
+}: {
+  viewerSide: "home" | "away";
+  pending: LiveMatchViewState["pendingCasualty"];
+  submitting: boolean;
+  onConfirm: () => void;
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
+}) {
+  if (pending == null) return null;
+  // The victim is on the side OPPOSITE the proposer (LM-12 invariant).
+  const victimTeam = pending.proposerSide === "home" ? awayTeam : homeTeam;
+  const victim = victimTeam.players.find((p) => p.rosterPlayerId === pending.victimRosterId);
+  const band = resolveInjury(pending.roll16);
+  const attribute = pending.roll6 != null
+    ? band.kind === "permanent"
+      ? pending.roll6 <= 2
+        ? "AR"
+        : pending.roll6 === 3
+          ? "MV"
+          : pending.roll6 === 4
+            ? "PS"
+            : pending.roll6 === 5
+              ? "AG"
+              : "ST"
+      : null
+    : null;
+  const bandLabel = attribute ? `${casualtyKindLabel(band.kind)} (−${attribute})` : casualtyKindLabel(band.kind);
+
+  if (pending.proposerSide === viewerSide) {
+    return (
+      <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
+        Esperando confirmación del rival…
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
+        El rival registra una baja
+      </span>
+      <span className="max-w-[220px] text-right text-[10px] font-semibold text-white">
+        {victim?.name ?? "?"} · {CAUSE_LABELS[pending.cause] ?? pending.cause} · 1D16 {pending.roll16} · {bandLabel}
+      </span>
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={submitting}
+        className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+      >
+        Confirmar
+      </button>
+    </div>
+  );
+}
+
+/** The two-team matchup header shown in the centered consent panel. */function MatchupLine({ names }: { names: { home: string; away: string } }) {
   return (
     <p className="text-sm font-black uppercase tracking-wide text-[#12225a]">
       {names.home} <span className="text-[#d11938]">·</span> {names.away}
@@ -449,6 +524,7 @@ function LiveTopBar({
   leagueId,
   turnControls,
   concedeControls,
+  casualtyControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
@@ -459,6 +535,8 @@ function LiveTopBar({
   /** RAU-38: the turn-zone concede controls (null when the viewer has no side
    * or the match is not live — the FinishedLiveView passes nothing). */
   concedeControls?: React.ReactNode;
+  /** RAU-39: the turn-zone casualty confirm panel (same gating as concede). */
+  casualtyControls?: React.ReactNode;
 }) {
   const live = state.status === "live";
   const globalTurn = state.half === 2 ? state.turnNumber + 8 : state.turnNumber;
@@ -512,6 +590,8 @@ function LiveTopBar({
         {/* RAU-38: the concede controls sit in the turn zone next to the turn
             button — both coaches see them while live (submitting disabled). */}
         {concedeControls}
+        {/* RAU-39: the casualty confirm panel sits in the same turn zone. */}
+        {casualtyControls}
         <TurnTrack
           sideName={names.away}
           current={globalTurn}
@@ -739,6 +819,7 @@ function TourplayHeader({
   awayTeam,
   turnControls,
   concedeControls,
+  casualtyControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
@@ -754,6 +835,7 @@ function TourplayHeader({
   awayTeam: MatchTeamDetail;
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
   concedeControls?: React.ReactNode;
+  casualtyControls?: React.ReactNode;
 }) {
   return (
     <div
@@ -768,6 +850,7 @@ function TourplayHeader({
         leagueId={leagueId}
         turnControls={turnControls}
         concedeControls={concedeControls}
+        casualtyControls={casualtyControls}
       />
       <LiveHero
         state={state}
@@ -878,6 +961,21 @@ function LiveActiveMatch({
       />
     ) : null;
 
+  // RAU-39: the casualty confirm panel (same gating). The defender confirms the
+  // ACTIVE coach's proposal; the proposer sees the waiting copy. Null when the
+  // view still lacks a `pendingCasualty` (older persisted rows / no proposal).
+  const casualtyControls =
+    state.status === "live" && state.viewerSide != null && state.pendingCasualty != null ? (
+      <CasualtyConfirmControls
+        viewerSide={state.viewerSide}
+        pending={state.pendingCasualty}
+        submitting={submitting}
+        onConfirm={() => void act({ type: "confirmCasualty" })}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+      />
+    ) : null;
+
   return (
     <div className="bg-white border border-[#e2e8f0]">
       {/* Uniform sticky match header: renders in EVERY fixture state. */}
@@ -900,6 +998,7 @@ function LiveActiveMatch({
           onEndTurn: () => void act({ type: "endTurn", side: state.activeSide }),
         }}
         concedeControls={concedeControls}
+        casualtyControls={casualtyControls}
       />
 
       {state.status === "pending" || state.status === "ready" ? (

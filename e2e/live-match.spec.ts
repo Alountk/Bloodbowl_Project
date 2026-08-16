@@ -243,32 +243,15 @@ async function liveCommand(page: Page, leagueId: string, fixtureId: string, data
 
 /**
  * Records a live event through the REAL "+" FAB (LM-20/D26): opens the FAB,
- * clicks the given menu label, picks the player from the roster select, the
- * (optional) band from the injury select, and the (optional) casualty cause +
- * causer from the S2 controls, then submits. The menu closes on submit. `band`
- * is only supplied for the casualty kind; when `cause` is supplied and requires
- * a causer (blitz/foul/penetration/block) the causer select is filled too.
+ * clicks the given menu label and picks the player from the roster select,
+ * then submits. The menu closes on submit. Casualty recording is NOT routed
+ * here — the two-phase (propose → confirm) and self-inflicted paths are driven
+ * inline (RAU-39: the band is never a select, it derives from the 1D16 roll).
  */
-async function recordViaFab(
-  page: Page,
-  menuLabel: string,
-  playerName: string,
-  band?: string,
-  cause?: string,
-  causerName?: string,
-) {
+async function recordViaFab(page: Page, menuLabel: string, playerName: string) {
   await page.getByRole("button", { name: "+" }).click();
   await page.getByRole("button", { name: new RegExp(menuLabel, "i") }).click();
   await page.getByLabel("Jugador").selectOption({ label: playerName });
-  if (band) {
-    await page.getByLabel("Tipo de lesión").selectOption({ label: band });
-  }
-  if (cause) {
-    await page.getByLabel("Causa de la lesión").selectOption({ label: cause });
-  }
-  if (causerName) {
-    await page.getByLabel("Autor de la lesión").selectOption({ label: causerName });
-  }
   await page.getByRole("button", { name: "Registrar" }).click();
   // Menu + form close again after the submit.
   await expect(page.getByLabel("Jugador")).toHaveCount(0);
@@ -416,32 +399,63 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     //
     // [A] NON-active (home) coach: the "+" menu offers ONLY Herida (casualty to
     // their own player) — no TD / Pase completo / Falta rows (LM-20 scenario).
+    // RAU-39: the NON-active form records a SELF-INFLICTED (dodge/crowd)
+    // casualty with the 1D16 roll — the band is derived server-side, NEVER a
+    // band select.
     await homeCoach.getByRole("button", { name: "+" }).click();
     await expect(homeCoach.getByText("Herida")).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: /Touchdown/i })).toHaveCount(0);
     await expect(homeCoach.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
     await expect(homeCoach.getByRole("button", { name: /Falta/i })).toHaveCount(0);
-    // Record a Herida (band: grave) to the home coach's OWN player, caused by a
-    // Blitz with the away opponent as causer (S2 controls: Jugador + Tipo de
-    // lesión + Causa de la lesión + Autor de la lesión). The MVT-5 accident line
-    // "por {causer} (#{dorsal}) · Blitz" renders on the card.
     await homeCoach.getByRole("button", { name: /Herida/i }).click();
     await expect(homeCoach.getByLabel("Jugador")).toBeVisible();
     await homeCoach.getByLabel("Jugador").selectOption({ label: homeScorerName });
-    await homeCoach.getByLabel("Tipo de lesión").selectOption({ label: "Herida grave" });
-    await homeCoach.getByLabel("Causa de la lesión").selectOption({ label: "Blitz" });
-    await homeCoach.getByLabel("Autor de la lesión").selectOption({ label: awayScorerName });
+    // Only self-inflicted causes are offered to the NON-active coach.
+    await homeCoach.getByLabel("Causa de la lesión").selectOption({ label: "Esquivando — se cayó" });
+    await expect(homeCoach.getByLabel("Autor de la lesión")).toHaveCount(0);
+    await expect(homeCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
+    await homeCoach.getByLabel("Tirada 1D16").selectOption({ label: "9" });
     await homeCoach.getByRole("button", { name: "Registrar" }).click();
     await expect(homeCoach.getByLabel("Jugador")).toHaveCount(0);
-    // The casualty card shows the victim (own home player) AND the MVT-5 causer
-    // line "por {away causer} ... · Blitz" (three-actor casualty).
+    // The self-inflicted casualty card (victim = own home player) renders with
+    // the derived band + roll line, and NO "por …" causer line.
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName }),
+    ).toBeVisible();
+    await expect(homeCoach.getByTestId("live-event-row").filter({ hasText: "Tirada 1D16: 9" })).toBeVisible();
+
+    // [A2] TWO-PHASE casualty (RAU-39): the ACTIVE (away) coach PROPOSES the
+    // injury THEY inflicted (causer = away scorer, victim = home player, roll16);
+    // the NON-active (home) coach CONFIRMS it in the turn zone. The band is
+    // derived server-side from the roll — the proposal never carries a band.
+    await awayCoach.getByRole("button", { name: "+" }).click();
+    await awayCoach.getByRole("button", { name: /Herida/i }).click();
+    await expect(awayCoach.getByLabel("Jugador")).toBeVisible();
+    await awayCoach.getByLabel("Jugador").selectOption({ label: homeScorerName });
+    await awayCoach.getByLabel("Causa de la lesión").selectOption({ label: "Blitz" });
+    await awayCoach.getByLabel("Autor de la lesión").selectOption({ label: awayScorerName });
+    await awayCoach.getByLabel("Tirada 1D16").selectOption({ label: "9" });
+    await expect(awayCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
+    await awayCoach.getByRole("button", { name: /Proponer/i }).click();
+    await expect(awayCoach.getByLabel("Jugador")).toHaveCount(0);
+    // The proposer (away) waits; the defender (home) sees the derived details
+    // and confirms — the SSE hub converges both pages without a reload.
+    await expect(awayCoach.getByText(/Esperando confirmación del rival/)).toBeVisible();
+    await expect(homeCoach.getByText(/El rival registra una baja/)).toBeVisible();
+    await expect(homeCoach.getByText(/1D16 9/)).toBeVisible();
+    await homeCoach.getByRole("button", { name: "Confirmar" }).click();
+    // The ONE casualty event renders the injury card on the victim's (home) side
+    // with the MVT-5 causer line AND the derived action card on the causer's
+    // (away) side — both feeds converge via the hub.
     await expect(
       homeCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName }),
     ).toBeVisible();
     await expect(
       homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }),
     ).toBeVisible();
-    await expect(homeCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" })).toBeVisible();
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }),
+    ).toBeVisible();
 
     // [B] ACTIVE (away) coach records a Pase completo (completion ★1) through the
     // FAB mini-form → a completion Design-A row (★1) streams into both feeds.
