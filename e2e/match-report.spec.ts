@@ -269,16 +269,37 @@ async function roundOnePairing(league: ThreeMemberLeague) {
   };
 }
 
-/** Schedules a given fixture via API: rival B proposes, admin A accepts. */
+/** Schedules a given fixture via API: one participant proposes, the OTHER
+ * participant accepts. The 3-member pairing is shuffled, so the proposer/
+ * acceptor are resolved from the fixture's actual home/away team owners. */
 async function scheduleFixtureById(league: ThreeMemberLeague, fixtureId: string) {
-  const { admin, rival, leagueId } = league;
-  const proposal = await rival.request.post(
+  const { admin, rival, third, leagueId } = league;
+  const detail = await admin.request.get(`/api/leagues/${leagueId}`);
+  expect(detail.status()).toBe(200);
+  const body = (await detail.json()) as {
+    fixtures: { id: string; homeTeamId: string; awayTeamId: string }[];
+    teams: { id: string; name: string }[];
+  };
+  const fixture = body.fixtures.find((f) => f.id === fixtureId);
+  expect(fixture).toBeDefined();
+  const pageOf = (teamId: string) => {
+    const name = body.teams.find((t) => t.id === teamId)?.name;
+    if (name === league.teamAName) return admin;
+    if (name === league.teamBName) return rival;
+    return third;
+  };
+  const homePage = pageOf(fixture!.homeTeamId);
+  const awayPage = pageOf(fixture!.awayTeamId);
+  const proposer = homePage === admin ? awayPage : homePage;
+  const acceptor = proposer === awayPage ? homePage : awayPage;
+
+  const proposal = await proposer.request.post(
     `/api/leagues/${leagueId}/fixtures/${fixtureId}/propose`,
     { data: { date: new Date(Date.now() + 10 * 86400_000).toISOString() } },
   );
   expect(proposal.status()).toBe(200);
   const prop = (await proposal.json()) as { id: string };
-  const accepted = await admin.request.post(
+  const accepted = await acceptor.request.post(
     `/api/leagues/${leagueId}/fixtures/${fixtureId}/accept`,
     { data: { proposalId: prop.id } },
   );
@@ -405,8 +426,11 @@ test("correction: admin corrects a played result → the MatchCard score updates
     await waitForFixtureStatus(league.admin, league.leagueId, fixtureId, "played");
 
     // The league is NOT finished (a second-round fixture remains unplayed), so
-    // the admin can still correct the played result through the modal.
+    // the admin can still correct the played result through the modal. The
+    // jornadas default to the first INCOMPLETE round (round 2), so switch to
+    // Jornada 1 where the played fixture lives.
     await league.admin.reload();
+    await league.admin.getByRole("tab", { name: "Jornada 1" }).click();
     await league.admin.getByRole("button", { name: "Corregir resultado" }).first().click();
     const dialog = league.admin.getByRole("dialog", { name: /Corregir resultado/ });
     await expect(dialog).toBeVisible();
@@ -442,6 +466,9 @@ test("correction: admin corrects a played result → the MatchCard score updates
       )
       .not.toBe(null);
     await league.admin.reload();
+    // Round 2 is the first incomplete round (default tab); the corrected fixture
+    // lives on Jornada 1.
+    await league.admin.getByRole("tab", { name: "Jornada 1" }).click();
     const after = league.admin.getByRole("region", { name: "Jornada 1" });
     // The corrected draw renders in the CENTER (Design B scorebox).
     await expect(after.getByText(/1 : 1/)).toBeVisible();
@@ -467,7 +494,7 @@ test("correction: a finished league rejects a captain's correction and shows the
     // (a participant captain) sees the champion panel and the Finalizada badge,
     // and the correction affordance is gone (the champion is definitive).
     await league.rival.reload();
-    await expect(league.rival.getByText("Finalizada")).toBeVisible();
+    await expect(league.rival.getByText("Finalizada", { exact: true })).toBeVisible();
     await expect(league.rival.getByTestId("champion-panel")).toBeVisible();
     await expect(
       league.rival.getByRole("button", { name: "Corregir resultado" }),
