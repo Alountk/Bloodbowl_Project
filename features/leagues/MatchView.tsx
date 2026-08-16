@@ -179,14 +179,17 @@ function MatchupLine({ names }: { names: { home: string; away: string } }) {
 
 /**
  * Two-phase consent / ready / begin panel (LM-11/LM-3/D19). Rendered when a
- * scheduled fixture has no live row yet (`live: null` → "Iniciar partido") or a
+ * startable fixture has no live row yet (`live: null` → "Iniciar partido") or a
  * `pending`/`ready` row (retract / "Empezar partido"). The viewer's side comes
  * from the DTO's `viewerSide` (D19); the panel only shows the controls for the
- * current viewer's side.
+ * current viewer's side. The header distinguishes an agreed date ("Partido
+ * programado") from an unscheduled fixture ("Partido sin programar") — the
+ * negotiation is an optional reminder, never a gate on starting.
  */
 function LiveConsentPanel({
   state,
   names,
+  scheduled,
   onConsent,
   onRetract,
   onBegin,
@@ -194,6 +197,7 @@ function LiveConsentPanel({
 }: {
   state: LiveMatchViewState | null;
   names: { home: string; away: string };
+  scheduled: boolean;
   onConsent: (side: "home" | "away") => void;
   onRetract: (side: "home" | "away") => void;
   onBegin: () => void;
@@ -220,7 +224,7 @@ function LiveConsentPanel({
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
         <MatchupLine names={names} />
         <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
-          Partido programado
+          {scheduled ? "Partido programado" : "Partido sin programar"}
         </p>
         <p className="mt-2 text-sm text-slate-700">
           {names[side]} quiere empezar. {side === "home" ? names.away : names.home} aún no ha confirmado.
@@ -666,6 +670,7 @@ function LiveActiveMatch({
   fixtureId,
   names,
   viewerSide,
+  scheduled,
   leagueLabel,
   homeSubtitle,
   awaySubtitle,
@@ -677,6 +682,7 @@ function LiveActiveMatch({
   fixtureId: string;
   names: { home: string; away: string };
   viewerSide: "home" | "away" | null;
+  scheduled: boolean;
   leagueLabel: string;
   homeSubtitle: string;
   awaySubtitle: string;
@@ -757,6 +763,7 @@ function LiveActiveMatch({
           <LiveConsentPanel
             state={state}
             names={names}
+            scheduled={scheduled}
             onConsent={(side) => void act({ type: "consent", side })}
             onRetract={(side) => void act({ type: "retractConsent", side })}
             onBegin={() => void act({ type: "begin" })}
@@ -970,53 +977,6 @@ function FinishedLiveView({
   );
 }
 
-/**
- * A pending fixture (no scheduled date): the UNIFORM sticky Tourplay header
- * renders the inert pre-kickoff state ("–" clocks, "- : -" score, no turn
- * controls) above the pending notice. The header runs on the empty pending
- * shell (D16) so pending and scheduled share the exact same chrome.
- */
-function PendingFixtureView({
-  leagueLabel,
-  names,
-  homeSubtitle,
-  awaySubtitle,
-  homeTeam,
-  awayTeam,
-  leagueId,
-}: {
-  leagueLabel: string;
-  names: { home: string; away: string };
-  homeSubtitle: string;
-  awaySubtitle: string;
-  homeTeam: MatchTeamDetail;
-  awayTeam: MatchTeamDetail;
-  leagueId: string;
-}) {
-  const state = useMemo(() => emptyPendingView(), []);
-  const clock = useLiveClock(state);
-  return (
-    <div className="bg-white border border-[#e2e8f0]">
-      <TourplayHeader
-        state={state}
-        clock={clock}
-        label={leagueLabel}
-        names={names}
-        homeSubtitle={homeSubtitle}
-        awaySubtitle={awaySubtitle}
-        homeTeamId={homeTeam.id}
-        awayTeamId={awayTeam.id}
-        leagueId={leagueId}
-        events={[]}
-        turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
-      />
-      <div className="bg-white px-4 py-6 text-center">
-        <p className="text-sm font-semibold text-slate-600">Sin jornada programada todavía.</p>
-      </div>
-    </div>
-  );
-}
-
 function Coins({ value }: { value: number | null | undefined }) {
   return <>{value?.toLocaleString("es-ES") ?? ""}</>;
 }
@@ -1217,6 +1177,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
           fixtureId={fixtureId}
           names={names}
           viewerSide={viewerSide}
+          scheduled={detail.fixture.status === "scheduled"}
           leagueLabel={leagueLabel}
           homeSubtitle={homeSubtitle}
           awaySubtitle={awaySubtitle}
@@ -1245,6 +1206,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         fixtureId={fixtureId}
         names={names}
         viewerSide={viewerSide}
+        scheduled={true}
         leagueLabel={leagueLabel}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
@@ -1253,17 +1215,22 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       />
     );
   } else if (detail.fixture.status === "pending") {
-    // A pending fixture (no date agreed): the uniform header renders the inert
-    // pre-kickoff chrome above the pending notice.
+    // A pending fixture (no date agreed yet): the start is ALWAYS available —
+    // the same consent panel renders with the "Partido sin programar" header
+    // (the date negotiation is just an optional reminder, never a gate).
     body = (
-      <PendingFixtureView
-        leagueLabel={leagueLabel}
+      <LiveActiveMatch
+        live={null}
+        leagueId={leagueId}
+        fixtureId={fixtureId}
         names={names}
+        viewerSide={viewerSide}
+        scheduled={false}
+        leagueLabel={leagueLabel}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
         homeTeam={detail.homeTeam}
         awayTeam={detail.awayTeam}
-        leagueId={leagueId}
       />
     );
   } else {
