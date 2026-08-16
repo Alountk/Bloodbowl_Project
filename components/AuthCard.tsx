@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { useI18n } from "@/lib/i18n";
 
 export type AuthMode = "login" | "signup";
 
@@ -18,6 +19,7 @@ interface AuthCardProps {
  */
 export function AuthCard({ initialMode }: AuthCardProps) {
   const router = useRouter();
+  const { t } = useI18n();
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,13 +40,13 @@ export function AuthCard({ initialMode }: AuthCardProps) {
           body: JSON.stringify({ email, password }),
         });
       } catch {
-        setError("Signup failed. Please try again.");
+        setError(t("auth.signupFailed"));
         setIsSubmitting(false);
         return;
       }
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Signup failed. Please try again.");
+        setError(body.error ?? t("auth.signupFailed"));
         setIsSubmitting(false);
         return;
       }
@@ -60,8 +62,8 @@ export function AuthCard({ initialMode }: AuthCardProps) {
     if (result?.error) {
       setError(
         mode === "signup"
-          ? "Signup succeeded, but signing you in failed. Please log in."
-          : "Invalid email or password",
+          ? t("auth.signupSigninFailed")
+          : t("auth.loginError"),
       );
       return;
     }
@@ -82,7 +84,7 @@ export function AuthCard({ initialMode }: AuthCardProps) {
       <div className="w-full max-w-sm bg-white shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
         <header className="bg-[#12225a] px-4 py-[22px] text-white">
           <h1 className="text-2xl font-black tracking-[0.02em]">
-            {isLogin ? "Log in" : "Sign up"}
+            {isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
           </h1>
           <p className="mt-1 text-[13px] text-[#cbd5e1]">Bloodbowl Teams</p>
         </header>
@@ -99,7 +101,7 @@ export function AuthCard({ initialMode }: AuthCardProps) {
                 : "text-slate-500 hover:text-[#12225a]"
             }`}
           >
-            Log in
+            {t("auth.loginTitle")}
           </button>
           <button
             type="button"
@@ -111,14 +113,14 @@ export function AuthCard({ initialMode }: AuthCardProps) {
                 : "text-slate-500 hover:text-[#12225a]"
             }`}
           >
-            Sign up
+            {t("auth.signupTitle")}
           </button>
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="space-y-4 p-6">
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-              Email
+              {t("auth.email")}
             </label>
             <input
               id="email"
@@ -131,7 +133,7 @@ export function AuthCard({ initialMode }: AuthCardProps) {
 
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-              Password
+              {t("auth.password")}
             </label>
             <input
               id="password"
@@ -153,18 +155,18 @@ export function AuthCard({ initialMode }: AuthCardProps) {
             disabled={isSubmitting}
             className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48] disabled:opacity-60"
           >
-            {isLogin ? "Log in" : "Sign up"}
+            {isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
           </button>
         </form>
 
         <p className="pb-6 text-center text-sm text-slate-600">
-          {isLogin ? "No account?" : "Already have an account?"}{" "}
+          {isLogin ? t("auth.noAccount") : t("auth.hasAccount")}{" "}
           <button
             type="button"
             onClick={() => switchMode(isLogin ? "signup" : "login")}
             className="font-medium text-[#12225a] underline"
           >
-            {isLogin ? "Sign up" : "Log in"}
+            {isLogin ? t("auth.signupTitle") : t("auth.loginTitle")}
           </button>
         </p>
       </div>

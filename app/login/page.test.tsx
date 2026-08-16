@@ -19,9 +19,9 @@ describe("Login page", () => {
 
     render(<SignInPage />);
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "coach@example.com" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SuperSecret123!" } });
-    fireEvent.click(screen.getAllByRole("button", { name: /log in/i }).at(-1)!);
+    fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "coach@example.com" } });
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "SuperSecret123!" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /iniciar sesión/i }).at(-1)!);
 
     await waitFor(() => {
       expect(signInMock).toHaveBeenCalledWith("credentials", {
@@ -42,12 +42,12 @@ describe("Login page", () => {
 
     render(<SignInPage />);
 
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "coach@example.com" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "wrong-password" } });
-    fireEvent.click(screen.getAllByRole("button", { name: /log in/i }).at(-1)!);
+    fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "coach@example.com" } });
+    fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "wrong-password" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /iniciar sesión/i }).at(-1)!);
 
     await waitFor(() =>
-      expect(screen.getByText("Invalid email or password")).toBeTruthy(),
+      expect(screen.getByText("Email o contraseña no válidos")).toBeTruthy(),
     );
   });
 });
