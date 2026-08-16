@@ -327,16 +327,17 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // Coach B converges to the live state via SSE (no reload).
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
-    // MVT-6 / LM-21 / LM-22: the kickoff events are spliced BEFORE start and
-    // render at minute 0' — one expensive_mistake per team (2 "Error costoso"
-    // team cards) plus one centered fan_factor row ("Factor de aficionados"),
-    // all appearing before any turn events. The `live-event-row` testid is
-    // preserved on every card (MVT-1 continuity).
+    // MVT-6 / LM-21 / LM-22 / RAU-33: the kickoff events are spliced BEFORE
+    // start and render at minute 0'. Both e2e teams start at treasury 0, BELOW
+    // the 100k rulebook minimum, so RAU-33 skips the expensive-mistake roll
+    // entirely — NO "Error costoso" card, no row, no treasury deduction — and
+    // only the centered fan_factor row ("Factor de aficionados") renders. The
+    // `live-event-row` testid is preserved on every card (MVT-1 continuity).
     const liveRows = admin.getByTestId("live-event-row");
-    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(2);
+    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(0);
     await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
-    // The kickoff rows share the begin instant with `startedAt`, so deriveMinute
-    // clamps them all to 0' (MVT-6 "kickoff rows at minute zero").
+    // The fan_factor row shares the begin instant with `startedAt`, so deriveMinute
+    // clamps it to 0' (MVT-6 "kickoff rows at minute zero").
     await expect(
       liveRows.filter({ hasText: /Error costoso|Factor de aficionados/ }).first(),
     ).toContainText("0'");
@@ -345,13 +346,13 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // match returns 409 via the route's 409 catch (beginLiveMatch maps
     // "begin only from ready" → 409), the seq/treasury guard keeps it from
     // re-persisting kickoff rows, and the treasury is NOT deducted twice. The
-    // kickoff row counts stay EXACTLY 2 + 1 — no duplicate rows.
+    // kickoff row counts stay EXACTLY 0 + 1 — no duplicate rows.
     const retryBegin = await admin.request.post(
       `/api/leagues/${leagueId}/fixtures/${fixtureId}/live`,
       { data: { type: "begin" } },
     );
     expect(retryBegin.status()).toBe(409);
-    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(2);
+    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(0);
     await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
 
     // MVT-2/MVT-3: the sticky Tourplay header renders the back arrow to the
