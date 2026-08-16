@@ -97,7 +97,7 @@ Turn-counter, half/clock, and event-feed sections MUST render live match state w
 
 ### Requirement: MV-6 · Out-of-Scope Lock
 
-A schema migration adding `LiveMatch`/`LiveEvent` and a chronological event timeline for live AND played matches MUST be implemented; replay, full event taxonomy (interceptions/skills/weather), filters, and public viewing MUST NOT be implemented; no other schema drift is allowed. Kickoff rows for `expensive_mistake` and `fan_factor` MUST be surfaced as TEXT-kind events generated at begin (LM-14/LM-21 precedent); weather and any other kickoff-table events MUST NOT be surfaced. Post-match summary rows MUST be derived from the `MatchResult` snapshot and MUST NOT be persisted as new event kinds; the 10-kind display surface (LM-16) MUST be preserved.
+A schema migration adding `LiveMatch`/`LiveEvent` and a chronological event timeline for live AND played matches MUST be implemented; replay, full event taxonomy (interceptions/skills/weather), filters, and public viewing MUST NOT be implemented; no other schema drift is allowed. Kickoff rows for `expensive_mistake` and `fan_factor` MUST be surfaced as TEXT-kind events generated at begin (LM-14/LM-21 precedent); weather and any other kickoff-table events MUST NOT be surfaced. Post-match summary rows MUST be derived from the `MatchResult` snapshot and MUST NOT be persisted as new event kinds; the 11-kind display surface (LM-16) MUST be preserved.
 (Previously: all kickoff rows were excluded from this version.)
 
 #### Scenario: Timeline shown for live and played
@@ -162,6 +162,12 @@ The event feed MUST render display events (LM-16) as cards inside a gray box wit
 - GIVEN the redesigned feed
 - WHEN tests assert feed rows
 - THEN `live-event-row` and kept labels still match; changed labels/testids were updated deliberately with the behavior
+
+#### Scenario: Concede card centered (RAU-38)
+
+- GIVEN an accepted concession `concede` event (side = the surrendering team, payload `winnerSide` = the acceptor)
+- WHEN the feed renders
+- THEN the card spans 100% width centered with the white-flag glyph, the "Concesión" label and the "{surrendering team} se rinde · Victoria de {acceptor team}" sub-line; a payload without the winner renders the bare label without throwing
 
 ### Requirement: MVT-2 · Timeline Bar in the Sticky Header
 
