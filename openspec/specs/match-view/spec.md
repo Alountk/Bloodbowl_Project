@@ -169,6 +169,13 @@ The event feed MUST render display events (LM-16) as cards inside a gray box wit
 - WHEN the feed renders
 - THEN the card spans 100% width centered with the white-flag glyph, the "Concesión" label and the "{surrendering team} se rinde · Victoria de {acceptor team}" sub-line; a payload without the winner renders the bare label without throwing
 
+#### Scenario: Casualty injury card + derived action card (RAU-39)
+
+- GIVEN a confirmed two-phase casualty event (side = the VICTIM's side, payload carrying `victimRosterId`, `causerRosterId`, `cause`, `roll16` and the server-derived `band`)
+- WHEN the feed renders
+- THEN the INJURY card renders on the victim's side (68% team card with the band sub-line, the cause line "por {causer} · {cause}" and the roll line "Tirada 1D16: {roll16}") AND a DERIVED ACTION card renders on the CAUSER's side (68% team card with the cause label — e.g. "Blitz" —, the causer token/dorsal/name and the roll sub-line "Tirada 1D16: 13 · Permanente (−PS)")
+- AND a self-inflicted (dodge/crowd) casualty renders ONLY the injury card, never an action card
+
 ### Requirement: MVT-2 · Timeline Bar in the Sticky Header
 
 The sticky header MUST render a horizontal timeline bar: a full-bleed light track with the `0′` and final-minute labels at the extremes and one icon per display event positioned at `round((at - startedAt) / elapsed × 100)`% — home events on the top half, away events on the bottom half, and start/end markers anchored at 0% and 100% when the match is finished. The bar MUST derive from the LM-16 display kinds only, so a reload renders the identical bar.
