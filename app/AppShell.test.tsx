@@ -31,7 +31,7 @@ describe("AppShell mobile drawer", () => {
       </AppShell>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menú de navegación" }));
 
     // Drawer and scrim mount.
     expect(screen.getByLabelText("Mobile navigation")).toBeTruthy();
@@ -47,7 +47,7 @@ describe("AppShell mobile drawer", () => {
       </AppShell>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menú de navegación" }));
     expect(screen.getByLabelText("Mobile navigation")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("drawer-scrim"));
@@ -63,34 +63,34 @@ describe("AppShell mobile drawer", () => {
       </AppShell>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menú de navegación" }));
     const drawer = screen.getByLabelText("Mobile navigation");
-    expect(within(drawer).getByRole("link", { name: "Teams" })).toBeTruthy();
+    expect(within(drawer).getByRole("link", { name: "Equipos" })).toBeTruthy();
 
-    fireEvent.click(within(drawer).getByRole("link", { name: "Teams" }));
+    fireEvent.click(within(drawer).getByRole("link", { name: "Equipos" }));
 
     expect(screen.queryByLabelText("Mobile navigation")).toBeNull();
     expect(screen.queryByTestId("drawer-scrim")).toBeNull();
   });
 
-  it("renders the shared nav with exactly Teams, Ligas, and My Profile links in both desktop and drawer", () => {
+  it("renders the shared nav with exactly Equipos, Ligas, and Mi Perfil links in both desktop and drawer", () => {
     render(
       <AppShell>
         <div>page content</div>
       </AppShell>,
     );
 
-    // Desktop sidebar: exactly the Teams, Ligas, and My Profile items (shared NAV_ITEMS).
+    // Desktop sidebar: exactly the Equipos, Ligas, and Mi Perfil items (shared NAV_ITEMS).
     const desktopNav = screen.getByRole("navigation");
-    expect(within(desktopNav).getByRole("link", { name: "Teams" })).toBeTruthy();
+    expect(within(desktopNav).getByRole("link", { name: "Equipos" })).toBeTruthy();
     expect(within(desktopNav).getByRole("link", { name: "Ligas" })).toBeTruthy();
-    expect(within(desktopNav).getByRole("link", { name: "My Profile" })).toBeTruthy();
+    expect(within(desktopNav).getByRole("link", { name: "Mi Perfil" })).toBeTruthy();
     expect(within(desktopNav).getAllByRole("link")).toHaveLength(3);
 
     // Drawer shares the same NAV_ITEMS when open.
-    fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menú de navegación" }));
     const drawer = screen.getByLabelText("Mobile navigation");
     expect(within(drawer).getByRole("link", { name: "Ligas" })).toBeTruthy();
-    expect(within(drawer).getByRole("link", { name: "My Profile" })).toBeTruthy();
+    expect(within(drawer).getByRole("link", { name: "Mi Perfil" })).toBeTruthy();
   });
 });
