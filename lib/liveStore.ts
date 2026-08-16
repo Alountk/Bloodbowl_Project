@@ -42,6 +42,7 @@ import {
 } from "./liveMatch";
 import type { CasualtyCause } from "./livePhase";
 import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
+import { maybeCloseLeague } from "./standings";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
 export interface StoreTx {
@@ -59,6 +60,21 @@ export interface StoreTx {
    * in the SAME tx as the `concede` event rows. */
   fixture: {
     update(args: Prisma.FixtureUpdateArgs): Promise<unknown>;
+    /** RAU-40: the tx must be able to re-read the league's fixtures so the
+     * accept-concede can auto-close the season when this was the last one. */
+    findMany(args: Prisma.FixtureFindManyArgs): Promise<{ homeTeamId: string; awayTeamId: string; homeScore: number | null; awayScore: number | null; winnerId: string | null }[]>;
+  };
+  /** RAU-40: the league row surface `maybeCloseLeague` needs (status read +
+   * finished/champion write) inside the accept-concede transaction. */
+  league: {
+    findUnique(args: {
+      where: { id: string };
+      select: { status: true };
+    }): Promise<{ status: "open" | "started" | "finished" } | null>;
+    update(args: {
+      where: { id: string };
+      data: { status: "finished"; championTeamId: string | null };
+    }): Promise<unknown>;
   };
 }
 
@@ -194,8 +210,14 @@ async function persistAndPublish(
     treasuryUpdates?: { teamId: string; amountLost: number }[];
     /** RAU-38: when set, closes the fixture (winner + scores) in the SAME
      * transaction as the event rows — a concession's victory is atomic with its
-     * `concede` event, never a partial state. */
-    closeFixture?: { winnerId: string; homeScore: number; awayScore: number };
+     * `concede` event, never a partial state. `leagueId` lets the store run the
+     * RAU-40 season-close check (last fixture → finished + champion) atomically. */
+    closeFixture?: {
+      winnerId: string;
+      homeScore: number;
+      awayScore: number;
+      leagueId: string;
+    };
   },
   deps: StoreDeps,
 ): Promise<number> {
@@ -251,6 +273,9 @@ async function persistAndPublish(
           awayScore: input.closeFixture.awayScore,
         },
       });
+      // RAU-40: a concession counts as played — when it was the season's LAST
+      // fixture the league closes in this SAME transaction (finished + champion).
+      await maybeCloseLeague(tx, input.closeFixture.leagueId);
     }
   });
 
@@ -491,6 +516,8 @@ export interface ConcedeInput {
 export interface AcceptConcedeInput extends ConcedeInput {
   homeTeamId: string;
   awayTeamId: string;
+  /** RAU-40: the fixture's league — the accept-concede close check needs it. */
+  leagueId: string;
 }
 
 /**
@@ -587,7 +614,12 @@ export async function acceptConcedeLiveMatch(
       currentSeq: current.seq,
       next,
       now: input.now,
-      closeFixture: { winnerId: winnerTeamId, homeScore, awayScore },
+      closeFixture: {
+        winnerId: winnerTeamId,
+        homeScore,
+        awayScore,
+        leagueId: input.leagueId,
+      },
     },
     deps,
   );

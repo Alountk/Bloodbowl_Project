@@ -140,9 +140,10 @@ export function buildRoundsWithCompletion(
  * carries its jornada `round` with labeled home/away teams).
  *
  * Visibility: an OPEN league is readable by any authenticated user; a STARTED
- * league is readable only by its owner or a current member. A foreign non-
- * member requesting a started league gets 404 (no existence/status leak), and
- * a nonexistent id returns 404.
+ * league is readable only by its owner or a current member (a FINISHED league
+ * keeps the same shield — its fixtures and champion stay member-visible). A
+ * foreign non-member requesting a started/finished league gets 404 (no
+ * existence/status leak), and a nonexistent id returns 404.
  */
 export async function GET(
   _req: Request,
@@ -169,8 +170,8 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Started league: owner-only or member-only to shield fixture data.
-  if (league.status === "started") {
+  // Started/finished league: owner-only or member-only to shield fixture data.
+  if (league.status === "started" || league.status === "finished") {
     const isMember = league.teams.some((team) => team.userId === userId);
     if (league.ownerId !== userId && !isMember) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -178,7 +179,7 @@ export async function GET(
   }
 
   const fixtures =
-    league.status === "started"
+    league.status === "started" || league.status === "finished"
       ? await prisma.fixture.findMany({
           where: { leagueId: id },
           orderBy: [{ round: "asc" }, { createdAt: "asc" }],
@@ -225,7 +226,7 @@ export async function DELETE(
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (league.status === "started") {
+  if (league.status === "started" || league.status === "finished") {
     return NextResponse.json(
       { error: "A started league cannot be deleted" },
       { status: 409 },

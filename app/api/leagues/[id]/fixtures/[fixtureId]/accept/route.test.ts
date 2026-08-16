@@ -182,4 +182,15 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/accept", () => {
     expect(res.status).toBe(409);
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
+
+  it("returns 409 on a finished league — the season is definitive (RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-2" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({ league: { id: "l1", status: "finished" } }),
+    );
+    const res = await accept({ proposalId: "p1" });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "League is finished" });
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
+  });
 });

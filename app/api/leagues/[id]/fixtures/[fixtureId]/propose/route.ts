@@ -42,7 +42,14 @@ export async function POST(
       awayTeam: { select: { id: true, userId: true } },
     },
   });
-  if (!fixture || fixture.league.status !== "started") {
+  if (!fixture || fixture.leagueId !== id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  // RAU-40: a finished league is definitive — no negotiation after the season.
+  if (fixture.league.status === "finished") {
+    return NextResponse.json({ error: "League is finished" }, { status: 409 });
+  }
+  if (fixture.league.status !== "started") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

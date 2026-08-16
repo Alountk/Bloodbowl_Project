@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { maybeCloseLeague } from "@/lib/standings";
 import {
   preMatchFanFactor,
   postMatchFanFactor,
@@ -218,7 +219,16 @@ export async function POST(
       liveMatch: { select: { id: true, half: true, turnNumber: true, finishedAt: true } },
     },
   });
-  if (!fixture || fixture.league.status !== "started" || fixture.leagueId !== id) {
+  if (!fixture || fixture.leagueId !== id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  // RAU-40: a finished league is definitive — no result may be loaded or
+  // corrected (the stored champion is final). Reject BEFORE the fixture-level
+  // "already has a result" check so the league state is reported, not the fixture.
+  if (fixture.league.status === "finished") {
+    return NextResponse.json({ error: "League is finished" }, { status: 409 });
+  }
+  if (fixture.league.status !== "started") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -365,6 +375,9 @@ export async function POST(
         where: { id: fixtureId },
         data: { homeScore: home.score, awayScore: away.score, winnerId },
       });
+      // RAU-40: if this was the LAST unplayed fixture of the season, the league
+      // closes atomically here — status "finished" + the standings champion.
+      await maybeCloseLeague(tx, id);
       const report = await tx.matchResult.create({
         data: {
           fixtureId,
@@ -473,7 +486,16 @@ export async function PUT(
       result: true,
     },
   });
-  if (!fixture || fixture.league.status !== "started" || fixture.leagueId !== id) {
+  if (!fixture || fixture.leagueId !== id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  // RAU-40: a finished league is definitive — no result may be loaded or
+  // corrected (the stored champion is final). Reject BEFORE the fixture-level
+  // "already has a result" check so the league state is reported, not the fixture.
+  if (fixture.league.status === "finished") {
+    return NextResponse.json({ error: "League is finished" }, { status: 409 });
+  }
+  if (fixture.league.status !== "started") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

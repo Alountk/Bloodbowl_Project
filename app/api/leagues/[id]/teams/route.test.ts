@@ -88,6 +88,16 @@ describe("POST /api/leagues/[id]/teams", () => {
     expect(prismaMock.team.update).not.toHaveBeenCalled();
   });
 
+  it("returns 409 when the league is FINISHED (RAU-40 — no new teams after the season)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague({ status: "finished" }));
+
+    const res = await assignRequest("l1", "t1");
+    expect(res.status).toBe(409);
+    expect(prismaMock.team.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the team is owned by another user", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.findFirst.mockResolvedValue(makeLeague());

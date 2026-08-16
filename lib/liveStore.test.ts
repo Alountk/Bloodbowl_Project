@@ -63,6 +63,9 @@ function makeDeps(updateCount: number): {
   liveMatchFindFirst: ReturnType<typeof vi.fn>;
   teamUpdateMany: ReturnType<typeof vi.fn>;
   fixtureUpdate: ReturnType<typeof vi.fn>;
+  fixtureFindMany: ReturnType<typeof vi.fn>;
+  leagueFindUnique: ReturnType<typeof vi.fn>;
+  leagueUpdate: ReturnType<typeof vi.fn>;
   publish: ReturnType<typeof vi.fn>;
 } {
   const updateMany = vi.fn().mockResolvedValue({ count: updateCount });
@@ -71,12 +74,16 @@ function makeDeps(updateCount: number): {
   const liveMatchFindFirst = vi.fn().mockResolvedValue(null);
   const teamUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const fixtureUpdate = vi.fn().mockResolvedValue({ id: "f-1" });
+  const fixtureFindMany = vi.fn().mockResolvedValue([]);
+  const leagueFindUnique = vi.fn().mockResolvedValue({ status: "started" });
+  const leagueUpdate = vi.fn().mockResolvedValue({});
   const publish = vi.fn();
   const tx = {
     liveMatch: { updateMany, create: liveMatchCreate },
     liveEvent: { create: liveEventCreate },
     team: { updateMany: teamUpdateMany },
-    fixture: { update: fixtureUpdate },
+    fixture: { update: fixtureUpdate, findMany: fixtureFindMany },
+    league: { findUnique: leagueFindUnique, update: leagueUpdate },
   };
   const $transaction = vi
     .fn()
@@ -88,7 +95,19 @@ function makeDeps(updateCount: number): {
     },
     hub: { publish },
   };
-  return { deps, updateMany, liveEventCreate, liveMatchCreate, liveMatchFindFirst, teamUpdateMany, fixtureUpdate, publish };
+  return {
+    deps,
+    updateMany,
+    liveEventCreate,
+    liveMatchCreate,
+    liveMatchFindFirst,
+    teamUpdateMany,
+    fixtureUpdate,
+    fixtureFindMany,
+    leagueFindUnique,
+    leagueUpdate,
+    publish,
+  };
 }
 
 describe("liveMatchRowToState", () => {
@@ -882,7 +901,7 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
     liveMatchFindFirst.mockResolvedValue(pendingRow);
 
     const result = await acceptConcedeLiveMatch(
-      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", now: 2000 },
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", leagueId: "l-1", now: 2000 },
       deps,
     );
 
@@ -931,7 +950,7 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
     liveMatchFindFirst.mockResolvedValue({ ...pendingRow, concedeProposedBy: "away" });
 
     await acceptConcedeLiveMatch(
-      { liveMatchId: "lm-1", fixtureId: "f-1", side: "home", homeTeamId: "home-t", awayTeamId: "away-t", now: 2000 },
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "home", homeTeamId: "home-t", awayTeamId: "away-t", leagueId: "l-1", now: 2000 },
       deps,
     );
 
@@ -939,6 +958,43 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
       where: { id: "f-1" },
       data: { winnerId: "home-t", homeScore: 2, awayScore: 0 },
     });
+  });
+
+  it("closes the season when the conceded fixture is the LAST one (RAU-40)", async () => {
+    const { deps, liveMatchFindFirst, fixtureFindMany, leagueFindUnique, leagueUpdate } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(pendingRow);
+    // The fixture was just updated in this tx; `findMany` sees the conceded
+    // scores (0-2) — the season's only fixture → every fixture is played.
+    fixtureFindMany.mockResolvedValue([
+      { homeTeamId: "home-t", awayTeamId: "away-t", homeScore: 0, awayScore: 2, winnerId: "away-t" },
+    ]);
+
+    await acceptConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", leagueId: "l-1", now: 2000 },
+      deps,
+    );
+
+    expect(leagueFindUnique).toHaveBeenCalledWith({ where: { id: "l-1" }, select: { status: true } });
+    expect(leagueUpdate).toHaveBeenCalledWith({
+      where: { id: "l-1" },
+      data: { status: "finished", championTeamId: "away-t" },
+    });
+  });
+
+  it("does NOT close the season while other fixtures remain unplayed (RAU-40)", async () => {
+    const { deps, liveMatchFindFirst, fixtureFindMany, leagueUpdate } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(pendingRow);
+    fixtureFindMany.mockResolvedValue([
+      { homeTeamId: "home-t", awayTeamId: "away-t", homeScore: 0, awayScore: 2, winnerId: "away-t" },
+      { homeTeamId: "x", awayTeamId: "y", homeScore: null, awayScore: null, winnerId: null },
+    ]);
+
+    await acceptConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", leagueId: "l-1", now: 2000 },
+      deps,
+    );
+
+    expect(leagueUpdate).not.toHaveBeenCalled();
   });
 
   it("maps a retried accept (already finished) / no-proposal / own-proposal to 409 with no fixture write", async () => {
@@ -954,7 +1010,7 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
 
     await expect(
       acceptConcedeLiveMatch(
-        { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", now: 2500 },
+        { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", leagueId: "l-1", now: 2500 },
         deps,
       ),
     ).rejects.toMatchObject({ status: 409 });
@@ -970,7 +1026,7 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
 
     await expect(
       acceptConcedeLiveMatch(
-        { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", now: 2000 },
+        { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", leagueId: "l-1", now: 2000 },
         deps,
       ),
     ).rejects.toMatchObject({ code: "P2028" });

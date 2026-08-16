@@ -33,7 +33,7 @@ export async function POST(
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (league.status === "started") {
+  if (league.status === "started" || league.status === "finished") {
     return NextResponse.json(
       { error: "This league has already started" },
       { status: 409 },
