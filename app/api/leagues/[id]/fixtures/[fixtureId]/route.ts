@@ -41,6 +41,8 @@ export interface LiveDto {
   finishedAt: number | null;
   /** RAU-38: the side that proposed to concede, or null when none is pending. */
   concedeProposedBy: "home" | "away" | null;
+  /** RAU-39: the pending casualty proposal, or null when none is pending. */
+  pendingCasualty: Record<string, unknown> | null;
   events: LiveEventDto[];
 }
 
@@ -63,6 +65,7 @@ interface LiveMatchRow {
   clockStartedAt: Date | null;
   finishedAt: Date | null;
   concedeProposedBy: "home" | "away" | null;
+  pendingCasualty: unknown;
   events: {
     seq: number;
     kind: string;
@@ -115,6 +118,10 @@ export function serializeLive(
     awayScore: row.awayScore,
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
     concedeProposedBy: row.concedeProposedBy,
+    pendingCasualty:
+      typeof row.pendingCasualty === "object" && row.pendingCasualty !== null && !Array.isArray(row.pendingCasualty)
+        ? (row.pendingCasualty as Record<string, unknown>)
+        : null,
     // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
     // `requestTurn` stay in the DB (audit/replay) and are never shown here.
     events: row.events

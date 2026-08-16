@@ -15,6 +15,8 @@ import {
   proposeConcedeLiveMatch,
   declineConcedeLiveMatch,
   acceptConcedeLiveMatch,
+  proposeCasualtyLiveMatch,
+  confirmCasualtyLiveMatch,
 } from "@/lib/liveStore";
 import {
   applyEndTurn,
@@ -25,15 +27,19 @@ import {
   REQUEST_TURN_COOLDOWN_MS,
   toLiveViewState,
   isDisplayEvent,
+  deriveCasualtyOutcome,
   type FixtureStartState,
   type LiveMatchState,
   type TeamSide,
 } from "@/lib/liveMatch";
 import {
   checkActorInvariant,
+  playerSide,
   resolveEventPermission,
+  CASUALTY_CAUSES,
   type EventKind,
   type RosterSideMap,
+  type CasualtyCause,
 } from "@/lib/livePhase";
 import { ensurePlayersForTeam } from "@/lib/players";
 import type { PlayerEntry } from "@/features/teams/types";
@@ -501,12 +507,24 @@ type ControlCommand =
       type: "casualty";
       side: TeamSide;
       victimRosterId: string;
-      band?: unknown;
-      /** Casualty cause (MVT-5/LM-6). Loose string in S1; S2 constrains the picker. */
-      cause?: string;
-      /** The opposite-side causer; ABSENT for dodge/crowd (LM-12 strict). */
-      causerRosterId?: string;
+      /** Self-inflicted only (dodge/crowd): the victim's OWN side records the
+       * injury directly with NO confirmation (LM-12 self-inflicted). The band
+       * is derived server-side from `roll16`. */
+      cause: CasualtyCause;
+      roll16: number;
+      roll6?: number;
     }
+  | {
+      type: "proposeCasualty";
+      victimRosterId: string;
+      causerRosterId: string;
+      /** One of blitz|foul|penetration|block (causer-required causes — the
+       * dodge/crowd path is the direct self-inflicted `casualty`). */
+      cause: CasualtyCause;
+      roll16: number;
+      roll6?: number;
+    }
+  | { type: "confirmCasualty" }
   | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
   | { type: "endMatch" }
@@ -530,7 +548,25 @@ function isControlCommand(value: unknown): value is ControlCommand {
     case "completion":
       return (c.side === "home" || c.side === "away") && typeof c.playerRosterId === "string";
     case "casualty":
-      return (c.side === "home" || c.side === "away") && typeof c.victimRosterId === "string";
+      // Self-inflicted direct casualty: victim side + a KNOWN cause + roll16.
+      return (
+        (c.side === "home" || c.side === "away") &&
+        typeof c.victimRosterId === "string" &&
+        typeof c.cause === "string" &&
+        (CASUALTY_CAUSES as readonly string[]).includes(c.cause) &&
+        typeof c.roll16 === "number"
+      );
+    case "proposeCasualty":
+      // The ACTIVE coach's proposal: causer + victim + a KNOWN cause + roll16.
+      return (
+        typeof c.victimRosterId === "string" &&
+        typeof c.causerRosterId === "string" &&
+        typeof c.cause === "string" &&
+        (CASUALTY_CAUSES as readonly string[]).includes(c.cause) &&
+        typeof c.roll16 === "number"
+      );
+    case "confirmCasualty":
+      return true;
     case "foul":
       // LM-6: `victimRosterId` is REQUIRED on a foul command.
       return (
@@ -778,6 +814,74 @@ export async function POST(
     }
   }
 
+  // RAU-39 casualty commands: the ACTIVE coach PROPOSES a casualty they
+  // inflicted (causer + victim + cause + rolls); the NON-proposer CONFIRMS it.
+  // Like concede, these are NOT turn-phase events — they skip the LM-12 side
+  // gate below (the state machine enforces the active-proposer / responder
+  // roles). A spectator/admin without a side is rejected with 409.
+  if (command.type === "proposeCasualty") {
+    if (side === null) {
+      return Response.json({ error: "No side to propose a casualty" }, { status: 409 });
+    }
+    // LM-12 actor-side invariant: the causer MUST resolve to a roster player on
+    // the PROPOSER's side and the victim on the OPPOSITE side (the propose path
+    // reuses the shared invariant helper with `actorSide` = the VICTIM's side).
+    const rosters = await loadRosterSideMap(ctx);
+    const victimSide = side === "home" ? "away" : "home";
+    const causerOk =
+      checkActorInvariant({
+        kind: "casualty",
+        actorSide: victimSide,
+        opponentId: command.causerRosterId,
+        cause: command.cause,
+        rosters,
+      }) === "allow";
+    const victimOk = playerSide(rosters, command.victimRosterId) === victimSide;
+    if (!causerOk || !victimOk) {
+      return Response.json({ error: "Invalid actor side" }, { status: 409 });
+    }
+    try {
+      const result = await proposeCasualtyLiveMatch(
+        {
+          liveMatchId: row.id,
+          fixtureId,
+          side,
+          victimRosterId: command.victimRosterId,
+          causerRosterId: command.causerRosterId,
+          cause: command.cause,
+          roll16: command.roll16,
+          roll6: command.roll6,
+          now,
+        },
+        deps,
+      );
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Cannot propose a casualty in current state" }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
+  if (command.type === "confirmCasualty") {
+    if (side === null) {
+      return Response.json({ error: "No side to confirm a casualty" }, { status: 409 });
+    }
+    try {
+      const result = await confirmCasualtyLiveMatch(
+        { liveMatchId: row.id, fixtureId, side, now },
+        deps,
+      );
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Cannot confirm a casualty in current state" }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
   // Side-aware event gate (LM-12/D14): only run the pure side matrix for the
   // event commands (endTurn/pass, TD, completion, casualty, foul); a deny maps
   // to 409 (the only callers reaching here are fixture coaches or the no-team
@@ -812,14 +916,32 @@ export async function POST(
       return Response.json({ error: "Not your turn" }, { status: 409 });
     }
 
-    // LM-12 actor-side invariants (D1): a foul's victim and a casualty's causer
-    // must resolve to a roster player on the side OPPOSITE the actor. The pure
-    // check needs the materialized rosters, so we load them here (after the side
-    // gate, only for foul/casualty). A deny → 409 with no mutation.
+    if (command.type === "casualty") {
+      // RAU-39: the direct casualty command is SELF-INFLICTED ONLY (dodge/crowd
+      // on the caller's OWN player, no confirmation). A caused casualty (any
+      // other cause) MUST go through proposeCasualty → confirmCasualty; a
+      // dodge/crowd casualty on the OPPONENT is impossible (self-inflicted);
+      // a causer is strictly denied (LM-12).
+      const raw = command as unknown as Record<string, unknown>;
+      if (command.side !== side) {
+        return Response.json({ error: "Self-inflicted casualties only on your own player" }, { status: 409 });
+      }
+      if (command.cause !== "dodge" && command.cause !== "crowd") {
+        return Response.json({ error: "Caused casualties go through proposeCasualty" }, { status: 409 });
+      }
+      if (raw.causerRosterId != null) {
+        return Response.json({ error: "Invalid actor side" }, { status: 409 });
+      }
+    }
+
+    // LM-12 actor-side invariants (D1): a foul's victim MUST resolve to a
+    // roster player on the side OPPOSITE the aggressor. The pure check needs the
+    // materialized rosters, so we load them here (after the side gate, only for
+    // foul/casualty). A deny → 409 with no mutation.
     if (command.type === "foul" || command.type === "casualty") {
       const rosters = await loadRosterSideMap(ctx);
       const actorSide = command.side; // foul = aggressor side; casualty = victim side
-      const opponentId = command.type === "foul" ? command.victimRosterId : command.causerRosterId;
+      const opponentId = command.type === "foul" ? command.victimRosterId : undefined;
       if (
         checkActorInvariant({
           kind: command.type,
@@ -852,9 +974,15 @@ export async function POST(
     // completion appends a ★1 event with NO turn flip.
     next = applyCompletion(current, { side: command.side, playerRosterId: command.playerRosterId }, now);
   } else if (command.type === "casualty") {
-    // Coach-reported injury band is immutable once recorded (D10). The band is
-    // carried through; the result POST later re-rolls authoritatively.
-    next = recordCasualty(current, command, now);
+    // RAU-39: a SELF-INFLICTED (dodge/crowd) casualty on the caller's own player
+    // is recorded directly, NO confirmation — the band is derived server-side
+    // from the 1D16 roll (mirrors `confirmCasualty`). A roll/derivation failure
+    // (e.g. a permanent band without the 1D6) maps to 409, never a 500.
+    try {
+      next = recordCasualty(current, command, now);
+    } catch {
+      return Response.json({ error: "Invalid casualty roll" }, { status: 409 });
+    }
   } else if (command.type === "foul") {
     next = recordFoul(current, command, now);
   } else if (command.type === "endMatch") {
@@ -881,11 +1009,13 @@ export async function POST(
   return Response.json({ view: toLiveViewState(next, now, { viewerSide: side }) }, { status: 200 });
 }
 
-/** Records a coach-reported casualty with its (immutable) injury band (D10) and
- * the LM-6 details: `cause` and the opposite-side `causerRosterId` (null for
- * dodge/crowd self-inflicted casualties — the invariant gate already rejected a
- * causer on those causes). */
+/** Records a SELF-INFLICTED (dodge/crowd) casualty on the caller's own player
+ * (RAU-39): the band is DERIVED server-side from the 1D16 roll via the rulebook
+ * table (with the 1D6 attribute roll when the band is permanent), never
+ * client-chosen. The payload carries the same shape as a confirmed two-phase
+ * casualty (minus the causer — the invariant gate already rejected one). */
 function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { type: "casualty" }>, now: number): LiveMatchState {
+  const { band, permanentAttribute: permanentAttributeOutcome } = deriveCasualtyOutcome(cmd.roll16, cmd.roll6);
   return {
     ...state,
     seq: state.seq,
@@ -899,9 +1029,12 @@ function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { ty
         half: state.half,
         turnNumber: state.turnNumber,
         payload: {
-          band: cmd.band ?? null,
-          cause: cmd.cause ?? null,
-          causerRosterId: cmd.causerRosterId ?? null,
+          victimRosterId: cmd.victimRosterId,
+          cause: cmd.cause,
+          roll16: cmd.roll16,
+          ...(cmd.roll6 != null ? { roll6: cmd.roll6 } : {}),
+          band,
+          ...(permanentAttributeOutcome != null ? { permanentAttribute: permanentAttributeOutcome } : {}),
         },
         at: now,
       },
