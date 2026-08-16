@@ -70,12 +70,42 @@ describe("LiveEventCards — team cards 68% + generic 100% (MVT-1/D3)", () => {
     const { container } = renderCards([ev(5, "td", "home", {}, "p1", 4, 241000)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row).toBeTruthy();
-    // The team card is 68%-width-sourced via self-start (home reads left→right);
-    // behaviorally it carries a turn tag on the team's side + the minute.
+    // The team card is 68%-width-sourced via the module `.ev--home` (home reads
+    // left→right); behaviorally it carries a turn tag on the team's side + the minute.
     expect(row.textContent).toContain("T4");
     expect(row.textContent).toContain("4'");
     expect(row.textContent).toContain("Touchdown");
     expect(row.textContent).toContain("Blitzer A");
+    // v7 structure: navy turn tag + navy helmet token + dorsal column +
+    // name/position, then the right detail column with the ★3 dline + partial.
+    expect(row.querySelector(".turn-tag")?.className).toContain("turn-tag--home");
+    expect(row.querySelector(".token")?.className).toContain("token--home");
+    expect(row.querySelector(".token svg")).toBeTruthy();
+    expect(row.querySelector(".dorsal")?.textContent).toBe("#1");
+    expect(row.querySelector(".name")?.textContent).toBe("Blitzer A");
+    expect(row.querySelector(".pos")?.textContent).toBe("Blitzer");
+    const dline = row.querySelector(".dline");
+    expect(dline?.textContent).toContain("Touchdown");
+    expect(dline?.textContent).toContain("(★3)");
+    expect(row.querySelector(".score-note")?.textContent).toBe("(1 - 0)");
+  });
+
+  it("mirrors an away team card (red gradient, right-aligned, reversed body, tag right / minute left)", () => {
+    const { container } = renderCards([ev(5, "td", "away", {}, "p2", 5, 241000)]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.className).toContain("ev--away");
+    // Away corners: red turn tag top-right, minute bottom-left, red token tint.
+    expect(row.querySelector(".turn-tag")?.className).toContain("turn-tag--away");
+    expect(row.querySelector(".minute")?.textContent).toBe("4'");
+    expect(row.querySelector(".token")?.className).toContain("token--away");
+    // The away body mirrors (row-reverse via the module's `.ev--away .card-body`
+    // rule) with the name right-aligned and the detail column left-aligned; the
+    // DOM still reads token → dorsal → who → detail before the visual flip.
+    expect(row.querySelector(".card-body")).toBeTruthy();
+    expect(row.querySelector(".card-body")?.firstElementChild?.className).toContain("token");
+    expect(row.querySelector(".who")).toBeTruthy();
+    expect(row.querySelector(".detail")).toBeTruthy();
+    expect(row.querySelector(".dline")?.className).toContain("dline--away");
   });
 
   it("renders a generic endMatch event as a full-width card with no turn tag", () => {
@@ -87,6 +117,10 @@ describe("LiveEventCards — team cards 68% + generic 100% (MVT-1/D3)", () => {
     expect(row.textContent).toContain("Fin del partido");
     expect(row.textContent).toContain("8'");
     expect(row.textContent).not.toMatch(/T\d/);
+    // v7: the finish wall-clock sub (from the event's own timestamp) + the
+    // right minute data slot.
+    expect(row.querySelector(".csub")?.textContent).toMatch(/^\d{2}:\d{2}$/);
+    expect(row.querySelector(".cright")?.textContent).toBe("8'");
   });
 
   it("places home turns on the home side clock-wise and renders both team + generic cards in seq order", () => {
@@ -131,6 +165,9 @@ describe("LiveEventCards — victim and cause lines (MVT-5)", () => {
     ]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row.textContent).toContain("a Trash (#2)");
+    // The victim is an OPPONENT (LM-12): its mini-token carries the RIVAL red
+    // tint on the home card (`vtoken--away`).
+    expect(row.querySelector(".vtoken")?.className).toContain("vtoken--away");
   });
 
   it("renders a casualty cause + causer line 'por {name} (#{dorsal}) · {cause}'", () => {
@@ -179,6 +216,69 @@ describe("LiveEventCards — legacy fallback (LM-6) and unknown cause pass-throu
   });
 });
 
+describe("LiveEventCards — casualty band sub-lines (v7)", () => {
+  it("renders ¡Muerto! / Se pierde el próximo partido / Lesión molesta under the label", () => {
+    const { container } = renderCards([
+      ev(9, "casualty", "home", { band: "dead" }, "p1", 3, 2000),
+      ev(10, "casualty", "home", { band: "apaleado" }, "p1", 3, 2100),
+      ev(11, "casualty", "home", { band: "bruise" }, "p1", 3, 2200),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    // Newest-first ordering: seq 11 (bruise), 10 (apaleado), 9 (dead).
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain("Herida");
+    expect(rows[0].textContent).toContain("Lesión molesta");
+    expect(rows[1].textContent).toContain("Baja");
+    expect(rows[1].textContent).toContain("Se pierde el próximo partido");
+    expect(rows[2].textContent).toContain("Baja");
+    expect(rows[2].textContent).toContain("¡Muerto!");
+  });
+});
+
+describe("LiveEventCards — turn transition (RAU-36/37)", () => {
+  it("does NOT render the generic 'turn' (Fin de turno) event as a card", () => {
+    const { container } = renderCards([
+      ev(5, "turn", null, {}, null, 4, 4000),
+      ev(6, "td", "home", {}, "p1", 4, 4100),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    // Only the TD survives — the turn-pass noise is dropped from the feed.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain("Touchdown");
+    expect(container.textContent).not.toContain("Fin de turno");
+  });
+
+  it("renders a home turnStart as a team-assigned 68% card labeled 'Turno Reavers'", () => {
+    const { container } = renderCards([ev(5, "turnStart", "home", {}, null, 4, 4000)]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row).toBeTruthy();
+    // Team-card treatment: 68% width + home (navy) side gradient + left edge
+    // (all module-owned via `.ev--home`).
+    expect(row.className).toContain("ev--home");
+    // Team-specific text instead of the generic audit label.
+    expect(row.textContent).toContain("Turno Reavers");
+    expect(row.textContent).toContain("T4");
+    expect(row.textContent).not.toContain("Tu turno");
+    // v7 body: 30×30 token (NO dorsal), "Empieza el turno" position line and a
+    // hand detail line repeating the "Turno {team}" label.
+    expect(row.querySelector(".token")).toBeTruthy();
+    expect(row.querySelector(".dorsal")).toBeNull();
+    expect(row.textContent).toContain("Empieza el turno");
+    expect(row.querySelector(".dline")?.textContent).toContain("Turno Reavers");
+  });
+
+  it("renders an away turnStart with the away (red) gradient and 'Turno Dwarves'", () => {
+    const { container } = renderCards([ev(6, "turnStart", "away", {}, null, 5, 4500)]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.className).toContain("ev--away");
+    expect(row.textContent).toContain("Turno Dwarves");
+    expect(row.textContent).not.toContain("Tu turno");
+    // Away turn card mirrors: red token tint + the turn-start position line.
+    expect(row.querySelector(".token")?.className).toContain("token--away");
+    expect(row.textContent).toContain("Empieza el turno");
+  });
+});
+
 describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)", () => {
   it("renders a home em as a 68% team card with the money-bag glyph, outcome label and treasury before → after (LM-24)", () => {
     const { container } = renderCards([
@@ -193,13 +293,20 @@ describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)",
       ),
     ]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    // MVT-6: team card width + the navy (home) side gradient.
-    expect(row.className).toContain("w-[68%]");
-    expect(row.className).toContain("from-[#12225a]/[0.12]");
+    // MVT-6: team card width + the navy (home) side gradient (module `.ev--home`).
+    expect(row.className).toContain("ev--home");
     // Label, outcome label and the es-ES treasury line.
     expect(row.textContent).toContain("Error costoso");
     expect(row.textContent).toContain("Incidente grave");
     expect(row.textContent).toContain("234.000 → 214.000 M.O.");
+    // v7 kbody: money-bag kcicon + "{team} · {outcome}" sub + treasury line.
+    expect(row.textContent).toContain("Reavers · Incidente grave");
+    expect(row.querySelector(".kcicon svg")).toBeTruthy();
+    expect(row.querySelector(".ksub")?.textContent).toBe("Reavers · Incidente grave");
+    expect(row.querySelector(".ktreasury")?.textContent).toBe("234.000 → 214.000 M.O.");
+    // The tabular-nums styling moved to the module `.kwho .ktreasury`; the card
+    // keeps its kbody structure.
+    expect(row.querySelector(".kbody")).toBeTruthy();
   });
 
   it("renders the away em with the away (red) gradient and money-bag glyph", () => {
@@ -215,10 +322,11 @@ describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)",
       ),
     ]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    expect(row.className).toContain("w-[68%]");
-    expect(row.className).toContain("from-[#d11938]/[0.12]");
+    expect(row.className).toContain("ev--away");
     expect(row.textContent).toContain("Error costoso");
     expect(row.textContent).toContain("Incidente menor");
+    expect(row.textContent).toContain("Dwarves · Incidente menor");
+    expect(row.querySelector(".kcicon")?.className).toContain("kcicon--away");
   });
 
   it("renders a label-only fallback when treasury fields are missing (no line, no throw)", () => {
@@ -247,13 +355,18 @@ describe("LiveEventCards — kickoff fan_factor centered row (MVT-6/LM-24)", () 
       ev(7, "fan_factor", null, { home: { base: 2, dice: 2, total: 4 }, away: { base: 1, dice: 3, total: 4 } }, null, 1, 1000),
     ]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    // Centered 100% width (generic branch, w-full) + the dice glyph.
-    expect(row.className).toContain("w-full");
+    // Centered 100% width (generic branch, module `.ev--center`) + the dice glyph.
+    expect(row.className).toContain("ev--center");
     expect(row.textContent).toContain("Factor de aficionados");
     // Compact per-team copy with people-before-base and dice-before-roll glyphs.
     expect(row.textContent).toContain("Local: 👥2 + 🎲2 = 4");
     expect(row.textContent).toContain("Visitante: 👥1 + 🎲3 = 4");
-    expect(row.className).toContain("justify-self-stretch");
+    expect(row.querySelector(".cbody")).toBeTruthy();
+    // v7: the fan line is 11px/600 in ink (not slate) and the row carries NO
+    // right data slot (the validated card has no cright). The line styling now
+    // lives in the module `.cbody .ff-line`.
+    expect(row.querySelector(".ff-line")).toBeTruthy();
+    expect(row.querySelector(".cright")).toBeNull();
   });
 
   it("renders the per-team totals from a different roll (triangulation)", () => {

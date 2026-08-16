@@ -6,10 +6,11 @@ import { test, expect, type Page, type Browser } from "@playwright/test";
  * (MV-1..MV-4, AC-1..AC-3) and proves end-to-end on a real database:
  *
  *  1. pending → scheduled → played on one 2-member league: the match view page
- *     shows the pending notice, then "Programado:" with the es-ES date once a
- *     date is agreed, then the played summary (scoreboard + winner, teams with
- *     race + coach, dedicated fans, winnings, weather, +4 MVP row) once a result
- *     is loaded.
+ *     ALWAYS offers the two-phase consent start ("Partido sin programar" when no
+ *     date is agreed — the negotiation is an optional reminder, never a gate),
+ *     then "Partido programado" once a date is agreed, then the played summary
+ *     (scoreboard + winner, teams with race + coach, dedicated fans, winnings,
+ *     weather, +4 MVP row) once a result is loaded.
  *  2. walkover (own 2-member league): the owner forfeits via the API → the match
  *     view shows the fixture scores + "Victoria por incomparecencia." with zero
  *     summary sections.
@@ -217,9 +218,10 @@ test("match view: pending → scheduled date → played summary, and Ver partido
     const fixtureId = await fixtureIdOf(admin, leagueId);
     const matchUrl = `/leagues/${leagueId}/fixtures/${fixtureId}`;
 
-    // --- Pending: no date, notice only ---
+    // --- Pending: no agreed date, but the start is ALWAYS available ---
     await admin.goto(matchUrl);
-    await expect(admin.getByText(/Sin jornada programada/)).toBeVisible();
+    await expect(admin.getByText(/Partido sin programar/)).toBeVisible();
+    await expect(admin.getByRole("button", { name: "Iniciar partido" })).toBeVisible();
     await expect(admin.getByText(/Programado:/)).toBeHidden();
 
     // --- Jornadas intact: first two links are still the team scouting links,
@@ -244,12 +246,12 @@ test("match view: pending → scheduled date → played summary, and Ver partido
     await links.last().click();
     await expect(admin).toHaveURL(matchUrl);
 
-    // --- Scheduled: after both agree a date, the page GATES the start behind
-    //     the two-phase consent panel (D16) instead of the legacy "Programado:" ---
+    // --- Scheduled: after both agree a date, the consent panel header flips to
+    //     "Partido programado" (the negotiation is informational, not a gate) ---
     await scheduleFixture(league);
     await admin.goto(matchUrl);
     await expect(admin.getByText(/Partido programado/)).toBeVisible();
-    await expect(admin.getByText(/Sin jornada programada/)).toBeHidden();
+    await expect(admin.getByText(/Partido sin programar/)).toBeHidden();
 
     // --- Played: load the result, then the page renders the full summary. ---
     await admin.goto(`/leagues/${leagueId}`);

@@ -4,11 +4,12 @@ import { MatchTimelineBar } from "./matchTimelineBar";
 import type { LiveMatchView } from "./api";
 
 /**
- * Tourplay sticky-header timeline bar (MVT-2/D4): one icon per display event at
- * `round((at-startedAt)/elapsed×100)%`, home on the top half and away on the
- * bottom half, with 0′/final-minute markers anchored at 0%/100% ONLY when the
- * match is finished. Reload-deterministic (no live clock — the end bound is the
- * finishedAt or the last display event's at). Strict TDD RED suite.
+ * Tourplay sticky-header timeline bar (MVT-2/D4, v7): one icon per display event at
+ * `round((at-startedAt)/elapsed×100)%`, home on the top lane and away on the
+ * bottom lane, with ALWAYS-rendered mid start/end markers (timer at 0%, flag at
+ * 100%) and the 0′/final-minute labels inside the bar. Reload-deterministic (no
+ * live clock — the end bound is the finishedAt or the last display event's at).
+ * Strict TDD RED suite.
  */
 
 function ev(
@@ -62,39 +63,45 @@ describe("MatchTimelineBar — position by elapsed percent (MVT-2/D4)", () => {
 });
 
 describe("MatchTimelineBar — side placement (MVT-2)", () => {
-  it("places home events on the top half and away events on the bottom half", () => {
+  it("places home events on the top lane and away events on the bottom lane", () => {
     const { container } = renderBar({
       events: [
         ev(5, "td", "home", 3000, "p1"),
         ev(7, "foul", "away", 6000, "p2"),
+        // v7: endMatch is NOT a display kind — the flag is the fixed 100% marker.
         ev(12, "endMatch", null, 8000),
       ],
       startedAt: 1000,
       finishedAt: 9000,
     });
     const icons = Array.from(container.querySelectorAll("[data-testid='timeline-icon']"));
-    expect(icons).toHaveLength(3);
+    // Only the two side events render as real icons; the boundary start/end are
+    // the always-on fixed markers (distinct testids, mid lane).
+    expect(icons).toHaveLength(2);
     expect(icons[0].getAttribute("data-side")).toBe("home");
     expect(icons[1].getAttribute("data-side")).toBe("away");
-    // A null-side boundary event gets the neutral marker side.
-    expect(icons[2].getAttribute("data-side")).toBe("mid");
+    const start = container.querySelector("[data-testid='timeline-start-icon']");
+    const end = container.querySelector("[data-testid='timeline-end-icon']");
+    expect(start?.getAttribute("data-side")).toBe("mid");
+    expect(end?.getAttribute("data-side")).toBe("mid");
   });
 });
 
-describe("MatchTimelineBar — boundary markers + reload determinism (D4)", () => {
-  it("renders 0% and 100% end markers plus 0'/final-minute labels ONLY when finished", () => {
-    // Finished → markers + labels rendered (199-minute window → final "199'").
+describe("MatchTimelineBar — boundary markers + labels (v7: always on)", () => {
+  it("always renders the mid start/end markers and the 0'/final-minute labels", () => {
+    // Finished → the final minute comes from finishedAt (199-minute window → 199').
     const { container, rerender } = renderBar({
       events: [ev(5, "td", "home", 99 * 60_000)],
       startedAt: 0,
       finishedAt: 199 * 60_000,
     });
-    expect(container.querySelector("[data-testid='timeline-marker-0']")).toBeTruthy();
-    expect(container.querySelector("[data-testid='timeline-marker-100']")).toBeTruthy();
+    expect(container.querySelector("[data-testid='timeline-start-icon']")).toBeTruthy();
+    expect(container.querySelector("[data-testid='timeline-end-icon']")).toBeTruthy();
     expect(container.textContent).toContain("0'");
     expect(container.textContent).toContain("199'");
 
-    // Not finished (live) → no markers, no extreme labels.
+    // Live (no finishedAt) → the labels derive from the LAST display event's at
+    // as the end bound (D4): a TD at minute 99 → final label "99'".
     rerender(
       <MatchTimelineBar
         events={[ev(5, "td", "home", 99 * 60_000)]}
@@ -102,10 +109,11 @@ describe("MatchTimelineBar — boundary markers + reload determinism (D4)", () =
         finishedAt={null}
       />,
     );
-    expect(container.querySelector("[data-testid='timeline-marker-0']")).toBeNull();
-    expect(container.querySelector("[data-testid='timeline-marker-100']")).toBeNull();
-    // The live bar relies on the LAST display event's at as the end bound, so
-    // the extreme labels (which derive from the finishedAt origin) are absent.
+    expect(container.querySelector("[data-testid='timeline-start-icon']")).toBeTruthy();
+    expect(container.querySelector("[data-testid='timeline-end-icon']")).toBeTruthy();
+    expect(container.textContent).toContain("0'");
+    expect(container.textContent).toContain("99'");
+    // The live bar's end bound is the last event, so 199' never appears.
     expect(container.textContent).not.toMatch(/199'/);
   });
 

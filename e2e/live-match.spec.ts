@@ -327,31 +327,34 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // Coach B converges to the live state via SSE (no reload).
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
-    // MVT-6 / LM-21 / LM-22: the kickoff events are spliced BEFORE start and
-    // render at minute 0' — one expensive_mistake per team (2 "Error costoso"
-    // team cards) plus one centered fan_factor row ("Factor de aficionados"),
-    // all appearing before any turn events. The `live-event-row` testid is
-    // preserved on every card (MVT-1 continuity).
+    // MVT-6 / LM-21 / LM-22 / RAU-33: the kickoff events are spliced BEFORE
+    // start and render at minute 0'. Both e2e teams start at treasury 0, BELOW
+    // the 100k rulebook minimum, so RAU-33 skips the expensive-mistake roll
+    // entirely — NO "Error costoso" card, no row, no treasury deduction — and
+    // only the centered fan_factor row ("Factor de aficionados") renders. The
+    // `live-event-row` testid is preserved on every card (MVT-1 continuity).
     const liveRows = admin.getByTestId("live-event-row");
-    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(2);
+    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(0);
     await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
-    // The kickoff rows share the begin instant with `startedAt`, so deriveMinute
-    // clamps them all to 0' (MVT-6 "kickoff rows at minute zero").
+    // MVT-6 "kickoff rows at minute zero": the home turnStart card (RAU-36/37)
+    // shares the begin instant with `startedAt`, so deriveMinute clamps it to
+    // 0'. The v7 fan_factor center card carries no right minute, so the zero-
+    // minute check lands on the turnStart card instead.
     await expect(
-      liveRows.filter({ hasText: /Error costoso|Factor de aficionados/ }).first(),
+      liveRows.filter({ hasText: `Turno ${homeTeamName}` }).first(),
     ).toContainText("0'");
 
     // LM-21 "begin retry is idempotent": a second begin after an already-live
     // match returns 409 via the route's 409 catch (beginLiveMatch maps
     // "begin only from ready" → 409), the seq/treasury guard keeps it from
     // re-persisting kickoff rows, and the treasury is NOT deducted twice. The
-    // kickoff row counts stay EXACTLY 2 + 1 — no duplicate rows.
+    // kickoff row counts stay EXACTLY 0 + 1 — no duplicate rows.
     const retryBegin = await admin.request.post(
       `/api/leagues/${leagueId}/fixtures/${fixtureId}/live`,
       { data: { type: "begin" } },
     );
     expect(retryBegin.status()).toBe(409);
-    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(2);
+    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(0);
     await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
 
     // MVT-2/MVT-3: the sticky Tourplay header renders the back arrow to the
@@ -365,12 +368,12 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(header.getByTestId("match-timeline")).toBeVisible();
 
     // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
-    // home). Only the ACTIVE coach sees the "Tu turno" STATUS + "Dar el turno";
-    // the non-active coach sees "Pedir turno" and never "Dar el turno". The
-    // timeline ALSO labels the home turn-start "Tu turno", so target the
-    // role=status element (Chromium does not expose a name for live-region
-    // roles, hence no `name:` filter).
-    await expect(homeCoach.getByRole("status")).toHaveText("Tu turno");
+    // home). Only the ACTIVE coach sees the "Turno {team}" STATUS + "Dar el
+    // turno"; the non-active coach sees "Pedir turno" and never "Dar el turno".
+    // The timeline turn-start card ALSO reads "Turno {homeTeamName}" (RAU-36/37),
+    // so target the role=status element (Chromium does not expose a name for
+    // live-region roles, hence no `name:` filter).
+    await expect(homeCoach.getByRole("status")).toHaveText(`Turno ${homeTeamName}`);
     await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
     await expect(awayCoach.getByRole("status")).toHaveCount(0);
@@ -391,8 +394,9 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
     await expect(awayCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
     // Regression: exactly one flip — turn 3 never appears, the away coach is
-    // the one now active ("Tu turno"), and the home coach's status is gone.
-    await expect(awayCoach.getByRole("status")).toHaveText("Tu turno");
+    // the one now active ("Turno {awayTeamName}"), and the home coach's status
+    // is gone.
+    await expect(awayCoach.getByRole("status")).toHaveText(`Turno ${awayTeamName}`);
     await expect(homeCoach.getByText(/Mitad 1 · Turno 3/)).toHaveCount(0);
     await expect(homeCoach.getByRole("status")).toHaveCount(0);
 

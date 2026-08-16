@@ -212,12 +212,29 @@ describe("MatchView — scheduled / pending (MV-3, D16 consent-start)", () => {
     expect(screen.queryByText(/Programado:/)).toBeNull();
   });
 
-  it("shows a pending notice with no date for a pending fixture", async () => {
+  it("always offers the start panel for a pending fixture (no agreed date)", async () => {
+    stubLiveEventSource();
     stubMatch(pendingDetail());
     renderPlayed();
 
-    expect(await screen.findByText(/Sin jornada programada/)).toBeTruthy();
+    // An unscheduled fixture still shows the consent start — the date
+    // negotiation is an optional reminder (avisador), never a gate.
+    expect(await screen.findByText(/Partido sin programar/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
     expect(screen.queryByText(/Programado:/)).toBeNull();
+    expect(screen.queryByText(/Sin jornada programada/)).toBeNull();
+  });
+
+  it("shows the waiting copy (no consent button) to a viewer without a side on a pending fixture", async () => {
+    vi.mocked(useSession).mockReturnValue({ data: null } as never);
+    stubLiveEventSource();
+    stubMatch(pendingDetail());
+    renderPlayed();
+
+    expect(
+      await screen.findByText(/Esperando a los entrenadores para iniciar el partido/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Iniciar partido/i })).toBeNull();
   });
 });
 
@@ -256,9 +273,10 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("renders the sticky header for a PENDING fixture (inert tracks, '–' clocks, '- : -' score)", async () => {
+    stubLiveEventSource();
     stubMatch(pendingDetail());
     renderPlayed();
-    await waitFor(() => expect(screen.getByText(/Sin jornada programada/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Partido sin programar/)).toBeTruthy());
 
     const header = screen.getByTestId("tourplay-header");
     expect(header).toBeTruthy();
@@ -270,7 +288,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
 
     // Top bar: label + half badge + the always-visible Mitad · Turno line.
     expect(screen.getByText(/Jornada 1/)).toBeTruthy();
-    expect(screen.getByText(/1ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/1ª PARTE/i)).toBeTruthy();
     expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
     // Pre-kickoff clocks are inert "–" (no H:MM:SS digits).
     expect(screen.getAllByText("–").length).toBeGreaterThan(0);
@@ -278,13 +296,13 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     // Hero: no-played score + the meta row.
     expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
     expect(screen.getByText(/Clima · Estándar/)).toBeTruthy();
-    // Gating: no highlight, no "Tu turno"/"Dar el turno" before live.
+    // Gating: no highlight, no "Turno {team}"/"Dar el turno" before live.
     const highlighted = screen
       .getAllByLabelText(/Turno \d/)
       .filter((c) => c.getAttribute("aria-current") === "true");
     expect(highlighted).toHaveLength(0);
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
-    expect(screen.queryByText(/Tu turno/)).toBeNull();
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
 
   it("renders the sticky header above the consent panel for a SCHEDULED fixture (no live row)", async () => {
@@ -296,13 +314,13 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     // The header shares the exact same chrome (top bar + hero + meta row).
     expect(screen.getByTestId("tourplay-header")).toBeTruthy();
     expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
-    expect(screen.getByText(/1ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/1ª PARTE/i)).toBeTruthy();
     expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
     // The consent panel stays in the BODY below the header.
     expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
     // Gating: the home coach HAS a side but the match is not live → no turn button.
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
-    expect(screen.queryByText(/Tu turno/)).toBeNull();
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
 
   it("renders the header for a FINISHED live match with the final score + frozen clocks and no turn controls", async () => {
@@ -312,20 +330,20 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
 
     expect(screen.getByTestId("tourplay-header")).toBeTruthy();
     expect(screen.getByTestId("live-score").textContent).toMatch(/2\s*:\s*1/);
-    expect(screen.getByText(/2ª PARTE/)).toBeTruthy();
+    expect(screen.getByText(/2ª PARTE/i)).toBeTruthy();
     expect(screen.getByText(/Mitad 2 · Turno 8/)).toBeTruthy();
     // Frozen base clocks render H:MM:SS (finished values carry real time).
     expect(container.textContent).toMatch(/0:00:01/);
-    // Inert: no active highlight, no "Tu turno"/"Dar el turno" (not live).
+    // Inert: no active highlight, no "Turno {team}"/"Dar el turno" (not live).
     const highlighted = screen
       .getAllByLabelText(/Turno \d/)
       .filter((c) => c.getAttribute("aria-current") === "true");
     expect(highlighted).toHaveLength(0);
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
-    expect(screen.queryByText(/Tu turno/)).toBeNull();
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
 
-  it("gates 'Dar el turno' + 'Tu turno' to LIVE active participants only (spectator hidden)", async () => {
+  it("gates 'Dar el turno' + 'Turno {team}' to LIVE active participants only (spectator hidden)", async () => {
     stubLiveEventSource();
     // A spectator member owns neither team → session-derived viewerSide null.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -338,7 +356,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     // turn controls stay hidden (only the ACTIVE participant may pass).
     expect(screen.getByTestId("tourplay-header")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
-    expect(screen.queryByText(/Tu turno/)).toBeNull();
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
 
   it("renders the Design-A chronology NEWEST FIRST (mockup 196' → 0')", async () => {
@@ -558,14 +576,14 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     );
   });
 
-  it("shows 'Tu turno' + 'Dar el turno' for the ACTIVE coach (viewerSide === activeSide, LM-12/D19)", async () => {
+  it("shows 'Turno Reavers' + 'Dar el turno' for the ACTIVE coach (viewerSide === activeSide, LM-12/D19)", async () => {
     stubLiveEventSource();
     stubMatch(liveDetail()); // viewerSide home, activeSide home → active
     renderPlayed();
 
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // The active coach sees the "Tu turno" notice + the pass control.
-    expect(screen.getAllByText(/Tu turno/).length).toBeGreaterThan(0);
+    // The active coach sees the "Turno {team}" notice + the pass control.
+    expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
     // The active coach does not see the "Pedir turno" nudge.
     expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
@@ -584,7 +602,7 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
-    expect(screen.queryByText(/Tu turno/)).toBeNull();
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
 });
 
@@ -704,7 +722,7 @@ describe("MatchView — mockup layout + client ticking clock", () => {
 
     // Top bar: league/jornada label + half indicator.
     expect(container.textContent).toMatch(/Jornada 1/);
-    expect(container.textContent).toMatch(/1ª PARTE/);
+    expect(container.textContent).toMatch(/1ª PARTE/i);
 
     // Turn tracks: 8 cells per team (16 total), the SAME GLOBAL sequence 1-8 on
     // BOTH tracks (Tourplay), with exactly ONE highlighted cell — the ACTIVE
@@ -815,16 +833,16 @@ describe("MatchView — casi Tourplay hero (Design 10)", () => {
     expect(screen.getByText(/Estadio · Reglamentario/)).toBeTruthy();
   });
 
-  it("moves the 'Dar el turno' control into the navy top bar and keeps 'Tu turno' as a status", async () => {
+  it("moves the 'Dar el turno' control into the navy top bar and keeps 'Turno {team}' as a status", async () => {
     stubLiveEventSource();
     stubMatch(liveDetail()); // home coach active → sees the pass control
     const { container } = renderPlayed();
     await screen.findAllByText(/Mitad 1 · Turno 3/);
 
     // The top bar is navy (Design 10) and hosts the red turn button + status.
-    expect(container.textContent).toMatch(/1ª PARTE/);
+    expect(container.textContent).toMatch(/1ª PARTE/i);
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
-    expect(screen.getAllByText(/Tu turno/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
     // The active coach sees no "Pedir turno" (it stays in the bottom controls).
     expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
   });
@@ -840,7 +858,7 @@ describe("MatchView — casi Tourplay hero (Design 10)", () => {
     await screen.findAllByText(/Mitad 1 · Turno 3/);
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
-    expect(screen.queryByText(/Tu turno/)).toBeNull();
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
 });
 
@@ -1171,7 +1189,7 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
 
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
-    expect(screen.queryByText(/Tu turno/)).toBeNull();
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
 });
 
@@ -1325,10 +1343,11 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(visitorRow).toBeTruthy();
 
     // Tourplay mirroring (MVT-1/D3): the LOCAL (home) 68% card sits on the left
-    // edge (`self-start`) and the VISITOR (away) card on the right edge
-    // (`self-end`), so each team reads its chronology from its own side.
-    expect(localRow!.className).toContain("self-start");
-    expect(visitorRow!.className).toContain("self-end");
+    // edge and the VISITOR (away) card on the right edge (module `.ev--home` /
+    // `.ev--away` own the `align-self`), so each team reads its chronology from
+    // its own side.
+    expect(localRow!.className).toContain("ev--home");
+    expect(visitorRow!.className).toContain("ev--away");
     // Both team cards still carry the preserved turn tag + minute; the away card
     // keeps the red (visitor) gradient as its side identity.
     expect(localRow!.textContent).toContain("T3");
@@ -1403,12 +1422,14 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
     expect(reportedCls).toContain("bg-green-50");
     expect(reportedCls).toContain("text-green-700");
 
-    // Cards: navy (home) / red (away) internal gradients fading to white.
+    // Cards: navy (home) / red (away) internal gradients over the white base.
+    // The gradients + white base moved to the CSS module (`.ev--home` /
+    // `.ev--away` / `.ev`), so assert the side module classes here.
     const cards = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const cls = cards.map((c) => c.getAttribute("class") ?? "").join(" ");
-    expect(cls).toContain("from-[#12225a]/[0.12]");
-    expect(cls).toContain("from-[#d11938]/[0.12]");
-    expect(cls).toContain("to-white");
+    expect(cls).toContain("ev--home");
+    expect(cls).toContain("ev--away");
+    expect(cls).toMatch(/\bev\b/);
   });
 
   it("collapses to the not-found view when the API returns 404", async () => {
@@ -1475,13 +1496,13 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const emHome = rows.find((li) => li.textContent?.includes("234.000 → 214.000 M.O."));
     const emAway = rows.find((li) => li.textContent?.includes("334.000 → 319.000 M.O."));
-    // Both em cards carry their side gradient + outcome label (MVT-6).
+    // Both em cards carry their side gradient + outcome label (MVT-6). The
+    // gradient + 68% width live in the module (`.ev--home` / `.ev--away`).
     expect(emHome).toBeTruthy();
     expect(emAway).toBeTruthy();
-    expect(emHome!.className).toContain("from-[#12225a]/[0.12]");
-    expect(emHome!.className).toContain("w-[68%]");
+    expect(emHome!.className).toContain("ev--home");
     expect(emHome!.textContent).toContain("Incidente grave");
-    expect(emAway!.className).toContain("from-[#d11938]/[0.12]");
+    expect(emAway!.className).toContain("ev--away");
     expect(emAway!.textContent).toContain("Incidente menor");
   });
 
@@ -1494,8 +1515,8 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const fan = rows.find((li) => li.textContent?.includes("Factor de aficionados"));
     expect(fan).toBeTruthy();
-    // Centered 100% width (generic branch).
-    expect(fan!.className).toContain("w-full");
+    // Centered 100% width (generic branch, module `.ev--center`).
+    expect(fan!.className).toContain("ev--center");
     expect(fan!.textContent).toContain("Local: 👥2 + 🎲2 = 4");
     expect(fan!.textContent).toContain("Visitante: 👥1 + 🎲3 = 4");
   });
@@ -1507,8 +1528,8 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
 
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
-    // em, em, fan, start, turnStart — the turnStart is filtered from the feed
-    // DTO (LM-16), so only em(home), em(away), fan, start reach the cards.
+    // em, em, fan, start, turnStart — the LIVE feed (SSE-accumulated) carries the
+    // home turnStart, now rendered as a TEAM card "Turno Reavers" (RAU-36/37).
     const feedRows = rows.filter((li) => {
       const t = li.textContent ?? "";
       return (
@@ -1517,5 +1538,9 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     });
     expect(feedRows).toHaveLength(4);
     expect(rows.length).toBeGreaterThanOrEqual(4);
+    const turnStart = rows.find((li) => li.textContent?.includes("Turno Reavers"));
+    expect(turnStart).toBeTruthy();
+    expect(turnStart!.className).toContain("ev--home");
+    expect(turnStart!.className).toMatch(/\bev\b/);
   });
 });

@@ -3,9 +3,11 @@
  * Mistake" resolution against the full rulebook 6×6 matrix and the centered
  * fan-factor event. Everything is deterministic given server-owned dice
  * (lib/random.ts), so the module is zero-mock testable and the route never
- * trusts a client-supplied roll. `buildKickoffEvents` returns the three events
- * AND the treasury deltas in ONE resolution so the store can commit them in a
- * single transaction (LM-23 atomicity).
+ * trusts a client-supplied roll. `buildKickoffEvents` returns the kickoff
+ * events AND the treasury deltas in ONE resolution so the store can commit them
+ * in a single transaction (LM-23 atomicity); a team whose treasury is BELOW the
+ * 100k rulebook minimum emits no expensive-mistake event at all — no roll, no
+ * row, no treasury update (RAU-33).
  */
 
 export type KickoffBracket =
@@ -170,10 +172,13 @@ export interface TreasuryUpdate {
 }
 
 /**
- * Builds the three kickoff events in seq order — em(home), em(away), fan_factor
- * (LM-21) — plus the treasury deltas to commit atomically (LM-23). The fan
- * factor (LM-22) carries `side: null` and per-team {base, dice, total}. `at` is
- * `now` for all three so the feed renders them at minute 0′.
+ * Builds the kickoff events in seq order — em(home), em(away) when each team's
+ * treasury is at or above the 100k rulebook minimum, then fan_factor (LM-21) —
+ * plus the treasury deltas to commit atomically (LM-23). A team BELOW 100k
+ * (RAU-33) emits NO expensive_mistake event: no roll, no row, no treasury
+ * update; its fan_factor side still renders. The fan factor (LM-22) carries
+ * `side: null` and per-team {base, dice, total}. `at` is `now` for all events
+ * so the feed renders them at minute 0′.
  */
 export function buildKickoffEvents(
   input: BuildKickoffEventsInput,
@@ -185,7 +190,10 @@ export function buildKickoffEvents(
     side: "home" | "away",
     team: KickoffTeamInput,
     dice: KickoffDiceInput,
-  ): KickoffResolvedEvent => {
+  ): KickoffResolvedEvent | null => {
+    // RAU-33: below the rulebook minimum the Expensive Mistake roll does NOT
+    // happen — no event, no row, no treasury deduction (fan factor still runs).
+    if (team.treasury < 100_000) return null;
     const resolved = resolveExpensiveMistake({ roll: dice.em, rollD3: dice.d3, keep: dice.keep, treasury: team.treasury });
     const event: KickoffResolvedEvent = {
       kind: "expensive_mistake",
@@ -215,25 +223,26 @@ export function buildKickoffEvents(
     return { base: team.dedicatedFans, dice: diceRolled, total: team.dedicatedFans + diceRolled };
   };
 
-  return {
-    events: [
-      teamEvent("home", input.home, input.dice.home),
-      teamEvent("away", input.away, input.dice.away),
-      {
-        kind: "fan_factor",
-        side: null,
-        playerRosterId: null,
-        half,
-        turnNumber,
-        payload: {
-          home: fanFactor("home", input.home, input.dice.home),
-          away: fanFactor("away", input.away, input.dice.away),
-        },
-        at: now,
-      },
-    ],
-    treasuryUpdates,
-  };
+  const events: KickoffResolvedEvent[] = [];
+  // RAU-33 skip: a sub-100k team contributes no expensive_mistake row.
+  const homeEm = teamEvent("home", input.home, input.dice.home);
+  const awayEm = teamEvent("away", input.away, input.dice.away);
+  if (homeEm) events.push(homeEm);
+  if (awayEm) events.push(awayEm);
+  events.push({
+    kind: "fan_factor",
+    side: null,
+    playerRosterId: null,
+    half,
+    turnNumber,
+    payload: {
+      home: fanFactor("home", input.home, input.dice.home),
+      away: fanFactor("away", input.away, input.dice.away),
+    },
+    at: now,
+  });
+
+  return { events, treasuryUpdates };
 }
 
 /** A kickoff event without its row `seq` (assigned by `beginMatch`). */

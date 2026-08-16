@@ -31,15 +31,17 @@ export function TeamEmblem({
 }: {
   teamId: string;
   name: string;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   className?: string;
 }) {
   const sizeCls =
-    size === "lg"
-      ? "h-16 w-16 text-3xl"
-      : size === "sm"
-        ? "h-8 w-8 text-base"
-        : "h-10 w-10 text-xl";
+    size === "xl"
+      ? "h-[54px] w-[54px] text-[26px]"
+      : size === "lg"
+        ? "h-16 w-16 text-3xl"
+        : size === "sm"
+          ? "h-8 w-8 text-base"
+          : "h-10 w-10 text-xl";
   return (
     <span
       data-testid={`emblem-${teamId}`}
