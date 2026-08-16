@@ -385,6 +385,61 @@ describe("LiveEventCards — concede centered card (RAU-38)", () => {
   });
 });
 
+describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)", () => {
+  it("renders a caused casualty as TWO cards: the injury card (victim) AND the action card (causer + cause + roll/band)", () => {
+    // The victim is Blitzer B (away, p2); the causer Arnau (home, p4) is an
+    // OPPONENT of the victim (LM-12), so the action card mirrors on home.
+    const { container } = renderCards([
+      ev(
+        9,
+        "casualty",
+        "away",
+        { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 13, roll6: 4, band: "permanent", permanentAttribute: "ps" },
+        "p2",
+        6,
+        3000,
+      ),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    const injury = rows.find((li) => li.textContent?.includes("Blitzer B"));
+    // The action card's MAIN player is the causer — disambiguate from the
+    // injury card's "por Arnau" cause line via the card's name node.
+    const action = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau");
+    expect(injury).toBeTruthy();
+    expect(action).toBeTruthy();
+    // Injury card: victim side (away, red) + band sub-line + roll line + cause.
+    expect(injury!.className).toContain("ev--away");
+    expect(injury!.textContent).toContain("Se pierde el próximo partido");
+    expect(injury!.textContent).toContain("Tirada 1D16: 13");
+    expect(injury!.textContent).toContain("por Arnau (#2) · Blitz");
+    // Action card: causer side (home, navy) + cause label + roll/band sub-line.
+    expect(action!.className).toContain("ev--home");
+    expect(action!.textContent).toContain("Blitz");
+    expect(action!.textContent).toContain("Tirada 1D16: 13 · Permanente (−PS)");
+    // The ★2 SPP belongs to the injury card ONLY — no stars on the action card.
+    expect(action!.textContent).not.toContain("★");
+  });
+
+  it("renders NO action card for a self-inflicted (dodge/crowd) casualty — only the injury card", () => {
+    const { container } = renderCards([
+      ev(9, "casualty", "away", { victimRosterId: "p2", cause: "crowd", roll16: 12, band: "grave" }, "p2", 6, 3000),
+      ev(10, "casualty", "home", { victimRosterId: "p1", cause: "dodge", roll16: 8, band: "bruise" }, "p1", 6, 3100),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    // Exactly one row per casualty — self-inflicted casualties have no causer.
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).not.toContain("por ");
+    expect(rows[1].textContent).not.toContain("por ");
+  });
+
+  it("keeps a legacy casualty (no cause/causer) as a SINGLE card with no action card", () => {
+    const { container } = renderCards([ev(9, "casualty", "home", { band: "dead" }, "p1", 6, 3000)]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(1);
+  });
+});
+
 describe("LiveEventCards — kickoff fan_factor centered row (MVT-6/LM-24)", () => {
   it("renders as a centered 100% row with the compact per-team totals copy", () => {
     const { container } = renderCards([

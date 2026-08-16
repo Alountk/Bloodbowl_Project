@@ -9,6 +9,8 @@ import {
   eventSpp,
   casualtyIcon,
   bandSubLabel,
+  casualtyRollLine,
+  casualtyActionLine,
 } from "./liveEventLabels";
 import { Icon, type IconName } from "./icons";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
@@ -104,6 +106,30 @@ function casualtyCauseParts(
     return { causer: null, cause: label };
   }
   return { causer: null, cause: CAUSE_LABELS[cause] ?? cause };
+}
+
+/**
+ * RAU-39: derives the ACTION card for a confirmed two-phase casualty — the
+ * CAUSER (an OPPONENT of the victim per LM-12) rendered on the causer's side
+ * with the cause label and the band/roll sub-line. Self-inflicted casualties
+ * (dodge/crowd) carry no causer → null; an unresolvable causer also returns
+ * null (never throws).
+ */
+function deriveActionCard(
+  event: LiveMatchView["events"][number],
+  causerTeam: MatchTeamDetail,
+  causerRef: Map<string, number>,
+): { player: Exclude<RosterLookup, undefined>; label: string; sub: string | null } | null {
+  const causerId = event.payload.causerRosterId;
+  if (typeof causerId !== "string") return null;
+  const player = findPlayer(causerTeam, causerId, causerRef);
+  if (!player) return null;
+  const cause = typeof event.payload.cause === "string" ? event.payload.cause : "";
+  return {
+    player,
+    label: CAUSE_LABELS[cause] ?? cause,
+    sub: casualtyActionLine(event.payload),
+  };
 }
 
 /**
@@ -289,6 +315,15 @@ export function LiveEventCards({
             ? casualtyCauseParts(event.payload, oppositeTeam, oppositeRef)
             : null;
         const bandSub = event.kind === "casualty" ? bandSubLabel(event.payload) : null;
+        // RAU-39: the injury card's roll line ("Tirada 1D16: {roll16}") — the
+        // band is server-derived from this roll, shown as the sub-line/cause.
+        const rollLine = event.kind === "casualty" ? casualtyRollLine(event.payload) : null;
+        // RAU-39: the DERIVED action card on the CAUSER's side — the causer is
+        // an OPPONENT of the victim (LM-12), so it renders on the OPPOSITE team
+        // with the cause label + the band/roll sub-line. Self-inflicted
+        // (dodge/crowd) casualties have no causer → no action card.
+        const actionCard =
+          isTeamCard && event.kind === "casualty" && oppositeTeam ? deriveActionCard(event, oppositeTeam, oppositeRef) : null;
         // Kickoff wall-clock subs: the `start` row from the kickoff anchor (omitted
         // gracefully when the data is unavailable), the `endMatch` row from its own
         // event timestamp. NOTE (v7): the preview's `ctv-strip` on the start card is
@@ -304,6 +339,7 @@ export function LiveEventCards({
           // tag + minute corners (RAU-36/37).
           const showCorners = event.kind !== "expensive_mistake";
           return (
+            <>
             <li
               key={event.seq}
               data-testid="live-event-row"
@@ -400,6 +436,7 @@ export function LiveEventCards({
                       </span>
                     ) : null}
                     {bandSub ? <span className={c.sub}>{bandSub}</span> : null}
+                    {rollLine ? <span className={c.sub}>{rollLine}</span> : null}
                     {victim ? (
                       <span className={c.victimLine}>
                         {/* The victim is on the OPPOSITE side (LM-12), so the mini
@@ -434,6 +471,51 @@ export function LiveEventCards({
                 </div>
               )}
             </li>
+            {/* RAU-39: the DERIVED action card on the CAUSER's side — the same
+                casualty event feeds BOTH the injury card (victim, above) and
+                this action card (causer + cause + roll/band sub-line). The
+                causer is on the OPPOSITE side of the victim (LM-12), so the
+                card mirrors with the rival tint and its own turn/minute. */}
+            {actionCard ? (
+              <li
+                key={`${event.seq}-action`}
+                data-testid="live-event-row"
+                className={`${c.ev} ${event.side === "home" ? c.away : c.home}`}
+              >
+                {showCorners ? (
+                  <>
+                    <span className={`${c.turnTag} ${event.side === "home" ? c.turnTagAway : c.turnTagHome}`}>
+                      {turnTag(event.half, event.turnNumber)}
+                    </span>
+                    <span className={c.minute}>{minute}</span>
+                  </>
+                ) : null}
+                <div className={c.cardBody}>
+                  <span
+                    title={actionCard.player.name}
+                    aria-hidden="true"
+                    className={`${c.token} ${event.side === "home" ? c.tokenAway : c.tokenHome}`}
+                  >
+                    <Icon name="helmet" className="h-[18px] w-[18px]" />
+                  </span>
+                  <span className={c.dorsal}>#{actionCard.player.dorsal}</span>
+                  <div className={c.who}>
+                    <p className={c.name}>{actionCard.player.name}</p>
+                    <p className={c.pos}>{positionName(oppositeTeam, actionCard.player.positionalKey)}</p>
+                  </div>
+                  <span className={c.detail}>
+                    <span className={`${c.dline} ${event.side === "away" ? c.dlineHome : c.dlineAway}`}>
+                      <span className={c.dicon}>
+                        <Icon name={iconName} className="h-[15px] w-[15px]" />
+                      </span>
+                      {actionCard.label}
+                    </span>
+                    {actionCard.sub ? <span className={c.sub}>{actionCard.sub}</span> : null}
+                  </span>
+                </div>
+              </li>
+            ) : null}
+            </>
           );
         }
 
