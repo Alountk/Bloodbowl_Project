@@ -134,7 +134,7 @@ The match clock MUST be unified and server-owned: a persisted `startedAt` marks 
 
 ### Requirement: LM-6 · Event Persistence and Sequence
 
-Every TD, completion, casualty, foul, end-of-half, and end-of-match MUST persist a `LiveEvent` row with monotonic `seq` and a JSON payload; the database MUST be the source of truth and an in-memory hub MUST fan out behind a narrow interface. Catch-up by `seq` MUST NEVER be stale. A `foul` payload MUST carry `victimRosterId`; a `casualty` payload MUST carry `band`, `cause` (one of `blitz|foul|dodge|crowd|penetration|block`), and `causerRosterId` (absent when the crowd or the player's own dodge caused it). Because payloads are JSON and `LiveEvent.kind` is TEXT, this MUST NOT require a migration (LM-14 precedent); legacy events with `{}`/`{band}` payloads MUST still render as fallback rows without victim/cause detail.
+Every TD, completion, casualty, foul, end-of-half, and end-of-match MUST persist a `LiveEvent` row with monotonic `seq` and a JSON payload; the database MUST be the source of truth and an in-memory hub MUST fan out behind a narrow interface. Catch-up by `seq` MUST NEVER be stale. A `foul` payload MUST carry `victimRosterId`; a `casualty` payload MUST carry `victimRosterId`, `cause` (one of `blitz|foul|dodge|crowd|penetration|block`), `roll16` (the 1D16 roll the players actually rolled) and the server-DERIVED `band` (resolved from `roll16` via the rulebook table — the client NEVER sends a band); a `permanent` band MUST also carry `roll6` and the derived `permanentAttribute`. A `casualty` payload carries `causerRosterId` (the attacker's own player) when the cause requires one, and ABSENT when the crowd or the player's own dodge caused it. Because payloads are JSON and `LiveEvent.kind` is TEXT, this MUST NOT require a migration (LM-14 precedent); legacy events with `{}`/`{band}` payloads MUST still render as fallback rows without victim/cause detail.
 (Previously: the `foul` payload was `{}` and the `casualty` payload carried only `band`.)
 
 #### Scenario: Event recorded with sequence
@@ -151,9 +151,9 @@ Every TD, completion, casualty, foul, end-of-half, and end-of-match MUST persist
 
 #### Scenario: Foul victim and casualty cause persist
 
-- GIVEN a foul POSTed with `victimRosterId` and a casualty POSTed with `cause` and `causerRosterId`
+- GIVEN a foul POSTed with `victimRosterId` and a casualty confirmed with `victimRosterId`, `cause`, `causerRosterId` and `roll16`
 - WHEN both commit
-- THEN the foul row stores the victim and the casualty row stores `band`, `cause`, and the causer
+- THEN the foul row stores the victim and the casualty row stores the victim, `cause`, the causer, the `roll16` and the server-derived `band`
 
 #### Scenario: Legacy events keep rendering
 
@@ -280,13 +280,13 @@ Live events MUST persist from day one so played matches render the historical ti
 
 ### Requirement: LM-12 · Turn-Phase Event Permissions
 
-Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be allowed to record TDs, fouls, casualties, completions, and pass-turn; the NON-ACTIVE coach MUST be allowed ONLY to record a casualty to one of their OWN players. Any other non-active event command MUST return 409 with no mutation; spectator members 403 and foreign users 404 (per LM-2). Foul and casualty commands MUST also satisfy actor side invariants: a foul's `victimRosterId` MUST resolve to a roster player on the side opposite the aggressor (`side`), and a casualty's `causerRosterId`, when present, MUST resolve to a roster player on the side opposite the victim (`side`); a violation MUST return 409 with no mutation. The live DTO MUST expose the viewer's side so the client renders the correct controls.
-(Previously: the side gate checked kind and casualty victim-side only — a foul's victim and a casualty's causer were not constrained.)
+Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be allowed to record TDs, fouls, completions, and pass-turn; the NON-ACTIVE coach MUST NOT record any of those (409 with no mutation). A casualty follows the RAU-39 TWO-PHASE model: the ACTIVE coach (the attacker) MUST PROPOSE the casualty they inflicted — `proposeCasualty` with the causer (their OWN player), the victim (an OPPONENT), a causer-required cause (`blitz|foul|penetration|block`) and the 1D16 roll — and the NON-active coach (the defender) MUST CONFIRM it (`confirmCasualty`, no reject). The band MUST be DERIVED server-side from the 1D16 roll via the rulebook table at confirm time (never client-chosen); a `permanent` band (13-14) MUST also resolve the 1D6 attribute roll, which is REQUIRED on the proposal. The direct `casualty` command survives ONLY for SELF-INFLICTED injuries (dodge/crowd) to the caller's OWN player — recorded directly with NO confirmation and NO causer. Foul and casualty commands MUST also satisfy actor side invariants: a foul's `victimRosterId` MUST resolve to a roster player on the side opposite the aggressor (`side`); a `proposeCasualty`'s causer MUST resolve to the PROPOSER's own side and its victim to the OPPOSITE side; a violation MUST return 409 with no mutation. The live DTO MUST expose the viewer's side so the client renders the correct controls.
+(Previously: the side gate checked kind and casualty victim-side only — a foul's victim and a casualty's causer were not constrained; casualties were recorded directly with a client-chosen band.)
 
 #### Scenario: Active coach records events
 
 - GIVEN home's turn active and the home coach
-- WHEN they record a TD, foul, casualty, completion, or pass-turn
+- WHEN they record a TD, foul, completion, or pass-turn
 - THEN it returns 200 and the event persists
 
 #### Scenario: Non-active TD, foul, or completion rejected
@@ -295,17 +295,41 @@ Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be
 - WHEN the home coach records a TD, foul, or completion
 - THEN it returns 409 and no state changes
 
-#### Scenario: Own-injury exception
+#### Scenario: Active coach proposes a casualty they inflicted (RAU-39)
+
+- GIVEN home's turn active and the home coach
+- WHEN they propose a casualty with their OWN player as causer, an OPPONENT as victim, a causer-required cause and a 1D16 roll
+- THEN `pendingCasualty` persists, no event persists, and the match keeps running
+
+#### Scenario: Defender confirms the proposal (RAU-39)
+
+- GIVEN a pending casualty proposal
+- WHEN the NON-proposer confirms it
+- THEN the `casualty` event persists ATOMICALLY with the band DERIVED server-side from the 1D16 roll, `pendingCasualty` clears, and the match continues
+
+#### Scenario: Proposer cannot confirm their own proposal
+
+- GIVEN a pending casualty proposal
+- WHEN the PROPOSER tries to confirm it
+- THEN it returns 409 and the proposal stays unchanged
+
+#### Scenario: Second casualty proposal rejected
+
+- GIVEN a pending casualty proposal
+- WHEN the other (or the same) coach proposes again
+- THEN it returns 409 and the proposal stays unchanged
+
+#### Scenario: Direct casualty is self-inflicted only (RAU-39)
 
 - GIVEN away's turn active
-- WHEN the home coach records a casualty to a home player
-- THEN it returns 200 and the casualty persists
+- WHEN the home coach records a direct `casualty` on a home player with cause `dodge` or `crowd` and a 1D16 roll
+- THEN it returns 200, the band derives server-side, and the casualty persists with NO confirmation and NO causer
 
-#### Scenario: Opponent injury denied
+#### Scenario: Direct casualty with a caused cause or an opponent victim rejected
 
-- GIVEN away's turn active
-- WHEN the home coach records a casualty to an away player
-- THEN it returns 409 and no state changes
+- GIVEN any live match
+- WHEN a direct `casualty` command uses a causer-required cause (blitz/foul/penetration/block) OR a victim on the OPPONENT's side OR carries a causer
+- THEN it returns 409 with no mutation
 
 #### Scenario: Spectator and foreign actors denied
 
@@ -325,17 +349,23 @@ Event commands MUST be side-gated against `activeSide`: the ACTIVE coach MUST be
 - WHEN the command reaches the route
 - THEN it returns 409 and no event persists
 
-#### Scenario: Casualty causer must be on the opposite side
+#### Scenario: Proposal causer must be on the proposer's side
 
-- GIVEN a home-coach casualty on a home player with `causerRosterId` of another home player
+- GIVEN a home `proposeCasualty` whose causer resolves to an AWAY player (the victim's side)
 - WHEN the command reaches the route
-- THEN it returns 409 and no event persists
+- THEN it returns 409 and no proposal persists
 
-#### Scenario: Crowd and self-inflicted casualties omit the causer
+#### Scenario: Proposal victim must be on the opposite side
 
-- GIVEN a casualty with cause `crowd` or `dodge` and no `causerRosterId`
+- GIVEN a home `proposeCasualty` whose victim resolves to a HOME player
 - WHEN the command reaches the route
-- THEN it returns 200 and the casualty persists without a causer
+- THEN it returns 409 and no proposal persists
+
+#### Scenario: Invalid rolls rejected
+
+- GIVEN a `proposeCasualty` or direct `casualty` whose 1D16 is outside 1..16 (or a 1D6 outside 1..6 when present)
+- WHEN the command reaches the route
+- THEN it returns 409 with no mutation
 
 ### Requirement: LM-13 · Turn Start Notification and Request Turn Nudge
 
@@ -484,21 +514,22 @@ A pure derivation over the display-worthy events MUST return, per team: TD count
 
 ### Requirement: LM-20 · Event Recording Controls
 
-The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster and a band select for casualty/injury. The Falta form MUST additionally capture the victim (select from the OPPONENT roster) and submit `victimRosterId`; the Baja/Herida form MUST additionally capture `cause` (one of the six causes) and, except for `dodge`/`crowd`, the causer (submitted as `causerRosterId`). The casualty victim and causer pools MUST be role-aware (RAU-34): the ACTIVE coach records the injury THEY inflicted, so the victim select draws from the OPPONENT roster (opposite-side victim), the causer select from their OWN roster, and the command's `side` is the VICTIM's side (the OPPONENT side for the ACTIVE coach); the NON-ACTIVE coach records the wound done to their OWN player, so the victim select draws from their OWN roster, the causer from the OPPONENT roster, and `side` stays their own side. The NON-ACTIVE coach MUST be offered ONLY Herida (casualty to their OWN player, with cause and optional causer). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
+The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster. The Falta form MUST additionally capture the victim (select from the OPPONENT roster) and submit `victimRosterId`. The Baja/Herida form follows the RAU-39 TWO-PHASE flow: the ACTIVE coach fills the PROPOSAL — causer (their OWN roster), victim (the OPPONENT roster), a causer-required cause (`blitz|foul|penetration|block`), and the 1D16 roll (with the 1D6 attribute roll shown LIVE when the derived band is permanent) — and submits `proposeCasualty`; there is NO band select, the client only MIRRORS `resolveInjury` to show the derived band (the server is authoritative). The NON-ACTIVE coach's mini-form records ONLY a SELF-INFLICTED (dodge/crowd) casualty to their OWN player (roll16, band derived, no causer, no confirmation), and the pending proposal is CONFIRMED in the match-header turn zone (not in the FAB). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
 (Previously: the foul form captured only the aggressor and the casualty form captured only the band.)
 (Previously: the casualty victim was always the viewer's OWN roster and the causer always the OPPONENT roster, so the ACTIVE coach could not record an injury they inflicted on a rival player.)
+(Previously: both coaches recorded casualties directly with a client-chosen band.)
 
 #### Scenario: Active coach opens the menu
 
 - GIVEN a live match and the ACTIVE coach
 - WHEN they open the "+" menu
-- THEN they can record TD, Pase completo, Baja/Herida, or Falta via the mini-form (player select from their roster, band select for casualty/injury)
+- THEN they can record TD, Pase completo, Baja/Herida, or Falta via the mini-form (player select from their roster)
 
 #### Scenario: Non-active coach restricted to Herida
 
 - GIVEN a live match and the NON-active coach
 - WHEN they open the "+" menu
-- THEN only Herida (casualty to their own player) is offered; recording any other kind returns 409 per the LM-12 matrix
+- THEN only Herida (self-inflicted dodge/crowd casualty to their own player) is offered; recording any other kind returns 409 per the LM-12 matrix
 
 #### Scenario: No controls without a side
 
@@ -524,23 +555,23 @@ The live UI MUST render a floating "+" button that opens an event-type menu and 
 - WHEN they pick the aggressor from their roster and the victim from the OPPONENT roster and submit
 - THEN the foul command carries `victimRosterId` and the feed card shows the victim line
 
-#### Scenario: Casualty form captures cause and causer
-
-- GIVEN the NON-ACTIVE coach opens the Baja/Herida form
-- WHEN they pick the band, the cause, and (unless `dodge`/`crowd`) the causer from the OPPONENT roster
-- THEN the casualty command carries `cause` and `causerRosterId` and the card shows the three actors
-
-#### Scenario: Active coach records a casualty they inflicted (RAU-34)
+#### Scenario: Active coach proposes a casualty they inflicted (RAU-39)
 
 - GIVEN the ACTIVE coach opens the Baja/Herida form
-- WHEN they pick the victim from the OPPONENT roster, the band, the cause, and (unless `dodge`/`crowd`) the causer from their OWN roster
-- THEN the casualty command carries `side` = the VICTIM's (OPPONENT) side plus `victimRosterId`, `cause`, and `causerRosterId`, and the feed card shows the three actors
+- WHEN they pick the causer from their OWN roster, the victim from the OPPONENT roster, a causer-required cause, and the 1D16 roll (plus the 1D6 when the derived band is permanent)
+- THEN the `proposeCasualty` command carries `victimRosterId`, `causerRosterId`, `cause`, `roll16` (and `roll6` when permanent) with NO band, and the feed shows the pending confirmation panel
 
-#### Scenario: Non-active coach records a casualty to their own player (RAU-34)
+#### Scenario: Defender confirms in the turn zone (RAU-39)
 
-- GIVEN the NON-ACTIVE coach opens the Baja/Herida form
-- WHEN they pick the victim from their OWN roster, the band, the cause, and (unless `dodge`/`crowd`) the causer from the OPPONENT roster
-- THEN the casualty command carries `side` = their own side plus `victimRosterId`, `cause`, and `causerRosterId`, and the feed card shows the three actors
+- GIVEN a pending casualty proposal and the NON-active coach
+- WHEN the defender's match-header turn zone shows "El rival registra una baja" with the derived details and they click Confirmar
+- THEN the `confirmCasualty` command fires and the casualty event (band derived server-side) persists
+
+#### Scenario: Non-active coach records a self-inflicted casualty (RAU-39)
+
+- GIVEN the NON-active coach opens the Baja/Herida form
+- WHEN they pick the victim from their OWN roster, cause `dodge` or `crowd`, and the 1D16 roll
+- THEN the casualty command carries `side` = their own side plus `victimRosterId`, `cause`, `roll16` (no band, no causer), and the feed card shows the derived band
 
 ### Requirement: LM-21 · Kickoff Event Generation
 

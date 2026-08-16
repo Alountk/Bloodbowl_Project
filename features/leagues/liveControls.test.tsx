@@ -4,10 +4,13 @@ import { EventControls } from "./liveControls";
 import type { LiveCommand } from "./api";
 
 /**
- * Event recording controls (LM-20, D26): a floating "+" that opens a role-aware
- * event-type menu and a mini-form. Component tests drive the FAB/menu/form and
- * assert the commands fired — the server matrix stays the authority (a bypass
- * POST returns 409, proven by the route tests).
+ * Event recording controls (LM-20, D26) with the RAU-39 two-phase casualty
+ * flow: the ACTIVE coach PROPOSES (causer + victim + cause + roll16, band
+ * derived server-side — NO band select, the 1D6 appears only when the derived
+ * band is permanent); the NON-active coach records a SELF-INFLICTED dodge/crowd
+ * casualty directly (roll16, band derived) and CONFIRMS the attacker's proposal
+ * in the turn zone (MatchView). Component tests drive the FAB/menu/form and
+ * assert the commands fired — the server matrix stays the authority.
  */
 
 const aliveRoster = [
@@ -75,7 +78,7 @@ describe("EventControls — role-aware menu (D26, LM-20)", () => {
   });
 });
 
-describe("EventControls — mini-form player + band selects (LM-20)", () => {
+describe("EventControls — mini-form player + roll selects (LM-20, RAU-39)", () => {
   it("shows only ALIVE players from the viewer's roster in the player select", () => {
     renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
@@ -87,17 +90,27 @@ describe("EventControls — mini-form player + band selects (LM-20)", () => {
     expect(options).not.toContain("Dead B"); // not alive
   });
 
-  it("shows the 5-band select ONLY for the casualty action", () => {
+  it("shows the 1D16 roll + derived band instead of a band select, and the 1D6 ONLY when the derived band is permanent", () => {
     renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
-    // TD: no band select.
-    fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
-    expect(screen.queryByLabelText(/Tipo de lesión/i)).toBeNull();
-    // Back to the menu → casualty: band select appears with the 5 bands.
-    fireEvent.click(screen.getByRole("button", { name: /Cancelar/i }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    const bandSelect = screen.getByLabelText(/Tipo de lesión/i) as HTMLSelectElement;
-    expect(bandSelect.options).toHaveLength(5);
+    // NO band select — the band is derived from the roll, never chosen.
+    expect(screen.queryByLabelText(/Tipo de lesión/i)).toBeNull();
+    const roll16 = screen.getByLabelText(/Tirada 1D16/i) as HTMLSelectElement;
+    expect(Array.from(roll16.options).map((o) => o.value).filter(Boolean)).toEqual(
+      Array.from({ length: 16 }, (_, i) => String(i + 1)),
+    );
+    // A non-permanent roll (1-8 → bruise) shows the derived band, no 1D6.
+    fireEvent.change(roll16, { target: { value: "8" } });
+    expect(screen.getByText(/Magullado/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Tirada 1D6/i)).toBeNull();
+    // A permanent roll (13-14) surfaces the REQUIRED 1D6 attribute select.
+    fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "14" } });
+    expect(screen.getByText(/Permanente/)).toBeTruthy();
+    const roll6 = screen.getByLabelText(/Tirada 1D6/i) as HTMLSelectElement;
+    expect(Array.from(roll6.options).map((o) => o.value).filter(Boolean)).toEqual(
+      Array.from({ length: 6 }, (_, i) => String(i + 1)),
+    );
   });
 });
 
@@ -130,21 +143,6 @@ describe("EventControls — submission (LM-20)", () => {
     expect(onSubmit).toHaveBeenCalledWith({ type: "foul", side: "home", playerRosterId: "p2", victimRosterId: "o1" } as LiveCommand);
   });
 
-  it("fires a casualty command (NON-active coach) with the victim + band + cause (and no causer for dodge/crowd)", async () => {
-    const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
-    fireEvent.click(screen.getByRole("button", { name: "+" }));
-    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    fireEvent.change(screen.getByLabelText(/Jugador/i), { target: { value: "p1" } });
-    fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
-    // crowd → no causer required, no causer select.
-    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "crowd" } });
-    expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
-    expect(onSubmit).toHaveBeenCalledWith(
-      { type: "casualty", side: "home", victimRosterId: "p1", band: "grave", cause: "crowd" } as LiveCommand,
-    );
-  });
-
   it("closes the menu/form after a submit", async () => {
     const { onSubmit } = renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
@@ -152,7 +150,6 @@ describe("EventControls — submission (LM-20)", () => {
     fireEvent.change(screen.getByLabelText(/Jugador/i), { target: { value: "p2" } });
     fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    // Menu + form close: no + still visible (FAB stays), no menu items.
     expect(screen.queryByRole("button", { name: /Touchdown/i })).toBeNull();
     expect(screen.queryByLabelText(/Jugador/i)).toBeNull();
   });
@@ -167,9 +164,7 @@ describe("EventControls — Falta form captures the VICTIM (LM-20, D7)", () => {
     const options = Array.from(victim.options).map((o) => o.textContent);
     expect(options).toContain("Blitzer Rival");
     expect(options).toContain("Thrower Rival");
-    // The opponent roster must NOT bleed into the aggressor ("Jugador") select.
     expect(options).not.toContain("Blitzer A");
-    // The victim select is distinct from the aggressor select.
     expect(screen.getByLabelText(/^Jugador$/i)).toBeTruthy();
   });
 
@@ -178,7 +173,6 @@ describe("EventControls — Falta form captures the VICTIM (LM-20, D7)", () => {
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
     fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p2" } });
-    // Victim not yet picked → Registrar disabled.
     expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Víctima de la falta/i), { target: { value: "o1" } });
     fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
@@ -188,151 +182,131 @@ describe("EventControls — Falta form captures the VICTIM (LM-20, D7)", () => {
   });
 });
 
-describe("EventControls — Baja/Herida form captures CAUSE and CAUSER (LM-20, MVT-5, D7)", () => {
-  it("shows a 'Causa de la lesión' select with the six causes and no causer by default", () => {
-    renderControls();
+describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
+  it("offers ONLY causer-required causes (blitz/foul/penetration/block) — never dodge/crowd", () => {
+    renderControls(); // viewer home, active home → ACTIVE
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     const cause = screen.getByLabelText(/Causa de la lesión/i) as HTMLSelectElement;
     const causes = Array.from(cause.options).map((o) => o.value.trim()).filter(Boolean);
-    expect(causes).toEqual(["blitz", "foul", "dodge", "crowd", "penetration", "block"]);
-    // The causer select only appears once a cause requiring a causer is chosen.
-    expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
+    expect(causes).toEqual(["blitz", "foul", "penetration", "block"]);
   });
 
-  it("shows the 'Autor de la lesión' select from the OPPONENT roster for the NON-active coach, submitting cause/causer on blitz", async () => {
-    const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
+  it("submits proposeCasualty with an OPPONENT victim, an OWN causer, the cause and roll16 (NO band)", async () => {
+    const { onSubmit } = renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
-    fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
+    // The victim select ("Jugador") lists the RIVAL alive players.
+    const victim = screen.getByLabelText(/^Jugador$/i) as HTMLSelectElement;
+    expect(Array.from(victim.options).map((o) => o.textContent)).toContain("Blitzer Rival");
+    fireEvent.change(victim, { target: { value: "o1" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
+    // The causer select lists the ACTIVE coach's OWN alive players.
     const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
-    const options = Array.from(causer.options).map((o) => o.textContent);
-    expect(options).toContain("Blitzer Rival");
-    fireEvent.change(causer, { target: { value: "o1" } });
-    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    expect(Array.from(causer.options).map((o) => o.textContent)).toContain("Blitzer A");
+    fireEvent.change(causer, { target: { value: "p2" } });
+    fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
+    fireEvent.click(screen.getByRole("button", { name: /Proponer/i }));
     expect(onSubmit).toHaveBeenCalledWith({
-      type: "casualty",
-      side: "home",
-      victimRosterId: "p1",
-      band: "grave",
+      type: "proposeCasualty",
+      victimRosterId: "o1",
+      causerRosterId: "p2",
       cause: "blitz",
-      causerRosterId: "o1",
+      roll16: 9,
     } as LiveCommand);
   });
 
-  it("hides the causer select for dodge/crowd and submits WITHOUT causerRosterId (NON-active coach)", async () => {
-    const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
-    fireEvent.click(screen.getByRole("button", { name: "+" }));
-    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
-    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "dodge" } });
-    // Strict client rule: no causer select for dodge.
-    expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
-    // Deep-equality match below already proves NO causerRosterId for dodge (strict LM-12).
-    expect(onSubmit).toHaveBeenCalledWith(
-      { type: "casualty", side: "home", victimRosterId: "p1", band: "bruise", cause: "dodge" } as LiveCommand,
-    );
-  });
-
-  it("disables Registrar until a causer is chosen when the cause requires one (LM-12 strict)", async () => {
-    renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
-    fireEvent.click(screen.getByRole("button", { name: "+" }));
-    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
-    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "block" } });
-    // Causer select is visible but empty → Registrar disabled until picked.
-    expect(screen.getByLabelText(/Autor de la lesión/i)).toBeTruthy();
-    expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "o2" } });
-    expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(false);
-  });
-});
-
-describe("EventControls — role-aware casualty pools (RAU-34)", () => {
-  it("ACTIVE coach: offers the OPPONENT roster as victims and the OWN roster as causers", async () => {
-    renderControls(); // viewer home, active home → ACTIVE
-    fireEvent.click(screen.getByRole("button", { name: "+" }));
-    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    // The victim select ("Jugador") lists the RIVAL alive players, not the viewer's own.
-    const victim = screen.getByLabelText(/^Jugador$/i) as HTMLSelectElement;
-    const victimOptions = Array.from(victim.options).map((o) => o.textContent);
-    expect(victimOptions).toContain("Blitzer Rival");
-    expect(victimOptions).toContain("Thrower Rival");
-    expect(victimOptions).not.toContain("Blitzer A");
-    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
-    // The causer select ("Autor de la lesión") lists the ACTIVE coach's OWN alive players.
-    const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
-    const causerOptions = Array.from(causer.options).map((o) => o.textContent);
-    expect(causerOptions).toContain("Blitzer A");
-    expect(causerOptions).toContain("Thrower A");
-    expect(causerOptions).not.toContain("Blitzer Rival");
-  });
-
-  it("ACTIVE coach: submits side = the VICTIM's (OPPONENT) side with an opponent victim and an own causer", async () => {
-    const { onSubmit } = renderControls(); // viewer home, active home → ACTIVE
+  it("shows the REQUIRED 1D6 when the derived band is permanent and includes it in the proposal", async () => {
+    const { onSubmit } = renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "o1" } });
-    fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
-    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
-    fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "p2" } });
-    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "block" } });
+    fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "p1" } });
+    // roll16 14 → derived band permanent → the 1D6 select appears and Registrar
+    // stays disabled until it is picked.
+    fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "14" } });
+    const submit = screen.getByRole("button", { name: /Proponer/i }) as HTMLButtonElement;
+    expect(screen.getByLabelText(/Tirada 1D6/i)).toBeTruthy();
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Tirada 1D6/i), { target: { value: "5" } });
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
     expect(onSubmit).toHaveBeenCalledWith({
-      type: "casualty",
-      side: "away",
+      type: "proposeCasualty",
       victimRosterId: "o1",
-      band: "grave",
-      cause: "blitz",
-      causerRosterId: "p2",
+      causerRosterId: "p1",
+      cause: "block",
+      roll16: 14,
+      roll6: 5,
     } as LiveCommand);
   });
 
-  it("ACTIVE coach: crowd casualty keeps the OPPONENT victim and the OPPONENT side, with no causer", async () => {
-    const { onSubmit } = renderControls(); // viewer home, active home → ACTIVE
+  it("keeps Registrar disabled until the causer is chosen (causer-required, RAU-39)", () => {
+    renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "o2" } });
-    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "crowd" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
+    fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
+    const submit = screen.getByRole("button", { name: /Proponer/i }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "p2" } });
+    expect(submit.disabled).toBe(false);
+  });
+});
+
+describe("EventControls — NON-active coach SELF-INFLICTED casualty (RAU-39)", () => {
+  it("offers ONLY self-inflicted causes (dodge/crowd) and NO causer select", () => {
+    renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    const cause = screen.getByLabelText(/Causa de la lesión/i) as HTMLSelectElement;
+    const causes = Array.from(cause.options).map((o) => o.value.trim()).filter(Boolean);
+    expect(causes).toEqual(["dodge", "crowd"]);
     expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
-    expect(onSubmit).toHaveBeenCalledWith({
-      type: "casualty",
-      side: "away",
-      victimRosterId: "o2",
-      band: "bruise",
-      cause: "crowd",
-    } as LiveCommand);
   });
 
-  it("NON-active coach: keeps OWN-roster victims, OPPONENT causers, and their OWN side", async () => {
+  it("submits a direct casualty with the OWN victim, roll16 and NO band for a dodge", async () => {
     const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    // Victim select stays the OWN roster; the rival roster does NOT bleed in.
+    // Victim select stays the OWN roster.
     const victim = screen.getByLabelText(/^Jugador$/i) as HTMLSelectElement;
-    const victimOptions = Array.from(victim.options).map((o) => o.textContent);
-    expect(victimOptions).toContain("Blitzer A");
-    expect(victimOptions).toContain("Thrower A");
-    expect(victimOptions).not.toContain("Blitzer Rival");
-    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
-    fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
-    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
-    const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
-    const causerOptions = Array.from(causer.options).map((o) => o.textContent);
-    expect(causerOptions).toContain("Blitzer Rival");
-    expect(causerOptions).not.toContain("Blitzer A");
-    fireEvent.change(causer, { target: { value: "o1" } });
+    expect(Array.from(victim.options).map((o) => o.textContent)).toContain("Blitzer A");
+    fireEvent.change(victim, { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "dodge" } });
+    fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
     fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    // Deep-equality proves NO band and NO causer on the wire (band derived server-side).
     expect(onSubmit).toHaveBeenCalledWith({
       type: "casualty",
       side: "home",
       victimRosterId: "p1",
-      band: "grave",
-      cause: "blitz",
-      causerRosterId: "o1",
+      cause: "dodge",
+      roll16: 9,
+    } as LiveCommand);
+  });
+
+  it("requires and sends the 1D6 when the derived band is permanent (crowd, roll16 13)", async () => {
+    const { onSubmit } = renderControls({ activeSide: "away" });
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "crowd" } });
+    fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "13" } });
+    const submit = screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Tirada 1D6/i), { target: { value: "6" } });
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "casualty",
+      side: "home",
+      victimRosterId: "p1",
+      cause: "crowd",
+      roll16: 13,
+      roll6: 6,
     } as LiveCommand);
   });
 });

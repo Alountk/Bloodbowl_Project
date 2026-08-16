@@ -90,6 +90,64 @@ export function bandSubLabel(payload: Record<string, unknown>): string | null {
 }
 
 /**
+ * RAU-39: the rulebook Spanish label for an injury band (1D16 table), used by
+ * the feed's roll sub-lines ("Tirada 1D16: 13 · Permanente"). Mirrors the
+ * result-summary `casualtyKindLabel` mapping; unknown bands pass through.
+ */
+export function casualtyBandLabel(band: string): string {
+  switch (band) {
+    case "bruise":
+      return "Magullado";
+    case "apaleado":
+      return "Apaleado";
+    case "grave":
+      return "Herida grave";
+    case "permanent":
+      return "Permanente";
+    case "dead":
+      return "Muerto";
+    default:
+      return band;
+  }
+}
+
+/** RAU-39: a permanent injury attribute's short display form (ar→AR etc.). */
+function attributeLabel(attribute: string): string {
+  return attribute.toUpperCase();
+}
+
+/**
+ * RAU-39: the roll sub-line for the INJURY card — "Tirada 1D16: {roll16}" (the
+ * band is already conveyed by the label + band sub-line). Missing/non-numeric
+ * rolls → null (legacy payloads keep the bare card, never throw).
+ */
+export function casualtyRollLine(payload: Record<string, unknown>): string | null {
+  const roll16 = payload.roll16;
+  if (typeof roll16 !== "number") return null;
+  return `Tirada 1D16: ${roll16}`;
+}
+
+/**
+ * RAU-39: the roll sub-line for the DERIVED ACTION card on the CAUSER's side —
+ * "Tirada 1D16: {roll16} · {band}" with the reduced attribute for a permanent
+ * injury ("Tirada 1D16: 13 · Permanente (−PS)"). The action card's label is the
+ * CAUSE, so the band rides here. Missing/non-numeric rolls → null.
+ */
+export function casualtyActionLine(payload: Record<string, unknown>): string | null {
+  const roll16 = payload.roll16;
+  if (typeof roll16 !== "number") return null;
+  const band = typeof payload.band === "string" ? payload.band : null;
+  const bandText = band ? casualtyBandLabel(band) : "";
+  let line = `Tirada 1D16: ${roll16}`;
+  if (bandText) line += ` · ${bandText}`;
+  const attribute = payload.permanentAttribute;
+  if (band === "permanent" && typeof attribute === "string") {
+    line += ` (−${attributeLabel(attribute)})`;
+  }
+  return line;
+}
+
+/**
  * The kickoff expensive-mistake outcome → Spanish display label (LM-24):
  * "Crisis evitada" | "Incidente menor" | "Incidente grave" | "Catástrofe".
  * The card maps an outcome through the index so an unknown outcome never
