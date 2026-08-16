@@ -327,6 +327,33 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // Coach B converges to the live state via SSE (no reload).
     await expect(rival.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
+    // MVT-6 / LM-21 / LM-22: the kickoff events are spliced BEFORE start and
+    // render at minute 0' — one expensive_mistake per team (2 "Error costoso"
+    // team cards) plus one centered fan_factor row ("Factor de aficionados"),
+    // all appearing before any turn events. The `live-event-row` testid is
+    // preserved on every card (MVT-1 continuity).
+    const liveRows = admin.getByTestId("live-event-row");
+    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(2);
+    await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
+    // The kickoff rows share the begin instant with `startedAt`, so deriveMinute
+    // clamps them all to 0' (MVT-6 "kickoff rows at minute zero").
+    await expect(
+      liveRows.filter({ hasText: /Error costoso|Factor de aficionados/ }).first(),
+    ).toContainText("0'");
+
+    // LM-21 "begin retry is idempotent": a second begin after an already-live
+    // match returns 409 via the route's 409 catch (beginLiveMatch maps
+    // "begin only from ready" → 409), the seq/treasury guard keeps it from
+    // re-persisting kickoff rows, and the treasury is NOT deducted twice. The
+    // kickoff row counts stay EXACTLY 2 + 1 — no duplicate rows.
+    const retryBegin = await admin.request.post(
+      `/api/leagues/${leagueId}/fixtures/${fixtureId}/live`,
+      { data: { type: "begin" } },
+    );
+    expect(retryBegin.status()).toBe(409);
+    await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(2);
+    await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
+
     // MVT-2/MVT-3: the sticky Tourplay header renders the back arrow to the
     // jornada and the horizontal timeline bar once the match is live. The bar
     // derives from the LM-16 display events only, so a reload reproduces it.
