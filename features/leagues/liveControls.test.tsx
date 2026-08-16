@@ -196,8 +196,8 @@ describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
     const { onSubmit } = renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    // The victim select ("Jugador") lists the RIVAL alive players.
-    const victim = screen.getByLabelText(/^Jugador$/i) as HTMLSelectElement;
+    // The victim select ("Víctima") lists the RIVAL alive players.
+    const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
     expect(Array.from(victim.options).map((o) => o.textContent)).toContain("Blitzer Rival");
     fireEvent.change(victim, { target: { value: "o1" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
@@ -220,7 +220,7 @@ describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
     const { onSubmit } = renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "o1" } });
+    fireEvent.change(screen.getByLabelText(/^Víctima$/i), { target: { value: "o1" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "block" } });
     fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "p1" } });
     // roll16 14 → derived band permanent → the 1D6 select appears and Registrar
@@ -246,7 +246,7 @@ describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
     renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "o2" } });
+    fireEvent.change(screen.getByLabelText(/^Víctima$/i), { target: { value: "o2" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
     const submit = screen.getByRole("button", { name: /Proponer/i }) as HTMLButtonElement;
@@ -272,7 +272,7 @@ describe("EventControls — NON-active coach SELF-INFLICTED casualty (RAU-39)", 
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     // Victim select stays the OWN roster.
-    const victim = screen.getByLabelText(/^Jugador$/i) as HTMLSelectElement;
+    const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
     expect(Array.from(victim.options).map((o) => o.textContent)).toContain("Blitzer A");
     fireEvent.change(victim, { target: { value: "p1" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "dodge" } });
@@ -292,7 +292,7 @@ describe("EventControls — NON-active coach SELF-INFLICTED casualty (RAU-39)", 
     const { onSubmit } = renderControls({ activeSide: "away" });
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText(/^Víctima$/i), { target: { value: "p1" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "crowd" } });
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "13" } });
     const submit = screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement;

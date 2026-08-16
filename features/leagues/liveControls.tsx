@@ -194,24 +194,28 @@ export function EventControls({
           <p className="mb-2 text-sm font-bold text-[#12225a]">
             {t(menuItems.find((m) => m.kind === kind)?.key ?? "match.controls.recordEvent")}
           </p>
-          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-            {t("match.controls.player")}
-          </label>
-          <select
-            aria-label={t("match.controls.player")}
-            value={playerRosterId}
-            onChange={(e) => setPlayerRosterId(e.target.value)}
-            className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
-          >
-            <option value="" disabled>
-              {t("match.controls.select")}
-            </option>
-            {(kind === "casualty" ? victimPool : alivePlayers).map((p) => (
-              <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          {kind !== "casualty" ? (
+            <>
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                {t("match.controls.player")}
+              </label>
+              <select
+                aria-label={t("match.controls.player")}
+                value={playerRosterId}
+                onChange={(e) => setPlayerRosterId(e.target.value)}
+                className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="" disabled>
+                  {t("match.controls.select")}
+                </option>
+                {alivePlayers.map((p) => (
+                  <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
           {kind === "casualty" ? (
             <>
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
@@ -259,6 +263,28 @@ export function EventControls({
                   </select>
                 </>
               ) : null}
+              {/* Víctima: for the ACTIVE coach this lists the RIVAL roster (the
+                  player who suffered the injury); for the NON-active path it is
+                  their OWN player (self-inflicted). Labeled "Víctima" so it never
+                  reads as the attacker's own player. */}
+              <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                {t("match.controls.victim")}
+              </label>
+              <select
+                aria-label={t("match.controls.victim")}
+                value={playerRosterId}
+                onChange={(e) => setPlayerRosterId(e.target.value)}
+                className="mb-3 w-full rounded border border-[#e2e8f0] bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="" disabled>
+                  {t("match.controls.select")}
+                </option>
+                {victimPool.map((p) => (
+                  <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
               <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 {t("match.controls.roll16")}
               </label>
