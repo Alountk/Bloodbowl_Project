@@ -50,6 +50,7 @@ function liveSnapshot(overrides: Partial<LiveMatchViewState> = {}): LiveMatchVie
     paused: false,
     finishedAt: null,
     concedeProposedBy: null,
+    pendingCasualty: null,
     ...overrides,
   };
 }

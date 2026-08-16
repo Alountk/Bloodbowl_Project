@@ -574,6 +574,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
+      pendingCasualty: null,
     };
     expect(live.status).toBe("pending");
     expect(live.homeConsented).toBe(true);
@@ -606,6 +607,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
+      pendingCasualty: null,
     };
     expect(live.homeTurnMs).toBe(5100);
     expect(live.awayTurnMs).toBe(3000);
@@ -635,6 +637,7 @@ describe("sendLiveCommand", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
+      pendingCasualty: null,
     };
     vi.stubGlobal(
       "fetch",
@@ -702,7 +705,7 @@ describe("LiveCommand — LM-6 foul casualty payloads and actor fields", () => {
     );
   });
 
-  it("sends a casualty with cause + causerRosterId and a dodge one with neither", async () => {
+  it("sends a self-inflicted casualty with roll16 (no band, no causer) and the two-phase propose/confirm commands", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -730,35 +733,43 @@ describe("LiveCommand — LM-6 foul casualty payloads and actor fields", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await sendLiveCommand("lg-1", "f-1", {
-      type: "casualty",
-      side: "home",
-      victimRosterId: "p1",
-      band: "mng",
-      cause: "blitz",
-      causerRosterId: "p9",
-    });
+    // Self-inflicted (dodge/crowd): roll16 on the wire, NEVER a band or causer.
+    await sendLiveCommand("lg-1", "f-1", { type: "casualty", side: "home", victimRosterId: "p1", cause: "dodge", roll16: 9 });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/leagues/lg-1/fixtures/f-1/live",
       expect.objectContaining({
+        body: JSON.stringify({ type: "casualty", side: "home", victimRosterId: "p1", cause: "dodge", roll16: 9 }),
+      }),
+    );
+
+    // Two-phase propose: causer + victim + cause + rolls (band derived server-side).
+    await sendLiveCommand("lg-1", "f-1", {
+      type: "proposeCasualty",
+      victimRosterId: "p9",
+      causerRosterId: "p1",
+      cause: "blitz",
+      roll16: 14,
+      roll6: 5,
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({
         body: JSON.stringify({
-          type: "casualty",
-          side: "home",
-          victimRosterId: "p1",
-          band: "mng",
+          type: "proposeCasualty",
+          victimRosterId: "p9",
+          causerRosterId: "p1",
           cause: "blitz",
-          causerRosterId: "p9",
+          roll16: 14,
+          roll6: 5,
         }),
       }),
     );
 
-    // Crowd/self-inflicted: no causer on the wire.
-    await sendLiveCommand("lg-1", "f-1", { type: "casualty", side: "home", victimRosterId: "p1", cause: "dodge" });
+    // Confirm carries no body fields beyond the type.
+    await sendLiveCommand("lg-1", "f-1", { type: "confirmCasualty" });
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/leagues/lg-1/fixtures/f-1/live",
-      expect.objectContaining({
-        body: JSON.stringify({ type: "casualty", side: "home", victimRosterId: "p1", cause: "dodge" }),
-      }),
+      expect.objectContaining({ body: JSON.stringify({ type: "confirmCasualty" }) }),
     );
   });
 });
@@ -782,6 +793,7 @@ describe("LiveCommand — RAU-38 concede propose / respond", () => {
     awayScore: 0,
     finishedAt: null,
     concedeProposedBy: null,
+    pendingCasualty: null,
   };
 
   it("sends { type: 'concede' } on the wire", async () => {

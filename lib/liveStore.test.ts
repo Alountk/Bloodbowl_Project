@@ -9,6 +9,8 @@ import {
   proposeConcedeLiveMatch,
   declineConcedeLiveMatch,
   acceptConcedeLiveMatch,
+  proposeCasualtyLiveMatch,
+  confirmCasualtyLiveMatch,
   liveMatchRowToState,
   type StoreDeps,
 } from "./liveStore";
@@ -48,6 +50,7 @@ function fakeRow(): LiveMatchState {
     clockStartedAt: 1000,
     finishedAt: null,
     concedeProposedBy: null,
+    pendingCasualty: null,
     events: [],
   };
 }
@@ -109,6 +112,7 @@ describe("liveMatchRowToState", () => {
       clockStartedAt: null,
       finishedAt: null,
       concedeProposedBy: null,
+      pendingCasualty: null,
     });
     expect(state.status).toBe("ready");
     expect(state.homeConsented).toBe(true);
@@ -139,8 +143,48 @@ describe("liveMatchRowToState", () => {
       clockStartedAt: null,
       finishedAt: null,
       concedeProposedBy: "home",
+      pendingCasualty: null,
     });
     expect(state.concedeProposedBy).toBe("home");
+  });
+
+  it("maps a persisted pendingCasualty JSON value onto the pure state and nulls malformed JSON (RAU-39)", () => {
+    const base = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 9,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+      concedeProposedBy: null,
+    } as const;
+    const parsed = liveMatchRowToState({
+      ...base,
+      pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 },
+    });
+    expect(parsed.pendingCasualty).toEqual({
+      proposerSide: "home",
+      victimRosterId: "p9",
+      causerRosterId: "p1",
+      cause: "blitz",
+      roll16: 13,
+      roll6: 4,
+    });
+    // Malformed JSON (not an object / missing fields) collapses to null — never crash.
+    expect(liveMatchRowToState({ ...base, pendingCasualty: "garbage" }).pendingCasualty).toBeNull();
+    expect(liveMatchRowToState({ ...base, pendingCasualty: { proposerSide: "nope", victimRosterId: 1 } }).pendingCasualty).toBeNull();
+    expect(liveMatchRowToState({ ...base, pendingCasualty: null }).pendingCasualty).toBeNull();
   });
 });
 
@@ -655,6 +699,7 @@ describe("proposeConcedeLiveMatch — persists the proposal under the seq guard 
       clockStartedAt: new Date(1000).toISOString(),
       finishedAt: null,
       concedeProposedBy: null,
+      pendingCasualty: null,
       ...overrides,
     };
   }
@@ -804,6 +849,7 @@ describe("declineConcedeLiveMatch — clears the proposal so the match continues
       clockStartedAt: new Date(1000).toISOString(),
       finishedAt: null,
       concedeProposedBy: null,
+      pendingCasualty: null,
     };
   }
 });
@@ -849,6 +895,7 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
           status: "finished",
           finishedAt: new Date(2000),
           concedeProposedBy: null,
+          pendingCasualty: null,
           paused: false,
           clockStartedAt: null,
         }),
@@ -902,6 +949,7 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
       status: "finished",
       finishedAt: new Date(2000).toISOString(),
       concedeProposedBy: null,
+      pendingCasualty: null,
     });
 
     await expect(
@@ -928,6 +976,174 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
     ).rejects.toMatchObject({ code: "P2028" });
     // The fixture close never ran inside the aborted tx (atomic with the event).
     expect(fixtureUpdate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("proposeCasualtyLiveMatch — persists pendingCasualty under the seq guard (RAU-39)", () => {
+  function liveRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 5,
+      paused: false,
+      clockStartedAt: new Date(1000).toISOString(),
+      finishedAt: null,
+      concedeProposedBy: null,
+      pendingCasualty: null,
+      ...overrides,
+    };
+  }
+
+  const proposal = {
+    liveMatchId: "lm-1",
+    fixtureId: "f-1",
+    side: "home" as const,
+    victimRosterId: "p9",
+    causerRosterId: "p1",
+    cause: "blitz" as const,
+    roll16: 13,
+    roll6: 4,
+    now: 2000,
+  };
+
+  it("persists pendingCasualty = the proposal, bumps the seq and publishes", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(liveRow());
+
+    const result = await proposeCasualtyLiveMatch(proposal, deps);
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 5 },
+        data: expect.objectContaining({
+          seq: 6,
+          pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 },
+        }),
+      }),
+    );
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({ seq: 6, pendingCasualty: expect.objectContaining({ proposerSide: "home" }) }),
+    );
+    expect(result.view.pendingCasualty).toEqual(expect.objectContaining({ victimRosterId: "p9" }));
+  });
+
+  it("maps a state-machine rejection (double-propose / non-live / non-active) to 409 with no mutation", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(
+      liveRow({ pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13 } }),
+    );
+
+    await expect(proposeCasualtyLiveMatch(proposal, deps)).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when no LiveMatch row exists", async () => {
+    const { deps } = makeDeps(1);
+    await expect(proposeCasualtyLiveMatch(proposal, deps)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("confirmCasualtyLiveMatch — persists the casualty event atomically and clears the proposal (RAU-39)", () => {
+  /** Home proposed a blitz casualty (roll16 13 → permanent, roll6 4 → ps). */
+  const pendingRow = {
+    id: "lm-1",
+    fixtureId: "f-1",
+    status: "live",
+    half: 1,
+    turnNumber: 2,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    startedAt: new Date(1000).toISOString(),
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    homeScore: 0,
+    awayScore: 0,
+    seq: 5,
+    paused: false,
+    clockStartedAt: new Date(1000).toISOString(),
+    finishedAt: null,
+    concedeProposedBy: null,
+    pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 },
+  };
+
+  it("persists the casualty event + pendingCasualty null in the SAME transaction, then publishes", async () => {
+    const { deps, liveMatchFindFirst, updateMany, liveEventCreate, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(pendingRow);
+
+    const result = await confirmCasualtyLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 },
+      deps,
+    );
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 5 },
+        data: expect.objectContaining({ seq: 6, pendingCasualty: null }),
+      }),
+    );
+    // The casualty event row commits atomically with the cleared proposal.
+    expect(liveEventCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          liveMatchId: "lm-1",
+          seq: 6,
+          kind: "casualty",
+          side: "away",
+          playerRosterId: "p9",
+          payload: {
+            victimRosterId: "p9",
+            causerRosterId: "p1",
+            cause: "blitz",
+            roll16: 13,
+            roll6: 4,
+            band: "permanent",
+            permanentAttribute: "ps",
+          },
+        }),
+      }),
+    );
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({ seq: 6, pendingCasualty: null }),
+    );
+    expect(result.view.pendingCasualty).toBeNull();
+  });
+
+  it("maps a confirm with no pending proposal / proposer-self to 409 with no mutation", async () => {
+    const { deps, liveMatchFindFirst, updateMany, liveEventCreate, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue({ ...pendingRow, pendingCasualty: null });
+
+    await expect(
+      confirmCasualtyLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 }, deps),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(liveEventCreate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the whole transaction when the event row fails (atomicity)", async () => {
+    const { deps, liveMatchFindFirst, liveEventCreate, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(pendingRow);
+    liveEventCreate.mockRejectedValue(Object.assign(new Error("db down"), { code: "P2028" }));
+
+    await expect(
+      confirmCasualtyLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 }, deps),
+    ).rejects.toMatchObject({ code: "P2028" });
     expect(publish).not.toHaveBeenCalled();
   });
 });

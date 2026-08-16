@@ -542,6 +542,16 @@ export interface LiveMatchViewState {
   finishedAt: number | null;
   /** RAU-38: the side that proposed to concede, or null when none is pending. */
   concedeProposedBy: "home" | "away" | null;
+  /** RAU-39: the pending casualty proposal (proposer/causer/victim/cause/rolls),
+   * or null when none is pending. */
+  pendingCasualty: {
+    proposerSide: "home" | "away";
+    victimRosterId: string;
+    causerRosterId: string;
+    cause: CasualtyCause;
+    roll16: number;
+    roll6?: number;
+  } | null;
 }
 
 /** A chronological live event delivered by the hub (LM-6). */
@@ -570,12 +580,25 @@ export type LiveCommand =
       type: "casualty";
       side: "home" | "away";
       victimRosterId: string;
-      band?: unknown;
-      /** One of blitz|foul|dodge|crowd|penetration|block (MVT-5/LM-6). */
-      cause?: CasualtyCause;
-      /** The opposite-side causer; ABSENT for dodge/crowd (LM-12 strict). */
-      causerRosterId?: string;
+      /** Self-inflicted only (dodge/crowd): the victim's own side records the
+       * injury directly, no confirmation. The band is DERIVED server-side from
+       * `roll16` — the client never sends a band. */
+      cause: CasualtyCause;
+      /** The 1D16 injury roll the players actually rolled (1..16). */
+      roll16: number;
+      /** The 1D6 attribute roll, REQUIRED when the derived band is permanent. */
+      roll6?: number;
     }
+  | {
+      type: "proposeCasualty";
+      victimRosterId: string;
+      causerRosterId: string;
+      /** One of blitz|foul|penetration|block (causer-required causes). */
+      cause: CasualtyCause;
+      roll16: number;
+      roll6?: number;
+    }
+  | { type: "confirmCasualty" }
   | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
   | { type: "endMatch" }

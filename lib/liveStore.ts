@@ -31,12 +31,16 @@ import {
   proposeConcede,
   declineConcede,
   acceptConcede,
+  proposeCasualty,
+  confirmCasualty,
   toLiveViewState,
   isStartableFixture,
   type FixtureStartState,
   type LiveMatchState,
+  type PendingCasualty,
   type TeamSide,
 } from "./liveMatch";
+import type { CasualtyCause } from "./livePhase";
 import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
@@ -93,6 +97,36 @@ interface LiveMatchRowFields {
   finishedAt: Date | string | null;
   /** RAU-38: the side that proposed to concede (null until proposed/resolved). */
   concedeProposedBy: TeamSide | null;
+  /** RAU-39: the pending casualty proposal JSON (null until proposed/confirmed). */
+  pendingCasualty: Prisma.JsonValue | null;
+}
+
+/** Defensively parses a persisted `pendingCasualty` JSON value into the pure
+ * state shape; malformed/unknown values collapse to null (never crash). */
+function toPendingCasualty(value: Prisma.JsonValue | null): PendingCasualty | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  const proposerSide = v.proposerSide;
+  const cause = v.cause;
+  const roll16 = v.roll16;
+  const roll6 = v.roll6;
+  if (
+    (proposerSide !== "home" && proposerSide !== "away") ||
+    typeof v.victimRosterId !== "string" ||
+    typeof v.causerRosterId !== "string" ||
+    typeof cause !== "string" ||
+    typeof roll16 !== "number"
+  ) {
+    return null;
+  }
+  return {
+    proposerSide,
+    victimRosterId: v.victimRosterId,
+    causerRosterId: v.causerRosterId,
+    cause: cause as CasualtyCause,
+    roll16,
+    ...(typeof roll6 === "number" ? { roll6 } : {}),
+  };
 }
 
 /** Converts a persisted LiveMatch row (ISO statuses/timestamps) into a pure state. */
@@ -116,6 +150,7 @@ export function liveMatchRowToState(
     clockStartedAt: row.clockStartedAt ? new Date(row.clockStartedAt).getTime() : null,
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
     concedeProposedBy: row.concedeProposedBy,
+    pendingCasualty: toPendingCasualty(row.pendingCasualty ?? null),
     events: [],
   };
 }
@@ -137,6 +172,12 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
     clockStartedAt: next.clockStartedAt != null ? new Date(next.clockStartedAt) : null,
     finishedAt: next.finishedAt != null ? new Date(next.finishedAt) : null,
     concedeProposedBy: next.concedeProposedBy,
+    // Nullable JSON: SQL NULL when no proposal is pending (Prisma's TS input
+    // type omits bare `null`, so the value is cast — the runtime JSON write is
+    // exactly the object, or SQL NULL when cleared).
+    pendingCasualty: next.pendingCasualty as unknown as
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue,
   };
 }
 
@@ -285,6 +326,7 @@ async function createFirstConsent(
     clockStartedAt: null,
     finishedAt: null,
     concedeProposedBy: null,
+    pendingCasualty: null,
     events: [],
   };
 
@@ -552,14 +594,93 @@ export async function acceptConcedeLiveMatch(
   return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
 }
 
+export interface ProposeCasualtyInput {
+  liveMatchId: string;
+  fixtureId: string;
+  /** The caller's side — MUST be the ACTIVE side (the state machine enforces). */
+  side: TeamSide;
+  victimRosterId: string;
+  causerRosterId: string;
+  cause: CasualtyCause;
+  roll16: number;
+  roll6?: number;
+  now: number;
+}
+
+export interface ConfirmCasualtyInput {
+  liveMatchId: string;
+  fixtureId: string;
+  /** The caller's side — the responder, opposite the proposer. */
+  side: TeamSide;
+  now: number;
+}
+
+/**
+ * RAU-39 propose: persists `pendingCasualty` (the ACTIVE coach's casualty
+ * proposal) under the optimistic seq guard. Any state-machine rejection
+ * (non-live, double-propose, non-active caller, invalid rolls) is mapped to 409;
+ * the optimistic guard catches a concurrent double-propose too.
+ */
+export async function proposeCasualtyLiveMatch(
+  input: ProposeCasualtyInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const current = liveMatchRowToState(row);
+  let next: LiveMatchState;
+  try {
+    next = proposeCasualty(current, {
+      side: input.side,
+      victimRosterId: input.victimRosterId,
+      causerRosterId: input.causerRosterId,
+      cause: input.cause,
+      roll16: input.roll16,
+      roll6: input.roll6,
+    });
+  } catch (error) {
+    throw Object.assign(error as Error, { status: 409 });
+  }
+  const nextSeq = await persistAndPublish(
+    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    deps,
+  );
+  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+/**
+ * RAU-39 confirm: the NON-proposer confirms a pending casualty → the `casualty`
+ * event persists ATOMICALLY (band derived server-side from the 1D16 roll) and
+ * `pendingCasualty` clears, all in the same transaction. A casualty has no money
+ * effect — no treasury/winnings are involved (unlike the kickoff EM). Any
+ * state-machine rejection (non-live, no proposal, proposer-self) → 409.
+ */
+export async function confirmCasualtyLiveMatch(
+  input: ConfirmCasualtyInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const current = liveMatchRowToState(row);
+  let next: LiveMatchState;
+  try {
+    next = confirmCasualty(current, input.side, input.now);
+  } catch (error) {
+    throw Object.assign(error as Error, { status: 409 });
+  }
+  const nextSeq = await persistAndPublish(
+    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
+    deps,
+  );
+  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
 export interface PauseResumeInput {
   liveMatchId: string;
   fixtureId: string;
   current: LiveMatchState;
   now: number;
-}
-
-/**
+}/**
  * Hub-driven internal pause (LM-7/D18): bumps the ACTIVE accumulator by the
  * in-flight segment `(now - clockStartedAt)`, then sets `paused=true` and
  * `clockStartedAt=null` (the active clock consumes no further time) under the
