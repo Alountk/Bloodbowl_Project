@@ -7,6 +7,9 @@ import {
   applyTD,
   applyCompletion,
   applyEndMatch,
+  proposeConcede,
+  declineConcede,
+  acceptConcede,
   toLiveViewState,
   deriveLiveClock,
   isDisplayEvent,
@@ -16,8 +19,9 @@ import {
 
 /**
  * Pure-transition tests for the live-match state machine with the two-phase
- * consent→ready→begin lifecycle (LM-11/LM-3) and the unified server-owned clock
- * (LM-5). `lib/result.test.ts` precedent: zero mocks, deterministic `now`.
+ * consent→ready→begin lifecycle (LM-11/LM-3), the unified server-owned clock
+ * (LM-5), and the concession proposal/accept/decline (RAU-38). `lib/result.test.ts`
+ * precedent: zero mocks, deterministic `now`.
  */
 
 function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
@@ -37,6 +41,7 @@ function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     paused: false,
     clockStartedAt: 1000,
     finishedAt: null,
+    concedeProposedBy: null,
     events: [],
     ...overrides,
   };
@@ -59,6 +64,7 @@ function pending(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     paused: false,
     clockStartedAt: null,
     finishedAt: null,
+    concedeProposedBy: null,
     events: [],
     ...overrides,
   };
@@ -304,8 +310,8 @@ describe("applyCompletion — records a ★1 completion event WITHOUT flipping t
 });
 
 describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
-  it("accepts exactly the 10 display kinds incl. the kickoff kinds (start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor)", () => {
-    const displayKinds = ["start", "td", "completion", "casualty", "foul", "endHalf", "endMatch", "mvp", "expensive_mistake", "fan_factor"];
+  it("accepts exactly the 11 display kinds incl. the kickoff kinds and concede (start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede)", () => {
+    const displayKinds = ["start", "td", "completion", "casualty", "foul", "endHalf", "endMatch", "mvp", "expensive_mistake", "fan_factor", "concede"];
     for (const kind of displayKinds) {
       expect(isDisplayEvent(kind)).toBe(true);
     }
@@ -321,6 +327,93 @@ describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
     expect(isDisplayEvent("interception")).toBe(false);
     expect(isDisplayEvent("")).toBe(false);
     expect(isDisplayEvent("blitz")).toBe(false);
+  });
+});
+
+describe("proposeConcede — only while live, one proposal at a time (RAU-38)", () => {
+  it("sets concedeProposedBy to the proposing side on a live match", () => {
+    const next = proposeConcede(state(), "home");
+    expect(next.concedeProposedBy).toBe("home");
+    // No event and no other state change — the proposal is purely the flag.
+    expect(next.events).toHaveLength(0);
+    expect(next.status).toBe("live");
+  });
+
+  it("is an idempotent no-op when the SAME side retries while the proposal is pending", () => {
+    const base = state({ concedeProposedBy: "home" });
+    const next = proposeConcede(base, "home");
+    expect(next).toBe(base);
+  });
+
+  it("rejects a second proposal from the OTHER side while one is pending", () => {
+    expect(() => proposeConcede(state({ concedeProposedBy: "home" }), "away")).toThrow("already");
+  });
+
+  it("rejects a propose outside live (pending/ready/finished)", () => {
+    expect(() => proposeConcede(pending(), "home")).toThrow("live");
+    expect(() => proposeConcede(pending({ status: "ready" }), "home")).toThrow("live");
+    expect(() => proposeConcede(state({ status: "finished", concedeProposedBy: null }), "home")).toThrow("live");
+  });
+});
+
+describe("declineConcede — the NON-proposer clears the proposal (RAU-38)", () => {
+  it("clears concedeProposedBy so the match continues", () => {
+    const next = declineConcede(state({ concedeProposedBy: "home" }), "away");
+    expect(next.concedeProposedBy).toBeNull();
+    expect(next.status).toBe("live");
+    expect(next.events).toHaveLength(0);
+  });
+
+  it("is a no-op when no proposal is pending (retry-safe)", () => {
+    const base = state();
+    expect(declineConcede(base, "home")).toBe(base);
+  });
+
+  it("rejects the PROPOSER declining their own proposal", () => {
+    expect(() => declineConcede(state({ concedeProposedBy: "home" }), "home")).toThrow("own");
+  });
+});
+
+describe("acceptConcede — the NON-proposer accepts → finished + concede event (RAU-38)", () => {
+  it("finishes the match, records the acceptor as winner in the payload and nulls the proposal", () => {
+    const next = acceptConcede(state({ concedeProposedBy: "home", homeScore: 1, awayScore: 0 }), "away", 1100);
+    expect(next.status).toBe("finished");
+    expect(next.finishedAt).toBe(1100);
+    expect(next.concedeProposedBy).toBeNull();
+    // The concede event side is the SURRENDERING side (the proposer, home).
+    const concede = next.events.find((e) => e.kind === "concede");
+    expect(concede).toBeTruthy();
+    expect(concede!.side).toBe("home");
+    expect(concede!.payload.winnerSide).toBe("away");
+    expect(concede!.seq).toBe(6);
+    expect(concede!.at).toBe(1100);
+    expect(concede!.half).toBe(1);
+    expect(concede!.turnNumber).toBe(1);
+    // The scoreboard stays untouched — a concession records the victory on the
+    // fixture, never the live scoreboard.
+    expect(next.homeScore).toBe(1);
+    expect(next.awayScore).toBe(0);
+  });
+
+  it("rejects when the ACCEPTOR is the proposer", () => {
+    expect(() => acceptConcede(state({ concedeProposedBy: "home" }), "home", 1100)).toThrow("own");
+  });
+
+  it("rejects when no proposal is pending", () => {
+    expect(() => acceptConcede(state(), "away", 1100)).toThrow("no concede");
+  });
+
+  it("rejects when the match is not live (already finished or never begun)", () => {
+    expect(() => acceptConcede(state({ status: "finished", concedeProposedBy: "home" }), "away", 1100)).toThrow("live");
+    expect(() => acceptConcede(pending({ concedeProposedBy: "home" }), "away", 1100)).toThrow("live");
+  });
+
+  it("bumps the ACTIVE accumulator before finishing (LM-5 parity with applyEndMatch)", () => {
+    // home active, clockStartedAt 1000 → accepting at 1100 banks +100ms for home.
+    const next = acceptConcede(state({ concedeProposedBy: "away" }), "home", 1100);
+    expect(next.homeTurnMs).toBe(100);
+    expect(next.clockStartedAt).toBeNull();
+    expect(next.paused).toBe(false);
   });
 });
 
