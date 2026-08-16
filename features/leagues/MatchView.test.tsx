@@ -1636,7 +1636,8 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
     expect(screen.queryByRole("button", { name: /Aceptar|Rechazar|Conceder/i })).toBeNull();
     unmountHome();
 
-    // The RIVAL (away coach, u2) sees the surrender + accept/decline buttons.
+    // The RIVAL (away coach, u2) sees the surrender in an EXPLANATORY MODAL
+    // (RAU-43) with accept/decline buttons.
     stubLiveEventSource();
     vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
     const rivalDetail = concedeLive("home");
@@ -1644,7 +1645,9 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
     stubMatch(rivalDetail);
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("dialog", { name: /Propuesta de rendición del rival/i })).toBeTruthy();
     expect(screen.getByText(/El rival se rinde/)).toBeTruthy();
+    expect(screen.getByText(/Si aceptas, el partido termina con la victoria para tu equipo/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Aceptar" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Rechazar" })).toBeTruthy();
     expect(screen.queryByText(/Esperando respuesta del rival/)).toBeNull();
@@ -1675,6 +1678,8 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
     vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
     const { unmount } = renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    // The rival's response lives in the explanatory modal (RAU-43).
+    expect(screen.getByRole("dialog", { name: /Propuesta de rendición del rival/i })).toBeTruthy();
 
     act(() => screen.getByRole("button", { name: "Aceptar" }).click());
     await waitFor(() => {
@@ -1697,6 +1702,7 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
     stubLiveEventSource();
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("dialog", { name: /Propuesta de rendición del rival/i })).toBeTruthy();
     act(() => screen.getByRole("button", { name: "Rechazar" }).click());
     await waitFor(() => {
       const posts = declineFetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
@@ -1775,6 +1781,8 @@ describe("MatchView — RAU-39 casualty propose → confirm (two-phase)", () => 
     vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    // The defender's confirmation lives in the explanatory modal (RAU-43).
+    expect(screen.getByRole("dialog", { name: /Baja registrada por el rival/i })).toBeTruthy();
     expect(screen.getByText(/El rival registra una baja/)).toBeTruthy();
     // Derived details: the victim is on the side OPPOSITE the proposer (away →
     // "Blitzer B"), the cause, the 1D16 roll and the DERIVED band + permanent
@@ -1796,6 +1804,7 @@ describe("MatchView — RAU-39 casualty propose → confirm (two-phase)", () => 
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Confirmar" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: /Baja registrada por el rival/i })).toBeNull();
     expect(screen.queryByText(/El rival registra una baja/)).toBeNull();
     expect(screen.queryByText(/Esperando confirmación del rival/)).toBeNull();
   });
