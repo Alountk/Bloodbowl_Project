@@ -1,15 +1,16 @@
 import { deriveMinute, playerRef, turnTag, derivePartialScore } from "@/lib/liveFeed";
-import { CAUSE_LABELS, EVENT_GLYPH } from "./liveEventLabels";
+import { CAUSE_LABELS, EVENT_GLYPH, KICKOFF_OUTCOME_LABELS, formatTreasury } from "./liveEventLabels";
 import { liveEventLabel, eventSpp } from "./liveEventLabels";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
 
 /**
  * The Design-A per-event kind surface that renders as a TEAM card at 68% width
  * (MVT-1): a wide-event usually names a player on one side, so the card sits on
- * that team's side with a navy (home) / red (away) internal gradient. Every
- * other display kind (start/endHalf/endMatch) is a GENERIC event at 100%.
+ * that team's side with a navy (home) / red (away) internal gradient. The
+ * kickoff `expensive_mistake` is a team card too (MVT-6/LM-24). Every other
+ * display kind (start/endHalf/endMatch/fan_factor) is a GENERIC event at 100%.
  */
-const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp"]);
+const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake"]);
 
 /** A roster player lookup for a side: id → { name, dorsal } or undefined. */
 type RosterLookup = { name: string; dorsal: number } | undefined;
@@ -74,6 +75,52 @@ export function casualtyCauseLine(
 /** The render-time glyph for a casualty: skull (lasting) vs cross (bruise). */
 function casualtyGlyph(payload: Record<string, unknown>): string {
   return typeof payload.band === "string" && payload.band === "bruise" ? "🏥" : "⚰️";
+}
+
+/**
+ * The es-ES treasury before → after line for an `expensive_mistake` card
+ * (LM-24), e.g. "234.000 → 214.000 M.O.". Returns null when either field is
+ * missing/non-numeric so the caller renders the label WITHOUT the line and
+ * never throws (LM-24 fallback).
+ */
+function treasuryLine(payload: Record<string, unknown>): string | null {
+  const before = payload.treasuryBefore;
+  const after = payload.treasuryAfter;
+  if (typeof before !== "number" || typeof after !== "number") return null;
+  // es-ES dot-thousands BEFORE (no suffix) → formatTreasury AFTER (carries the
+  // single trailing " M.O."), per LM-24 "234.000 → 214.000 M.O.".
+  const beforeText = new Intl.NumberFormat("es-ES").format(before);
+  return `${beforeText} → ${formatTreasury(after)}`;
+}
+
+/** The outcome display label for an `expensive_mistake` card (LM-24). */
+function outcomeLabel(payload: Record<string, unknown>): string | null {
+  const outcome = payload.outcome;
+  if (typeof outcome !== "string") return null;
+  return KICKOFF_OUTCOME_LABELS[outcome] ?? outcome;
+}
+
+/**
+ * The compact per-team fan-factor copy for the centered `fan_factor` row
+ * (LM-24): `Local: 👥2 + 🎲2 = 4 · Visitante: 👥1 + 🎲3 = 4`. A missing/malformed
+ * per-team object falls back to a bare `Local: ? · Visitante: ?` marker so the
+ * row always renders and never throws.
+ */
+function fanTotalsLine(payload: Record<string, unknown>): string {
+  const people = EVENT_GLYPH.people ?? "👥";
+  const dice = EVENT_GLYPH.fan_factor ?? "🎲";
+  const fmt = (side: unknown): string => {
+    if (typeof side !== "object" || side === null) return "?";
+    const o = side as Record<string, unknown>;
+    const base = o.base;
+    const roll = o.dice;
+    const total = o.total;
+    const b = typeof base === "number" ? String(base) : "?";
+    const d = typeof roll === "number" ? String(roll) : "?";
+    const t = typeof total === "number" ? String(total) : "?";
+    return `${people}${b} + ${dice}${d} = ${t}`;
+  };
+  return `Local: ${fmt(payload.home)} · Visitante: ${fmt(payload.away)}`;
 }
 
 /**
@@ -210,6 +257,20 @@ export function LiveEventCards({
                           ({partial.home} - {partial.away})
                         </p>
                       ) : null}
+                      {event.kind === "expensive_mistake" ? (
+                        <>
+                          {outcomeLabel(event.payload) ? (
+                            <p className="truncate text-[11px] font-semibold text-[#0f172a]">
+                              {outcomeLabel(event.payload)}
+                            </p>
+                          ) : null}
+                          {treasuryLine(event.payload) ? (
+                            <p className="truncate text-[11px] tabular-nums text-slate-600">
+                              {treasuryLine(event.payload)}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -221,6 +282,9 @@ export function LiveEventCards({
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-[#0f172a]">{label}</p>
+                  {event.kind === "fan_factor" ? (
+                    <p className="truncate text-[11px] text-slate-600">{fanTotalsLine(event.payload)}</p>
+                  ) : null}
                 </div>
                 <span className="shrink-0 text-[11px] font-bold tabular-nums text-slate-500">
                   {minute}
