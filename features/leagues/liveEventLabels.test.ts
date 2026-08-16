@@ -119,6 +119,10 @@ describe("liveEventLabel", () => {
     expect(liveEventLabel(ev("endMatch"))).toBe("Fin del partido");
   });
 
+  it("labels a concede event (RAU-38)", () => {
+    expect(liveEventLabel(ev("concede"))).toBe("Concesión");
+  });
+
   it("labels a turn-start notice and a request-turn nudge (LM-13)", () => {
     // Audit labels: the visible turnStart CARD overrides the label with the
     // team-specific "Turno {team}" text (RAU-36/37); the map keeps the generic
@@ -159,6 +163,8 @@ describe("EVENT_GLYPH — per-kind inline SVG icon map (MV-7, no icon lib)", () 
     expect(EVENT_GLYPH.completion).toBe("hand");
     expect(EVENT_GLYPH.foul).toBe("cleat");
     expect(EVENT_GLYPH.mvp).toBe("trophy");
+    // RAU-38: the concede (white-flag surrender) row uses the flag-variant glyph.
+    expect(EVENT_GLYPH.concede).toBe("flag-variant");
     // Unknown kinds have no glyph entry → the caller falls back to "football".
     expect(EVENT_GLYPH["interception" as keyof typeof EVENT_GLYPH]).toBeUndefined();
   });

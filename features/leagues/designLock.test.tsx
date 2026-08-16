@@ -130,6 +130,8 @@ const TIMER_PATH =
   "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z";
 const FLAG_PATH =
   "M14.4,6H20V16H13L12.6,14H7V21H5V4H14L14.4,6M14,14H16V12H18V10H16V8H14V10L13,8V6H11V8H9V6H7V8H9V10H7V12H9V10H11V12H13V10L14,12V14M11,10V8H13V10H11M14,10H16V12H14V10Z";
+const FLAG_VARIANT_PATH =
+  "M6,3A1,1 0 0,1 7,4V4.88C8.06,4.31 9.5,4 11,4C14,4 14,6 16,6C19,6 20,4 20,4V12C20,12 19,14 16,14C13,14 13,12 11,12C8,12 7,14 7,14V21H5V4A1,1 0 0,1 6,3Z";
 
 function player(id: string, name: string, positionalKey = "blitzer") {
   return { rosterPlayerId: id, name, positionalKey, pe: 0, skills: {}, injuries: {}, alive: true, valueBonus: 0 };
@@ -341,6 +343,18 @@ describe("B. LiveEventCards — validated v7 rendered structure", () => {
     expect(end!.querySelector(".ctitle")?.textContent).toBe("Fin del partido");
     expect(end!.querySelector(".csub")?.textContent).toMatch(/^\d{2}:\d{2}$/);
     expect(end!.querySelector(".cright")?.textContent).toBe("8'");
+  });
+
+  it("locks the concede centered row: white-flag glyph, 'Concesión', surrender·victory sub-line", () => {
+    const { container } = renderCards([
+      ev(9, "concede", "home", { winnerSide: "away" }, null, 3, 4000),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.className).toContain("ev--center");
+    expect(row.querySelector(".cicon svg path")?.getAttribute("d")).toBe(FLAG_VARIANT_PATH);
+    expect(row.querySelector(".ctitle")?.textContent).toBe("Concesión");
+    expect(row.querySelector(".csub")?.textContent).toBe("Reavers se rinde · Victoria de Dwarves");
+    expect(row.querySelector(".cright")).toBeNull();
   });
 
   it("locks the icon set: EVENT_GLYPH values are icon names and every icon area renders an inline <svg> (no emoji glyphs)", () => {
