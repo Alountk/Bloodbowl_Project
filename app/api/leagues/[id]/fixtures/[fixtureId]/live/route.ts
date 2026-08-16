@@ -625,6 +625,12 @@ export async function POST(
   if (userId === null) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // RAU-40: a finished league is definitive — no live control command (incl. a
+  // concede accept/decline) may mutate it further. The SSE read stream above
+  // stays open so the finished match remains watchable.
+  if (ctx.league.status === "finished") {
+    return Response.json({ error: "League is finished" }, { status: 409 });
+  }
 
   let command: unknown;
   try {
@@ -800,6 +806,7 @@ export async function POST(
               side,
               homeTeamId: ctx.homeTeamId,
               awayTeamId: ctx.awayTeamId,
+              leagueId: ctx.leagueId,
               now,
             },
             deps,

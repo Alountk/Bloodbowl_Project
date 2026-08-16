@@ -29,7 +29,7 @@ export async function DELETE(
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (league.status === "started") {
+  if (league.status === "started" || league.status === "finished") {
     return NextResponse.json(
       { error: "A started league locks its members" },
       { status: 409 },

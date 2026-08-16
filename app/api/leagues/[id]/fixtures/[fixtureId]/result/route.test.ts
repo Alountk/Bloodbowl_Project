@@ -3,13 +3,14 @@ import { PE_MVP } from "@/lib/rules";
 
 const authMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
-  fixture: { findFirst: vi.fn(), update: vi.fn() },
+  fixture: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   matchResult: { create: vi.fn(), update: vi.fn() },
   matchResultCorrection: { create: vi.fn() },
   team: { update: vi.fn() },
   liveEvent: { aggregate: vi.fn(), createMany: vi.fn() },
   liveMatch: { updateMany: vi.fn() },
   player: { createMany: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+  league: { findUnique: vi.fn(), update: vi.fn() },
   $transaction: vi.fn(),
 }));
 const randomMock = vi.hoisted(() => ({
@@ -72,7 +73,7 @@ function stubTransaction() {
   prismaMock.$transaction.mockImplementation(
     async (cb: (tx: Record<string, unknown>) => Promise<unknown>) => {
       const data = {
-        fixture: { update: prismaMock.fixture.update },
+        fixture: { update: prismaMock.fixture.update, findMany: prismaMock.fixture.findMany },
         matchResult: { create: prismaMock.matchResult.create, update: prismaMock.matchResult.update },
         matchResultCorrection: { create: prismaMock.matchResultCorrection.create },
         team: { update: prismaMock.team.update },
@@ -82,6 +83,7 @@ function stubTransaction() {
         },
         liveMatch: { updateMany: prismaMock.liveMatch.updateMany },
         player: { findMany: prismaMock.player.findMany, updateMany: prismaMock.player.updateMany },
+        league: { findUnique: prismaMock.league.findUnique, update: prismaMock.league.update },
       };
       return cb(data as never);
     },
@@ -153,6 +155,10 @@ describe("POST /api/.../[fixtureId]/result", () => {
     stubTransaction();
     prismaMock.fixture.update.mockResolvedValue({ id: "f1" });
     prismaMock.matchResult.create.mockResolvedValue({ id: "r1" });
+    // RAU-40 close-check defaults: a started league whose season is NOT yet all
+    // played (no fixtures found in this tx) → `maybeCloseLeague` is a no-op.
+    prismaMock.league.findUnique.mockResolvedValue({ status: "started" });
+    prismaMock.fixture.findMany.mockResolvedValue([]);
   });
 
   it("returns 401 when unauthenticated with no write", async () => {
@@ -446,6 +452,59 @@ describe("POST /api/.../[fixtureId]/result", () => {
         }),
       }),
     );
+  });
+
+  it("auto-closes the league when this result finishes the season (RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+    // The tx's `findMany` sees the JUST-updated fixture (2-1 home win): the
+    // season has exactly one fixture and it is now played → the league closes.
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { homeTeamId: "t1", awayTeamId: "t2", homeScore: 2, awayScore: 1, winnerId: "t1" },
+    ]);
+
+    const res = await callRoute("POST", validBody);
+
+    expect(res.status).toBe(200);
+    // The close runs INSIDE the result transaction (same $transaction call).
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.league.findUnique).toHaveBeenCalledWith({
+      where: { id: "l1" },
+      select: { status: true },
+    });
+    expect(prismaMock.league.update).toHaveBeenCalledWith({
+      where: { id: "l1" },
+      data: { status: "finished", championTeamId: "t1" },
+    });
+  });
+
+  it("does NOT close the league while any fixture remains unplayed (RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { homeTeamId: "t1", awayTeamId: "t2", homeScore: 2, awayScore: 1, winnerId: "t1" },
+      { homeTeamId: "t3", awayTeamId: "t4", homeScore: null, awayScore: null, winnerId: null },
+    ]);
+
+    const res = await callRoute("POST", validBody);
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.league.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 on a finished league (definitive — no more results, RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({ league: { id: "l1", status: "finished", ownerId: "user-admin" } }),
+    );
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "League is finished" });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });
 
@@ -761,5 +820,16 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
     expect(updateArg.data.scores.home).not.toHaveProperty("winnings");
     expect(updateArg.data.scores.away).not.toHaveProperty("winnings");
+  });
+
+  it("returns 409 when the league is finished — the champion is definitive (RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.league = { id: "l1", status: "finished", ownerId: "user-admin" };
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    const res = await callRoute("PUT", validBody);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "League is finished" });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });

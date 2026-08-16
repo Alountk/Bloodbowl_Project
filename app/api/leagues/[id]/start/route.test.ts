@@ -87,6 +87,15 @@ describe("POST /api/leagues/[id]/start", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it("returns 409 when the league is FINISHED (RAU-40 — a finished season cannot restart)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague({ status: "finished" }));
+    const res = await startRequest("l1", { seasonLength: 2 });
+    expect(res.status).toBe(409);
+    expect(prismaMock.team.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
   it("returns 409 when fewer than two member teams exist", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.findFirst.mockResolvedValue(makeLeague());

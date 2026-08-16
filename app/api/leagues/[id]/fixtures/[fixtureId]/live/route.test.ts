@@ -578,6 +578,28 @@ describe("POST .../live — control gate", () => {
     expect(consentLiveMatchMock).not.toHaveBeenCalled();
     expect(applyTransitionMock).not.toHaveBeenCalled();
   });
+
+  it("returns 409 on a finished league — no control command incl. concede (RAU-40)", async () => {
+    setUpAllowed();
+    authMock.mockResolvedValue(authSession("coach-home"));
+    prismaMock.fixture.findFirst.mockResolvedValue({
+      ...startedFixture("f-1", "lg-1"),
+      league: {
+        ownerId: "owner-1",
+        status: "finished",
+        turnClockEnabled: true,
+        turnClockSeconds: 240 as const,
+        teams: [{ userId: "coach-home" }, { userId: "coach-away" }],
+      },
+    });
+    const res = await POST(req({ type: "concedeRespond", accept: true }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "League is finished" });
+    expect(acceptConcedeLiveMatchMock).not.toHaveBeenCalled();
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST .../live — consent/retract/begin command handling", () => {

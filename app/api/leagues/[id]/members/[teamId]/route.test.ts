@@ -101,6 +101,20 @@ describe("DELETE /api/leagues/[id]/members/[teamId]", () => {
     expect(prismaMock.team.update).not.toHaveBeenCalled();
   });
 
+  it("returns 409 when the league is FINISHED (RAU-40 — membership stays locked)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      ownerId: "user-admin",
+      status: "finished",
+    });
+
+    const res = await expelRequest("l1", "t1");
+    expect(res.status).toBe(409);
+    expect(prismaMock.team.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the target league does not exist", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.findFirst.mockResolvedValue(null); // league unknown to the caller

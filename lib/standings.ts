@@ -11,8 +11,6 @@
  * unit-testable; the fixtures come from `maybeCloseLeague`.
  */
 
-import type { Prisma } from "@prisma/client";
-
 /** Lifecycle states a league transitions through (mirrors the Prisma enum). */
 export type LeagueStatus = "open" | "started" | "finished";
 

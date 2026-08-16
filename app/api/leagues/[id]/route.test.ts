@@ -130,6 +130,63 @@ describe("GET /api/leagues/[id]", () => {
     expect((await res.json()).teams).toHaveLength(1);
   });
 
+  it("returns a FINISHED league with fixtures and the champion to its owner (RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Finished Cup",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: null },
+      status: "finished",
+      championTeamId: "t1",
+      seasonLength: 1,
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      teams: [{ id: "t1", name: "Reavers", raceId: "human", userId: "user-2", leagueId: "l1", archivedAt: null }],
+    });
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { id: "f1", round: 1, homeTeamId: "t1", awayTeamId: "t2", leagueId: "l1", homeScore: 2, awayScore: 1, winnerId: "t1" },
+    ]);
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("finished");
+    expect(body.championTeamId).toBe("t1");
+    // Fixtures remain visible on a finished league (standings/jornadas stay up).
+    expect(body.fixtures).toHaveLength(1);
+    expect(prismaMock.fixture.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { leagueId: "l1" } }),
+    );
+  });
+
+  it("returns 404 for a FINISHED league to a foreign non-member (RAU-40 shield)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-9" } }); // not owner, not member
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Finished Cup",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: null },
+      status: "finished",
+      championTeamId: "t1",
+      seasonLength: 1,
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      teams: [{ id: "t1", name: "Reavers", raceId: "human", userId: "user-2", leagueId: "l1", archivedAt: null }],
+    });
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/foreign-finished"), {
+      params: Promise.resolve({ id: "foreign-finished" }),
+    } as never);
+    expect(res.status).toBe(404);
+    expect(prismaMock.fixture.findMany).not.toHaveBeenCalled();
+  });
+
   it("returns 404 for a STARTED league to a foreign non-member (no leak, no fixtures)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-9" } }); // not owner, not member
     prismaMock.league.findFirst.mockResolvedValue({
@@ -511,6 +568,25 @@ describe("DELETE /api/leagues/[id]", () => {
       ownerId: "user-1",
       status: "started",
       seasonLength: 2,
+      startedAt: new Date().toISOString(),
+    });
+
+    const res = await DELETE(new Request("http://localhost:3000/api/leagues/l1", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.league.delete).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 and leaves everything intact for a FINISHED league (RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      ownerId: "user-1",
+      status: "finished",
+      championTeamId: "t1",
+      seasonLength: 1,
       startedAt: new Date().toISOString(),
     });
 

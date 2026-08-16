@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { maybeCloseLeague } from "@/lib/standings";
 
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit
@@ -34,7 +35,14 @@ export async function POST(
       league: { select: { id: true, status: true, ownerId: true } },
     },
   });
-  if (!fixture || fixture.league.status !== "started" || fixture.leagueId !== id) {
+  if (!fixture || fixture.leagueId !== id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  // RAU-40: a finished league is definitive — no walkover may be awarded.
+  if (fixture.league.status === "finished") {
+    return NextResponse.json({ error: "League is finished" }, { status: 409 });
+  }
+  if (fixture.league.status !== "started") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -76,7 +84,7 @@ export async function POST(
       where: { fixtureId, acceptedAt: null, closedAt: null },
       data: { closedAt: new Date() },
     });
-    return tx.fixture.update({
+    const updatedFixture = await tx.fixture.update({
       where: { id: fixtureId },
       data: { winnerId: winnerTeamId, homeScore, awayScore, scheduledAt: null },
       include: {
@@ -85,6 +93,10 @@ export async function POST(
         awayTeam: { select: { id: true, userId: true, name: true } },
       },
     });
+    // RAU-40: a walkover counts as played — if it was the season's LAST fixture
+    // the league closes atomically here (finished + champion).
+    await maybeCloseLeague(tx, id);
+    return updatedFixture;
   });
 
   return NextResponse.json(updated);

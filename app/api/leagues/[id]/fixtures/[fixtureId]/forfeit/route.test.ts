@@ -2,8 +2,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const authMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
-  fixture: { findFirst: vi.fn(), update: vi.fn() },
+  fixture: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   scheduleProposal: { updateMany: vi.fn() },
+  league: { findUnique: vi.fn(), update: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -35,7 +36,8 @@ function stubTransaction() {
     async (cb: (tx: Record<string, unknown>) => Promise<unknown>) => {
       const data = {
         scheduleProposal: { updateMany: prismaMock.scheduleProposal.updateMany },
-        fixture: { update: prismaMock.fixture.update },
+        fixture: { update: prismaMock.fixture.update, findMany: prismaMock.fixture.findMany },
+        league: { findUnique: prismaMock.league.findUnique, update: prismaMock.league.update },
       };
       return cb(data as never);
     },
@@ -56,6 +58,10 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubTransaction();
+    // RAU-40 close-check defaults: started league, nothing yet played in this
+    // tx → `maybeCloseLeague` is a no-op.
+    prismaMock.league.findUnique.mockResolvedValue({ status: "started" });
+    prismaMock.fixture.findMany.mockResolvedValue([]);
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -170,6 +176,37 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
     );
     const res = await forfeit({ winnerTeamId: "t2" });
     expect(res.status).toBe(409);
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
+  });
+
+  it("auto-closes the league when the walkover finishes the season (RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    prismaMock.fixture.update.mockResolvedValue({ id: "f1", winnerId: "t1", homeScore: 2, awayScore: 0 });
+    // The tx's `findMany` sees the JUST-updated fixture (2-0): the season's
+    // only fixture is now played → the league closes in the same transaction.
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { homeTeamId: "t1", awayTeamId: "t2", homeScore: 2, awayScore: 0, winnerId: "t1" },
+    ]);
+
+    const res = await forfeit({ winnerTeamId: "t1" });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.league.update).toHaveBeenCalledWith({
+      where: { id: "l1" },
+      data: { status: "finished", championTeamId: "t1" },
+    });
+  });
+
+  it("returns 409 on a finished league (definitive — no more walkovers, RAU-40)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({ league: { id: "l1", status: "finished", ownerId: "user-owner" } }),
+    );
+    const res = await forfeit({ winnerTeamId: "t1" });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "League is finished" });
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
 });
