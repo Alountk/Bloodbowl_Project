@@ -413,6 +413,7 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       awayScore: 0,
       paused: false,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
@@ -473,6 +474,7 @@ function finishedLiveDetail(): MatchDetail {
       awayScore: 1,
       paused: false,
       finishedAt: 5000,
+      concedeProposedBy: null,
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -902,6 +904,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [],
     };
     stubMatch(detail);
@@ -932,6 +935,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [],
     };
     stubMatch(detail);
@@ -961,6 +965,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [],
     };
     const fetchMock = vi.fn((url: string) =>

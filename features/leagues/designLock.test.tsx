@@ -423,6 +423,7 @@ function finishedLive(): LiveMatchView {
     awayScore: 1,
     paused: false,
     finishedAt: 5000,
+    concedeProposedBy: null,
     events: [
       { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
       { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -450,6 +451,7 @@ function liveMatch(): LiveMatchView {
     awayScore: 0,
     paused: false,
     finishedAt: null,
+    concedeProposedBy: null,
     events: [
       { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
       { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },

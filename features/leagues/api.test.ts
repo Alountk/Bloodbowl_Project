@@ -573,6 +573,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
     };
     expect(live.status).toBe("pending");
     expect(live.homeConsented).toBe(true);
@@ -604,6 +605,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       homeScore: 1,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
     };
     expect(live.homeTurnMs).toBe(5100);
     expect(live.awayTurnMs).toBe(3000);
@@ -632,6 +634,7 @@ describe("sendLiveCommand", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
     };
     vi.stubGlobal(
       "fetch",
@@ -756,6 +759,48 @@ describe("LiveCommand — LM-6 foul casualty payloads and actor fields", () => {
       expect.objectContaining({
         body: JSON.stringify({ type: "casualty", side: "home", victimRosterId: "p1", cause: "dodge" }),
       }),
+    );
+  });
+});
+
+describe("LiveCommand — RAU-38 concede propose / respond", () => {
+  const view: LiveMatchViewState = {
+    seq: 5,
+    status: "live",
+    half: 1,
+    turnNumber: 1,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    viewerSide: "home",
+    startedAt: 1000,
+    elapsed: 0,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    paused: false,
+    homeScore: 0,
+    awayScore: 0,
+    finishedAt: null,
+    concedeProposedBy: null,
+  };
+
+  it("sends { type: 'concede' } on the wire", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ view }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await sendLiveCommand("lg-1", "f-1", { type: "concede" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({ body: JSON.stringify({ type: "concede" }) }),
+    );
+  });
+
+  it("sends { type: 'concedeRespond', accept } on the wire", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ view }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await sendLiveCommand("lg-1", "f-1", { type: "concedeRespond", accept: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({ body: JSON.stringify({ type: "concedeRespond", accept: true }) }),
     );
   });
 });
