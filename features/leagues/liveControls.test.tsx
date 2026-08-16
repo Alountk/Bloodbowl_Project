@@ -130,8 +130,8 @@ describe("EventControls — submission (LM-20)", () => {
     expect(onSubmit).toHaveBeenCalledWith({ type: "foul", side: "home", playerRosterId: "p2", victimRosterId: "o1" } as LiveCommand);
   });
 
-  it("fires a casualty command with the victim + band + cause (and no causer for dodge/crowd)", async () => {
-    const { onSubmit } = renderControls();
+  it("fires a casualty command (NON-active coach) with the victim + band + cause (and no causer for dodge/crowd)", async () => {
+    const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     fireEvent.change(screen.getByLabelText(/Jugador/i), { target: { value: "p1" } });
@@ -200,8 +200,8 @@ describe("EventControls — Baja/Herida form captures CAUSE and CAUSER (LM-20, M
     expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
   });
 
-  it("shows the 'Autor de la lesión' opponent select plus cause/causer on submit for blitz", async () => {
-    const { onSubmit } = renderControls();
+  it("shows the 'Autor de la lesión' select from the OPPONENT roster for the NON-active coach, submitting cause/causer on blitz", async () => {
+    const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
@@ -222,8 +222,8 @@ describe("EventControls — Baja/Herida form captures CAUSE and CAUSER (LM-20, M
     } as LiveCommand);
   });
 
-  it("hides the causer select for dodge/crowd and submits WITHOUT causerRosterId", async () => {
-    const { onSubmit } = renderControls();
+  it("hides the causer select for dodge/crowd and submits WITHOUT causerRosterId (NON-active coach)", async () => {
+    const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
@@ -238,7 +238,7 @@ describe("EventControls — Baja/Herida form captures CAUSE and CAUSER (LM-20, M
   });
 
   it("disables Registrar until a causer is chosen when the cause requires one (LM-12 strict)", async () => {
-    renderControls();
+    renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
@@ -248,5 +248,91 @@ describe("EventControls — Baja/Herida form captures CAUSE and CAUSER (LM-20, M
     expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "o2" } });
     expect((screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("EventControls — role-aware casualty pools (RAU-34)", () => {
+  it("ACTIVE coach: offers the OPPONENT roster as victims and the OWN roster as causers", async () => {
+    renderControls(); // viewer home, active home → ACTIVE
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    // The victim select ("Jugador") lists the RIVAL alive players, not the viewer's own.
+    const victim = screen.getByLabelText(/^Jugador$/i) as HTMLSelectElement;
+    const victimOptions = Array.from(victim.options).map((o) => o.textContent);
+    expect(victimOptions).toContain("Blitzer Rival");
+    expect(victimOptions).toContain("Thrower Rival");
+    expect(victimOptions).not.toContain("Blitzer A");
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
+    // The causer select ("Autor de la lesión") lists the ACTIVE coach's OWN alive players.
+    const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
+    const causerOptions = Array.from(causer.options).map((o) => o.textContent);
+    expect(causerOptions).toContain("Blitzer A");
+    expect(causerOptions).toContain("Thrower A");
+    expect(causerOptions).not.toContain("Blitzer Rival");
+  });
+
+  it("ACTIVE coach: submits side = the VICTIM's (OPPONENT) side with an opponent victim and an own causer", async () => {
+    const { onSubmit } = renderControls(); // viewer home, active home → ACTIVE
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "o1" } });
+    fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
+    fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "p2" } });
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o1",
+      band: "grave",
+      cause: "blitz",
+      causerRosterId: "p2",
+    } as LiveCommand);
+  });
+
+  it("ACTIVE coach: crowd casualty keeps the OPPONENT victim and the OPPONENT side, with no causer", async () => {
+    const { onSubmit } = renderControls(); // viewer home, active home → ACTIVE
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "o2" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "crowd" } });
+    expect(screen.queryByLabelText(/Autor de la lesión/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o2",
+      band: "bruise",
+      cause: "crowd",
+    } as LiveCommand);
+  });
+
+  it("NON-active coach: keeps OWN-roster victims, OPPONENT causers, and their OWN side", async () => {
+    const { onSubmit } = renderControls({ activeSide: "away" }); // viewer home, active away → NON-active
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    // Victim select stays the OWN roster; the rival roster does NOT bleed in.
+    const victim = screen.getByLabelText(/^Jugador$/i) as HTMLSelectElement;
+    const victimOptions = Array.from(victim.options).map((o) => o.textContent);
+    expect(victimOptions).toContain("Blitzer A");
+    expect(victimOptions).toContain("Thrower A");
+    expect(victimOptions).not.toContain("Blitzer Rival");
+    fireEvent.change(screen.getByLabelText(/^Jugador$/i), { target: { value: "p1" } });
+    fireEvent.change(screen.getByLabelText(/Tipo de lesión/i), { target: { value: "grave" } });
+    fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
+    const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
+    const causerOptions = Array.from(causer.options).map((o) => o.textContent);
+    expect(causerOptions).toContain("Blitzer Rival");
+    expect(causerOptions).not.toContain("Blitzer A");
+    fireEvent.change(causer, { target: { value: "o1" } });
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "casualty",
+      side: "home",
+      victimRosterId: "p1",
+      band: "grave",
+      cause: "blitz",
+      causerRosterId: "o1",
+    } as LiveCommand);
   });
 });

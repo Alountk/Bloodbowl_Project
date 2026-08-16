@@ -296,6 +296,7 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
         paused: false,
         clockStartedAt: new Date("2026-03-01T20:00:10").getTime(),
         finishedAt: null,
+        concedeProposedBy: null,
         events: [],
       },
       now,

@@ -12,6 +12,9 @@ import {
   applyTransition,
   pauseLiveMatch,
   resumeLiveMatch,
+  proposeConcedeLiveMatch,
+  declineConcedeLiveMatch,
+  acceptConcedeLiveMatch,
 } from "@/lib/liveStore";
 import {
   applyEndTurn,
@@ -506,7 +509,9 @@ type ControlCommand =
     }
   | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
-  | { type: "endMatch" };
+  | { type: "endMatch" }
+  | { type: "concede" }
+  | { type: "concedeRespond"; accept: boolean };
 
 function isControlCommand(value: unknown): value is ControlCommand {
   if (typeof value !== "object" || value === null) return false;
@@ -535,6 +540,10 @@ function isControlCommand(value: unknown): value is ControlCommand {
       );
     case "endMatch":
       return true;
+    case "concede":
+      return true;
+    case "concedeRespond":
+      return typeof c.accept === "boolean";
     default:
       return false;
   }
@@ -717,6 +726,56 @@ export async function POST(
       throw error;
     }
     return Response.json({ view: toLiveViewState(next, now, { viewerSide: side }) }, { status: 200 });
+  }
+
+  // RAU-38 concede commands: a fixture coach with a side proposes to concede or
+  // responds (accept/decline) to the rival's proposal. The state machine guards
+  // live-only + responder roles; the admin/spectator without a side is rejected
+  // with 409 (mirrors the requestTurn no-side guard). NOT turn-phase events —
+  // they skip the LM-12 side gate below.
+  if (command.type === "concede") {
+    if (side === null) {
+      return Response.json({ error: "No side to concede" }, { status: 409 });
+    }
+    try {
+      const result = await proposeConcedeLiveMatch(
+        { liveMatchId: row.id, fixtureId, side, now },
+        deps,
+      );
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Cannot concede in current state" }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
+  if (command.type === "concedeRespond") {
+    if (side === null) {
+      return Response.json({ error: "No side to respond" }, { status: 409 });
+    }
+    try {
+      const result = command.accept
+        ? await acceptConcedeLiveMatch(
+            {
+              liveMatchId: row.id,
+              fixtureId,
+              side,
+              homeTeamId: ctx.homeTeamId,
+              awayTeamId: ctx.awayTeamId,
+              now,
+            },
+            deps,
+          )
+        : await declineConcedeLiveMatch({ liveMatchId: row.id, fixtureId, side, now }, deps);
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      if ((error as { status?: number }).status === 409) {
+        return Response.json({ error: "Cannot respond to concede in current state" }, { status: 409 });
+      }
+      throw error;
+    }
   }
 
   // Side-aware event gate (LM-12/D14): only run the pure side matrix for the

@@ -34,16 +34,18 @@ export type LiveEventKind =
   | "requestTurn"
   | "mvp"
   | "expensive_mistake"
-  | "fan_factor";
+  | "fan_factor"
+  | "concede";
 
 /**
  * The display-worthy kinds that reach the feed DTOs (LM-16): the history shows
- * `start|td|completion|casualty|foul|endHalf|endMatch|mvp`. `turn`, `turnStart`
- * and `requestTurn` stay in the DB (audit/replay) and live-only (nudge banner)
- * but MUST NEVER appear in a feed DTO. Shared by BOTH serializers
- * (`toEventDtos` in the live route and `serializeLive` in the fixture GET) so
- * the feed and the render can never drift (D23). Unknown kinds are rejected so
- * a future raw kind never leaks without a deliberate filter change.
+ * `start|td|completion|casualty|foul|endHalf|endMatch|mvp|concede`. `turn`,
+ * `turnStart` and `requestTurn` stay in the DB (audit/replay) and live-only
+ * (nudge banner) but MUST NEVER appear in a feed DTO. Shared by BOTH
+ * serializers (`toEventDtos` in the live route and `serializeLive` in the
+ * fixture GET) so the feed and the render can never drift (D23). Unknown kinds
+ * are rejected so a future raw kind never leaks without a deliberate filter
+ * change.
  */
 export function isDisplayEvent(kind: string): boolean {
   switch (kind) {
@@ -57,6 +59,7 @@ export function isDisplayEvent(kind: string): boolean {
     case "mvp":
     case "expensive_mistake":
     case "fan_factor":
+    case "concede":
       return true;
     default:
       return false;
@@ -107,6 +110,8 @@ export interface LiveMatchState {
   paused: boolean;
   clockStartedAt: number | null;
   finishedAt: number | null;
+  /** RAU-38: the side that proposed to concede, or null when none is pending. */
+  concedeProposedBy: TeamSide | null;
   events: LiveEventRecord[];
 }
 
@@ -133,6 +138,8 @@ export interface LiveMatchViewState {
   homeScore: number;
   awayScore: number;
   finishedAt: number | null;
+  /** RAU-38: the side that proposed to concede, or null when none is pending. */
+  concedeProposedBy: TeamSide | null;
 }
 
 const TURNS_PER_HALF = 8;
@@ -520,6 +527,81 @@ export function applyCompletion(
   };
 }
 
+/**
+ * RAU-38: a coach proposes to concede the match. Only valid while the match is
+ * LIVE and no proposal is pending. A retried propose from the SAME side is an
+ * idempotent no-op (LM-21-style retry safety — a network retry never errors);
+ * a second proposal from the OTHER side while one is pending is rejected, as is
+ * any propose outside `live`.
+ */
+export function proposeConcede(
+  state: LiveMatchState,
+  side: TeamSide,
+): LiveMatchState {
+  if (state.status !== "live") throwInvalid("concede only while live");
+  if (state.concedeProposedBy != null) {
+    if (state.concedeProposedBy === side) return state; // idempotent retry
+    throwInvalid("concede already proposed");
+  }
+  return { ...state, concedeProposedBy: side };
+}
+
+/**
+ * RAU-38: the NON-proposer declines a pending concession, clearing it so the
+ * match continues untouched. A decline with no pending proposal is a no-op
+ * (retry-safe); the PROPOSER cannot decline their own proposal.
+ */
+export function declineConcede(
+  state: LiveMatchState,
+  side: TeamSide,
+): LiveMatchState {
+  if (state.concedeProposedBy == null) return state;
+  if (side === state.concedeProposedBy) throwInvalid("proposer cannot respond to own concede");
+  return { ...state, concedeProposedBy: null };
+}
+
+/**
+ * RAU-38: the NON-proposer accepts a pending concession → the match FINISHES
+ * immediately with the ACCEPTOR as winner (the store records the victory on the
+ * fixture in the SAME transaction as this event). Appends a `concede` event
+ * whose `side` is the SURRENDERING side (`concedeProposedBy`) and whose payload
+ * carries `{ winnerSide }` (the acceptor). Bumps the ACTIVE accumulator before
+ * finishing (LM-5 parity with `applyEndMatch`). A concession is NOT a played
+ * match — the store awards only the walkover-style victory (no winnings/PE).
+ */
+export function acceptConcede(
+  state: LiveMatchState,
+  side: TeamSide,
+  now: number,
+): LiveMatchState {
+  if (state.status !== "live") throwInvalid("concede only while live");
+  if (state.concedeProposedBy == null) throwInvalid("no concede proposal");
+  if (side === state.concedeProposedBy) throwInvalid("cannot accept own concede");
+  const surrendering = state.concedeProposedBy;
+  const bumped = accumulate(state, now);
+  return {
+    ...bumped,
+    status: "finished",
+    finishedAt: now,
+    paused: false,
+    clockStartedAt: null,
+    concedeProposedBy: null,
+    events: [
+      ...state.events,
+      {
+        seq: state.seq + 1,
+        kind: "concede",
+        side: surrendering,
+        playerRosterId: null,
+        half: state.half,
+        turnNumber: state.turnNumber,
+        payload: { winnerSide: side },
+        at: now,
+      },
+    ],
+  };
+}
+
 /** The row fields the unified-clock derivation needs (see `deriveLiveClock`). */
 export interface ClockRowFields {
   status: LiveMatchStatus;
@@ -591,5 +673,6 @@ export function toLiveViewState(
     homeScore: state.homeScore,
     awayScore: state.awayScore,
     finishedAt: state.finishedAt,
+    concedeProposedBy: state.concedeProposedBy,
   };
 }

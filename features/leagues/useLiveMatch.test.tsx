@@ -49,6 +49,7 @@ function liveSnapshot(overrides: Partial<LiveMatchViewState> = {}): LiveMatchVie
     awayScore: 0,
     paused: false,
     finishedAt: null,
+    concedeProposedBy: null,
     ...overrides,
   };
 }

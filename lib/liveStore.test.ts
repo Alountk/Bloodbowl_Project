@@ -6,6 +6,9 @@ import {
   applyTransition,
   pauseLiveMatch,
   resumeLiveMatch,
+  proposeConcedeLiveMatch,
+  declineConcedeLiveMatch,
+  acceptConcedeLiveMatch,
   liveMatchRowToState,
   type StoreDeps,
 } from "./liveStore";
@@ -13,8 +16,9 @@ import type { LiveMatchState, TeamSide } from "./liveMatch";
 
 /**
  * Store tests — consent/begin persistence (D16), optimistic `seq` guard (409 on
- * 0 rows), atomic event append, publish-after-commit, and the repurposed
- * pause/resume unified-clock segment handling (LM-7).
+ * 0 rows), atomic event append, publish-after-commit, the repurposed
+ * pause/resume unified-clock segment handling (LM-7), and the RAU-38
+ * concede propose/decline/accept persistence (victory in the SAME tx).
  */
 
 /**
@@ -43,6 +47,7 @@ function fakeRow(): LiveMatchState {
     paused: false,
     clockStartedAt: 1000,
     finishedAt: null,
+    concedeProposedBy: null,
     events: [],
   };
 }
@@ -54,6 +59,7 @@ function makeDeps(updateCount: number): {
   liveMatchCreate: ReturnType<typeof vi.fn>;
   liveMatchFindFirst: ReturnType<typeof vi.fn>;
   teamUpdateMany: ReturnType<typeof vi.fn>;
+  fixtureUpdate: ReturnType<typeof vi.fn>;
   publish: ReturnType<typeof vi.fn>;
 } {
   const updateMany = vi.fn().mockResolvedValue({ count: updateCount });
@@ -61,11 +67,13 @@ function makeDeps(updateCount: number): {
   const liveMatchCreate = vi.fn();
   const liveMatchFindFirst = vi.fn().mockResolvedValue(null);
   const teamUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const fixtureUpdate = vi.fn().mockResolvedValue({ id: "f-1" });
   const publish = vi.fn();
   const tx = {
     liveMatch: { updateMany, create: liveMatchCreate },
     liveEvent: { create: liveEventCreate },
     team: { updateMany: teamUpdateMany },
+    fixture: { update: fixtureUpdate },
   };
   const $transaction = vi
     .fn()
@@ -77,7 +85,7 @@ function makeDeps(updateCount: number): {
     },
     hub: { publish },
   };
-  return { deps, updateMany, liveEventCreate, liveMatchCreate, liveMatchFindFirst, teamUpdateMany, publish };
+  return { deps, updateMany, liveEventCreate, liveMatchCreate, liveMatchFindFirst, teamUpdateMany, fixtureUpdate, publish };
 }
 
 describe("liveMatchRowToState", () => {
@@ -100,6 +108,7 @@ describe("liveMatchRowToState", () => {
       paused: false,
       clockStartedAt: null,
       finishedAt: null,
+      concedeProposedBy: null,
     });
     expect(state.status).toBe("ready");
     expect(state.homeConsented).toBe(true);
@@ -107,6 +116,31 @@ describe("liveMatchRowToState", () => {
     expect(state.startedAt).toBeNull();
     expect(state.homeTurnMs).toBe(0);
     expect(state.awayTurnMs).toBe(0);
+    expect(state.concedeProposedBy).toBeNull();
+  });
+
+  it("maps a pending concedeProposedBy side onto the pure state (RAU-38)", () => {
+    const state = liveMatchRowToState({
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "away",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 9,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+      concedeProposedBy: "home",
+    });
+    expect(state.concedeProposedBy).toBe("home");
   });
 });
 
@@ -484,7 +518,6 @@ describe("applyTransition — optimistic seq + atomic event + publish-after-comm
       { liveMatchId: "lm-1", fixtureId: "f-1", current, next, now: 2000 },
       deps,
     );
-
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "lm-1", seq: 5 },
       data: expect.objectContaining({ seq: 6, activeSide: "away", turnNumber: 2 }),
@@ -597,5 +630,304 @@ describe("pause/resume — unified clock segment handling (LM-7, D18)", () => {
       data: expect.objectContaining({ seq: 6, paused: false, clockStartedAt: new Date(3000), homeTurnMs: 1000 }),
     });
     expect(publish).toHaveBeenCalled();
+  });
+});
+
+describe("proposeConcedeLiveMatch — persists the proposal under the seq guard (RAU-38)", () => {
+  /** A live row with no pending proposal, as prisma would return it. */
+  function liveRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 5,
+      paused: false,
+      clockStartedAt: new Date(1000).toISOString(),
+      finishedAt: null,
+      concedeProposedBy: null,
+      ...overrides,
+    };
+  }
+
+  it("persists concedeProposedBy = the proposing side, bumps the seq and publishes", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(liveRow());
+
+    const result = await proposeConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "home", now: 2000 },
+      deps,
+    );
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 5 },
+        data: expect.objectContaining({ seq: 6, concedeProposedBy: "home" }),
+      }),
+    );
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({ seq: 6, concedeProposedBy: "home" }),
+    );
+    expect(result.view.concedeProposedBy).toBe("home");
+  });
+
+  it("is an idempotent no-op when the SAME side retries (no seq bump, no publish)", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(liveRow({ concedeProposedBy: "home" }));
+
+    const result = await proposeConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "home", now: 2000 },
+      deps,
+    );
+
+    expect(result.view.concedeProposedBy).toBe("home");
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("maps a non-live / double-propose state-machine rejection to 409 with no mutation", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(liveRow({ concedeProposedBy: "home" }));
+
+    await expect(
+      proposeConcedeLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2000 }, deps),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when no LiveMatch row exists", async () => {
+    const { deps } = makeDeps(1);
+    await expect(
+      proposeConcedeLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "home", now: 2000 }, deps),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("declineConcedeLiveMatch — clears the proposal so the match continues (RAU-38)", () => {
+  it("persists concedeProposedBy = null when the NON-proposer declines", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue({
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 6,
+      paused: false,
+      clockStartedAt: new Date(1000).toISOString(),
+      finishedAt: null,
+      concedeProposedBy: "home",
+    });
+
+    const result = await declineConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 },
+      deps,
+    );
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 6 },
+        data: expect.objectContaining({ seq: 7, concedeProposedBy: null, status: "live" }),
+      }),
+    );
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({ seq: 7, concedeProposedBy: null, status: "live" }),
+    );
+    expect(result.view.concedeProposedBy).toBeNull();
+  });
+
+  it("is a no-op when no proposal is pending (retry-safe)", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(liveRowForDecline());
+
+    const result = await declineConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 },
+      deps,
+    );
+
+    expect(result.view.concedeProposedBy).toBeNull();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("maps the proposer declining their own proposal to 409 with no mutation", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue({
+      ...liveRowForDecline(),
+      concedeProposedBy: "away",
+    });
+
+    await expect(
+      declineConcedeLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 }, deps),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  function liveRowForDecline(): Record<string, unknown> {
+    return {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 2,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 6,
+      paused: false,
+      clockStartedAt: new Date(1000).toISOString(),
+      finishedAt: null,
+      concedeProposedBy: null,
+    };
+  }
+});
+
+describe("acceptConcedeLiveMatch — finishes the match and awards the victory in the SAME tx (RAU-38)", () => {
+  /** Home proposed; away (the acceptor) accepts. */
+  const pendingRow = {
+    id: "lm-1",
+    fixtureId: "f-1",
+    status: "live",
+    half: 1,
+    turnNumber: 3,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    startedAt: new Date(1000).toISOString(),
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    homeScore: 0,
+    awayScore: 0,
+    seq: 8,
+    paused: false,
+    clockStartedAt: new Date(1000).toISOString(),
+    finishedAt: null,
+    concedeProposedBy: "home",
+  };
+
+  it("persists the finished state + the concede event AND closes the fixture (winner = acceptor) in the SAME $transaction", async () => {
+    const { deps, liveMatchFindFirst, updateMany, liveEventCreate, fixtureUpdate, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(pendingRow);
+
+    const result = await acceptConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", now: 2000 },
+      deps,
+    );
+
+    // The live row becomes finished with the proposal cleared; the seq advances.
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 8 },
+        data: expect.objectContaining({
+          seq: 9,
+          status: "finished",
+          finishedAt: new Date(2000),
+          concedeProposedBy: null,
+          paused: false,
+          clockStartedAt: null,
+        }),
+      }),
+    );
+    // The `concede` event row persists with side = the SURRENDERING side (home).
+    expect(liveEventCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          liveMatchId: "lm-1",
+          seq: 9,
+          kind: "concede",
+          side: "home",
+          payload: { winnerSide: "away" },
+        }),
+      }),
+    );
+    // The fixture closes in the SAME transaction: winner = the ACCEPTOR (away-t)
+    // with the walkover-style 2-0 scores (forfeit precedent).
+    expect(fixtureUpdate).toHaveBeenCalledWith({
+      where: { id: "f-1" },
+      data: { winnerId: "away-t", homeScore: 0, awayScore: 2 },
+    });
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({ seq: 9, status: "finished", concedeProposedBy: null }),
+    );
+    expect(result.view.status).toBe("finished");
+  });
+
+  it("awards the home side when HOME is the acceptor", async () => {
+    const { deps, liveMatchFindFirst, fixtureUpdate } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue({ ...pendingRow, concedeProposedBy: "away" });
+
+    await acceptConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "home", homeTeamId: "home-t", awayTeamId: "away-t", now: 2000 },
+      deps,
+    );
+
+    expect(fixtureUpdate).toHaveBeenCalledWith({
+      where: { id: "f-1" },
+      data: { winnerId: "home-t", homeScore: 2, awayScore: 0 },
+    });
+  });
+
+  it("maps a retried accept (already finished) / no-proposal / own-proposal to 409 with no fixture write", async () => {
+    const { deps, liveMatchFindFirst, fixtureUpdate, updateMany, publish } = makeDeps(1);
+    // Already finished (the retry after a successful accept).
+    liveMatchFindFirst.mockResolvedValue({
+      ...pendingRow,
+      status: "finished",
+      finishedAt: new Date(2000).toISOString(),
+      concedeProposedBy: null,
+    });
+
+    await expect(
+      acceptConcedeLiveMatch(
+        { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", now: 2500 },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(fixtureUpdate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the fixture write when the event row fails (atomicity, same tx)", async () => {
+    const { deps, liveMatchFindFirst, liveEventCreate, fixtureUpdate, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(pendingRow);
+    liveEventCreate.mockRejectedValue(Object.assign(new Error("db down"), { code: "P2028" }));
+
+    await expect(
+      acceptConcedeLiveMatch(
+        { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", now: 2000 },
+        deps,
+      ),
+    ).rejects.toMatchObject({ code: "P2028" });
+    // The fixture close never ran inside the aborted tx (atomic with the event).
+    expect(fixtureUpdate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
   });
 });
