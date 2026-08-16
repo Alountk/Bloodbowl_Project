@@ -212,12 +212,29 @@ describe("MatchView — scheduled / pending (MV-3, D16 consent-start)", () => {
     expect(screen.queryByText(/Programado:/)).toBeNull();
   });
 
-  it("shows a pending notice with no date for a pending fixture", async () => {
+  it("always offers the start panel for a pending fixture (no agreed date)", async () => {
+    stubLiveEventSource();
     stubMatch(pendingDetail());
     renderPlayed();
 
-    expect(await screen.findByText(/Sin jornada programada/)).toBeTruthy();
+    // An unscheduled fixture still shows the consent start — the date
+    // negotiation is an optional reminder (avisador), never a gate.
+    expect(await screen.findByText(/Partido sin programar/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
     expect(screen.queryByText(/Programado:/)).toBeNull();
+    expect(screen.queryByText(/Sin jornada programada/)).toBeNull();
+  });
+
+  it("shows the waiting copy (no consent button) to a viewer without a side on a pending fixture", async () => {
+    vi.mocked(useSession).mockReturnValue({ data: null } as never);
+    stubLiveEventSource();
+    stubMatch(pendingDetail());
+    renderPlayed();
+
+    expect(
+      await screen.findByText(/Esperando a los entrenadores para iniciar el partido/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Iniciar partido/i })).toBeNull();
   });
 });
 
@@ -256,9 +273,10 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("renders the sticky header for a PENDING fixture (inert tracks, '–' clocks, '- : -' score)", async () => {
+    stubLiveEventSource();
     stubMatch(pendingDetail());
     renderPlayed();
-    await waitFor(() => expect(screen.getByText(/Sin jornada programada/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Partido sin programar/)).toBeTruthy());
 
     const header = screen.getByTestId("tourplay-header");
     expect(header).toBeTruthy();
