@@ -17,8 +17,8 @@ describe("Home page", () => {
 
     expect(screen.getByRole("heading", { name: "Bloodbowl Teams" })).toBeTruthy();
     expect(screen.getByLabelText("Sidebar")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy();
-    await waitFor(() => expect(screen.getByText(/no teams yet/i)).toBeTruthy());
+    expect(screen.getByRole("heading", { name: "Equipos" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/no hay equipos todavía/i)).toBeTruthy());
   });
 
   it("renders the mobile hamburger button with a descriptive accessible name", () => {
@@ -29,7 +29,7 @@ describe("Home page", () => {
     );
 
     // The hamburger is mobile-only (md:hidden) but is still present in jsdom.
-    const hamburger = screen.getByRole("button", { name: "Open navigation menu" });
+    const hamburger = screen.getByRole("button", { name: "Abrir menú de navegación" });
     expect(hamburger).toBeTruthy();
   });
 });

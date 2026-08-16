@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { AppProvider } from "@/app/providers/AppProvider";
 import { LocalStorageTeamStore } from "@/features/teams/store/LocalStorageTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
+import { useI18n } from "@/lib/i18n";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 
@@ -32,6 +33,7 @@ export function AppShell({
   // The mobile drawer mounts only while open, so it never duplicates the
   // always-mounted desktop Sidebar aria landmark.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const { t } = useI18n();
 
   const openMenu = () => setMobileNavOpen(true);
   const closeMenu = () => setMobileNavOpen(false);
@@ -50,7 +52,7 @@ export function AppShell({
           {/* Scrim: renders behind the drawer; click closes. */}
           <button
             type="button"
-            aria-label="Close menu"
+            aria-label={t("nav.closeMenu")}
             onClick={closeMenu}
             className="fixed inset-0 z-40 bg-slate-900/45 md:hidden"
             data-testid="drawer-scrim"

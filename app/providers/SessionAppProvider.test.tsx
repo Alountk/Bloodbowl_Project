@@ -58,7 +58,7 @@ describe("SessionAppProvider", () => {
     render(<SessionAppProvider>content</SessionAppProvider>);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
     await waitFor(() => expect(signOutMock).toHaveBeenCalledWith({ redirect: false }));
     // Event-handler router.push (lint-approved) to /login, and only after the
     // sign-out POST completes (session cookie cleared).

@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useI18n } from "@/lib/i18n";
+import { LocaleSwitcher } from "@/lib/i18n/LocaleSwitcher";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Teams" },
-  { href: "/leagues", label: "Ligas" },
-  { href: "/profile", label: "My Profile" },
-];
+  { href: "/", key: "nav.teams" },
+  { href: "/leagues", key: "nav.leagues" },
+  { href: "/profile", key: "nav.profile" },
+] as const;
 
 interface SidebarProps {
   /** Every instance shares the same nav markup; the wrapper decides placement. */
@@ -22,9 +24,10 @@ interface SidebarProps {
  */
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
-    <>
+    <div className="flex h-full flex-col">
       <p className="mb-6 flex items-center gap-2">
         <span className="text-[18px] font-black tracking-tight text-[#12225a]">BLOODBOWL</span>
         <span className="text-[10px] font-bold uppercase tracking-wide text-[#d11938]">Teams</span>
@@ -43,12 +46,15 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   : "text-slate-600 hover:bg-slate-100 hover:text-[#12225a]"
               }`}
             >
-              {item.label}
+              {t(item.key)}
             </Link>
           );
         })}
       </nav>
-    </>
+      <div className="mt-auto pt-4">
+        <LocaleSwitcher />
+      </div>
+    </div>
   );
 }
 

@@ -112,7 +112,7 @@ class ControlledStore implements TeamStore {
 describe("TeamList", () => {
   it("renders team name, race name and roster summary", async () => {
     renderWithStore();
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Teams" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Equipos" })).toBeTruthy());
 
     expect(screen.getByText("Reikland Reavers")).toBeTruthy();
     expect(screen.getByText("Human")).toBeTruthy();
@@ -124,7 +124,7 @@ describe("TeamList", () => {
 
   it("shows an empty state when there are no teams", async () => {
     renderWithStore([]);
-    await waitFor(() => expect(screen.getByText(/no teams yet/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/no hay equipos todavía/i)).toBeTruthy());
   });
 
   it("does not show the empty state until hydration completes", async () => {
@@ -135,18 +135,18 @@ describe("TeamList", () => {
       </AppProvider>,
     );
 
-    expect(screen.queryByText(/no teams yet/i)).toBeNull();
+    expect(screen.queryByText(/no hay equipos todavía/i)).toBeNull();
 
     store.listCall.resolve([]);
 
-    await waitFor(() => expect(screen.getByText(/no teams yet/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/no hay equipos todavía/i)).toBeTruthy());
   });
 
   it("filters by team name from the topbar", async () => {
     renderWithStoreAndTopbar();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    fireEvent.change(screen.getByLabelText(/search teams/i), {
+    fireEvent.change(screen.getByLabelText(/buscar equipos/i), {
       target: { value: "reikland" },
     });
 
@@ -158,7 +158,7 @@ describe("TeamList", () => {
     renderWithStoreAndTopbar();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    fireEvent.change(screen.getByLabelText(/search teams/i), {
+    fireEvent.change(screen.getByLabelText(/buscar equipos/i), {
       target: { value: "orc" },
     });
 
@@ -170,11 +170,11 @@ describe("TeamList", () => {
     renderWithStoreAndTopbar();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    fireEvent.change(screen.getByLabelText(/search teams/i), {
+    fireEvent.change(screen.getByLabelText(/buscar equipos/i), {
       target: { value: "nuffle" },
     });
 
-    expect(screen.getByText(/no teams match your search/i)).toBeTruthy();
+    expect(screen.getByText(/ningún equipo coincide con tu búsqueda/i)).toBeTruthy();
   });
 
   it("each team card has a link to the detail page", async () => {
@@ -205,7 +205,7 @@ describe("TeamList", () => {
     renderWithStoreAndTopbar();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    fireEvent.change(screen.getByLabelText(/search teams/i), {
+    fireEvent.change(screen.getByLabelText(/buscar equipos/i), {
       target: { value: "reikland" },
     });
 
@@ -217,15 +217,15 @@ describe("TeamList", () => {
     renderWithStore();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    expect(screen.getByRole("button", { name: "Delete Reikland Reavers" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Delete Da Krumpaz" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Eliminar Reikland Reavers" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Eliminar Da Krumpaz" })).toBeTruthy();
   });
 
   it("opens the confirmation dialog when a delete button is activated without navigating", async () => {
     renderWithStore();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    const deleteBtn = screen.getByRole("button", { name: "Delete Reikland Reavers" });
+    const deleteBtn = screen.getByRole("button", { name: "Eliminar Reikland Reavers" });
     fireEvent.click(deleteBtn);
 
     const dialog = screen.getByRole("dialog");
@@ -243,7 +243,7 @@ describe("TeamList", () => {
     renderWithStore();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete Reikland Reavers" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar Reikland Reavers" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
@@ -255,7 +255,7 @@ describe("TeamList", () => {
     renderWithStore();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete Reikland Reavers" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar Reikland Reavers" }));
     fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
 
     await waitFor(() => expect(screen.queryByText("Reikland Reavers")).toBeNull());
@@ -335,7 +335,7 @@ describe("TeamList — archive-guard (409) surface", () => {
     renderGuarded();
     await waitFor(() => expect(screen.getByText("League Marauders")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete League Marauders" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar League Marauders" }));
     fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
 
     // The guard message (with the resolved league name) appears in the dialog.
@@ -367,7 +367,7 @@ describe("TeamList — archive-guard (409) surface", () => {
     renderGuarded();
     await waitFor(() => expect(screen.getByText("League Marauders")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete League Marauders" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar League Marauders" }));
     fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
 
     await waitFor(() =>
@@ -386,7 +386,7 @@ describe("TeamList — archive-guard (409) surface", () => {
     renderGuarded();
     await waitFor(() => expect(screen.getByText("Orphan Orcs")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete Orphan Orcs" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eliminar Orphan Orcs" }));
     fireEvent.click(screen.getByRole("button", { name: "Eliminar" }));
 
     // Unassigned team delete succeeds and closes the dialog without a guard.
@@ -397,16 +397,16 @@ describe("TeamList — archive-guard (409) surface", () => {
 });
 
 describe("Sidebar navigation", () => {
-  it("shows only the Teams nav item (no Create Team link) on the home route", () => {
+  it("shows only the Equipos nav item (no Crear equipo link) on the home route", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
         <Sidebar />
       </AppProvider>,
     );
 
-    expect(screen.getByRole("link", { name: "Teams" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Teams" }).getAttribute("href")).toBe("/");
-    expect(screen.queryByRole("link", { name: /create team/i })).toBeNull();
+    expect(screen.getByRole("link", { name: "Equipos" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Equipos" }).getAttribute("href")).toBe("/");
+    expect(screen.queryByRole("link", { name: /crear equipo/i })).toBeNull();
   });
 });
 
@@ -419,7 +419,7 @@ describe("Topbar route-conditional search", () => {
     );
 
     expect(screen.getByRole("search")).toBeTruthy();
-    expect(screen.getByLabelText(/search teams/i)).toBeTruthy();
+    expect(screen.getByLabelText(/buscar equipos/i)).toBeTruthy();
   });
 
   it("hides the search form off the home route", () => {
@@ -432,17 +432,17 @@ describe("Topbar route-conditional search", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Bloodbowl Teams" })).toBeTruthy();
-    expect(screen.queryByLabelText(/search teams/i)).toBeNull();
+    expect(screen.queryByLabelText(/buscar equipos/i)).toBeNull();
     expect(screen.queryByRole("search")).toBeNull();
   });
 });
 
 describe("TeamList home heading CTA", () => {
-  it("renders the Create New Team link to /teams/create in the heading row", async () => {
+  it("renders the Crear equipo link to /teams/create in the heading row", async () => {
     renderWithStore();
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
-    const cta = screen.getByRole("link", { name: /create new team/i });
+    const cta = screen.getByRole("link", { name: /crear equipo/i });
     expect(cta).toBeTruthy();
     expect(cta.getAttribute("href")).toBe("/teams/create");
   });
@@ -452,12 +452,12 @@ describe("TeamList home heading CTA", () => {
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
 
     // The heading row wraps so the CTA falls below the h2 at narrow widths.
-    const headingRow = screen.getByRole("heading", { name: "Teams" }).parentElement;
+    const headingRow = screen.getByRole("heading", { name: "Equipos" }).parentElement;
     expect(headingRow?.className).toContain("flex-wrap");
     expect(headingRow?.className).toContain("items-center");
 
     // The CTA maintains a vertical tap target of at least 40px (py-2.5 = 10px top/bottom).
-    const cta = screen.getByRole("link", { name: /create new team/i });
+    const cta = screen.getByRole("link", { name: /crear equipo/i });
     expect(cta.className).toContain("py-2.5");
   });
 });
