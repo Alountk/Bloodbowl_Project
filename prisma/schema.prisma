@@ -26,8 +26,10 @@ model User {
   scheduleProposals ScheduleProposal[]
 }
 
-/// A user-owned group of teams. A league starts "open" and locks when the
-/// owner starts the round-robin season ("started").
+/// A user-owned group of teams. A league starts "open", locks when the owner
+/// starts the round-robin season ("started"), and closes definitively when the
+/// last fixture of the season is played ("finished"): the standings decide the
+/// stored `championTeamId` and no more fixtures/results/negotiation are allowed.
 model League {
   id           String       @id @default(cuid())
   name         String       @unique
@@ -38,6 +40,10 @@ model League {
   status       LeagueStatus @default(open)
   seasonLength Int?
   startedAt    DateTime?
+  /// RAU-40: the season champion (first row of the standings) when the league
+  /// finished; null while open/started or when no result was ever recorded.
+  championTeamId String?
+  championTeam   Team?        @relation("LeagueChampion", fields: [championTeamId], references: [id], onDelete: SetNull)
   /// League-level turn-clock option (AC-10). Enabled toggle + per-turn duration
   /// in seconds (120|240|360; 240 default). Immutable after creation — the
   /// league creation API has no update path for it. When disabled, live matches
@@ -50,10 +56,12 @@ model League {
   @@index([ownerId])
 }
 
-/// Lifecycle state of a league: joinable/open or locked after a season starts.
+/// Lifecycle state of a league: joinable/open, locked after a season starts, or
+/// definitively closed once every fixture is played (champion declared, RAU-40).
 enum LeagueStatus {
   open
   started
+  finished
 }
 
 /// A scheduled round-robin pairing within a started league (one jornada round).
@@ -203,6 +211,9 @@ model Team {
   awayFixtures Fixture[] @relation("FixtureAwayTeam")
   wonFixtures  Fixture[] @relation("FixtureWinner")
   players      Player[]
+  /// RAU-40: leagues this team won (one per finished league whose standings
+  /// ranked it first).
+  championedLeagues League[] @relation("LeagueChampion")
 
   @@index([userId])
   @@index([leagueId])
