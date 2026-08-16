@@ -29,7 +29,7 @@ export interface LiveAccessInput {
   /** The queued match's league, or null when unknown. Member ids are the league's current (non-archived) member team owner ids. */
   league: {
     ownerId: string;
-    status: "open" | "started";
+    status: "open" | "started" | "finished";
     memberUserIds: readonly string[];
   } | null;
   /** "read" for the SSE subscribe stream; "control" for the POST transition route. */
