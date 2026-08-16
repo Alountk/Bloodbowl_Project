@@ -65,7 +65,7 @@ export interface FixtureContext {
   awayOwnerId: string | null;
   league: {
     ownerId: string;
-    status: "open" | "started";
+    status: "open" | "started" | "finished";
     memberUserIds: string[];
   };
 }
