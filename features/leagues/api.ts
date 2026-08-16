@@ -540,6 +540,8 @@ export interface LiveMatchViewState {
   homeScore: number;
   awayScore: number;
   finishedAt: number | null;
+  /** RAU-38: the side that proposed to concede, or null when none is pending. */
+  concedeProposedBy: "home" | "away" | null;
 }
 
 /** A chronological live event delivered by the hub (LM-6). */
@@ -576,7 +578,9 @@ export type LiveCommand =
     }
   | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
-  | { type: "endMatch" };
+  | { type: "endMatch" }
+  | { type: "concede" }
+  | { type: "concedeRespond"; accept: boolean };
 
 /**
  * Sends a live control command via POST .../live. On success returns the new

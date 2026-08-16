@@ -49,6 +49,7 @@ export const EVENT_GLYPH: Record<string, IconName> = {
   mvp: "trophy",
   endHalf: "timer",
   endMatch: "flag",
+  concede: "flag-variant",
   expensive_mistake: "money-bag",
   fan_factor: "account-group",
   turnStart: "hand",
@@ -188,6 +189,8 @@ export function liveEventLabel(event: LiveEventLabelInput): string {
       return "Fin de la mitad";
     case "endMatch":
       return "Fin del partido";
+    case "concede":
+      return "Concesión";
     default:
       return event.kind;
   }

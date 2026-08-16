@@ -349,6 +349,42 @@ describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)",
   });
 });
 
+describe("LiveEventCards — concede centered card (RAU-38)", () => {
+  it("renders a concede as a centered 100% card with the surrender/victory sub-line", () => {
+    const { container } = renderCards([
+      ev(9, "concede", "home", { winnerSide: "away" }, null, 3, 4000),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row).toBeTruthy();
+    // Centered 100% width (generic branch) with the white-flag glyph.
+    expect(row.className).toContain("ev--center");
+    expect(row.querySelector(".cicon svg")).toBeTruthy();
+    expect(row.querySelector(".ctitle")?.textContent).toBe("Concesión");
+    // "{surrendering team} se rinde · Victoria de {acceptor team}" — the event
+    // side is the SURRENDERING side, payload.winnerSide the acceptor.
+    expect(row.querySelector(".csub")?.textContent).toBe("Reavers se rinde · Victoria de Dwarves");
+    // The card carries no turn tag / minute (generic row).
+    expect(row.querySelector(".turn-tag")).toBeNull();
+  });
+
+  it("renders the away-surrender mirror and a label-only fallback when the payload lacks the winner", () => {
+    const { container } = renderCards([
+      ev(10, "concede", "away", { winnerSide: "home" }, null, 5, 5000),
+      ev(11, "concede", "home", {}, null, 5, 5100),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    const awaySurrender = rows.find((li) => li.textContent?.includes("Dwarves se rinde"));
+    expect(awaySurrender).toBeTruthy();
+    expect(awaySurrender!.textContent).toContain("Victoria de Reavers");
+    // A concede without the payload winner (legacy/malformed) still renders the
+    // bare "Concesión" row with no sub-line and never throws.
+    const fallback = rows.find((li) => li.textContent?.includes("Concesión") && !li.textContent?.includes("se rinde"));
+    expect(fallback).toBeTruthy();
+    expect(fallback!.querySelector(".csub")).toBeNull();
+  });
+});
+
 describe("LiveEventCards — kickoff fan_factor centered row (MVT-6/LM-24)", () => {
   it("renders as a centered 100% row with the compact per-team totals copy", () => {
     const { container } = renderCards([

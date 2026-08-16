@@ -406,14 +406,15 @@ The live route MUST accept `{ type: "completion"; side; playerRosterId }` from t
 
 ### Requirement: LM-16 · Server-Side Feed Filtering
 
-The history feed DTOs (`toEventDtos` and `serializeLive`) MUST include only `start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor`. `turn`, `turnStart`, and `requestTurn` MUST remain persisted in the DB for audit/replay and MUST stay live-only (nudge banner); they MUST NOT appear in any feed DTO.
+The history feed DTOs (`toEventDtos` and `serializeLive`) MUST include only `start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede`. `turn`, `turnStart`, and `requestTurn` MUST remain persisted in the DB for audit/replay and MUST stay live-only (nudge banner); they MUST NOT appear in any feed DTO.
 (Previously: the display surface was the 8 kinds `start|td|completion|casualty|foul|endHalf|endMatch|mvp`.)
+(Previously: 10 kinds — the concession event (RAU-38) joined the display surface.)
 
 #### Scenario: Feed carries display kinds only
 
-- GIVEN a persisted history containing all 13 kinds
+- GIVEN a persisted history containing all 14 kinds
 - WHEN a snapshot or fixture DTO is produced
-- THEN exactly the 10 display kinds appear and no turn rows do
+- THEN exactly the 11 display kinds appear and no turn rows do
 
 #### Scenario: Turn rows stay for audit
 
@@ -483,8 +484,9 @@ A pure derivation over the display-worthy events MUST return, per team: TD count
 
 ### Requirement: LM-20 · Event Recording Controls
 
-The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster and a band select for casualty/injury. The Falta form MUST additionally capture the victim (select from the OPPONENT roster) and submit `victimRosterId`; the Baja/Herida form MUST additionally capture `cause` (one of the six causes) and, except for `dodge`/`crowd`, the causer (select from the OPPONENT roster, submitted as `causerRosterId`). The NON-ACTIVE coach MUST be offered ONLY Herida (casualty to their OWN player, with cause and optional causer). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
+The live UI MUST render a floating "+" button that opens an event-type menu and a mini-form for recording live events. The menu items MUST be derived from the viewer-side DTO (`viewerSide`) against the LM-12 matrix: the ACTIVE coach MUST be able to record TD, Pase completo, Baja/Herida, and Falta via a mini-form with a player select from their own roster and a band select for casualty/injury. The Falta form MUST additionally capture the victim (select from the OPPONENT roster) and submit `victimRosterId`; the Baja/Herida form MUST additionally capture `cause` (one of the six causes) and, except for `dodge`/`crowd`, the causer (submitted as `causerRosterId`). The casualty victim and causer pools MUST be role-aware (RAU-34): the ACTIVE coach records the injury THEY inflicted, so the victim select draws from the OPPONENT roster (opposite-side victim), the causer select from their OWN roster, and the command's `side` is the VICTIM's side (the OPPONENT side for the ACTIVE coach); the NON-ACTIVE coach records the wound done to their OWN player, so the victim select draws from their OWN roster, the causer from the OPPONENT roster, and `side` stays their own side. The NON-ACTIVE coach MUST be offered ONLY Herida (casualty to their OWN player, with cause and optional causer). A spectator member or an admin without a side MUST NOT see any event controls. The submitted command MUST pass through the server permission matrix — the server remains the authority and any bypass MUST return 409; a recorded event MUST appear in the Design-A feed.
 (Previously: the foul form captured only the aggressor and the casualty form captured only the band.)
+(Previously: the casualty victim was always the viewer's OWN roster and the causer always the OPPONENT roster, so the ACTIVE coach could not record an injury they inflicted on a rival player.)
 
 #### Scenario: Active coach opens the menu
 
@@ -524,9 +526,21 @@ The live UI MUST render a floating "+" button that opens an event-type menu and 
 
 #### Scenario: Casualty form captures cause and causer
 
-- GIVEN a coach opens the Baja/Herida form
+- GIVEN the NON-ACTIVE coach opens the Baja/Herida form
 - WHEN they pick the band, the cause, and (unless `dodge`/`crowd`) the causer from the OPPONENT roster
 - THEN the casualty command carries `cause` and `causerRosterId` and the card shows the three actors
+
+#### Scenario: Active coach records a casualty they inflicted (RAU-34)
+
+- GIVEN the ACTIVE coach opens the Baja/Herida form
+- WHEN they pick the victim from the OPPONENT roster, the band, the cause, and (unless `dodge`/`crowd`) the causer from their OWN roster
+- THEN the casualty command carries `side` = the VICTIM's (OPPONENT) side plus `victimRosterId`, `cause`, and `causerRosterId`, and the feed card shows the three actors
+
+#### Scenario: Non-active coach records a casualty to their own player (RAU-34)
+
+- GIVEN the NON-ACTIVE coach opens the Baja/Herida form
+- WHEN they pick the victim from their OWN roster, the band, the cause, and (unless `dodge`/`crowd`) the causer from the OPPONENT roster
+- THEN the casualty command carries `side` = their own side plus `victimRosterId`, `cause`, and `causerRosterId`, and the feed card shows the three actors
 
 ### Requirement: LM-21 · Kickoff Event Generation
 
@@ -621,6 +635,58 @@ For each team the begin transition MUST roll 1D6 and resolve against the treasur
 - GIVEN an `expensive_mistake` event without treasury fields
 - WHEN the row renders
 - THEN it shows the label with no treasury line and no error
+
+### Requirement: LM-25 · Concession
+
+A coach MAY propose to concede while the match is LIVE; the proposal persists on the LiveMatch row (`concedeProposedBy` = the proposing side, additive column). The rival MAY accept or decline: an ACCEPT finishes the match immediately — the ACCEPTOR's team is recorded as the fixture winner with walkover-style 2-0 scores (forfeit precedent), the fixture closes as played (a later result load MUST 409), and a `concede` feed event (`side` = the SURRENDERING side, payload `{ winnerSide }`) persists ATOMICALLY with the victory in the SAME transaction. A concession is NOT a played match: NO winnings, PE, or fan-factor effects are computed (documented choice). A DECLINE clears the proposal and the match continues untouched. Only fixture coaches MAY propose/respond (the control gate 403s a spectator member per LM-2; the side-less league admin is rejected with 409); the PROPOSER MUST NOT respond to their own proposal; a retried propose from the SAME side is an idempotent no-op. The concede event MUST render as a centered 100% card labeled "Concesión" with the "{surrendering team} se rinde · Victoria de {acceptor team}" sub-line (match-view MVT-1).
+
+#### Scenario: Propose only while live
+
+- GIVEN a live match with no pending proposal
+- WHEN a coach proposes to concede
+- THEN `concedeProposedBy` persists as that side, no event persists, and the match keeps running
+
+#### Scenario: Double-propose by the other side rejected
+
+- GIVEN a pending concession proposal
+- WHEN the OTHER coach proposes to concede
+- THEN it returns 409 and the proposal stays unchanged
+
+#### Scenario: Proposal retry is idempotent
+
+- GIVEN a pending concession proposal
+- WHEN the SAME side retries the propose
+- THEN it is a no-op returning the current view with no duplicate state
+
+#### Scenario: Accept finishes with victory to the acceptor
+
+- GIVEN a pending concession proposal
+- WHEN the NON-proposer accepts
+- THEN the match becomes finished, the fixture records the ACCEPTOR's team as winner (walkover scores, played), the `concede` event (side = the surrendering side) and the victory commit in the SAME transaction, and a later result load returns 409
+
+#### Scenario: Decline clears and the match continues
+
+- GIVEN a pending concession proposal
+- WHEN the NON-proposer declines
+- THEN `concedeProposedBy` clears, the match stays live, and no event persists
+
+#### Scenario: Non-live or no-proposal commands rejected
+
+- GIVEN a finished match or one with no pending proposal
+- WHEN a concede propose or respond command arrives
+- THEN it returns 409 with no mutation
+
+#### Scenario: Spectator and admin denied
+
+- GIVEN a spectator member or the league admin (no side)
+- WHEN they propose or respond to a concession
+- THEN the spectator member is 403'd by the control gate (LM-2) and the side-less admin gets 409, with no state changes
+
+#### Scenario: Proposer cannot respond to their own proposal
+
+- GIVEN a pending concession proposal
+- WHEN the PROPOSER tries to accept or decline it
+- THEN it returns 409 and the proposal stays unchanged
 
 ### Requirement: MVT-5 · Casualty Cause and Actor Rendering Data
 

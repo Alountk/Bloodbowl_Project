@@ -413,6 +413,7 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       awayScore: 0,
       paused: false,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
@@ -473,6 +474,7 @@ function finishedLiveDetail(): MatchDetail {
       awayScore: 1,
       paused: false,
       finishedAt: 5000,
+      concedeProposedBy: null,
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -902,6 +904,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [],
     };
     stubMatch(detail);
@@ -932,6 +935,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [],
     };
     stubMatch(detail);
@@ -961,6 +965,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       homeScore: 0,
       awayScore: 0,
       finishedAt: null,
+      concedeProposedBy: null,
       events: [],
     };
     const fetchMock = vi.fn((url: string) =>
@@ -1542,5 +1547,179 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     expect(turnStart).toBeTruthy();
     expect(turnStart!.className).toContain("ev--home");
     expect(turnStart!.className).toMatch(/\bev\b/);
+  });
+});
+
+describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function concedeLive(proposedBy: "home" | "away" | null = null): MatchDetail {
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, concedeProposedBy: proposedBy };
+    return detail;
+  }
+
+  it("shows the 'Conceder' control to a coach with a side while live and hides it for a spectator and a finished match", async () => {
+    stubLiveEventSource();
+    stubMatch(concedeLive());
+    const { unmount: unmountHome } = renderPlayed();
+    expect(await screen.findByText(/Mitad 1 · Turno 3/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Conceder" })).toBeTruthy();
+    unmountHome();
+
+    // A spectator member (no side) never sees the concede control.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (vi.mocked(useSession) as any).mockReturnValue({ data: { user: { id: "user-spectator" } } });
+    stubLiveEventSource();
+    stubMatch(concedeLive());
+    const { unmount: unmountSpectator } = renderPlayed();
+    expect(await screen.findByText(/Mitad 1 · Turno 3/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Conceder" })).toBeNull();
+    unmountSpectator();
+
+    // A finished live match hides the concede control too.
+    stubLiveEventSource();
+    stubMatch(finishedLiveDetail());
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText("Fin del partido")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /Conceder/i })).toBeNull();
+  });
+
+  it("fires { type: 'concede' } only after the inline confirm (Cancelar aborts)", async () => {
+    stubLiveEventSource();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: { ...liveDetail().live, concedeProposedBy: "home" } }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(concedeLive()) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+
+    // First click only expands the inline confirm — nothing is posted yet.
+    act(() => screen.getByRole("button", { name: "Conceder" }).click());
+    expect(screen.getByText(/¿Conceder el partido?/)).toBeTruthy();
+    let livePosts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+    expect(livePosts).toHaveLength(0);
+
+    // Cancelar closes the confirm without posting.
+    act(() => screen.getByRole("button", { name: "Cancelar" }).click());
+    expect(screen.queryByText(/¿Conceder el partido?/)).toBeNull();
+    livePosts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+    expect(livePosts).toHaveLength(0);
+
+    // Confirm → the concede command fires.
+    act(() => screen.getByRole("button", { name: "Conceder" }).click());
+    act(() => screen.getByRole("button", { name: /Sí, conceder/i }).click());
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+      expect(posts).toHaveLength(1);
+      const init = (posts[0] as unknown as [string, RequestInit])[1];
+      expect(JSON.parse(String(init.body))).toEqual({ type: "concede" });
+    });
+  });
+
+  it("shows the proposer 'Esperando respuesta del rival…' and the rival Aceptar/Rechazar while a proposal is pending", async () => {
+    stubLiveEventSource();
+    stubMatch(concedeLive("home"));
+    const { unmount: unmountHome } = renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    // The PROPOSER (home coach, u1) sees the waiting copy and no buttons.
+    expect(screen.getByText(/Esperando respuesta del rival/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Aceptar|Rechazar|Conceder/i })).toBeNull();
+    unmountHome();
+
+    // The RIVAL (away coach, u2) sees the surrender + accept/decline buttons.
+    stubLiveEventSource();
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
+    const rivalDetail = concedeLive("home");
+    rivalDetail.live = { ...rivalDetail.live!, viewerSide: "away" };
+    stubMatch(rivalDetail);
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/El rival se rinde/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Aceptar" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Rechazar" })).toBeTruthy();
+    expect(screen.queryByText(/Esperando respuesta del rival/)).toBeNull();
+  });
+
+  it("Aceptar fires { type: 'concedeRespond', accept: true } and Rechazar the decline", async () => {
+    const acceptView = {
+      ...liveDetail().live,
+      status: "finished",
+      finishedAt: 5000,
+      homeScore: 0,
+      awayScore: 2,
+      concedeProposedBy: null,
+    };
+    const rivalDetail = concedeLive("home");
+    rivalDetail.live = { ...rivalDetail.live!, viewerSide: "away" };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: acceptView }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(rivalDetail) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    stubLiveEventSource();
+    // The RIVAL (away coach) responds.
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
+    const { unmount } = renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+
+    act(() => screen.getByRole("button", { name: "Aceptar" }).click());
+    await waitFor(() => {
+      const posts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+      expect(posts).toHaveLength(1);
+      const init = (posts[0] as unknown as [string, RequestInit])[1];
+      expect(JSON.parse(String(init.body))).toEqual({ type: "concedeRespond", accept: true });
+    });
+    unmount();
+
+    // Rechazar fires the decline (fresh render so the mock resets).
+    const declineFetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: concedeLive().live }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(rivalDetail) },
+      ),
+    );
+    vi.stubGlobal("fetch", declineFetchMock);
+    stubLiveEventSource();
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    act(() => screen.getByRole("button", { name: "Rechazar" }).click());
+    await waitFor(() => {
+      const posts = declineFetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+      expect(posts).toHaveLength(1);
+      const init = (posts[0] as unknown as [string, RequestInit])[1];
+      expect(JSON.parse(String(init.body))).toEqual({ type: "concedeRespond", accept: false });
+    });
+  });
+
+  it("renders the accepted concession as a centered 'Concesión' feed card", async () => {
+    stubLiveEventSource();
+    const finished = liveDetail();
+    finished.live = {
+      ...finished.live!,
+      status: "finished",
+      finishedAt: 9000,
+      concedeProposedBy: null,
+      events: [
+        { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+        { seq: 6, kind: "concede", side: "home", playerRosterId: null, half: 1, turnNumber: 3, payload: { winnerSide: "away" }, at: 9000 },
+      ],
+    };
+    stubMatch(finished);
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Concesión"));
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const concedeRow = rows.find((li) => li.textContent?.includes("Concesión"));
+    expect(concedeRow).toBeTruthy();
+    expect(concedeRow!.className).toContain("ev--center");
+    expect(concedeRow!.textContent).toContain("Reavers se rinde · Victoria de Dwarves");
   });
 });

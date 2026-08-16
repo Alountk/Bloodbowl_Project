@@ -15,12 +15,18 @@ import type { LiveCommand, MatchPlayer } from "./api";
  * derives from `viewerSide` vs `activeSide`: the ACTIVE coach may record TD /
  * Pase completo / Baja / Herida / Falta; the NON-active coach is offered ONLY
  * the casualty action (their own player). The Falta form additionally captures
- * the VICTIM from `opponentRoster` (LM-20); the Baja/Herida form captures the
- * six-part `cause` plus a CAUSER select from `opponentRoster` that is hidden
- * for `dodge`/`crowd` and never sent with those causes (LM-12 strict). Labels
- * stay DISTINCT from "Jugador" so `getByLabelText(/Jugador/i)` remains
- * unambiguous (D7). Submit passes through the parent's `act`/`sendCommand`/
- * `busyRef`; a server 409 surfaces via the existing error alert.
+ * the VICTIM from `opponentRoster` (LM-20). The Baja/Herida form captures the
+ * six-part `cause` plus a CAUSER select that is hidden for `dodge`/`crowd` and
+ * never sent with those causes (LM-12 strict). The casualty pools are
+ * role-aware (RAU-34): the ACTIVE coach records the injury THEY inflicted, so
+ * the victim select draws from the OPPONENT roster, the causer select from
+ * their OWN roster, and the command's `side` is the VICTIM's side (the
+ * OPPONENT side for the ACTIVE coach); the NON-active coach records the wound
+ * done to their OWN player, so the victim draws from their roster, the causer
+ * from the rival's, and `side` stays their own side. Labels stay DISTINCT from
+ * "Jugador" so `getByLabelText(/Jugador/i)` remains unambiguous (D7). Submit
+ * passes through the parent's `act`/`sendCommand`/`busyRef`; a server 409
+ * surfaces via the existing error alert.
  */
 
 type EventKindOption = "td" | "completion" | "casualty" | "foul";
@@ -45,7 +51,7 @@ interface EventControlsProps {
   status: "pending" | "ready" | "live" | "finished";
   /** The viewer's OWN roster (the side's players) — only alive players are offered. */
   roster: MatchPlayer[];
-  /** The RIVAL roster (opposite the viewer): Falta victim + casualty causer (LM-20). */
+  /** The RIVAL roster (opposite the viewer): Falta victim; casualty VICTIM for the ACTIVE coach and casualty CAUSER for the NON-active coach (LM-20, RAU-34). */
   opponentRoster: MatchPlayer[];
   /** Wraps `act`: `/api/.../live` POST command. */
   onSubmit: (cmd: LiveCommand) => Promise<void>;
@@ -85,6 +91,13 @@ export function EventControls({
   const isActive = viewerSide === activeSide;
   const menuItems = isActive ? ACTIVE_MENU : NON_ACTIVE_MENU;
   const alivePlayers = roster.filter((p) => p.alive);
+  const aliveOpponentPlayers = opponentRoster.filter((p) => p.alive);
+  // RAU-34 role-aware casualty pools: the ACTIVE coach records the injury THEY
+  // inflicted (victim from the rival, causer from their OWN roster); the
+  // NON-active coach records the wound done to their OWN player (victim own,
+  // causer rival). Alive-only, matching the "Jugador" select's semantics.
+  const victimPool = isActive ? aliveOpponentPlayers : alivePlayers;
+  const causerPool = isActive ? alivePlayers : aliveOpponentPlayers;
 
   const requiresCauser = cause !== "" && CAUSE_REQUIRES_CAUSER.has(cause);
 
@@ -115,9 +128,13 @@ export function EventControls({
       // dodge/crowd NEVER send a causer (the select is hidden for them).
       if (!playerRosterId || cause === "") return;
       if (requiresCauser && !causerRosterId) return;
+      // RAU-34: the casualty `side` is the VICTIM's side — the OPPONENT side for
+      // the ACTIVE coach (they record the injury they inflicted on a rival), the
+      // viewer's OWN side for the NON-active coach.
+      const casualtySide: "home" | "away" = isActive ? (viewerSide === "home" ? "away" : "home") : viewerSide;
       const cmd: LiveCommand = {
         type: "casualty",
-        side,
+        side: casualtySide,
         victimRosterId: playerRosterId,
         band,
         cause,
@@ -167,7 +184,7 @@ export function EventControls({
             <option value="" disabled>
               Selecciona…
             </option>
-            {alivePlayers.map((p) => (
+            {(kind === "casualty" ? victimPool : alivePlayers).map((p) => (
               <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
                 {p.name}
               </option>
@@ -228,7 +245,7 @@ export function EventControls({
                     <option value="" disabled>
                       Selecciona…
                     </option>
-                    {opponentRoster.map((p) => (
+                    {causerPool.map((p) => (
                       <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
                         {p.name}
                       </option>

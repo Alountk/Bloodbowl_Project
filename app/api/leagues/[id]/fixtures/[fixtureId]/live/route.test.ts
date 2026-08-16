@@ -20,6 +20,9 @@ const applyTransitionMock = vi.hoisted(() => vi.fn());
 const liveMatchRowToStateMock = vi.hoisted(() => vi.fn());
 const pauseLiveMatchMock = vi.hoisted(() => vi.fn());
 const resumeLiveMatchMock = vi.hoisted(() => vi.fn());
+const proposeConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
+const declineConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
+const acceptConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
 
 const hubMock = vi.hoisted(() => ({
   subscribe: vi.fn(),
@@ -48,6 +51,9 @@ vi.mock("@/lib/liveStore", () => ({
   liveMatchRowToState: liveMatchRowToStateMock,
   pauseLiveMatch: pauseLiveMatchMock,
   resumeLiveMatch: resumeLiveMatchMock,
+  proposeConcedeLiveMatch: proposeConcedeLiveMatchMock,
+  declineConcedeLiveMatch: declineConcedeLiveMatchMock,
+  acceptConcedeLiveMatch: acceptConcedeLiveMatchMock,
 }));
 
 import { GET, POST } from "./route";
@@ -1003,6 +1009,136 @@ describe("POST .../live — requestTurn nudge + 60s cooldown (LM-13, D17)", () =
     } as never);
     expect(res.status).toBe(200);
     expect(applyTransitionMock).toHaveBeenCalled();
+  });
+});
+
+describe("POST .../live — concede propose / accept / decline (RAU-38)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active and the row exists (the concede store fns re-read it). */
+  function liveSetup(sessionId: string) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(8),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({ ...liveState, seq: 8, concedeProposedBy: "home" });
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("wires a `concede` command through proposeConcedeLiveMatch with the caller's side (RAU-38)", async () => {
+    liveSetup("coach-home");
+    proposeConcedeLiveMatchMock.mockResolvedValue({ seq: 9, view: liveView({ concedeProposedBy: "home", seq: 9 }) });
+    const res = await POST(req({ type: "concede" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(proposeConcedeLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ liveMatchId: "lm-1", fixtureId: "f-1", side: "home" }),
+      expect.anything(),
+    );
+    const body = await res.json();
+    expect(body.view.concedeProposedBy).toBe("home");
+    expect(body.view.viewerSide).toBe("home");
+  });
+
+  it("rejects a `concede` from a coach without a side (admin) with 409 and no store call", async () => {
+    liveSetup("owner-1"); // league admin owns no team → side null
+    const res = await POST(req({ type: "concede" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(proposeConcedeLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("maps a state-machine reject (non-live / double-propose) to 409 with no mutation", async () => {
+    liveSetup("coach-home");
+    proposeConcedeLiveMatchMock.mockRejectedValue(Object.assign(new Error("concede only while live"), { status: 409 }));
+    const res = await POST(req({ type: "concede" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+  });
+
+  it("wires a `concedeRespond accept` through acceptConcedeLiveMatch (fixture team ids passed) → finished view", async () => {
+    liveSetup("coach-away"); // home proposed → away responds
+    acceptConcedeLiveMatchMock.mockResolvedValue({ seq: 9, view: liveView({ status: "finished", finishedAt: 2000, seq: 9, concedeProposedBy: null }) });
+    const res = await POST(req({ type: "concedeRespond", accept: true }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(acceptConcedeLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        liveMatchId: "lm-1",
+        fixtureId: "f-1",
+        side: "away",
+        homeTeamId: "home-t",
+        awayTeamId: "away-t",
+      }),
+      expect.anything(),
+    );
+    expect(declineConcedeLiveMatchMock).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.view.status).toBe("finished");
+    expect(body.view.viewerSide).toBe("away");
+  });
+
+  it("wires a `concedeRespond decline` through declineConcedeLiveMatch → live view (match continues)", async () => {
+    liveSetup("coach-away");
+    declineConcedeLiveMatchMock.mockResolvedValue({ seq: 9, view: liveView({ seq: 9, concedeProposedBy: null }) });
+    const res = await POST(req({ type: "concedeRespond", accept: false }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(declineConcedeLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away" }),
+      expect.anything(),
+    );
+    expect(acceptConcedeLiveMatchMock).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.view.concedeProposedBy).toBeNull();
+  });
+
+  it("rejects a respond without a pending proposal (store 409) and an admin responder (no side)", async () => {
+    liveSetup("coach-away");
+    declineConcedeLiveMatchMock.mockRejectedValue(Object.assign(new Error("no concede proposal"), { status: 409 }));
+    const res = await POST(req({ type: "concedeRespond", accept: false }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+
+    liveSetup("owner-1");
+    const adminRes = await POST(req({ type: "concedeRespond", accept: true }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(adminRes.status).toBe(409);
+    expect(acceptConcedeLiveMatchMock).not.toHaveBeenCalled();
+    expect(declineConcedeLiveMatchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a malformed concedeRespond (accept not a boolean) with 400", async () => {
+    liveSetup("coach-away");
+    const res = await POST(req({ type: "concedeRespond", accept: "yes" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(acceptConcedeLiveMatchMock).not.toHaveBeenCalled();
+    expect(declineConcedeLiveMatchMock).not.toHaveBeenCalled();
   });
 });
 
