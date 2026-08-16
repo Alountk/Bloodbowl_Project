@@ -515,7 +515,7 @@ test("complete lifecycle: join → start → schedule → result → progression
     // (2-member, 1-jornada league) → the league finishes DEFINITIVELY and the
     // champion (team A, the 2–1 winner) is declared and stored. ---
     await pageA.reload();
-    await expect(pageA.getByText("Finalizada")).toBeVisible();
+    await expect(pageA.getByText("Finalizada", { exact: true })).toBeVisible();
     const championPanel = pageA.getByTestId("champion-panel");
     await expect(championPanel).toBeVisible();
     await expect(championPanel.getByText("Campeón")).toBeVisible();
@@ -679,7 +679,7 @@ test("loading the final result finishes the league: champion panel shows, correc
     // The UI shows the champion panel + the Finalizada badge; the played card
     // stays visible but the correction affordance is gone (definitive).
     await league.rival.reload();
-    await expect(league.rival.getByText("Finalizada")).toBeVisible();
+    await expect(league.rival.getByText("Finalizada", { exact: true })).toBeVisible();
     const championPanel = league.rival.getByTestId("champion-panel");
     await expect(championPanel).toBeVisible();
     await expect(championPanel.getByText("Campeón")).toBeVisible();
