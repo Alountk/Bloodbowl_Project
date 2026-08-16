@@ -1,4 +1,5 @@
 import { timelinePercent, derivePartialScore } from "@/lib/liveFeed";
+import { useI18n } from "@/lib/i18n";
 import { EVENT_GLYPH, liveEventLabel, casualtyIcon } from "./liveEventLabels";
 import { Icon, type IconName } from "./icons";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
@@ -43,6 +44,7 @@ export function MatchTimelineBar({
   homeTeam?: MatchTeamDetail;
   awayTeam?: MatchTeamDetail;
 }) {
+  const { t } = useI18n();
   const display = events.filter((e) => DISPLAY_KINDS.has(e.kind));
   // The v7 bar renders for every STARTED match — even before the first side
   // event the fixed mid start/end markers + labels are visible (the e2e asserts
@@ -63,7 +65,7 @@ export function MatchTimelineBar({
       e.side === "home" ? "home" : e.side === "away" ? "away" : "mid";
     const name: IconName = e.kind === "casualty" ? casualtyIcon(e.payload) : EVENT_GLYPH[e.kind] ?? "football";
     const minute = Math.max(0, Math.floor((e.at - startedAt) / 60_000));
-    const label = liveEventLabel(e);
+    const label = liveEventLabel(e, t);
     const playerName = playerNameOf(e, homeTeam, awayTeam);
     const score =
       e.kind === "td" && e.seq != null && partialScores.has(e.seq)
@@ -94,7 +96,7 @@ export function MatchTimelineBar({
       data-testid="match-timeline"
       className="bg-[#f8fafc] pb-1.5"
       role="img"
-      aria-label="Línea de tiempo del partido"
+      aria-label={t("match.timelineAria")}
     >
       <div className="relative mx-3.5 h-10">
         {/* Track line: 3px gradient centered at 50%. */}
@@ -117,7 +119,7 @@ export function MatchTimelineBar({
           data-testid="timeline-start-icon"
           data-side="mid"
           data-kind="start"
-          title="Inicio del partido"
+          title={t("match.event.start")}
           className={`absolute ${lane("mid")}`}
           style={{ left: "0%" }}
         >
@@ -146,7 +148,7 @@ export function MatchTimelineBar({
           data-testid="timeline-end-icon"
           data-side="mid"
           data-kind="endMatch"
-          title="Fin del partido"
+          title={t("match.event.endMatch")}
           className={`absolute ${lane("mid")}`}
           style={{ left: "100%" }}
         >
