@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveMinute, playerRef, turnTag, derivePartialScore } from "@/lib/liveFeed";
 import {
@@ -339,7 +340,7 @@ export function LiveEventCards({
           // tag + minute corners (RAU-36/37).
           const showCorners = event.kind !== "expensive_mistake";
           return (
-            <>
+            <Fragment key={event.seq}>
             <li
               key={event.seq}
               data-testid="live-event-row"
@@ -515,7 +516,7 @@ export function LiveEventCards({
                 </div>
               </li>
             ) : null}
-            </>
+            </Fragment>
           );
         }
 
