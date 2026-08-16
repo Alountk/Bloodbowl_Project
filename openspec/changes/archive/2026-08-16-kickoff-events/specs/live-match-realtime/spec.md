@@ -90,7 +90,7 @@ The fan-factor event MUST roll one D6 per team and map 1-2→1, 3-4→2, 5-6→3
 
 ### Requirement: LM-23 · Expensive Mistake Resolution
 
-For each team the begin transition MUST roll 1D6 and resolve against the treasury-bracket matrix: 100k–195k | 200k–295k | 300k–395k | 400k–495k | 500k–595k | 600k+; a treasury below 100k MUST clamp to the first bracket. The roll→outcome matrix MUST be exactly (rows 1D6 roll, columns treasury bracket): roll 1 → menor | menor | grave | grave | catástrofe | catástrofe; roll 2 → evitada | menor | menor | grave | grave | catástrofe; roll 3 → evitada | evitada | menor | menor | grave | grave; roll 4 → evitada | evitada | evitada | menor | menor | grave; roll 5 → evitada | evitada | evitada | evitada | menor | menor; roll 6 → evitada | evitada | evitada | evitada | evitada | menor. Outcomes: Crisis evitada (−0 gp), Incidente menor (−1D3×10k), Incidente grave (−half the treasury rounded DOWN to the nearest 5k), Catástrofe (treasury reduced to the kept 2D6×10k). The treasury mutation MUST commit in the SAME transaction as the event rows; a failure MUST roll back both. The payload MUST carry `{side, roll, bracket, outcome, amountLost, treasuryBefore, treasuryAfter}` with `bracket` one of `100k-195k|200k-295k|300k-395k|400k-495k|500k-595k|600k+` and `outcome` one of `crisis-evaded|minor-incident|serious-incident|catastrophe`.
+For each team the begin transition MUST roll 1D6 and resolve against the treasury-bracket matrix: 100k–195k | 200k–295k | 300k–395k | 400k–495k | 500k–595k | 600k+; a treasury below 100k MUST NOT generate an expensive_mistake event (no roll, no row, no treasury update, RAU-33). The roll→outcome matrix MUST be exactly (rows 1D6 roll, columns treasury bracket): roll 1 → menor | menor | grave | grave | catástrofe | catástrofe; roll 2 → evitada | menor | menor | grave | grave | catástrofe; roll 3 → evitada | evitada | menor | menor | grave | grave; roll 4 → evitada | evitada | evitada | menor | menor | grave; roll 5 → evitada | evitada | evitada | evitada | menor | menor; roll 6 → evitada | evitada | evitada | evitada | evitada | menor. Outcomes: Crisis evitada (−0 gp), Incidente menor (−1D3×10k), Incidente grave (−half the treasury rounded DOWN to the nearest 5k), Catástrofe (treasury reduced to the kept 2D6×10k). The treasury mutation MUST commit in the SAME transaction as the event rows; a failure MUST roll back both. The payload MUST carry `{side, roll, bracket, outcome, amountLost, treasuryBefore, treasuryAfter}` with `bracket` one of `100k-195k|200k-295k|300k-395k|400k-495k|500k-595k|600k+` and `outcome` one of `crisis-evaded|minor-incident|serious-incident|catastrophe`.
 
 #### Scenario: Minor incident deducts 1D3×10k
 
@@ -110,11 +110,11 @@ For each team the begin transition MUST roll 1D6 and resolve against the treasur
 - WHEN resolved
 - THEN amountLost is 400.000 and treasuryAfter is 100.000
 
-#### Scenario: Sub-100k treasury clamps to the first bracket
+#### Scenario: Sub-100k treasury skips the expensive-mistake roll
 
-- GIVEN treasury 80.000 and a crisis-evaded roll
-- WHEN resolved
-- THEN bracket is `100k-195k`, amountLost is 0, and treasuryAfter equals treasuryBefore
+- GIVEN treasury 80.000 and a minor-incident roll
+- WHEN the transition runs
+- THEN no expensive_mistake event is emitted, no row persists, no treasury update commits, and the team's treasury stays 80.000 (RAU-33)
 
 #### Scenario: Atomicity with event persistence
 

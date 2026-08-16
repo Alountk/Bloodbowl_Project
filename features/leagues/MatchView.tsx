@@ -10,6 +10,7 @@ import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveC
 import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
 import { LiveEventCards } from "./liveEventCards";
 import { MatchTimelineBar } from "./matchTimelineBar";
+import { Icon } from "./icons";
 import { EventControls } from "./liveControls";
 import { TeamEmblem } from "./TeamEmblem";
 import { useLiveMatch } from "./useLiveMatch";
@@ -83,21 +84,7 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
  * walkover bodies with no turn/clock/event chrome (MV-5/AC-5).
  */
 
-/** Formats a millisecond value as M:SS (informational unified clock). */
-function FormatMs({ ms }: { ms: number }) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return (
-    <span>
-      {m}
-      <span aria-hidden="true">:</span>
-      {String(s).padStart(2, "0")}
-    </span>
-  );
-}
-
-/** Formats a millisecond value as H:MM:SS (per-coach clocks, mockup format). */
+/** Formats a millisecond value as H:MM:SS (clocks, count-up, v7 format). */
 function FormatHms({ ms }: { ms: number }) {
   const totalSeconds = Math.floor(Math.max(ms, 0) / 1000);
   const h = Math.floor(totalSeconds / 3600);
@@ -179,14 +166,17 @@ function MatchupLine({ names }: { names: { home: string; away: string } }) {
 
 /**
  * Two-phase consent / ready / begin panel (LM-11/LM-3/D19). Rendered when a
- * scheduled fixture has no live row yet (`live: null` → "Iniciar partido") or a
+ * startable fixture has no live row yet (`live: null` → "Iniciar partido") or a
  * `pending`/`ready` row (retract / "Empezar partido"). The viewer's side comes
  * from the DTO's `viewerSide` (D19); the panel only shows the controls for the
- * current viewer's side.
+ * current viewer's side. The header distinguishes an agreed date ("Partido
+ * programado") from an unscheduled fixture ("Partido sin programar") — the
+ * negotiation is an optional reminder, never a gate on starting.
  */
 function LiveConsentPanel({
   state,
   names,
+  scheduled,
   onConsent,
   onRetract,
   onBegin,
@@ -194,6 +184,7 @@ function LiveConsentPanel({
 }: {
   state: LiveMatchViewState | null;
   names: { home: string; away: string };
+  scheduled: boolean;
   onConsent: (side: "home" | "away") => void;
   onRetract: (side: "home" | "away") => void;
   onBegin: () => void;
@@ -220,7 +211,7 @@ function LiveConsentPanel({
       <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
         <MatchupLine names={names} />
         <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
-          Partido programado
+          {scheduled ? "Partido programado" : "Partido sin programar"}
         </p>
         <p className="mt-2 text-sm text-slate-700">
           {names[side]} quiere empezar. {side === "home" ? names.away : names.home} aún no ha confirmado.
@@ -320,7 +311,7 @@ function TurnTrack({
             key={n}
             aria-label={`Turno ${n}`}
             aria-current={active ? "true" : undefined}
-            className={`flex h-5 w-5 items-center justify-center rounded-sm text-[10px] font-bold ${
+            className={`flex h-[21px] w-[21px] items-center justify-center rounded-[3px] text-[10px] font-bold ${
               active ? "bg-[#d11938] text-white" : "bg-[#1f3a7a] text-[#9fb3d8]"
             }`}
           >
@@ -333,20 +324,23 @@ function TurnTrack({
 }
 
 /**
- * The mockup top bar (Tourplay): a COMPACT SINGLE-ROW navy bar (flex-wrap on
- * small screens) —
- * `[label "{league} · Jornada {round}"] [home track] [home clock H:MM:SS]
- *  [2ª PARTE badge] [away clock H:MM:SS] [TURNO button] [away track]`.
- * The layout renders UNIFORMLY in every fixture state (pending/scheduled/live/
+ * The v7 Tourplay navy header, three stacked rows:
+ *  row 1 (top-row): back arrow (32px circle) + league·jornada label + the
+ *    count-up (timer SVG + total elapsed H:MM:SS, right-aligned);
+ *  row 2 (turn-row): home turn track · the red TURNO button ("Dar el turno"
+ *    with the "Turno {team}" small line) · away turn track;
+ *  row 3 (clock-row): per-coach H:MM:SS clocks + the translucent half badge
+ *    ("1ª Parte"/"2ª Parte") + the always-visible "Mitad H · Turno N" note.
+ * The rows render UNIFORMLY in every fixture state (pending/scheduled/live/
  * finished); only the LIVE-specific elements are gated: both turn tracks show
  * the SAME global numbers with the ACTIVE side's current turn highlighted ONLY
- * while live (inert otherwise — no `aria-current`), the clocks show H:MM:SS
- * while live (or the frozen base value once it carries real time) and "–"
- * before kickoff, and the ACTIVE coach's "Tu turno" STATUS + the red TURNO
- * ("Dar el turno") button render ONLY when `status === "live"` AND the viewer
- * is the active participant (spectator/admin → hidden). The "Mitad H · Turno N"
- * line stays always-visible (all strings stay byte-identical — e2e/unit suites
- * assert them). The unified "Tiempo" clock lives in the hero scoreboard.
+ * while live (inert otherwise — no `aria-current`), the clocks/count-up show
+ * H:MM:SS while live (or the frozen base value once it carries real time) and
+ * "–" before kickoff, and the red TURNO button (with its "Turno {team}"
+ * status line) renders ONLY when `status === "live"` AND the viewer is the
+ * active participant (spectator/admin → hidden). All strings stay byte-identical
+ * where the e2e/unit suites assert them. The unified "Tiempo" clock lives in
+ * the hero scoreboard.
  */
 function LiveTopBar({
   state,
@@ -370,61 +364,74 @@ function LiveTopBar({
   const clockValue = (ms: number) => (live || ms > 0 ? <FormatHms ms={ms} /> : "–");
   const showTurnControls = live && turnControls.isActive;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[#1f3a7a] bg-[#12225a] px-4 py-2 text-white">
-      {/* MVT-3 back arrow to the jornada (UI-only, existing DTO). */}
-      <Link
-        href={`/leagues/${leagueId}`}
-        aria-label="Volver a la jornada"
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white hover:border-white"
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M20 11H8l5.5-5.5L12.08 4.08 4.16 12l7.92 7.92L13.5 18.5 8 13h12v-2z"
-          />
-        </svg>
-      </Link>
-      <p className="text-[11px] font-bold uppercase tracking-wide text-[#cbd5e1]">{label}</p>
-      <TurnTrack
-        sideName={names.home}
-        current={globalTurn}
-        isActive={live && state.activeSide === "home"}
-      />
-      <span className="text-[11px] font-bold tabular-nums text-white">
-        {clockValue(clock.homeTurnMs)}
-      </span>
-      <span className="rounded-sm bg-[#d11938] px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white">
-        {state.half === 2 ? "2ª PARTE" : "1ª PARTE"}
-      </span>
-      <span className="text-[11px] font-bold tabular-nums text-white">
-        {clockValue(clock.awayTurnMs)}
-      </span>
-      <span className="flex items-center gap-2">
-        <p className="text-[11px] font-semibold text-[#cbd5e1]">
-          Mitad {state.half} · Turno {state.turnNumber}
+    <>
+      {/* Row 1 — back + label + count-up. */}
+      <div className="flex items-center gap-2.5 border-b border-white/10 px-3 py-2">
+        {/* MVT-3 back arrow to the jornada (UI-only, existing DTO). */}
+        <Link
+          href={`/leagues/${leagueId}`}
+          aria-label="Volver a la jornada"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/30 bg-white/[0.08] text-white hover:border-white"
+        >
+          <Icon name="back" className="h-[18px] w-[18px]" />
+        </Link>
+        <p className="min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.04em] text-[#cbd5e1]">
+          {label}
         </p>
+        <span className="ml-auto flex items-center gap-1 text-xs font-extrabold tabular-nums text-white">
+          <Icon name="timer" className="h-3.5 w-3.5 text-[#cbd5e1]" />
+          {clockValue(clock.elapsed)}
+        </span>
+      </div>
+      {/* Row 2 — home track · TURNO button · away track. */}
+      <div className="flex flex-wrap items-center justify-center gap-2.5 px-3 pt-[7px] pb-0.5">
+        <TurnTrack
+          sideName={names.home}
+          current={globalTurn}
+          isActive={live && state.activeSide === "home"}
+        />
         {showTurnControls ? (
-          <>
-            <p role="status" className="text-[11px] font-bold uppercase tracking-wide text-[#d11938]">
-              Tu turno
-            </p>
-            <button
-              type="button"
-              onClick={turnControls.onEndTurn}
-              disabled={turnControls.submitting}
-              className="rounded-sm bg-[#d11938] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-white hover:bg-[#b0142f] disabled:opacity-50"
+          <button
+            type="button"
+            onClick={turnControls.onEndTurn}
+            disabled={turnControls.submitting}
+            className="flex items-center gap-1.5 rounded-[4px] bg-[#d11938] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+          >
+            <small
+              role="status"
+              className="text-[9px] font-bold uppercase tracking-[0.03em] text-[#ffd9e0]"
             >
-              Dar el turno
-            </button>
-          </>
+              Turno {names[state.activeSide]}
+            </small>
+            Dar el turno
+          </button>
         ) : null}
-      </span>
-      <TurnTrack
-        sideName={names.away}
-        current={globalTurn}
-        isActive={live && state.activeSide === "away"}
-      />
-    </div>
+        <TurnTrack
+          sideName={names.away}
+          current={globalTurn}
+          isActive={live && state.activeSide === "away"}
+        />
+      </div>
+      {/* Row 3 — per-coach clocks + half indicator. */}
+      <div className="flex items-center justify-between gap-2 px-4 pt-0.5 pb-[7px] text-[11px] font-bold tabular-nums">
+        <span className="flex items-center gap-1 text-white">
+          <Icon name="timer" className="h-[13px] w-[13px] text-[#cbd5e1]" />
+          {clockValue(clock.homeTurnMs)}
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="rounded-[3px] border border-[rgba(209,25,56,0.45)] bg-[rgba(209,25,56,0.25)] px-2 py-[1px] text-[10px] font-black uppercase tracking-[0.05em] text-white">
+            {state.half === 2 ? "2ª Parte" : "1ª Parte"}
+          </span>
+          <span className="text-[11px] font-semibold text-[#cbd5e1]">
+            Mitad {state.half} · Turno {state.turnNumber}
+          </span>
+        </span>
+        <span className="flex items-center gap-1 text-white">
+          <Icon name="timer" className="h-[13px] w-[13px] text-[#cbd5e1]" />
+          {clockValue(clock.awayTurnMs)}
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -449,12 +456,12 @@ function MiniStats({
   ].filter((pill) => pill.show);
   if (pills.length === 0) return null;
   return (
-    <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+    <div className="mt-[3px] flex flex-wrap justify-center gap-[5px]">
       {pills.map((pill) => (
         <span
           key={pill.key}
           data-testid={`mini-${pill.key}-${side}`}
-          className="flex items-center gap-1 rounded-sm bg-white/15 px-1.5 py-0.5 text-[10px] text-white"
+          className="flex items-center gap-[3px] rounded-[3px] bg-white/15 px-1.5 py-[1px] text-[10px] text-white"
         >
           <span aria-hidden="true">{pill.icon}</span>
           <b className="tabular-nums">{pill.value}</b>
@@ -481,9 +488,9 @@ function LiveTeamBlock({
   visible: { td: boolean; comp: boolean; cas: boolean; spp: boolean };
 }) {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-1">
-      <TeamEmblem teamId={teamId} name={name} size="lg" className="border-2 border-white/25" />
-      <p className="mt-1 max-w-full truncate text-lg font-black uppercase tracking-wide text-white">
+    <div className="flex min-w-0 flex-col items-center gap-[3px]">
+      <TeamEmblem teamId={teamId} name={name} size="xl" className="border-2 border-white/[0.28]" />
+      <p className="max-w-full truncate text-base font-black uppercase tracking-[0.02em] text-white">
         {name}
       </p>
       <p className="max-w-full truncate text-[11px] text-[#cbd5e1]">{subtitle}</p>
@@ -496,26 +503,26 @@ function LiveTeamBlock({
  * The center scoreboard: BIG "home : away" digits (white on the navy hero, red
  * separator, mockup letter-spaced digits). The score is "- : -" before the
  * fixture is played (pending/scheduled), the live score while live, and the
- * final score once finished. The unified "Tiempo" match clock renders ONLY
- * while live (it ticks client-side; a frozen elapsed would be inert noise on a
- * pre-live or finished page).
+ * final score once finished. The v7 "En juego · Tiempo H:MM:SS" mini-line
+ * renders ONLY while live (it ticks client-side; a frozen elapsed would be
+ * inert noise on a pre-live or finished page).
  */
-function LiveScoreboard({ state }: { state: LiveMatchViewState }) {
+function LiveScoreboard({ state, clock }: { state: LiveMatchViewState; clock: DisplayClock }) {
   const played = state.status === "live" || state.status === "finished";
   return (
-    <div className="px-2 text-center">
+    <div className="px-1.5 text-center">
       <p
         data-testid="live-score"
         aria-label="Marcador"
-        className="text-5xl font-black leading-none tracking-[0.08em] text-white tabular-nums"
+        className="text-[46px] font-black leading-none tracking-[0.05em] text-white tabular-nums"
       >
         {played ? state.homeScore : "-"}
-        <span className="mx-2 text-[#d11938]">:</span>
+        <span className="mx-1.5 text-[#d11938]">:</span>
         {played ? state.awayScore : "-"}
       </p>
       {state.status === "live" ? (
-        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[#cbd5e1]">
-          Tiempo <FormatMs ms={state.elapsed} />
+        <p className="mt-[7px] text-[10px] font-bold uppercase tracking-[0.04em] text-[#cbd5e1]">
+          En juego · Tiempo <FormatHms ms={clock.elapsed} />
         </p>
       ) : null}
     </div>
@@ -523,13 +530,14 @@ function LiveScoreboard({ state }: { state: LiveMatchViewState }) {
 }
 
 /**
- * Hero banner (casi Tourplay, Design 10): `1fr auto 1fr` — teams mirrored
- * around the center score, each with its emblem, name, race · coach line and
- * the per-team mini-stat pills, on the navy→dark-red gradient. The whole view
- * derives the stats once from the event feed via `deriveTeamStats`.
+ * Hero banner (v7): `1fr auto 1fr` — teams mirrored around the center score,
+ * each with its 54px emblem, name, race · coach line and the per-team mini-stat
+ * pills, on the navy→dark-red 135deg gradient. The whole view derives the
+ * stats once from the event feed via `deriveTeamStats`.
  */
 function LiveHero({
   state,
+  clock,
   names,
   homeSubtitle,
   awaySubtitle,
@@ -538,6 +546,7 @@ function LiveHero({
   events,
 }: {
   state: LiveMatchViewState;
+  clock: DisplayClock;
   names: { home: string; away: string };
   homeSubtitle: string;
   awaySubtitle: string;
@@ -561,7 +570,7 @@ function LiveHero({
     spp: visible.spp ? stats[side].spp : 0,
   });
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 bg-gradient-to-br from-[#1b2f6e] via-[#12225a] to-[#5c1020] px-4 py-6">
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2.5 bg-[linear-gradient(135deg,#1b2f6e,#12225a_55%,#5c1020)] px-4 pt-3 pb-2.5">
       <LiveTeamBlock
         name={names.home}
         subtitle={homeSubtitle}
@@ -570,7 +579,7 @@ function LiveHero({
         side="home"
         visible={visible}
       />
-      <LiveScoreboard state={state} />
+      <LiveScoreboard state={state} clock={clock} />
       <LiveTeamBlock
         name={names.away}
         subtitle={awaySubtitle}
@@ -583,24 +592,31 @@ function LiveHero({
   );
 }
 
-/** The weather/stadium row (Design 10): weather is omit/neutral when a live
- * match has none yet; the stadium has no data source → the rulebook-neutral
- * "Reglamentario" always renders. */
+/** The weather/stadium row (v7): weather is omit/neutral when a live match has
+ * none yet; the stadium has no data source → the rulebook-neutral
+ * "Reglamentario" always renders. Inline SVG icons flank the two meta labels. */
 function LiveMetaRow() {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-1.5 text-[11px] text-slate-500">
-      <span>Clima · Estándar</span>
-      <span>Estadio · Reglamentario</span>
+    <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-[#e2e8f0] bg-[#f8fafc] px-3.5 py-1.5 text-[11px] text-slate-500">
+      <span className="flex items-center gap-1.5">
+        <Icon name="weather" className="h-[15px] w-[15px] text-[#12225a]" />
+        Clima · Estándar
+      </span>
+      <span className="flex items-center gap-1.5">
+        Estadio · Reglamentario
+        <Icon name="helmet" className="h-[15px] w-[15px] text-[#12225a]" />
+      </span>
     </div>
   );
 }
 
 /**
- * The uniform sticky match header (top bar + hero + meta row): rendered for
- * EVERY fixture state (pending/scheduled/live/finished) so the turns, clocks
- * and score stay visible while the body scrolls (`sticky top-0 z-40` on a solid
- * navy background). Only the LIVE-specific elements inside are gated by
- * `state.status === "live"` (see LiveTopBar/LiveScoreboard).
+ * The uniform sticky match header (v7: 3-row top bar + hero + meta row + the
+ * timeline bar): rendered for EVERY fixture state (pending/scheduled/live/
+ * finished) so the turns, clocks and score stay visible while the body scrolls
+ * (`sticky top-0 z-40` on a solid navy background with the v7 drop shadow).
+ * Only the LIVE-specific elements inside are gated by `state.status === "live"`
+ * (see LiveTopBar/LiveScoreboard).
  */
 function TourplayHeader({
   state,
@@ -613,6 +629,8 @@ function TourplayHeader({
   awayTeamId,
   leagueId,
   events,
+  homeTeam,
+  awayTeam,
   turnControls,
 }: {
   state: LiveMatchViewState;
@@ -625,12 +643,14 @@ function TourplayHeader({
   awayTeamId: string;
   leagueId: string;
   events: LiveMatchView["events"];
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
 }) {
   return (
     <div
       data-testid="tourplay-header"
-      className="sticky top-0 z-40 border-b border-[#1f3a7a] bg-[#12225a]"
+      className="sticky top-0 z-40 border-b border-[#1f3a7a] bg-[#12225a] shadow-[0_6px_16px_rgba(15,23,42,0.18)]"
     >
       <LiveTopBar
         state={state}
@@ -642,6 +662,7 @@ function TourplayHeader({
       />
       <LiveHero
         state={state}
+        clock={clock}
         names={names}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
@@ -654,6 +675,8 @@ function TourplayHeader({
         events={events}
         startedAt={state.startedAt}
         finishedAt={state.finishedAt}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
       />
     </div>
   );
@@ -666,6 +689,7 @@ function LiveActiveMatch({
   fixtureId,
   names,
   viewerSide,
+  scheduled,
   leagueLabel,
   homeSubtitle,
   awaySubtitle,
@@ -677,6 +701,7 @@ function LiveActiveMatch({
   fixtureId: string;
   names: { home: string; away: string };
   viewerSide: "home" | "away" | null;
+  scheduled: boolean;
   leagueLabel: string;
   homeSubtitle: string;
   awaySubtitle: string;
@@ -745,6 +770,8 @@ function LiveActiveMatch({
         awayTeamId={awayTeam.id}
         leagueId={leagueId}
         events={events}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
         turnControls={{
           isActive: state.viewerSide === state.activeSide,
           submitting,
@@ -757,6 +784,7 @@ function LiveActiveMatch({
           <LiveConsentPanel
             state={state}
             names={names}
+            scheduled={scheduled}
             onConsent={(side) => void act({ type: "consent", side })}
             onRetract={(side) => void act({ type: "retractConsent", side })}
             onBegin={() => void act({ type: "begin" })}
@@ -961,58 +989,13 @@ function FinishedLiveView({
         awayTeamId={awayTeam.id}
         leagueId={leagueId}
         events={live.events}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
         turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
       />
       {/* MVT-4: snapshot summary rows ABOVE the event timeline. */}
       <SummaryFeedRows detail={detail} />
       <FinishedLiveTimeline live={live} homeTeam={homeTeam} awayTeam={awayTeam} />
-    </div>
-  );
-}
-
-/**
- * A pending fixture (no scheduled date): the UNIFORM sticky Tourplay header
- * renders the inert pre-kickoff state ("–" clocks, "- : -" score, no turn
- * controls) above the pending notice. The header runs on the empty pending
- * shell (D16) so pending and scheduled share the exact same chrome.
- */
-function PendingFixtureView({
-  leagueLabel,
-  names,
-  homeSubtitle,
-  awaySubtitle,
-  homeTeam,
-  awayTeam,
-  leagueId,
-}: {
-  leagueLabel: string;
-  names: { home: string; away: string };
-  homeSubtitle: string;
-  awaySubtitle: string;
-  homeTeam: MatchTeamDetail;
-  awayTeam: MatchTeamDetail;
-  leagueId: string;
-}) {
-  const state = useMemo(() => emptyPendingView(), []);
-  const clock = useLiveClock(state);
-  return (
-    <div className="bg-white border border-[#e2e8f0]">
-      <TourplayHeader
-        state={state}
-        clock={clock}
-        label={leagueLabel}
-        names={names}
-        homeSubtitle={homeSubtitle}
-        awaySubtitle={awaySubtitle}
-        homeTeamId={homeTeam.id}
-        awayTeamId={awayTeam.id}
-        leagueId={leagueId}
-        events={[]}
-        turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
-      />
-      <div className="bg-white px-4 py-6 text-center">
-        <p className="text-sm font-semibold text-slate-600">Sin jornada programada todavía.</p>
-      </div>
     </div>
   );
 }
@@ -1217,6 +1200,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
           fixtureId={fixtureId}
           names={names}
           viewerSide={viewerSide}
+          scheduled={detail.fixture.status === "scheduled"}
           leagueLabel={leagueLabel}
           homeSubtitle={homeSubtitle}
           awaySubtitle={awaySubtitle}
@@ -1245,6 +1229,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         fixtureId={fixtureId}
         names={names}
         viewerSide={viewerSide}
+        scheduled={true}
         leagueLabel={leagueLabel}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
@@ -1253,17 +1238,22 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       />
     );
   } else if (detail.fixture.status === "pending") {
-    // A pending fixture (no date agreed): the uniform header renders the inert
-    // pre-kickoff chrome above the pending notice.
+    // A pending fixture (no date agreed yet): the start is ALWAYS available —
+    // the same consent panel renders with the "Partido sin programar" header
+    // (the date negotiation is just an optional reminder, never a gate).
     body = (
-      <PendingFixtureView
-        leagueLabel={leagueLabel}
+      <LiveActiveMatch
+        live={null}
+        leagueId={leagueId}
+        fixtureId={fixtureId}
         names={names}
+        viewerSide={viewerSide}
+        scheduled={false}
+        leagueLabel={leagueLabel}
         homeSubtitle={homeSubtitle}
         awaySubtitle={awaySubtitle}
         homeTeam={detail.homeTeam}
         awayTeam={detail.awayTeam}
-        leagueId={leagueId}
       />
     );
   } else {
@@ -1271,27 +1261,9 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
   }
 
   return (
-    <section aria-label={`Partido ${detail.fixture.round}`}>
-      <header className="mb-5 bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="border-b-[3px] border-[#d11938] pb-1 text-2xl font-black tracking-[0.02em] md:text-[24px]">
-              Partido {detail.fixture.round}
-            </h1>
-            <p className="mt-1 text-[13px] text-[#cbd5e1]">
-              {detail.homeTeam.name} vs {detail.awayTeam.name}
-            </p>
-          </div>
-          <Link
-            href={`/leagues/${leagueId}`}
-            className="rounded-md border border-white/40 px-3 py-1.5 text-xs font-semibold text-white hover:border-white"
-          >
-            Volver
-          </Link>
-        </div>
-      </header>
-
-      {body}
-    </section>
+    // v7: the duplicated "Partido {round}" + Volver page header is GONE — the
+    // back navigation lives in the sticky Tourplay header's back arrow (only
+    // the notFound/error/loading panels keep their own chrome).
+    <section aria-label={`Partido ${detail.fixture.round}`}>{body}</section>
   );
 }
