@@ -60,6 +60,9 @@ export interface MatchCardProps {
   currentUserId: string;
   /** True when the session user owns the league (admin → forfeit/correct control). */
   isLeagueOwner: boolean;
+  /** RAU-40: a finished league is definitive — the card hides the result load,
+   * correction and forfeit affordances (the jornada stays visible). */
+  leagueFinished?: boolean;
   /** Opens the negotiation panel for this fixture (card click). */
   onNegotiate: (fixture: FixtureDraft) => void;
   /** Opens the forfeit modal for this fixture (admin only). */
@@ -86,6 +89,7 @@ export function MatchCard({
   raceNameById,
   currentUserId,
   isLeagueOwner,
+  leagueFinished = false,
   onNegotiate,
   onForfeit,
   onLoadResult,
@@ -102,15 +106,31 @@ export function MatchCard({
   const score = formatMatchScore(fixture.homeScore, fixture.awayScore);
   const liveActive = fixture.live?.status === "live";
 
-  const openNegotiation = () => onNegotiate(fixture);
-  const openForfeit = () => onForfeit(fixture);
-  const openLoadResult = () => onLoadResult?.(fixture);
-  const openCorrectResult = () => onCorrectResult?.(fixture);
+  const openNegotiation = () => {
+    if (leagueFinished) return; // finished league: no negotiation affordance
+    onNegotiate(fixture);
+  };
+  const openForfeit = () => {
+    if (leagueFinished) return;
+    onForfeit(fixture);
+  };
+  const openLoadResult = () => {
+    if (leagueFinished) return;
+    onLoadResult?.(fixture);
+  };
+  const openCorrectResult = () => {
+    if (leagueFinished) return;
+    onCorrectResult?.(fixture);
+  };
 
   // No result loading while the match is live (the live controls own the
-  // scoreboard); after `endMatch` the fixture returns to the normal path.
+  // scoreboard); after `endMatch` the fixture returns to the normal path. A
+  // finished league hides every control (RAU-40 — the champion is definitive).
   const canLoadResult =
-    fixture.status === "scheduled" && !liveActive && (isParticipant || isLeagueOwner);
+    !leagueFinished &&
+    fixture.status === "scheduled" &&
+    !liveActive &&
+    (isParticipant || isLeagueOwner);
 
   const played = fixture.status === "played";
   const winnerIsHome = played && fixture.winnerId === fixture.homeTeamId;
@@ -144,7 +164,7 @@ export function MatchCard({
               {t("result.loadAction")}
             </button>
           ) : null}
-          {(isLeagueOwner || isParticipant) && fixture.status === "played" ? (
+          {!leagueFinished && (isLeagueOwner || isParticipant) && fixture.status === "played" ? (
             <button
               type="button"
               onClick={openCorrectResult}
@@ -153,7 +173,7 @@ export function MatchCard({
               {t("result.correctAction")}
             </button>
           ) : null}
-          {isLeagueOwner && fixture.status !== "played" ? (
+          {!leagueFinished && isLeagueOwner && fixture.status !== "played" ? (
             <button
               type="button"
               onClick={openForfeit}

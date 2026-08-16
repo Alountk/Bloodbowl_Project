@@ -96,6 +96,8 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
 
   const memberCount = league.teams.length;
   const started = league.status === "started";
+  const finished = league.status === "finished";
+  const championTeam = league.teams.find((team) => team.id === league.championTeamId) ?? null;
 
   const onJoin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -155,12 +157,18 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
               </h1>
               <span
                 className={
-                  started
-                    ? "rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-[#12225a]"
-                    : "rounded-full bg-green-600 px-2.5 py-0.5 text-[11px] font-bold text-white"
+                  finished
+                    ? "rounded-full bg-[#fbbf24] px-2.5 py-0.5 text-[11px] font-bold text-[#12225a]"
+                    : started
+                      ? "rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-[#12225a]"
+                      : "rounded-full bg-green-600 px-2.5 py-0.5 text-[11px] font-bold text-white"
                 }
               >
-                {started ? t("leagues.status.started") : t("leagues.status.open")}
+                {finished
+                  ? t("leagues.status.finished")
+                  : started
+                    ? t("leagues.status.started")
+                    : t("leagues.status.open")}
               </span>
             </div>
             <p className="mt-1 text-[13px] text-[#cbd5e1]">
@@ -188,13 +196,38 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
         </p>
       ) : null}
 
-      {started ? (
+      {/* RAU-40: the season champion panel — navy/gold, only on a finished league.
+          The member team whose id matches `championTeamId` resolves the name. */}
+      {finished && championTeam ? (
+        <div
+          data-testid="champion-panel"
+          className="mb-5 flex flex-wrap items-center justify-between gap-3 border-2 border-[#fbbf24] bg-[#12225a] px-4 py-4 text-white"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span aria-hidden="true" className="text-3xl">
+              🏆
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#fbbf24]">
+                {t("leagues.championLabel")}
+              </p>
+              <p className="truncate text-lg font-black">{championTeam.name}</p>
+            </div>
+          </div>
+          <span className="rounded-full bg-[#fbbf24] px-3 py-1 text-[11px] font-bold text-[#12225a]">
+            {t("leagues.finishedBadge")}
+          </span>
+        </div>
+      ) : null}
+
+      {started || finished ? (
         <Jornadas
           fixtures={league.fixtures}
           rounds={league.rounds}
           teams={league.teams}
           currentUserId={userId ?? ""}
           isLeagueOwner={isOwner}
+          leagueFinished={finished}
           onPropose={propose}
           onAccept={accept}
           onForfeit={forfeit}
@@ -348,6 +381,7 @@ function Jornadas({
   teams,
   currentUserId,
   isLeagueOwner,
+  leagueFinished = false,
   onPropose,
   onAccept,
   onForfeit,
@@ -359,6 +393,9 @@ function Jornadas({
   teams: { id: string; name: string; raceId?: string; roster: unknown }[];
   currentUserId: string;
   isLeagueOwner: boolean;
+  /** RAU-40: a finished league hides the result/forfeit/negotiation affordances
+   * while keeping the jornadas (and thus the standings) visible. */
+  leagueFinished?: boolean;
   onPropose: (fixtureId: string, date: string) => Promise<void>;
   onAccept: (fixtureId: string, proposalId: string) => Promise<void>;
   onForfeit: (fixtureId: string, winnerTeamId: string) => void;
@@ -468,6 +505,7 @@ function Jornadas({
             raceNameById={raceNameById}
             currentUserId={currentUserId}
             isLeagueOwner={isLeagueOwner}
+            leagueFinished={leagueFinished}
             onNegotiate={(f) => {
               setProposalError(null);
               setNegotiateFixture(f);

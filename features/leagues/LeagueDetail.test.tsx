@@ -330,8 +330,7 @@ describe("LeagueDetail — STARTED league", () => {
     expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("false");
   });
 
-  it("keeps the viewed round when a refresh completes it (one-shot initializer)", async () => {
-    // Mount defaults to round 2 (the first incomplete round); a refresh that also
+  it("keeps the viewed round when a refresh completes it (one-shot initializer)", async () => {    // Mount defaults to round 2 (the first incomplete round); a refresh that also
     // completes round 2 must NOT auto-advance the selection back to round 1.
     let round2Complete = false;
     const detail = () => ({
@@ -652,6 +651,53 @@ describe("LeagueDetail — STARTED league", () => {
     await waitFor(() =>
       expect(screen.getByText("Liga no encontrada o sin acceso.")).toBeTruthy(),
     );
+  });
+});
+
+describe("LeagueDetail — FINISHED league (RAU-40)", () => {
+  const finishedLeague = {
+    ...startedLeague,
+    id: "l4",
+    name: "Finished Cup",
+    status: "finished",
+    championTeamId: "t1",
+    rounds: [{ round: 1, fixtures: ["f1"], complete: true }],
+    fixtures: [
+      {
+        ...startedLeague.fixtures[0],
+        status: "played",
+        homeScore: 2,
+        awayScore: 1,
+        winnerId: "t1",
+      },
+    ],
+  };
+
+  it("renders the champion panel with the champion team name and the finished badge", async () => {
+    makeFetch(finishedLeague);
+    render(<LeagueDetail leagueId="l4" />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Finished Cup" })).toBeTruthy());
+    expect(screen.getByText("Finalizada")).toBeTruthy();
+
+    const panel = screen.getByTestId("champion-panel");
+    expect(within(panel).getByText("Campeón")).toBeTruthy();
+    expect(within(panel).getByText("Reavers")).toBeTruthy();
+    expect(within(panel).getByText("Temporada finalizada")).toBeTruthy();
+  });
+
+  it("keeps the jornadas visible but hides every result/forfeit/negotiation affordance", async () => {
+    makeFetch(finishedLeague);
+    render(<LeagueDetail leagueId="l4" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    // No result load / correct / forfeit buttons.
+    expect(screen.queryByRole("button", { name: "Cargar resultado" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Corregir resultado" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Otorgar victoria" })).toBeNull();
+    // Clicking a card does NOT open the negotiation panel (no affordance).
+    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByTestId("match-card-score"));
+    expect(screen.queryByRole("dialog", { name: /Acordar fecha/ })).toBeNull();
   });
 });
 

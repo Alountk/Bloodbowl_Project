@@ -18,6 +18,13 @@ function StatusBadge({ status }: { status: League["status"] }) {
       </span>
     );
   }
+  if (status === "finished") {
+    return (
+      <span className="rounded-full bg-[#fbbf24] px-2.5 py-0.5 text-[11px] font-bold text-[#12225a]">
+        🏆 {t("leagues.status.finished")}
+      </span>
+    );
+  }
   return (
     <span className="rounded-full bg-green-700 px-2.5 py-0.5 text-[11px] font-bold text-white">
       {t("leagues.status.open")}

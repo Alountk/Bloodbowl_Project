@@ -386,6 +386,37 @@ describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () =
   });
 });
 
+describe("MatchCard — finished league (RAU-40)", () => {
+  it("hides result load / forfeit controls and disables the negotiation click", () => {
+    const { onNegotiate, onForfeit } = renderCard({
+      leagueFinished: true,
+      isLeagueOwner: true,
+      currentUserId: "u1",
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      onLoadResult: vi.fn(),
+      onCorrectResult: vi.fn(),
+    });
+    // The admin would normally see Cargar resultado + Otorgar victoria.
+    expect(screen.queryByRole("button", { name: /Cargar resultado/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Otorgar victoria/ })).toBeNull();
+    // Clicking the card does NOT open the negotiation panel.
+    fireEvent.click(screen.getByTestId("match-card-score"));
+    expect(onNegotiate).not.toHaveBeenCalled();
+    expect(onForfeit).not.toHaveBeenCalled();
+  });
+
+  it("hides the correction affordance on a played fixture of a finished league", () => {
+    renderCard({
+      leagueFinished: true,
+      isLeagueOwner: true,
+      currentUserId: "u1",
+      fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }),
+      onCorrectResult: vi.fn(),
+    });
+    expect(screen.queryByRole("button", { name: /Corregir resultado/ })).toBeNull();
+  });
+});
+
 /** Scoped queries within a winner/loser column (asserts the highlight layout). */
 function withinSide(side: HTMLElement) {
   return {
