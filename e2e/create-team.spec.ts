@@ -5,7 +5,7 @@ import { RACES } from "../features/teams/data/races";
 async function goToStep2(page: import("@playwright/test").Page, name: string, raceId: string) {
   await page.getByLabel("Team name").fill(name);
   await page.getByLabel("Race").selectOption(raceId);
-  await page.getByRole("button", { name: /next/i }).click();
+  await page.getByRole("button", { name: "Next →" }).click();
 }
 
 test.describe("Create Team — E2E", () => {
@@ -28,7 +28,7 @@ test.describe("Create Team — E2E", () => {
     await expect(page.getByRole("heading", { name: /step 1 · team details/i })).toBeVisible();
     await expect(page.getByLabel("Team name")).toBeVisible();
     await expect(page.getByLabel("Race")).toBeVisible();
-    await expect(page.getByRole("button", { name: /next/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next →" })).toBeVisible();
   });
 
   test("shows the race select with all race options and a placeholder", async ({ page }) => {
@@ -57,7 +57,7 @@ test.describe("Create Team — E2E", () => {
     await page.goto("/teams/create");
     await page.waitForLoadState("networkidle");
 
-    await page.getByRole("button", { name: /next/i }).click();
+    await page.getByRole("button", { name: "Next →" }).click();
     await expect(page.getByText(/team name is required/i)).toBeVisible();
     // The validation alert appears (the placeholder option also contains "Select a race").
     await expect(page.getByRole("alert").filter({ hasText: /select a race/i })).toBeVisible();
@@ -100,7 +100,7 @@ test.describe("Create Team — E2E", () => {
 
     await expect(page.getByLabel("Team name")).toHaveValue("Reikland Reavers");
     await expect(page.getByLabel("Race")).toHaveValue("human");
-    await expect(page.getByRole("button", { name: /next/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next →" })).toBeVisible();
   });
 
   test("can create a full team end-to-end", async ({ page }) => {
@@ -168,7 +168,7 @@ test.describe("Create Team — E2E", () => {
     await expect(page.getByLabel("Race")).toHaveValue("orc");
 
     // Roster is cleared: advancing to step 2 shows the empty Plantilla.
-    await page.getByRole("button", { name: /next/i }).click();
+    await page.getByRole("button", { name: "Next →" }).click();
     await expect(page.getByText(/no players in roster yet/i)).toBeVisible();
     // Orc positionals are available.
     await expect(page.getByRole("button", { name: "Add Big Un Blocker" })).toBeVisible();
