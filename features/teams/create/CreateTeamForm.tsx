@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
+import { randomTeamName } from "../data/teamNames";
 import {
   APOTHECARY_COST,
   ASSISTANT_COACH_MAX,
@@ -177,12 +178,24 @@ export function CreateTeamForm() {
               <label htmlFor="team-name" className="mb-1 block text-sm font-medium text-slate-700">
                 {t("create.teamName")}
               </label>
-              <input
-                id="team-name"
-                value={form.name}
-                onChange={(event) => form.setName(event.target.value)}
-                className={fieldClassName}
-              />
+              <div className="flex gap-1.5">
+                <input
+                  id="team-name"
+                  value={form.name}
+                  onChange={(event) => form.setName(event.target.value)}
+                  className={fieldClassName}
+                />
+                <button
+                  type="button"
+                  disabled={!form.raceId}
+                  title={t("create.rollTeamName")}
+                  aria-label={t("create.rollTeamName")}
+                  onClick={() => form.setName(randomTeamName(form.raceId))}
+                  className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 text-sm hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-300"
+                >
+                  🎲
+                </button>
+              </div>
               {form.errors.name ? (
                 <p role="alert" className="mt-1 text-sm text-red-600">
                   {form.errors.name}
