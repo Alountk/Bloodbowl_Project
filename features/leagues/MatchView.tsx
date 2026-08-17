@@ -1154,6 +1154,8 @@ function LiveActiveMatch({
             status={state.status}
             roster={state.viewerSide === "away" ? awayTeam.players : homeTeam.players}
             opponentRoster={state.viewerSide === "away" ? homeTeam.players : awayTeam.players}
+            rosterRaceId={state.viewerSide === "away" ? awayTeam.raceId : homeTeam.raceId}
+            opponentRaceId={state.viewerSide === "away" ? homeTeam.raceId : awayTeam.raceId}
             onSubmit={act}
           />
         </>

@@ -33,6 +33,8 @@ function renderControls(props: Partial<Parameters<typeof EventControls>[0]> = {}
       status="live"
       roster={aliveRoster}
       opponentRoster={opponentRoster}
+      rosterRaceId="human"
+      opponentRaceId="human"
       onSubmit={onSubmit}
       {...props}
     />,
@@ -84,10 +86,35 @@ describe("EventControls — mini-form player + roll selects (LM-20, RAU-39)", ()
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
     const select = screen.getByLabelText(/Jugador/i) as HTMLSelectElement;
-    const options = Array.from(select.options).map((o) => o.textContent);
-    expect(options).toContain("Blitzer A");
-    expect(options).toContain("Thrower A");
-    expect(options).not.toContain("Dead B"); // not alive
+    const options = Array.from(select.options).map((o) => o.textContent ?? "");
+    expect(options.some((o) => o.includes("Blitzer A"))).toBe(true);
+    expect(options.some((o) => o.includes("Thrower A"))).toBe(true);
+    expect(options.some((o) => o.includes("Dead B"))).toBe(false); // not alive
+  });
+
+  it("RAU-48: casualty author/victim options show the position next to the name", () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    // Causer (own roster, active coach).
+    const author = screen.getByLabelText(/Autor/i) as HTMLSelectElement;
+    const authorLabels = Array.from(author.options).map((o) => o.textContent);
+    expect(authorLabels).toContain("Blitzer A (Blitzer)");
+    expect(authorLabels).toContain("Thrower A (Thrower)");
+    // Victim (rival roster, active coach).
+    const victim = screen.getByLabelText(/Víctima/i) as HTMLSelectElement;
+    const victimLabels = Array.from(victim.options).map((o) => o.textContent);
+    expect(victimLabels).toContain("Blitzer Rival (Blitzer)");
+    expect(victimLabels).toContain("Thrower Rival (Thrower)");
+  });
+
+  it("RAU-48: the foul victim select shows the position next to the rival names", () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
+    const foulVictim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
+    const foulLabels = Array.from(foulVictim.options).map((o) => o.textContent);
+    expect(foulLabels).toContain("Blitzer Rival (Blitzer)");
   });
 
   it("shows the 1D16 roll + derived band instead of a band select, and the 1D6 ONLY when the derived band is permanent", () => {
@@ -174,10 +201,10 @@ describe("EventControls — Falta form captures the VICTIM (LM-20, D7)", () => {
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
     const victim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
-    const options = Array.from(victim.options).map((o) => o.textContent);
-    expect(options).toContain("Blitzer Rival");
-    expect(options).toContain("Thrower Rival");
-    expect(options).not.toContain("Blitzer A");
+    const options = Array.from(victim.options).map((o) => o.textContent ?? "");
+    expect(options.some((o) => o.includes("Blitzer Rival"))).toBe(true);
+    expect(options.some((o) => o.includes("Thrower Rival"))).toBe(true);
+    expect(options.some((o) => o.includes("Blitzer A"))).toBe(false);
     expect(screen.getByLabelText(/^Jugador$/i)).toBeTruthy();
   });
 
@@ -211,12 +238,12 @@ describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     // The victim select ("Víctima") lists the RIVAL alive players.
     const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
-    expect(Array.from(victim.options).map((o) => o.textContent)).toContain("Blitzer Rival");
+    expect(Array.from(victim.options).map((o) => o.textContent ?? "").some((o) => o.includes("Blitzer Rival"))).toBe(true);
     fireEvent.change(victim, { target: { value: "o1" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
     // The causer select lists the ACTIVE coach's OWN alive players.
     const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
-    expect(Array.from(causer.options).map((o) => o.textContent)).toContain("Blitzer A");
+    expect(Array.from(causer.options).map((o) => o.textContent ?? "").some((o) => o.includes("Blitzer A"))).toBe(true);
     fireEvent.change(causer, { target: { value: "p2" } });
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
     fireEvent.click(screen.getByRole("button", { name: /Proponer/i }));
@@ -286,7 +313,7 @@ describe("EventControls — NON-active coach SELF-INFLICTED casualty (RAU-39)", 
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
     // Victim select stays the OWN roster.
     const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
-    expect(Array.from(victim.options).map((o) => o.textContent)).toContain("Blitzer A");
+    expect(Array.from(victim.options).map((o) => o.textContent ?? "").some((o) => o.includes("Blitzer A"))).toBe(true);
     fireEvent.change(victim, { target: { value: "p1" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "dodge" } });
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
