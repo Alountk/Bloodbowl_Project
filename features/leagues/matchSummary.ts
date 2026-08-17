@@ -92,8 +92,12 @@ function peOf(pe: { rosterPlayerId: string; pe: number }[], rosterPlayerId: stri
   return pe.find((p) => p.rosterPlayerId === rosterPlayerId)?.pe ?? 0;
 }
 
-/** Legacy MVP fallback: the max-`pe` entry with pe ≥ PE_MVP; tie → first. */
-function fallbackMvpId(pe: { rosterPlayerId: string; pe: number }[]): string | null {
+/**
+ * Legacy MVP fallback: the max-`pe` entry with pe ≥ PE_MVP; tie → first.
+ * Exported so the team-detail progression aggregation reuses the same
+ * convention as the match summary when no `scores.mvp` id is persisted.
+ */
+export function fallbackMvpId(pe: { rosterPlayerId: string; pe: number }[]): string | null {
   const eligible = pe.filter((p) => p.pe >= PE_MVP);
   if (eligible.length === 0) return null;
   return eligible.reduce((best, cur) => (cur.pe > best.pe ? cur : best)).rosterPlayerId;

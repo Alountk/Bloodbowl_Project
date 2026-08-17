@@ -4,6 +4,7 @@ const authMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
   team: { findFirst: vi.fn() },
   player: { findMany: vi.fn() },
+  matchResult: { findMany: vi.fn() },
 }));
 
 vi.mock("@/auth", () => ({ auth: authMock }));
@@ -35,11 +36,12 @@ function buildPlayer(overrides: Record<string, unknown> = {}) {
     alive: true,
     valueBonus: 10000,
     improvements: [{ kind: "primary", skill: "block", cost: 6 }],
-    attributeIncreases: {},
+    attributeIncreases: { st: 1 },
     ...overrides,
   };
 }
 
+/** A MatchResult row (scores JSON + participant fixture) for team `t1`. */
 function callRoute(teamId: string) {
   return GET(new Request(`http://localhost/api/teams/${teamId}/progression`), {
     params: Promise.resolve({ id: teamId }),
@@ -51,26 +53,101 @@ beforeEach(() => {
 });
 
 describe("GET /api/teams/[teamId]/progression", () => {
-  it("returns the owner's Player progression rows when the team is owned by the session user", async () => {
+  it("returns the owner's Player progression rows with injuries, attributeIncreases and stats", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.team.findFirst.mockResolvedValue(buildTeam());
-    prismaMock.player.findMany.mockResolvedValue([buildPlayer(), buildPlayer({ rosterPlayerId: "pl2" })]);
+    prismaMock.player.findMany.mockResolvedValue([buildPlayer()]);
+    prismaMock.matchResult.findMany.mockResolvedValue([]);
 
     const res = await callRoute("t1");
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>[];
-    expect(body).toHaveLength(2);
-    // PlayerProgressionCore shape: progression read fields + injuries carried
-    // through; `improvements` is the count of purchase records, not the array.
+    expect(body).toHaveLength(1);
     expect(body[0]).toEqual({
       rosterPlayerId: "pl1",
       pe: 6,
       skills: ["block"],
       injuries: ["cabeza rota"],
+      attributeIncreases: { st: 1 },
       valueBonus: 10000,
       alive: true,
       improvements: 1,
+      stats: { casualties: 0, mvp: 0 },
     });
+  });
+
+  it("aggregates career casualties and MVP across multiple matches (persisted scores.mvp wins)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.team.findFirst.mockResolvedValue(buildTeam());
+    prismaMock.player.findMany.mockResolvedValue([buildPlayer()]);
+    prismaMock.matchResult.findMany.mockResolvedValue([
+      // home side: pl1 suffers 1 casualty + falls back (no persisted mvp id) to
+      // the max-`pe` entry — pl2 has pe 6 ≥ 4 and beats pl1's pe 3 → mvp pl2.
+      {
+        scores: {
+          home: {
+            score: 2,
+            casualties: [{ team: "home", rosterPlayerId: "pl1", outcome: { kind: "grave" } }],
+            pe: [
+              { rosterPlayerId: "pl1", pe: 3 },
+              { rosterPlayerId: "pl2", pe: 6 },
+            ],
+          },
+          away: { score: 0, casualties: [], pe: [] },
+        },
+        fixture: { homeTeamId: "t1", awayTeamId: "tA" },
+      },
+      // away side: pl1 suffers a second casualty; persisted mvp.home = pl1.
+      {
+        scores: {
+          home: { score: 0, casualties: [], pe: [] },
+          away: {
+            score: 1,
+            casualties: [{ team: "away", rosterPlayerId: "pl1", outcome: { kind: "bruise" } }],
+            pe: [{ rosterPlayerId: "pl1", pe: 4 }],
+          },
+          mvp: { home: "pl1", away: "pl1" },
+        },
+        fixture: { homeTeamId: "tA", awayTeamId: "t1" },
+      },
+      // a match where t1 did NOT play must be ignored.
+      {
+        scores: { home: { score: 1, casualties: [], pe: [] }, away: { score: 0, casualties: [], pe: [] } },
+        fixture: { homeTeamId: "tX", awayTeamId: "tY" },
+      },
+    ]);
+
+    const res = await callRoute("t1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>[];
+    expect(body[0].stats).toEqual({ casualties: 2, mvp: 1 });
+  });
+
+  it("falls back to the max-pe MVP convention when scores.mvp is absent", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.team.findFirst.mockResolvedValue(buildTeam());
+    prismaMock.player.findMany.mockResolvedValue([buildPlayer()]);
+    prismaMock.matchResult.findMany.mockResolvedValue([
+      {
+        scores: {
+          home: {
+            score: 1,
+            casualties: [],
+            pe: [
+              { rosterPlayerId: "pl1", pe: 4 },
+              { rosterPlayerId: "pl2", pe: 7 },
+            ],
+          },
+          away: { score: 0, casualties: [], pe: [] },
+        },
+        fixture: { homeTeamId: "t1", awayTeamId: "tA" },
+      },
+    ]);
+
+    const res = await callRoute("t1");
+    const body = (await res.json()) as Record<string, unknown>[];
+    // pl1 is not the max-pe entry (pl2 has 7) → pl1 earns no MVP that match.
+    expect(body[0].stats).toEqual({ casualties: 0, mvp: 0 });
   });
 
   it("returns 401 when the session has no user id", async () => {
@@ -99,6 +176,7 @@ describe("GET /api/teams/[teamId]/progression", () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.team.findFirst.mockResolvedValue(buildTeam());
     prismaMock.player.findMany.mockResolvedValue([]);
+    prismaMock.matchResult.findMany.mockResolvedValue([]);
     const res = await callRoute("t1");
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual([]);

@@ -1,4 +1,5 @@
 import type { SkillId } from "./data/skills";
+import type { PlayerAttribute } from "@/lib/rules/improvements";
 
 export interface Positional {
   /** Unique within a race, e.g. "lineman" */
@@ -51,9 +52,19 @@ export interface PlayerEntry {
 }
 
 /**
- * Progression read model for a roster player rendered by the ProgressionPanel
- * (BB2025 PE spending, skills, value). Owned by the `Player` row; `rosterPlayerId`
- * bridges it to the roster `PlayerEntry.id`.
+ * Career match statistics aggregated from the team's `MatchResult` snapshots:
+ * casualties suffered (per reported victim) and MVP awards won (persisted
+ * `scores.mvp` id first, else the max-`pe` fallback convention).
+ */
+export interface PlayerStats {
+  casualties: number;
+  mvp: number;
+}
+
+/**
+ * Progression read model for a roster player rendered by the team detail
+ * roster (BB2025 PE spending, skills, value, career stats). Owned by the
+ * `Player` row; `rosterPlayerId` bridges it to the roster `PlayerEntry.id`.
  */
 export interface PlayerProgressionCore {
   rosterPlayerId: string;
@@ -62,6 +73,12 @@ export interface PlayerProgressionCore {
   improvements: number;
   valueBonus: number;
   alive: boolean;
+  /** Recorded injury outcomes (rulebook bands) carried from the Player row. */
+  injuries?: string[];
+  /** Named attribute increases applied (e.g. `{ st: 1 }`), keyed by attribute. */
+  attributeIncreases?: Partial<Record<PlayerAttribute, number>>;
+  /** Career CAS/MVP aggregates from the team's MatchResult snapshots. */
+  stats?: PlayerStats;
 }
 
 export interface CoachingStaff {
