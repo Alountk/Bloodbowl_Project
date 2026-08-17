@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accessLetterForCategory, skillDisplayName, skillElite, skillKey } from "./progression";
+import { accessLetterForCategory, skillDisplayName, skillElite, skillKey, pickableSkills } from "./progression";
 
 describe("access-letter category mapping (rulebook columns A/F/G/M/P/T)", () => {
   it("maps the five trainable catalog categories to their access letter", () => {
@@ -43,5 +43,25 @@ describe("skill reference resolution (ids and names share one list)", () => {
     // A random-table skill with no catalog entry keeps its name as the key.
     expect(skillKey("Agallas")).toBe("Agallas");
     expect(skillKey("Esquivar")).toBe("dodge");
+  });
+});
+
+describe("pickableSkills (shared by the PE-spending UIs)", () => {
+  it("returns only catalog skills whose access letter is in the set and not already owned", () => {
+    // G set: general skills (block, fend, kick, ...) — never trait/agility/...
+    const general = pickableSkills(["G"], new Set());
+    expect(general.length).toBeGreaterThan(0);
+    expect(general.every((s) => accessLetterForCategory(s.category) === "G")).toBe(true);
+
+    // A player owning block (dedup key "block") never sees it offered again.
+    const withoutBlock = pickableSkills(["G"], new Set([skillKey("block")]));
+    expect(withoutBlock.find((s) => s.id === "block")).toBeUndefined();
+    expect(withoutBlock.find((s) => s.id === "kick")).toBeTruthy();
+  });
+
+  it("never offers trait skills (not purchasable via progression)", () => {
+    const all = pickableSkills(["G", "A", "F", "P", "M", "T"], new Set());
+    expect(all.length).toBeGreaterThan(0);
+    expect(all.some((s) => s.category === "trait")).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import type { SkillCategory } from "@/features/teams/data/skills";
-import { getSkillById, getSkillByName } from "@/features/teams/data/skills";
+import { getSkillById, getSkillByName, SKILLS } from "@/features/teams/data/skills";
 import type { SkillColumn } from "./rules/skills";
 import type { PlayerAttribute } from "./rules/improvements";
 
@@ -100,4 +100,19 @@ export function skillKey(ref: string): string {
   const byName = getSkillByName(ref);
   if (byName) return byName.id;
   return ref;
+}
+
+/**
+ * Filters the shared skill catalog to skills the player may buy for an
+ * access-letter set: the skill's category maps to an access letter present in
+ * `accessLetters`, and the player does not already own it (deduped via the
+ * canonical `skillKey`). Shared by the PE-spending UIs (progression panel and
+ * the team-detail improve modal).
+ */
+export function pickableSkills(accessLetters: string[], ownedKeys: Set<string>) {
+  return SKILLS.filter((skill) => {
+    const letter = accessLetterForCategory(skill.category);
+    if (letter === null || !accessLetters.includes(letter)) return false;
+    return !ownedKeys.has(skillKey(skill.id));
+  });
 }
