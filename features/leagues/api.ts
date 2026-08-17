@@ -496,6 +496,11 @@ export interface MatchDetail {
   /** The shared live-match DTO (state + chronological events) or null when no
    * LiveMatch exists for this fixture (MV-5 static inert). */
   live: LiveMatchView | null;
+  /** RAU-44: the per-team winnings persisted ONCE at live finish (`{ home,
+   * away }`), or null when the match never finished live (pending/live/no row)
+   * or has no persisted winnings yet. IGNORED once `result` is non-null — the
+   * snapshot's `scores.*.winnings` are the official numbers. */
+  liveWinnings: { home: number; away: number } | null;
 }
 
 /** The live-match DTO returned by the fixture GET: view state + event feed. */

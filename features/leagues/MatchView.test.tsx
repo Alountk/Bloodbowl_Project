@@ -124,6 +124,7 @@ function playedDetail(): MatchDetail {
       ],
     },
     live: null,
+    liveWinnings: null,
   };
 }
 
@@ -1405,6 +1406,28 @@ describe("MatchView — finished-live snapshot summary rows (MVT-4)", () => {
     expect(container.querySelector("[data-testid='summary-row']")).toBeNull();
     expect(container.querySelector("[data-testid='summary-row-reported']")).toBeNull();
     expect(container.querySelectorAll("[data-testid='live-event-row']").length).toBeGreaterThan(0);
+  });
+
+  it("shows the Ganancias row IMMEDIATELY at live finish when the result is not loaded yet (RAU-44)", async () => {
+    const detail = finishedLiveDetail();
+    detail.result = null; // the result form has not been loaded yet
+    detail.fixture.homeScore = null;
+    detail.fixture.awayScore = null;
+    detail.fixture.winnerId = null;
+    // The persisted finish-time winnings (deterministic: 1D3 + dedicated fans).
+    detail.liveWinnings = { home: 55_000, away: 45_000 };
+    stubMatch(detail);
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    // Only the winnings summary row exists at this point — no reported/fans/
+    // incentives (they need the snapshot).
+    const rows = Array.from(container.querySelectorAll("[data-testid='summary-row']"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toMatch(/Ganancias/);
+    expect(rows[0].textContent).toMatch(/55\.000/);
+    expect(rows[0].textContent).toMatch(/45\.000/);
+    expect(container.querySelector("[data-testid='summary-row-reported']")).toBeNull();
   });
 });
 

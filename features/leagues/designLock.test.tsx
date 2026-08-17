@@ -447,6 +447,7 @@ function fixtureDetail(live: LiveMatchView): MatchDetail {
     homeTeam,
     awayTeam,
     live,
+    liveWinnings: null,
   };
 }
 
