@@ -48,3 +48,25 @@ export async function improvePlayer(
   );
   return readJson<Record<string, unknown>>(res);
 }
+
+/**
+ * Renames a roster player (`PATCH /api/teams/[teamId]/players/[playerId]`).
+ * Resolves with the updated `{ name }`; a foreign/archived team or a player
+ * that does not belong to it resolves 404, a blank/oversized name 400, a
+ * missing session 401 — failures are thrown with the server's `error` verbatim.
+ */
+export async function renamePlayer(
+  teamId: string,
+  rosterPlayerId: string,
+  name: string,
+): Promise<{ name: string }> {
+  const res = await fetch(
+    `/api/teams/${encodeURIComponent(teamId)}/players/${encodeURIComponent(rosterPlayerId)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+  );
+  return readJson<{ name: string }>(res);
+}
