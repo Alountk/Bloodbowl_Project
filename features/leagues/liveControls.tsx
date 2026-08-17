@@ -7,6 +7,7 @@ import { CASUALTY_CAUSES } from "@/lib/livePhase";
 import type { CasualtyCause } from "@/lib/livePhase";
 import { casualtyKindLabel } from "./matchSummary";
 import { causeLabel, casualtyBandLabel, type TFunc } from "./liveEventLabels";
+import { getRaceById } from "@/features/teams/data/races";
 import type { LiveCommand, MatchPlayer } from "./api";
 
 /**
@@ -66,6 +67,19 @@ function roll6OptionLabel(n: number, t: TFunc): string {
   return t("match.controls.roll6Option", { roll: n, attr: permanentAttribute(n).toUpperCase() });
 }
 
+/** RAU-48: the positional display name for a player line ("blitzer" → "Blitzer"),
+ * resolved against the race catalog; unknown keys pass through. */
+function positionName(raceId: string, positionalKey: string): string {
+  const race = getRaceById(raceId);
+  return race?.positionals.find((pos) => pos.key === positionalKey)?.name ?? positionalKey;
+}
+
+/** RAU-48: the option label for a roster player — "Don Pelayo El Bestia (Bull
+ * Centaur)" — so causer/victim/scorer picks are unambiguous. */
+function playerOptionLabel(p: MatchPlayer, raceId: string): string {
+  return `${p.name} (${positionName(raceId, p.positionalKey)})`;
+}
+
 interface EventControlsProps {
   viewerSide: "home" | "away" | null;
   activeSide: "home" | "away";
@@ -75,6 +89,9 @@ interface EventControlsProps {
   roster: MatchPlayer[];
   /** The RIVAL roster (opposite the viewer): Falta victim; casualty VICTIM for the ACTIVE coach (RAU-34/39). */
   opponentRoster: MatchPlayer[];
+  /** RAU-48: the race ids behind each roster, used to show the positional name. */
+  rosterRaceId: string;
+  opponentRaceId: string;
   /** Wraps `act`: `/api/.../live` POST command. */
   onSubmit: (cmd: LiveCommand) => Promise<void>;
 }
@@ -97,6 +114,8 @@ export function EventControls({
   status,
   roster,
   opponentRoster,
+  rosterRaceId,
+  opponentRaceId,
   onSubmit,
 }: EventControlsProps) {
   const { t } = useI18n();
@@ -121,6 +140,10 @@ export function EventControls({
   // records a SELF-INFLICTED wound on their OWN player (victim own, no causer).
   const victimPool = isActive ? aliveOpponentPlayers : alivePlayers;
   const causerPool = alivePlayers;
+  // RAU-48: the victim pool belongs to the RIVAL for the active coach's proposal
+  // and to the VIEWER's own roster for a self-inflicted injury — the race id
+  // follows the pool so the position label resolves against the right catalog.
+  const victimRaceId = isActive ? opponentRaceId : rosterRaceId;
 
   const causeOptions = isActive ? ACTIVE_CAUSES : SELF_CAUSES;
   const derivedBand = roll16 === "" ? null : resolveInjury(Number(roll16)).kind;
@@ -229,7 +252,7 @@ export function EventControls({
                 </option>
                 {alivePlayers.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {p.name}
+                    {playerOptionLabel(p, rosterRaceId)}
                   </option>
                 ))}
               </select>
@@ -276,7 +299,7 @@ export function EventControls({
                     </option>
                     {causerPool.map((p) => (
                       <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                        {p.name}
+                        {playerOptionLabel(p, rosterRaceId)}
                       </option>
                     ))}
                   </select>
@@ -300,7 +323,7 @@ export function EventControls({
                 </option>
                 {victimPool.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {p.name}
+                    {playerOptionLabel(p, victimRaceId)}
                   </option>
                 ))}
               </select>
@@ -380,7 +403,7 @@ export function EventControls({
                 </option>
                 {opponentRoster.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {p.name}
+                    {playerOptionLabel(p, opponentRaceId)}
                   </option>
                 ))}
               </select>
