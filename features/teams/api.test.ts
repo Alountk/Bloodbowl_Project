@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import type { ImproveBody } from "@/lib/progression";
-import { fetchTeamProgression, improvePlayer } from "./api";
+import { fetchTeamProgression, improvePlayer, renamePlayer } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -83,5 +83,39 @@ describe("improvePlayer", () => {
     await expect(
       improvePlayer("t1", "pl1", { type: "random-roll", category: "G" }),
     ).rejects.toThrow("Not enough PE");
+  });
+});
+
+describe("renamePlayer", () => {
+  it("PATCHes the name to the player route and resolves the updated name", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ name: "Aldric" }) }),
+    );
+
+    const result = await renamePlayer("t1", "pl1", "Aldric");
+    expect(result).toEqual({ name: "Aldric" });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/teams/t1/players/pl1",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Aldric" }),
+      }),
+    );
+  });
+
+  it("throws with the server error message when the rename is rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: "Name must be between 1 and 50 characters" }),
+      }),
+    );
+    await expect(renamePlayer("t1", "pl1", "")).rejects.toThrow(
+      "Name must be between 1 and 50 characters",
+    );
   });
 });
