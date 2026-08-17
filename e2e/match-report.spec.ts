@@ -11,9 +11,9 @@ test.use({ locale: "es-ES" });
  *     2-member league's single fixture is scheduled, the league OWNER (a
  *     fixture participant) loads a 2–0 win through the ResultModal, the
  *     MatchCard shows the score and the round becomes "Jornada completa"; the
- *     same owner then visits their own team detail, spends the scorer's PE on an
- *     élite skill (Block) in the ProgressionPanel, and sees the élite `$` badge
- *     with the recalculated value.
+ *     same owner then visits their own team detail and spends the scorer's PE on
+ *     an élite skill (Block) through the TourPlay roster's improve modal (row
+ *     click), seeing the élite ◆ diamond and the recalculated value.
  *  2. correction (match-result R5): a 3-member, 2-jornada league's round-1
  *     fixture is played, and the league owner (admin) corrects that result
  *     through the modal while the season is STILL started (round 2 unplayed) →
@@ -394,24 +394,42 @@ test("result + progression: load a win through the modal → score + jornada com
     await expect(region.getByText(/(2 : 0|0 : 2)/)).toBeVisible();
     await expect(league.admin.getByText("Jornada completa")).toBeVisible();
 
-    // Same owner spends the scorer's PE (2 TDs → 6 PE) on Block (élite primary).
+    // Same owner spends the scorer's PE (2 TDs → 6 PE) on Block (élite primary)
+    // through the TourPlay roster: a row click opens the PE-spending modal.
     const detail = await league.admin.request.get(`/api/leagues/${league.leagueId}`);
-    const teams = ((await detail.json()) as { teams: { id: string; name: string }[] }).teams;
+    const teams = ((await detail.json()) as {
+      teams: { id: string; name: string; roster: { id: string; name: string }[] }[];
+    }).teams;
     const adminTeam = teams.find((t) => t.name === league.teamAName);
     expect(adminTeam).toBeDefined();
+    const p1Id = adminTeam!.roster[0].id;
     await league.admin.goto(`/teams/${adminTeam!.id}`);
-    await expect(league.admin.getByRole("heading", { name: "Progresión" })).toBeVisible();
+    await expect(league.admin.getByTestId("team-roster-table")).toBeVisible();
 
-    // The first panel is Player 1 (roster order); open it and buy Block as a
-    // primary skill (élite, G access on a human lineman).
-    await league.admin.getByRole("button", { name: "Mejorar" }).first().click();
-    await league.admin.getByLabel("Primaria").first().selectOption("block");
-    await league.admin.getByRole("button", { name: "Comprar primaria" }).first().click();
+    // Player 1 (roster order) earned ≥6 PE (2 TDs, plus the server's 1D6 MJP
+    // grant when it lands on them). The modal shows the balance and the
+    // affordable upgrade select.
+    const row = league.admin.getByTestId(`roster-row-${p1Id}`);
+    await expect(row.getByTestId(`spp-pe-${p1Id}`)).toHaveText(/★\d+/);
+    await row.click();
+    const modal = league.admin.getByTestId("improve-modal");
+    await expect(modal).toBeVisible();
+    await expect(modal.getByText("Player 1")).toBeVisible();
+    await expect(modal.getByTestId("modal-pe-label")).toHaveText(/★\d+ disponibles/);
+    const upgradeSelect = modal.getByTestId("upgrade-select");
+    await expect(upgradeSelect).toBeVisible();
+    // Block is élite with G access on a human lineman: buyable as a primary.
+    await upgradeSelect.selectOption("primary:block");
+    await modal.getByTestId("modal-accept").click();
+    await expect(modal).not.toBeVisible();
 
-    // Block is élite: the acquired skill renders with the `$` badge and the
-    // value recap re-renders from the refreshed row.
-    await expect(league.admin.getByText("Block")).toBeVisible();
-    await expect(league.admin.getByTestId("elite-badge").first()).toBeVisible();
+    // The improvement persists: after a reload the row shows Block with the ◆
+    // élite diamond and the value recap includes the +20.000 bonus.
+    await league.admin.reload();
+    const afterRow = league.admin.getByTestId(`roster-row-${p1Id}`);
+    await expect(afterRow.getByText("Block")).toBeVisible();
+    await expect(afterRow.getByTestId("elite-diamond")).toBeVisible();
+    await expect(afterRow.getByTestId(`player-value-${p1Id}`)).toHaveText("70 000");
   } finally {
     await league.admin.context()?.close().catch(() => undefined);
     await league.rival.context()?.close().catch(() => undefined);
