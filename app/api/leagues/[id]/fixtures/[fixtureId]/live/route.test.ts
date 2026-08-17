@@ -25,6 +25,8 @@ const declineConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
 const acceptConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
 const proposeCasualtyLiveMatchMock = vi.hoisted(() => vi.fn());
 const confirmCasualtyLiveMatchMock = vi.hoisted(() => vi.fn());
+const rollLiveMvpMock = vi.hoisted(() => vi.fn());
+const resolveLiveMatchMock = vi.hoisted(() => vi.fn());
 
 const hubMock = vi.hoisted(() => ({
   subscribe: vi.fn(),
@@ -58,6 +60,8 @@ vi.mock("@/lib/liveStore", () => ({
   acceptConcedeLiveMatch: acceptConcedeLiveMatchMock,
   proposeCasualtyLiveMatch: proposeCasualtyLiveMatchMock,
   confirmCasualtyLiveMatch: confirmCasualtyLiveMatchMock,
+  rollLiveMvp: rollLiveMvpMock,
+  resolveLiveMatch: resolveLiveMatchMock,
 }));
 
 import { GET, POST } from "./route";
@@ -1422,5 +1426,149 @@ describe("POST .../live — casualty propose → confirm round trip (RAU-39)", (
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(409);
+  });
+});
+
+describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMatch)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+    prismaMock.team.findMany.mockResolvedValue([]);
+  });
+
+  /** A finished live row + state; the fixture stays a STARTED league. */
+  function finishedSetup(sessionId = "owner-1") {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(8),
+      status: "finished",
+      finishedAt: new Date(2000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({
+      ...liveState,
+      seq: 8,
+      status: "finished",
+      finishedAt: 2000,
+      events: [],
+    });
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("rejects BOTH resolution commands on a FINISHED league with 409 before any store call (RAU-40)", async () => {
+    finishedSetup();
+    prismaMock.fixture.findFirst.mockResolvedValue({
+      ...startedFixture("f-1", "lg-1"),
+      league: { ...(startedFixture("f-1", "lg-1").league as Record<string, unknown>), status: "finished" },
+    });
+    for (const body of [
+      { type: "rollMvp", mvp: { home: ["p1"], away: ["p2"] } },
+      { type: "resolveMatch", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p1", "p2", "p3", "p4", "p5", "p6"] } },
+    ]) {
+      const res = await POST(req(body), { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "League is finished" });
+    }
+    expect(rollLiveMvpMock).not.toHaveBeenCalled();
+    expect(resolveLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("wires `rollMvp` through rollLiveMvp (server-owned preview roll) and returns the roll", async () => {
+    finishedSetup();
+    rollLiveMvpMock.mockResolvedValue({ mvp: { home: "p1", away: "p2" }, postFf: { home: 4, away: 3 } });
+    const res = await POST(
+      req({ type: "rollMvp", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(rollLiveMvpMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fixtureId: "f-1",
+        homeTeamId: "home-t",
+        awayTeamId: "away-t",
+        nominations: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] },
+      }),
+      expect.anything(),
+    );
+    const body = await res.json();
+    expect(body.roll).toEqual({ mvp: { home: "p1", away: "p2" }, postFf: { home: 4, away: 3 } });
+  });
+
+  it("maps a rollMvp 400 (invalid nominations) and 404 to the matching responses", async () => {
+    finishedSetup();
+    rollLiveMvpMock.mockRejectedValue(Object.assign(new Error("mvp.six"), { status: 400 }));
+    let res = await POST(req({ type: "rollMvp", mvp: { home: ["p1"], away: [] } }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+
+    rollLiveMvpMock.mockRejectedValue(Object.assign(new Error("not found"), { status: 404 }));
+    res = await POST(req({ type: "rollMvp", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p1", "p2", "p3", "p4", "p5", "p6"] } }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(404);
+  });
+
+  it("wires `resolveMatch` through resolveLiveMatch (THE closure) with the fixture team ids + league + loadedBy", async () => {
+    finishedSetup();
+    resolveLiveMatchMock.mockResolvedValue({
+      fixtureId: "f-1",
+      status: "played",
+      homeScore: 1,
+      awayScore: 0,
+      winnerId: "home-t",
+      winnings: { home: 55000, away: 45000 },
+      postFf: { home: 4, away: 3 },
+      mvp: { home: "p1", away: "p2" },
+      resultId: "mr-1",
+    });
+    const res = await POST(
+      req({ type: "resolveMatch", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(resolveLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fixtureId: "f-1",
+        leagueId: "lg-1",
+        homeTeamId: "home-t",
+        awayTeamId: "away-t",
+        loadedBy: "owner-1",
+        nominations: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] },
+      }),
+      expect.anything(),
+    );
+    // The lazy Player backfill runs BEFORE the resolve (result-route parity).
+    expect(prismaMock.team.findMany).toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.resolved.resultId).toBe("mr-1");
+    expect(body.resolved.status).toBe("played");
+  });
+
+  it("maps a resolveMatch store rejection to 409 (not-finished / already-resolved)", async () => {
+    finishedSetup();
+    resolveLiveMatchMock.mockRejectedValue(Object.assign(new Error("already resolved"), { status: 409 }));
+    const res = await POST(
+      req({ type: "resolveMatch", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Cannot resolve match in current state" });
+  });
+
+  it("rejects a malformed resolveMatch body (missing mvp arrays) with 400 (Unsupported command)", async () => {
+    finishedSetup();
+    const res = await POST(req({ type: "resolveMatch", mvp: {} }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(resolveLiveMatchMock).not.toHaveBeenCalled();
   });
 });

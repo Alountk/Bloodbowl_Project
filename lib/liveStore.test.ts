@@ -1276,11 +1276,23 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
     });
     expect(fixtureFindUnique).toHaveBeenCalledWith({
       where: { id: "f-1" },
-      select: { homeTeamId: true, awayTeamId: true },
+      select: {
+        homeTeamId: true,
+        awayTeamId: true,
+        homeScore: true,
+        awayScore: true,
+        winnerId: true,
+      },
     });
     expect(teamFindMany).toHaveBeenCalledWith({
       where: { id: { in: ["home-t", "away-t"] } },
-      select: { id: true, coaching: true },
+      select: {
+        id: true,
+        raceId: true,
+        roster: true,
+        coaching: true,
+        players: { select: { rosterPlayerId: true, valueBonus: true } },
+      },
     });
   });
 
