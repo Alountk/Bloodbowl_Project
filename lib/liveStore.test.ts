@@ -55,15 +55,18 @@ function fakeRow(): LiveMatchState {
   };
 }
 
-function makeDeps(updateCount: number): {
+function makeDeps(updateCount: number, rollD3?: () => number): {
   deps: StoreDeps;
   updateMany: ReturnType<typeof vi.fn>;
   liveEventCreate: ReturnType<typeof vi.fn>;
   liveMatchCreate: ReturnType<typeof vi.fn>;
   liveMatchFindFirst: ReturnType<typeof vi.fn>;
+  liveMatchFindUnique: ReturnType<typeof vi.fn>;
   teamUpdateMany: ReturnType<typeof vi.fn>;
+  teamFindMany: ReturnType<typeof vi.fn>;
   fixtureUpdate: ReturnType<typeof vi.fn>;
   fixtureFindMany: ReturnType<typeof vi.fn>;
+  fixtureFindUnique: ReturnType<typeof vi.fn>;
   leagueFindUnique: ReturnType<typeof vi.fn>;
   leagueUpdate: ReturnType<typeof vi.fn>;
   publish: ReturnType<typeof vi.fn>;
@@ -72,17 +75,25 @@ function makeDeps(updateCount: number): {
   const liveEventCreate = vi.fn().mockResolvedValue({ id: "ev-1" });
   const liveMatchCreate = vi.fn();
   const liveMatchFindFirst = vi.fn().mockResolvedValue(null);
+  // RAU-44 default finish-tx reads: no persisted winnings yet, a known fixture,
+  // and both teams' coaching JSON (dedicated fans 2 home / 1 away).
+  const liveMatchFindUnique = vi.fn().mockResolvedValue({ winnings: null });
   const teamUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const teamFindMany = vi.fn().mockResolvedValue([
+    { id: "home-t", coaching: { rerolls: 2, dedicatedFans: 2, assistantCoaches: 0, cheerleaders: 0, apothecary: false } },
+    { id: "away-t", coaching: { rerolls: 3, dedicatedFans: 1, assistantCoaches: 1, cheerleaders: 0, apothecary: false } },
+  ]);
   const fixtureUpdate = vi.fn().mockResolvedValue({ id: "f-1" });
   const fixtureFindMany = vi.fn().mockResolvedValue([]);
+  const fixtureFindUnique = vi.fn().mockResolvedValue({ homeTeamId: "home-t", awayTeamId: "away-t" });
   const leagueFindUnique = vi.fn().mockResolvedValue({ status: "started" });
   const leagueUpdate = vi.fn().mockResolvedValue({});
   const publish = vi.fn();
   const tx = {
-    liveMatch: { updateMany, create: liveMatchCreate },
+    liveMatch: { updateMany, create: liveMatchCreate, findUnique: liveMatchFindUnique },
     liveEvent: { create: liveEventCreate },
-    team: { updateMany: teamUpdateMany },
-    fixture: { update: fixtureUpdate, findMany: fixtureFindMany },
+    team: { updateMany: teamUpdateMany, findMany: teamFindMany },
+    fixture: { update: fixtureUpdate, findMany: fixtureFindMany, findUnique: fixtureFindUnique },
     league: { findUnique: leagueFindUnique, update: leagueUpdate },
   };
   const $transaction = vi
@@ -94,6 +105,7 @@ function makeDeps(updateCount: number): {
       liveMatch: { create: liveMatchCreate, findFirst: liveMatchFindFirst },
     },
     hub: { publish },
+    ...(rollD3 ? { rollD3 } : {}),
   };
   return {
     deps,
@@ -101,9 +113,12 @@ function makeDeps(updateCount: number): {
     liveEventCreate,
     liveMatchCreate,
     liveMatchFindFirst,
+    liveMatchFindUnique,
     teamUpdateMany,
+    teamFindMany,
     fixtureUpdate,
     fixtureFindMany,
+    fixtureFindUnique,
     leagueFindUnique,
     leagueUpdate,
     publish,
@@ -1201,5 +1216,178 @@ describe("confirmCasualtyLiveMatch — persists the casualty event atomically an
       confirmCasualtyLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 }, deps),
     ).rejects.toMatchObject({ code: "P2028" });
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", () => {
+  /** A finished `next` state (auto-finish: endTurn / TD-on-half-2-turn-8 / endMatch). */
+  function finishedNext(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
+    const base = fakeRow();
+    return {
+      ...base,
+      status: "finished" as const,
+      homeScore: 2,
+      awayScore: 1,
+      finishedAt: 2000,
+      concedeProposedBy: null,
+      pendingCasualty: null,
+      events: [
+        { seq: 6, kind: "endMatch" as const, side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, at: 2000 },
+      ],
+      ...overrides,
+    };
+  }
+
+  /** A roll source returning fixed values in call order (home roll, away roll). */
+  function fixedRolls(rolls: number[]) {
+    let i = 0;
+    return () => rolls[i++];
+  }
+
+  it("persists deterministic winnings at auto-finish in the SAME tx (1D3 + dedicated fans; makeDeps defaults 2/1)", async () => {
+    const { deps, updateMany, liveMatchFindUnique, fixtureFindUnique, teamFindMany } = makeDeps(
+      1,
+      fixedRolls([1, 3]),
+    );
+    const current = fakeRow(); // seq 5, live
+
+    await applyTransition(
+      { liveMatchId: "lm-1", fixtureId: "f-1", current, next: finishedNext(), now: 2000 },
+      deps,
+    );
+
+    // home FF = roll 1 + fans 2 = 3; away FF = roll 3 + fans 1 = 4.
+    // home = ((3+4)/2 + 2 TDs + 0) × 10k = 55k; away = ((4+3)/2 + 1 TD + 0) × 10k = 45k.
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 5 },
+        data: expect.objectContaining({
+          seq: 6,
+          status: "finished",
+          winnings: { home: 55000, away: 45000 },
+        }),
+      }),
+    );
+    // The winnings read the fixture teams + coaching INSIDE the same transaction
+    // as the finish event rows.
+    expect(liveMatchFindUnique).toHaveBeenCalledWith({
+      where: { id: "lm-1" },
+      select: { winnings: true },
+    });
+    expect(fixtureFindUnique).toHaveBeenCalledWith({
+      where: { id: "f-1" },
+      select: { homeTeamId: true, awayTeamId: true },
+    });
+    expect(teamFindMany).toHaveBeenCalledWith({
+      where: { id: { in: ["home-t", "away-t"] } },
+      select: { id: true, coaching: true },
+    });
+  });
+
+  it("assumes heldBall true at live end (no +10k 'never held the ball' bonus)", async () => {
+    const { deps, updateMany } = makeDeps(1, fixedRolls([2, 2]));
+    const current = fakeRow();
+
+    await applyTransition(
+      { liveMatchId: "lm-1", fixtureId: "f-1", current, next: finishedNext({ homeScore: 0, awayScore: 0 }), now: 2000 },
+      deps,
+    );
+
+    // Both FFs roll 2: home 2+2=4, away 2+1=3. Zero TDs + heldBall true →
+    // ((4+3)/2 + 0 + 0) × 10k = 35k each (a heldBall false would be 45k).
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ winnings: { home: 35000, away: 35000 } }),
+      }),
+    );
+  });
+
+  it("persists winnings on the concede path (acceptConcedeLiveMatch) with the walkover scores", async () => {
+    const { deps, updateMany, liveMatchFindFirst } = makeDeps(1, fixedRolls([2, 1]));
+    liveMatchFindFirst.mockResolvedValue({
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "live",
+      half: 1,
+      turnNumber: 3,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 8,
+      paused: false,
+      clockStartedAt: new Date(1000).toISOString(),
+      finishedAt: null,
+      concedeProposedBy: "home",
+      pendingCasualty: null,
+    });
+
+    // Away accepts the home proposal → home 0, away 2 (walkover scores).
+    await acceptConcedeLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", homeTeamId: "home-t", awayTeamId: "away-t", leagueId: "l-1", now: 2000 },
+      deps,
+    );
+
+    // home FF = 2 + 2 = 4; away FF = 1 + 1 = 2. The live state's scoreboard
+    // stays untouched by a concede (0-0; the 2-0/0-2 walkover scores live on the
+    // fixture), so the formula sees 0 TDs on BOTH sides:
+    // home = ((4+2)/2 + 0 + 0) × 10k = 30k; away = ((2+4)/2 + 0 + 0) × 10k = 30k.
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "lm-1", seq: 8 },
+        data: expect.objectContaining({ seq: 9, status: "finished", winnings: { home: 30000, away: 30000 } }),
+      }),
+    );
+  });
+
+  it("does NOT recompute or overwrite already-persisted winnings (idempotent)", async () => {
+    const { deps, updateMany, liveMatchFindUnique, teamFindMany } = makeDeps(1);
+    liveMatchFindUnique.mockResolvedValue({ winnings: { home: 11111, away: 22222 } });
+    const current = fakeRow();
+
+    await applyTransition(
+      { liveMatchId: "lm-1", fixtureId: "f-1", current, next: finishedNext(), now: 2000 },
+      deps,
+    );
+
+    // The guard short-circuits BEFORE the team/coaching read; the finish write
+    // carries no `winnings` key.
+    expect(teamFindMany).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ winnings: expect.anything() }),
+      }),
+    );
+  });
+
+  it("persists nothing on non-finished transitions (no reads, no winnings key)", async () => {
+    const { deps, updateMany, liveMatchFindUnique, fixtureFindUnique, teamFindMany } = makeDeps(1);
+    const current = fakeRow();
+    const next: LiveMatchState = {
+      ...current,
+      activeSide: "away",
+      turnNumber: 2,
+      events: [
+        { seq: 6, kind: "turn" as const, side: null, playerRosterId: null, half: 1, turnNumber: 2, payload: {}, at: 2000 },
+      ],
+    };
+
+    await applyTransition(
+      { liveMatchId: "lm-1", fixtureId: "f-1", current, next, now: 2000 },
+      deps,
+    );
+
+    expect(liveMatchFindUnique).not.toHaveBeenCalled();
+    expect(fixtureFindUnique).not.toHaveBeenCalled();
+    expect(teamFindMany).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ winnings: expect.anything() }),
+      }),
+    );
   });
 });
