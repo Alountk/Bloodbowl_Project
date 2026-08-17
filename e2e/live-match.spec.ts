@@ -25,9 +25,13 @@ test.use({ locale: "es-ES" });
  *      offers ONLY Herida and records a casualty to their own player (LM-12);
  *   6. reload persistence: the match page re-renders the same Design-A history
  *      from the persisted events (no turn rows, a reload does not drop them);
- *   7. a finished live match pre-fills the result modal (scores + per-scorer
- *      TDs, LM-9) and, once the result is loaded, the finished feed carries the
- *      home+away mvp rows (★4) written by the result route (D20/LM-mvp).
+ *   7. a finished live match shows the RAU-49 guided RESOLUTION flow — the
+ *      persistent "Resolver partido" banner + the two-step modal (six MJP
+ *      nominations per team, a server-owned roll, then "Guardar y reportar") —
+ *      and, once resolved, the finished feed carries the home+away mvp rows
+ *      (★4), the snapshot summary rows, the fixture is PLAYED with the recorded
+ *      score and the single jornada completes (the resolve command IS the
+ *      closure, replacing the old result-modal prefill flow).
  *
  * Tourplay redesign guards (MVT-1/2/3/4) are asserted against the REAL UI:
  * the sticky header back arrow + horizontal timeline bar (MVT-2/MVT-3), the
@@ -501,41 +505,40 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await freshContext.close();
 
     // Finish the match (lifecycle, admin MayEnd). The finished live DTO then
-    // pre-fills the result modal. (The away score is already 1 via the FAB TD.)
+    // triggers the RAU-49 guided resolution flow (not the manual result form).
+    // (The away score is already 1 via the FAB TD.)
     const afterEnd = await liveCommand(admin, leagueId, fixtureId, { type: "endMatch" });
     expect(afterEnd.view.status).toBe("finished");
 
-    // Result prefill (LM-9): opening the result modal on the finished-live
-    // fixture prefills the AWAY team's score (1) and its scorer's TD (1) —
-    // whoever is home/away (the admin team side is randomized). MVP/casualty
-    // stay coach input.
-    await admin.goto(`/leagues/${leagueId}`);
-    await expect(admin.getByRole("region", { name: "Jornada 1" })).toBeVisible();
-    await admin.getByRole("button", { name: "Cargar resultado" }).first().click();
-    const dialog = admin.getByRole("dialog", { name: /Cargar resultado/ });
-    const awaySection = dialog.getByLabel(`Resultado ${awayTeamName}`);
-    const homeSection = dialog.getByLabel(`Resultado ${homeTeamName}`);
-    // The away team scored 1 (the FAB TD), the home team 0.
-    await expect(awaySection.getByLabel(`Goles ${awayTeamName}`)).toHaveValue("1");
-    await expect(homeSection.getByLabel(`Goles ${homeTeamName}`)).toHaveValue("0");
-    // The away scorer's TD (1) prefilled; no MJP nominations auto-filled.
-    await expect(awaySection.getByLabel(`Anotaciones ${awayScorerName}`, { exact: true })).toHaveValue("1");
+    // RAU-49: a finished live match with no result shows the guided resolution
+    // flow (the manual result form is gone for live matches). A fresh load of
+    // the finished-unresolved match shows the persistent "Resolver partido"
+    // banner; the modal auto-opens once when the match finishes via SSE.
+    await admin.goto(matchUrl);
+    await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
+    await admin.getByRole("button", { name: "Resolver partido" }).click();
+    const dialog = admin.getByRole("dialog", { name: "Resolver partido" });
+    await expect(dialog).toBeVisible();
 
-    // Load the result through the real modal (six DIFFERENT MJP nominations per
-    // team, option index i = player i — the MJP roll then selects each side's
-    // grantee), which triggers the result-route mvp write (D20/LM-mvp).
-    for (const section of [homeSection, awaySection]) {
-      const teamName = section === homeSection ? homeTeamName : awayTeamName;
+    // Step 1 — MVP (mandatory): six DISTINCT MJP nominations per team (option
+    // index i = player i, mirroring the result modal's nomination contract).
+    for (const team of [homeTeamName, awayTeamName]) {
       for (let i = 1; i <= 6; i++) {
-        await section.getByLabel(`MVP ${i} ${teamName}`).selectOption({ index: i });
+        await dialog.getByLabel(`MVP ${i} ${team}`).selectOption({ index: i });
       }
     }
-    await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+    // The SERVER owns the 1D6 MVP roll: "Tirar MVP" posts the read-only
+    // rollMvp command and reveals the grantees + the summary (winnings → the
+    // finish-time persisted values, dedicated fans, match PE).
+    await dialog.getByRole("button", { name: "Tirar MVP" }).click();
+    await expect(dialog.getByText("Resumen de la resolución")).toBeVisible();
+    // Step 2 — "Guardar y reportar" posts resolveMatch (THE closure): the
+    // fixture closes + the MatchResult row writes + the league finishes.
+    await dialog.getByRole("button", { name: "Guardar y reportar" }).click();
     await expect(dialog).not.toBeVisible();
 
-    // MVP rows (LM-mvp): once the result commits, the FINISHED feed on the match
-    // page carries the home+away mvp rows (★4) the result route appended.
-    await admin.goto(matchUrl);
+    // MVP rows (LM-mvp): once the resolve commits, the FINISHED feed on the
+    // match page carries the home+away mvp rows (★4) the resolve appended.
     await expect(admin.getByText("Jugador más valioso").first()).toBeVisible();
     const mvpRows = admin.getByTestId("live-event-row").filter({ hasText: "Jugador más valioso" });
     await expect(mvpRows.filter({ hasText: "★4" })).toHaveCount(2);
@@ -559,6 +562,31 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const reportedY = (await reportedRow.boundingBox())?.y ?? Infinity;
     const firstCardY = (await firstEventCard.boundingBox())?.y ?? -Infinity;
     expect(reportedY).toBeLessThan(firstCardY);
+
+    // RAU-49 closure: the fixture is PLAYED (the normally-finished live match
+    // that previously never closed), the scores are recorded and the single
+    // jornada completes — the resolve command IS the closure.
+    await expect
+      .poll(
+        async () => {
+          const res = await admin.request.get(`/api/leagues/${leagueId}`);
+          if (res.status() !== 200) return null;
+          const body = (await res.json()) as {
+            fixtures: { id: string; status?: string }[];
+            rounds: { complete: boolean }[];
+          };
+          const fixture = body.fixtures.find((f) => f.id === fixtureId);
+          return fixture?.status === "played" && body.rounds[0]?.complete === true ? "played" : null;
+        },
+        { timeout: 20_000 },
+      )
+      .toBe("played");
+    await admin.goto(`/leagues/${leagueId}`);
+    const region = admin.getByRole("region", { name: "Jornada 1" });
+    await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
+    // The recorded score (home 0, away 1 via the FAB TD) + "Jornada completa".
+    await expect(region.getByText(/(0 : 1)/)).toBeVisible();
+    await expect(admin.getByText("Jornada completa")).toBeVisible();
   } finally {
     await league.close();
   }
