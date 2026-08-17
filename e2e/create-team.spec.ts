@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { RACES } from "../features/teams/data/races";
 import { PLAYER_NAME_BANKS } from "../features/teams/data/playerNames";
+import { TEAM_NAME_BANKS } from "../features/teams/data/teamNames";
 
 /** Fills step 1 (name + race) and advances to step 2. */
 async function goToStep2(page: import("@playwright/test").Page, name: string, raceId: string) {
@@ -30,6 +31,9 @@ test.describe("Create Team — E2E", () => {
     await expect(page.getByLabel("Team name")).toBeVisible();
     await expect(page.getByLabel("Race")).toBeVisible();
     await expect(page.getByRole("button", { name: "Next →" })).toBeVisible();
+    // The team-name dice sits next to the name input (disabled until a race).
+    await expect(page.getByRole("button", { name: "Random team name" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Random team name" })).toBeDisabled();
   });
 
   test("shows the race select with all race options and a placeholder", async ({ page }) => {
@@ -52,6 +56,26 @@ test.describe("Create Team — E2E", () => {
       await expect(option).toHaveAttribute("value", RACES[i].id);
       await expect(option).toHaveText(RACES[i].name);
     }
+  });
+
+  test("team-name dice suggests a random name matching the selected race", async ({ page }) => {
+    await page.goto("/teams/create");
+    await page.waitForLoadState("networkidle");
+
+    const teamDice = page.getByRole("button", { name: "Random team name" });
+    await expect(teamDice).toBeDisabled();
+
+    // No race -> the name input stays empty (the dice is inert).
+    await expect(page.getByLabel("Team name")).toHaveValue("");
+
+    await page.getByLabel("Race").selectOption("orc");
+    await expect(teamDice).toBeEnabled();
+    await teamDice.click();
+
+    const nameInput = page.getByLabel("Team name");
+    await expect(nameInput).not.toHaveValue("");
+    const value = await nameInput.inputValue();
+    expect(TEAM_NAME_BANKS.orc).toContain(value);
   });
 
   test("step 1 shows validation errors when Siguiente is clicked without data", async ({ page }) => {
@@ -108,21 +132,29 @@ test.describe("Create Team — E2E", () => {
     await page.goto("/teams/create");
     await page.waitForLoadState("networkidle");
 
+    // Step 1: the team-name dice is the single dice button of this step.
+    const teamDice = page.getByRole("button", { name: "Random team name" });
+    await expect(teamDice).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Roll a random name" })).toHaveCount(0);
+
     await goToStep2(page, "Reikland Reavers", "human");
 
     // Add 11 Linemen (BB2025 minimum roster) from the availability table.
     const addLineman = page.getByRole("button", { name: "Add Lineman" });
     for (let i = 0; i < 11; i++) await addLineman.click();
 
-    // Plantilla table reflects the players with random fantasy names from the race bank.
+    // Plantilla table reflects the players with composed random fantasy names
+    // ("First Surname") from the race banks.
     const roster = page.getByRole("region", { name: "Roster" });
     const nameInputs = roster.getByLabel(/Player name for /);
     await expect(nameInputs).toHaveCount(11);
     for (let i = 0; i < 11; i++) {
       const value = await nameInputs.nth(i).inputValue();
-      expect(PLAYER_NAME_BANKS.human).toContain(value);
+      const first = value.split(" ")[0];
+      expect(PLAYER_NAME_BANKS.human).toContain(first);
     }
-    // Every editable name row offers the dice re-roll button.
+    // Every editable name row offers the dice re-roll button: 11 player dice in
+    // step 2 + the step-1 team dice = 12 total across the wizard.
     await expect(roster.getByRole("button", { name: "Roll a random name" })).toHaveCount(11);
 
     // Submit the team.
