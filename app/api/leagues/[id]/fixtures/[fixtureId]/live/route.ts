@@ -17,6 +17,8 @@ import {
   acceptConcedeLiveMatch,
   proposeCasualtyLiveMatch,
   confirmCasualtyLiveMatch,
+  rollLiveMvp,
+  resolveLiveMatch,
 } from "@/lib/liveStore";
 import {
   applyEndTurn,
@@ -529,7 +531,22 @@ type ControlCommand =
   | { type: "requestTurn" }
   | { type: "endMatch" }
   | { type: "concede" }
-  | { type: "concedeRespond"; accept: boolean };
+  | { type: "concedeRespond"; accept: boolean }
+  | {
+      /** RAU-49: server-owned PREVIEW roll for the resolution modal — validates
+       * the 6 MJP nominations per team and rolls the MVP 1D6 + post-match FF
+       * dice WITHOUT persisting anything. The `resolveMatch` command re-rolls
+       * authoritatively at commit. */
+      type: "rollMvp";
+      mvp: { home: string[]; away: string[] };
+    }
+  | {
+      /** RAU-49: THE end-of-match closure — persists the PE awards, treasuries,
+       * post-match FF, the MatchResult row, closes the fixture (idempotent for
+       * a concede walkover) and runs `maybeCloseLeague` in ONE transaction. */
+      type: "resolveMatch";
+      mvp: { home: string[]; away: string[] };
+    };
 
 function isControlCommand(value: unknown): value is ControlCommand {
   if (typeof value !== "object" || value === null) return false;
@@ -580,6 +597,18 @@ function isControlCommand(value: unknown): value is ControlCommand {
       return true;
     case "concedeRespond":
       return typeof c.accept === "boolean";
+    case "rollMvp":
+    case "resolveMatch": {
+      // RAU-49: the mvp body MUST carry the two six-nomination arrays (the
+      // store validates 6-distinct + roster membership, mapping to 400).
+      const mvp = c.mvp;
+      return (
+        typeof mvp === "object" &&
+        mvp !== null &&
+        Array.isArray((mvp as Record<string, unknown>).home) &&
+        Array.isArray((mvp as Record<string, unknown>).away)
+      );
+    }
     default:
       return false;
   }
@@ -817,6 +846,67 @@ export async function POST(
       if ((error as { status?: number }).status === 409) {
         return Response.json({ error: "Cannot respond to concede in current state" }, { status: 409 });
       }
+      throw error;
+    }
+  }
+
+  // RAU-49: the end-of-match RESOLUTION commands. `rollMvp` is a read-only
+  // server-owned preview (validates the 6+6 MJP nominations and reveals the
+  // rolled MVP grantees + post-match FF for the modal's summary step); the
+  // `resolveMatch` command is THE CLOSURE — it persists the PE awards, the
+  // treasuries, the FF snapshot, the `MatchResult` row, closes the fixture
+  // (idempotent for the concede walkover) and runs `maybeCloseLeague` in ONE
+  // transaction. Both skip the LM-12 side gate below (they are not turn-phase
+  // events); the coach/admin gate + the finished-league guard already ran.
+  if (command.type === "rollMvp") {
+    try {
+      const roll = await rollLiveMvp(
+        {
+          fixtureId,
+          homeTeamId: ctx.homeTeamId,
+          awayTeamId: ctx.awayTeamId,
+          nominations: command.mvp,
+          now,
+        },
+        deps,
+      );
+      return Response.json({ view: toLiveViewState(current, now, { viewerSide: side }), roll }, { status: 200 });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400) return Response.json({ error: "Invalid MVP nominations" }, { status: 400 });
+      if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      throw error;
+    }
+  }
+
+  if (command.type === "resolveMatch") {
+    try {
+      // Lazy Player backfill parity with the result route: the PE/casualty
+      // writes target Player rows keyed by (teamId, rosterPlayerId).
+      await materializeTeamRosters(ctx);
+      const resolved = await resolveLiveMatch(
+        {
+          fixtureId,
+          leagueId: ctx.leagueId,
+          homeTeamId: ctx.homeTeamId,
+          awayTeamId: ctx.awayTeamId,
+          nominations: command.mvp,
+          loadedBy: userId as string,
+          now,
+        },
+        deps,
+      );
+      return Response.json(
+        { view: toLiveViewState(current, now, { viewerSide: side }), resolved },
+        { status: 200 },
+      );
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400) return Response.json({ error: "Invalid MVP nominations" }, { status: 400 });
+      if (status === 409) {
+        return Response.json({ error: "Cannot resolve match in current state" }, { status: 409 });
+      }
+      if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
       throw error;
     }
   }

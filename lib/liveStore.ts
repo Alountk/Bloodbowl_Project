@@ -43,9 +43,24 @@ import {
 import type { CasualtyCause } from "./livePhase";
 import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
-import { computeWinnings, preMatchFanFactor } from "@/lib/rules";
-import { rollD3 } from "@/lib/random";
-import { DEFAULT_COACHING, isCoachingStaff } from "@/features/teams/types";
+import { computeWinnings, preMatchFanFactor, postMatchFanFactor, type MatchOutcome } from "@/lib/rules";
+import { rollD3, rollD6 } from "@/lib/random";
+import {
+  computeMvpGrantee,
+  computePettyCash,
+  computeTeamTv,
+  deriveWinnerId,
+} from "@/lib/result";
+import {
+  addMvpPe,
+  casualtyVictimsFromEvents,
+  deriveLivePeAwards,
+  validateMvpNominations,
+  type ResolveEventLike,
+} from "./liveResolve";
+import { DEFAULT_COACHING, isCoachingStaff, type PlayerEntry } from "@/features/teams/types";
+import { getRaceById } from "@/features/teams/data/races";
+import { computeRosterCostFromPlayers, computeCoachingCost } from "@/features/teams/roster";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
 export interface StoreTx {
@@ -61,15 +76,55 @@ export interface StoreTx {
   };
   liveEvent: {
     create(args: Prisma.LiveEventCreateArgs): Promise<LiveEvent>;
+    /** RAU-49: appends the home+away mvp events (LM-mvp parity) and resolves the
+     * next event seq in the same transaction as the resolve write. */
+    aggregate(args: {
+      where: { liveMatchId: string };
+      _max: { seq: true };
+    }): Promise<{ _max: { seq: number | null } | null }>;
+    createMany(args: Prisma.LiveEventCreateManyArgs): Promise<{ count: number }>;
   };
   team: {
     updateMany(args: Prisma.TeamUpdateManyArgs): Promise<{ count: number }>;
     /** RAU-44: reads each side's `coaching` JSON to derive its roster
-     * dedicated-fans characteristic for the finish-time winnings formula. */
+     * dedicated-fans characteristic for the finish-time winnings formula. The
+     * RAU-49 resolve widens the read to the roster/race/players (roster
+     * validation, dedicated fans, petty-cash TV) — both callers pass the FULL
+     * select so one concrete signature serves both. */
     findMany(args: {
       where: { id: { in: string[] } };
-      select: { id: true; coaching: true };
-    }): Promise<{ id: string; coaching: Prisma.JsonValue | null }[]>;
+      select: {
+        id: true;
+        raceId: true;
+        roster: true;
+        coaching: true;
+        players: { select: { rosterPlayerId: true; valueBonus: true } };
+      };
+    }): Promise<
+      {
+        id: string;
+        raceId: string;
+        roster: Prisma.JsonValue | null;
+        coaching: Prisma.JsonValue | null;
+        players: { rosterPlayerId: string; valueBonus: number }[];
+      }[]
+    >;
+  };
+  /** RAU-49: the resolve transaction needs the MatchResult existence guard
+   * (a fixture already has a result → already resolved) and the report write. */
+  matchResult: {
+    findUnique(args: {
+      where: { fixtureId: string };
+    }): Promise<{ id: string } | null>;
+    create(args: Prisma.MatchResultCreateArgs): Promise<{ id: string }>;
+  };
+  /** RAU-49: the lazy Player writes — per-player PE increments and the casualty
+   * injury appends (skip-unknown/dead semantics mirror the result route). */
+  player: {
+    findMany(args: Prisma.PlayerFindManyArgs): Promise<
+      { teamId: string; rosterPlayerId: string; injuries: Prisma.JsonValue | null; alive: boolean }[]
+    >;
+    updateMany(args: Prisma.PlayerUpdateManyArgs): Promise<{ count: number }>;
   };
   /** RAU-38: the accept-concede transaction closes the fixture (winner + scores)
    * in the SAME tx as the `concede` event rows. */
@@ -79,11 +134,25 @@ export interface StoreTx {
      * accept-concede can auto-close the season when this was the last one. */
     findMany(args: Prisma.FixtureFindManyArgs): Promise<{ homeTeamId: string; awayTeamId: string; homeScore: number | null; awayScore: number | null; winnerId: string | null }[]>;
     /** RAU-44: resolves the fixture's two team ids for the finish-time
-     * dedicated-fans read. */
+     * dedicated-fans read. RAU-49 widens the read to the persisted scores so
+     * the resolve can skip the fixture-close for an already-closed concede —
+     * both callers pass the FULL select so one concrete signature serves both. */
     findUnique(args: {
       where: { id: string };
-      select: { homeTeamId: true; awayTeamId: true };
-    }): Promise<{ homeTeamId: string; awayTeamId: string } | null>;
+      select: {
+        homeTeamId: true;
+        awayTeamId: true;
+        homeScore: true;
+        awayScore: true;
+        winnerId: true;
+      };
+    }): Promise<{
+      homeTeamId: string;
+      awayTeamId: string;
+      homeScore: number | null;
+      awayScore: number | null;
+      winnerId: string | null;
+    } | null>;
   };
   /** RAU-40: the league row surface `maybeCloseLeague` needs (status read +
    * finished/champion write) inside the accept-concede transaction. */
@@ -114,6 +183,9 @@ export interface StoreDeps {
   /** RAU-44: the finish-time pre-match FF 1D3 source — injectable so tests are
    * deterministic; defaults to the server-owned real roll. */
   rollD3?: () => number;
+  /** RAU-49: the resolve-time MVP 1D6 + post-match FF 1D6 source — injectable
+   * so tests are deterministic; defaults to the server-owned real roll. */
+  rollD6?: () => number;
 }
 
 /** The persisted row fields the store maps to/from a pure state. */
@@ -262,13 +334,19 @@ async function computeLiveWinnings(
 
   const fixture = await tx.fixture.findUnique({
     where: { id: input.fixtureId },
-    select: { homeTeamId: true, awayTeamId: true },
+    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
   });
   if (!fixture) return null;
 
   const teams = await tx.team.findMany({
     where: { id: { in: [fixture.homeTeamId, fixture.awayTeamId] } },
-    select: { id: true, coaching: true },
+    select: {
+      id: true,
+      raceId: true,
+      roster: true,
+      coaching: true,
+      players: { select: { rosterPlayerId: true, valueBonus: true } },
+    },
   });
   const byId = new Map(teams.map((team) => [team.id, team]));
 
@@ -894,4 +972,459 @@ function bumpActiveAccumulator(state: LiveMatchState, now: number): LiveMatchSta
   return state.activeSide === "home"
     ? { ...state, homeTurnMs: state.homeTurnMs + inFlight }
     : { ...state, awayTurnMs: state.awayTurnMs + inFlight };
+}
+
+/** The persisted per-team winnings JSON (`{ home, away }`), or null when the
+ * value is absent/malformed (defensive — mirrors the fixture GET parser). */
+function parseWinningsJson(value: Prisma.JsonValue | null): { home: number; away: number } | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.home !== "number" || typeof v.away !== "number") return null;
+  return { home: v.home, away: v.away };
+}
+
+/** The team's coaching-staff JSON as a typed `CoachingStaff` (result-route
+ * `coachingOf` precedent); a malformed/absent value falls back to the default. */
+function coachingOf(coaching: Prisma.JsonValue | null): import("@/features/teams/types").CoachingStaff {
+  return isCoachingStaff(coaching) ? coaching : DEFAULT_COACHING;
+}
+
+/** Extracts the three TV parts from a loaded team row for the petty-cash
+ * comparison (result-route `raceTvParts` precedent). */
+function raceTvParts(team: {
+  raceId: string;
+  roster: Prisma.JsonValue | null;
+  coaching: Prisma.JsonValue | null;
+  players: readonly { valueBonus: number }[];
+}): { rosterCost: number; coachingCost: number; valueBonus: number } {
+  const race = getRaceById(team.raceId);
+  const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
+  const valueBonus = (team.players ?? []).reduce((total, p) => total + (p.valueBonus ?? 0), 0);
+  if (!race) return { rosterCost: 0, coachingCost: 0, valueBonus };
+  return {
+    rosterCost: computeRosterCostFromPlayers(race, roster),
+    coachingCost: computeCoachingCost(race, coachingOf(team.coaching)),
+    valueBonus,
+  };
+}
+
+/** A loaded LiveMatch row with its persisted events (resolve derivation input). */
+
+/** The persisted event rows as the pure derivation's minimum surface. */
+function resolveEventsOf(rows: readonly unknown[]): ResolveEventLike[] {
+  return rows
+    .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
+    .map((e) => ({
+      kind: typeof e.kind === "string" ? e.kind : "",
+      side: e.side === "home" || e.side === "away" ? e.side : null,
+      playerRosterId: typeof e.playerRosterId === "string" ? e.playerRosterId : null,
+      payload:
+        typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
+          ? (e.payload as Record<string, unknown>)
+          : {},
+    }));
+}
+
+export interface RollLiveMvpInput {
+  fixtureId: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  nominations: { home: string[]; away: string[] };
+  now: number;
+}
+
+/** The server-owned preview roll for the resolution modal (RAU-49): validates
+ * the 6-per-team MJP nominations and rolls the MVP 1D6 + the post-match FF dice
+ * WITHOUT persisting anything — the `resolveMatch` command re-rolls
+ * authoritatively at commit. 400 on invalid nominations, 404 when the live row
+ * or a team is missing, 409 when the live match is not finished. */
+export async function rollLiveMvp(
+  input: RollLiveMvpInput,
+  deps: StoreDeps,
+): Promise<{ mvp: { home: string; away: string }; postFf: { home: number; away: number } }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+
+  const roll6 = deps.rollD6 ?? rollD6;
+  const roll3 = deps.rollD3 ?? rollD3;
+
+  return deps.prisma.$transaction(async (tx) => {
+    const teams = await tx.team.findMany({
+      where: { id: { in: [input.homeTeamId, input.awayTeamId] } },
+      select: {
+        id: true,
+        raceId: true,
+        roster: true,
+        coaching: true,
+        players: { select: { rosterPlayerId: true, valueBonus: true } },
+      },
+    });
+    const byTeamId = new Map(teams.map((team) => [team.id, team]));
+    const homeTeam = byTeamId.get(input.homeTeamId);
+    const awayTeam = byTeamId.get(input.awayTeamId);
+    if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
+
+    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }) =>
+      new Set(
+        (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
+      );
+    const invalid = validateMvpNominations(
+      input.nominations.home,
+      input.nominations.away,
+      rosterIdsOf(homeTeam),
+      rosterIdsOf(awayTeam),
+    );
+    if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
+
+    const homeMvp = computeMvpGrantee(input.nominations.home, roll6());
+    const awayMvp = computeMvpGrantee(input.nominations.away, roll6());
+
+    // The preview mirrors the resolve's FF derivation (a concede walkover's
+    // fixture scores win over the live state's own scoreboard).
+    const fixture = await tx.fixture.findUnique({
+      where: { id: input.fixtureId },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+    });
+    const homeScore = fixture?.homeScore ?? row.homeScore;
+    const awayScore = fixture?.awayScore ?? row.awayScore;
+    const homeOutcome: MatchOutcome =
+      homeScore > awayScore ? "win" : homeScore < awayScore ? "loss" : "draw";
+    const awayOutcome: MatchOutcome =
+      awayScore > homeScore ? "win" : awayScore < homeScore ? "loss" : "draw";
+
+    const preHomeFf = preMatchFanFactor({
+      roll3: roll3(),
+      dedicatedFans: dedicatedFansOf(homeTeam.coaching),
+    });
+    const preAwayFf = preMatchFanFactor({
+      roll3: roll3(),
+      dedicatedFans: dedicatedFansOf(awayTeam.coaching),
+    });
+    const postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
+    const postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
+
+    return { mvp: { home: homeMvp, away: awayMvp }, postFf: { home: postHomeFf, away: postAwayFf } };
+  });
+}
+
+export interface ResolveLiveMatchInput {
+  fixtureId: string;
+  leagueId: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  nominations: { home: string[]; away: string[] };
+  /** The resolving user (fixture coach or league admin) — the MatchResult
+   * `loadedBy` audit (result-route parity). */
+  loadedBy: string;
+  now: number;
+}
+
+/** The resolve command's response: the closure snapshot + rolled awards. */
+export interface ResolveLiveOutcome {
+  fixtureId: string;
+  status: "played";
+  homeScore: number;
+  awayScore: number;
+  winnerId: string | null;
+  winnings: { home: number; away: number };
+  postFf: { home: number; away: number };
+  mvp: { home: string; away: string };
+  resultId: string;
+}
+
+/**
+ * RAU-49: the end-of-match RESOLUTION — the closure of a finished live match.
+ * In ONE transaction, mirroring the result route:
+ *  - rolls the server-owned MJP 1D6 per team over the 6 nominations;
+ *  - derives the PE awards from the persisted live events (TD/completion/
+ *    lasting-casualty) + the MVP +4, applied to the lazy Player rows;
+ *  - applies the finish-time `LiveMatch.winnings` to the treasuries (never
+ *    recomputed — RAU-44 persisted them deterministically at finish);
+ *  - stores the post-match FF (snapshot-only, result-route precedent) and
+ *    petty cash;
+ *  - appends the home+away `mvp` events + bumps the row seq (LM-mvp parity);
+ *  - closes the fixture IDEMPOTENTLY (skipped when already closed — the concede
+ *    walkover) and runs `maybeCloseLeague` — the resolve IS the closure, fixing
+ *  - the never-closed normally-finished live match; the fixture played +
+ *    MatchResult presence are the terminal guard.
+ * Guards: 404 no live row/team, 409 not-finished / already-resolved /
+ * already-played-with-result, 400 invalid MVP nominations. A conceded match
+ * (fixture closed by `acceptConcedeLiveMatch`, no MatchResult yet) is ALLOWED:
+ * the fixture-close part is skipped, the awards + report still write.
+ */
+export async function resolveLiveMatch(
+  input: ResolveLiveMatchInput,
+  deps: StoreDeps,
+): Promise<ResolveLiveOutcome> {
+  const row = await deps.prisma.liveMatch.findFirst({
+    where: { fixtureId: input.fixtureId },
+    include: { events: { orderBy: { seq: "asc" } } },
+  });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+
+  const roll6 = deps.rollD6 ?? rollD6;
+  const roll3 = deps.rollD3 ?? rollD3;
+
+  return deps.prisma.$transaction(async (tx) => {
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+
+    const fixture = await tx.fixture.findUnique({
+      where: { id: input.fixtureId },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+    });
+    if (!fixture) throw Object.assign(new Error("not found"), { status: 404 });
+
+    const teams = await tx.team.findMany({
+      where: { id: { in: [input.homeTeamId, input.awayTeamId] } },
+      select: {
+        id: true,
+        raceId: true,
+        roster: true,
+        coaching: true,
+        players: { select: { rosterPlayerId: true, valueBonus: true } },
+      },
+    });
+    const byTeamId = new Map(teams.map((team) => [team.id, team]));
+    const homeTeam = byTeamId.get(input.homeTeamId);
+    const awayTeam = byTeamId.get(input.awayTeamId);
+    if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
+
+    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }) =>
+      new Set(
+        (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
+      );
+    const invalid = validateMvpNominations(
+      input.nominations.home,
+      input.nominations.away,
+      rosterIdsOf(homeTeam),
+      rosterIdsOf(awayTeam),
+    );
+    if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
+
+    // The scoreboard: the fixture's persisted scores when already closed (a
+    // concede walkover), else the live state's own final scoreboard. The winner
+    // derives from the scores (a draw → null), falling back to a persisted
+    // winner id (defensive).
+    const homeScore = fixture.homeScore ?? row.homeScore;
+    const awayScore = fixture.awayScore ?? row.awayScore;
+    const winnerId =
+      deriveWinnerId(homeScore, awayScore, input.homeTeamId, input.awayTeamId) ??
+      fixture.winnerId ??
+      null;
+
+    const homeOutcome: MatchOutcome =
+      homeScore > awayScore ? "win" : homeScore < awayScore ? "loss" : "draw";
+    const awayOutcome: MatchOutcome =
+      awayScore > homeScore ? "win" : awayScore < homeScore ? "loss" : "draw";
+    // FF: fresh server-owned pre-match 1D3 + dedicated fans → post-match 1D6.
+    // Snapshot-only, exactly like the result route (no team mutation).
+    const preHomeFf = preMatchFanFactor({
+      roll3: roll3(),
+      dedicatedFans: dedicatedFansOf(homeTeam.coaching),
+    });
+    const preAwayFf = preMatchFanFactor({
+      roll3: roll3(),
+      dedicatedFans: dedicatedFansOf(awayTeam.coaching),
+    });
+    const postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
+    const postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
+
+    // Winnings: the RAU-44 finish-time values — applied, never recomputed.
+    const winnings = parseWinningsJson(row.winnings) ?? { home: 0, away: 0 };
+
+    // MVP: server-owned 1D6 per team over the six nominations.
+    const homeMvp = computeMvpGrantee(input.nominations.home, roll6());
+    const awayMvp = computeMvpGrantee(input.nominations.away, roll6());
+
+    // PE: derived from the persisted events + the MJP grant (+4 upsert).
+    const events = resolveEventsOf((row as { events?: unknown[] }).events ?? []);
+    const homeAwards = addMvpPe(deriveLivePeAwards(events).home, homeMvp);
+    const awayAwards = addMvpPe(deriveLivePeAwards(events).away, awayMvp);
+
+    // Casualties: the server-derived bands persisted at confirm, never re-rolled.
+    const casualties = casualtyVictimsFromEvents(events);
+
+    // Petty cash: result-route parity (the lower-TV team's inducement budget).
+    const homeParts = raceTvParts(homeTeam);
+    const awayParts = raceTvParts(awayTeam);
+    const pettyCash = computePettyCash(
+      computeTeamTv(homeParts.rosterCost, homeParts.coachingCost, homeParts.valueBonus),
+      computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus),
+    );
+
+    // D4: the snapshot carries scores, post-FF, winnings, casualties and PE —
+    // the same shape the result route persists (MV-2 renders it).
+    const scoreboard = {
+      home: {
+        score: homeScore,
+        postFf: postHomeFf,
+        winnings: winnings.home,
+        casualties: casualties
+          .filter((c) => c.team === "home")
+          .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
+        pe: homeAwards,
+      },
+      away: {
+        score: awayScore,
+        postFf: postAwayFf,
+        winnings: winnings.away,
+        casualties: casualties
+          .filter((c) => c.team === "away")
+          .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
+        pe: awayAwards,
+      },
+      winnerId,
+      mvp: { home: homeMvp, away: awayMvp },
+    };
+
+    // D20/LM-mvp parity: append the home+away grantee events and bump the row
+    // seq so the feed shows the ★4 MVP rows and the constraint never collides.
+    const agg = await tx.liveEvent.aggregate({
+      where: { liveMatchId: row.id },
+      _max: { seq: true },
+    });
+    const maxSeq = agg._max?.seq ?? 0;
+    const homeSeq = maxSeq + 1;
+    const awaySeq = maxSeq + 2;
+    const atMs = row.finishedAt ? new Date(row.finishedAt).getTime() : input.now;
+    await tx.liveEvent.createMany({
+      data: [
+        {
+          liveMatchId: row.id,
+          seq: homeSeq,
+          kind: "mvp",
+          side: "home",
+          playerRosterId: homeMvp,
+          half: row.half,
+          turnNumber: row.turnNumber,
+          payload: {},
+          createdAt: new Date(atMs),
+        },
+        {
+          liveMatchId: row.id,
+          seq: awaySeq,
+          kind: "mvp",
+          side: "away",
+          playerRosterId: awayMvp,
+          half: row.half,
+          turnNumber: row.turnNumber,
+          payload: {},
+          createdAt: new Date(atMs),
+        },
+      ],
+    });
+    await tx.liveMatch.updateMany({ where: { id: row.id }, data: { seq: awaySeq } });
+
+    // Close the fixture IDEMPOTENTLY: skip when already closed (a concede
+    // walkover already wrote scores + winner in the SAME tx as its events).
+    if (fixture.homeScore == null && fixture.awayScore == null) {
+      await tx.fixture.update({
+        where: { id: input.fixtureId },
+        data: { homeScore, awayScore, winnerId },
+      });
+    }
+    // RAU-40: the resolve IS the closure — when this was the season's LAST
+    // fixture the league closes atomically here (finished + champion).
+    await maybeCloseLeague(tx, input.leagueId);
+
+    const report = await tx.matchResult.create({
+      data: {
+        fixtureId: input.fixtureId,
+        weather: null,
+        scores: scoreboard as never,
+        pettyCash,
+        loadedBy: input.loadedBy,
+      },
+    });
+
+    // Treasury: apply the persisted finish-time winnings (RAU-44), never
+    // recomputed and never double-applied (the result route's winnings are
+    // superseded by this resolution for a live match).
+    await tx.team.updateMany({
+      where: { id: input.homeTeamId },
+      data: { treasury: { increment: winnings.home } },
+    });
+    await tx.team.updateMany({
+      where: { id: input.awayTeamId },
+      data: { treasury: { increment: winnings.away } },
+    });
+
+    // PE awards to the lazy Player rows (same shape as the result route).
+    for (const award of homeAwards) {
+      await tx.player.updateMany({
+        where: { teamId: input.homeTeamId, rosterPlayerId: award.rosterPlayerId },
+        data: { pe: { increment: award.pe } },
+      });
+    }
+    for (const award of awayAwards) {
+      await tx.player.updateMany({
+        where: { teamId: input.awayTeamId, rosterPlayerId: award.rosterPlayerId },
+        data: { pe: { increment: award.pe } },
+      });
+    }
+
+    // Casualty injuries: append each victim's persisted band (skip unknown rows
+    // and already-dead players — result-route semantics).
+    await persistResolveCasualties(tx, input.homeTeamId, input.awayTeamId, casualties);
+
+    return {
+      fixtureId: input.fixtureId,
+      status: "played" as const,
+      homeScore,
+      awayScore,
+      winnerId,
+      winnings,
+      postFf: { home: postHomeFf, away: postAwayFf },
+      mvp: { home: homeMvp, away: awayMvp },
+      resultId: report.id,
+    };
+  });
+}
+
+/**
+ * Appends each casualty victim's persisted band to their Player row, marking a
+ * `dead` victim not alive (mirrors the result route's `persistCasualtyOutcomes`:
+ * an unknown roster id — no backfilled Player row — is skipped, an already-dead
+ * Player is skipped, and duplicate victims apply once).
+ */
+async function persistResolveCasualties(
+  tx: StoreTx,
+  homeTeamId: string,
+  awayTeamId: string,
+  casualties: ReturnType<typeof casualtyVictimsFromEvents>,
+): Promise<void> {
+  const deduped = Array.from(
+    new Map(casualties.map((c) => [`${c.team}:${c.rosterPlayerId}`, c])).values(),
+  );
+  if (deduped.length === 0) return;
+  const existing = await tx.player.findMany({
+    where: {
+      OR: deduped.map((c) => ({
+        teamId: c.team === "home" ? homeTeamId : awayTeamId,
+        rosterPlayerId: c.rosterPlayerId,
+      })),
+    },
+  });
+  const rowByKey = new Map(existing.map((row) => [`${row.teamId}:${row.rosterPlayerId}`, row]));
+  for (const c of deduped) {
+    const teamId = c.team === "home" ? homeTeamId : awayTeamId;
+    const row = rowByKey.get(`${teamId}:${c.rosterPlayerId}`);
+    if (!row) continue; // unknown roster id — not backfilled → skip
+    if (!row.alive) continue; // already dead → skip (no revive / re-append)
+    const injuries = Array.isArray(row.injuries) ? row.injuries : [];
+    await tx.player.updateMany({
+      where: { teamId, rosterPlayerId: c.rosterPlayerId },
+      data: {
+        injuries: [...injuries, { kind: c.band }] as never,
+        alive: c.band === "dead" ? false : row.alive,
+      },
+    });
+  }
 }
