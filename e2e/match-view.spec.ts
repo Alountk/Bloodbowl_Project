@@ -45,6 +45,12 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.getByRole("button", { name: "Siguiente →" }).click();
   const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
+  // Normalize the auto-generated fantasy names to deterministic "Player N" so
+  // later steps can address players by a stable name.
+  const nameInputs = page.getByLabel(/Nombre del jugador para /);
+  for (let i = 0; i < playerCount; i++) {
+    await nameInputs.nth(i).fill(`Player ${i + 1}`);
+  }
   await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText(name)).toBeVisible();

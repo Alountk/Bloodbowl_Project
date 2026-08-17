@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { PlayerEntry, Race } from "../types";
+import { PLAYER_NAME_BANKS } from "../data/playerNames";
 import { mockMatchMedia } from "../test/matchMedia";
 import { RosterTable } from "./RosterTable";
 
@@ -274,6 +275,32 @@ describe("RosterTable", () => {
       fireEvent.change(screen.getAllByRole("textbox")[0], { target: { value: "Crusher" } });
       expect(onRename).toHaveBeenCalledWith("p1", "Crusher");
     });
+
+    it("renders a dice re-roll button per player when onRename is provided", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} onRename={vi.fn()} />);
+      expect(screen.getAllByRole("button", { name: "Tirar nombre al azar" })).toHaveLength(2);
+    });
+
+    it("does not render the dice re-roll button in readOnly mode", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} readOnly />);
+      expect(screen.queryByRole("button", { name: "Tirar nombre al azar" })).toBeNull();
+    });
+
+    it("does not render the dice re-roll button when onRename is absent", () => {
+      render(<RosterTable players={mockPlayers} race={mockRace} />);
+      expect(screen.queryByRole("button", { name: "Tirar nombre al azar" })).toBeNull();
+    });
+
+    it("clicking the dice re-rolls to a bank name not used by other players", () => {
+      const onRename = vi.fn();
+      render(<RosterTable players={mockPlayers} race={mockRace} onRename={onRename} />);
+      fireEvent.click(screen.getAllByRole("button", { name: "Tirar nombre al azar" })[0]);
+      expect(onRename).toHaveBeenCalledTimes(1);
+      const [id, name] = onRename.mock.calls[0] as [string, string];
+      expect(id).toBe("p1");
+      expect(PLAYER_NAME_BANKS.human).toContain(name);
+      expect(["Smash"]).not.toContain(name);
+    });
   });
 
   describe("totals row", () => {
@@ -414,6 +441,18 @@ describe("RosterTable", () => {
       expect(onRename).toHaveBeenCalledWith("p1", "Crusher");
       fireEvent.click(screen.getByRole("button", { name: "Eliminar Smash" }));
       expect(onRemove).toHaveBeenCalledWith("p2");
+    });
+
+    it("renders a working dice re-roll button on editable mobile cards and none in readOnly", () => {
+      const onRename = vi.fn();
+      renderMobile(<RosterTable players={mockPlayers} race={mockRace} onRename={onRename} />);
+      const dice = screen.getAllByRole("button", { name: "Tirar nombre al azar" });
+      expect(dice).toHaveLength(2);
+      fireEvent.click(dice[0]);
+      expect(onRename).toHaveBeenCalledTimes(1);
+      const [id, name] = onRename.mock.calls[0] as [string, string];
+      expect(id).toBe("p1");
+      expect(PLAYER_NAME_BANKS.human).toContain(name);
     });
 
     it("does not render textbox inputs in readOnly mobile cards", () => {

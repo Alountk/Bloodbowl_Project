@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useI18n } from "@/lib/i18n";
+import { randomPlayerName } from "../data/playerNames";
 import { getRaceById } from "../data/races";
 import { createId } from "../id";
 import {
@@ -104,7 +105,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
 
     const newPlayer: PlayerEntry = {
       id: createId(),
-      name: `Player ${players.length + 1}`,
+      name: randomPlayerName(race.id, new Set(players.map((p) => p.name))),
       positionalKey,
     };
     setPlayers((prev) => [...prev, newPlayer]);
