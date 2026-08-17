@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { PlayerEntry, PlayerProgressionCore, Race, Team } from "../types";
 import { translateRole } from "../roster-table/RosterTable";
 import { formatRulebookCost } from "../format";
@@ -56,14 +56,20 @@ function iconFor(role: string | undefined): string {
 function skillRefs(
   positional: Race["positionals"][number] | undefined,
   owned: string[],
-): { ref: string; elite: boolean }[] {
+): { ref: string; origin: "default" | "bought"; elite: boolean }[] {
+  const starting = new Set((positional?.skills ?? []).map((s) => skillKey(s)));
   const seen = new Set<string>();
-  const refs: { ref: string; elite: boolean }[] = [];
+  const refs: { ref: string; origin: "default" | "bought"; elite: boolean }[] = [];
   for (const ref of [...(positional?.skills ?? []), ...owned]) {
     const key = skillKey(ref);
     if (seen.has(key)) continue;
     seen.add(key);
-    refs.push({ ref, elite: skillElite(ref) });
+    refs.push({
+      ref,
+      // Only XP-purchased skills are marked; starting skills stay plain.
+      origin: starting.has(key) ? "default" : "bought",
+      elite: skillElite(ref),
+    });
   }
   return refs;
 }
@@ -233,20 +239,27 @@ export function TeamRosterTable({
                   </td>
                   <td className="px-2 py-1.5 text-left text-[11.5px] leading-[1.55]">
                     {refs.length > 0 ? (
-                      refs.map(({ ref, elite }) => (
-                        <span key={skillKey(ref)} className="mr-1 whitespace-nowrap">
-                          <span
-                            className={elite ? "font-extrabold text-[#7c2d12]" : "text-[#1a1a1a]"}
-                            title={elite ? t("prog.elite") : undefined}
-                          >
-                            {skillDisplayName(ref)}
+                      refs.map(({ ref, origin, elite }, index) => (
+                        <Fragment key={skillKey(ref)}>
+                          <span className="whitespace-nowrap">
+                            {origin === "bought" ? (
+                              <span
+                                className={elite ? "font-extrabold text-[#7c2d12]" : "font-semibold text-[#1a1a1a]"}
+                                title={elite ? t("prog.elite") : t("detail.tbl.bought")}
+                              >
+                                {elite ? (
+                                  <span data-testid="elite-diamond" aria-hidden="true">
+                                    ◆{" "}
+                                  </span>
+                                ) : null}
+                                {skillDisplayName(ref)}
+                              </span>
+                            ) : (
+                              <span className="text-[#1a1a1a]">{skillDisplayName(ref)}</span>
+                            )}
                           </span>
-                          {elite ? (
-                            <span className="ml-0.5 inline-block rounded bg-[#fee2e2] px-1 align-[1px] text-[9px] font-black text-[#d11938]" data-testid="elite-badge">
-                              $
-                            </span>
-                          ) : null}
-                        </span>
+                          {index < refs.length - 1 ? ", " : null}
+                        </Fragment>
                       ))
                     ) : (
                       <span>{t("detail.tbl.skillNone")}</span>

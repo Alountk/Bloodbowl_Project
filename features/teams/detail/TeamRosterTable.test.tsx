@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import type { PlayerProgressionCore, Race, Team } from "../types";
 import { DEFAULT_COACHING } from "../types";
 import { getRaceById } from "../data/races";
+import { skillDisplayName } from "@/lib/progression";
 import { TeamRosterTable } from "./TeamRosterTable";
 
 const humanRace = getRaceById("human") as Race;
@@ -101,7 +102,8 @@ describe("TeamRosterTable", () => {
     expect(screen.getByTestId("mvp-p1").textContent).toBe("·");
   });
 
-  it("emphasizes élite skills with the $ badge", () => {
+  it("marks XP-bought élite skills with a diamond and leaves starting skills plain", () => {
+    // lineman has no starting skills → "block" is bought; élite → ◆ diamond.
     render(
       <TeamRosterTable
         team={baseTeam}
@@ -109,8 +111,34 @@ describe("TeamRosterTable", () => {
         progression={progressionFor({ skills: ["block"] })}
       />,
     );
-    // block is élite → $ badge next to it.
-    expect(screen.getAllByTestId("elite-badge").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId("elite-diamond").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not mark starting skills, only XP-purchased ones", () => {
+    // human blitzer starts with defensive + block (block is élite) → no diamond.
+    const team: Team = { ...baseTeam, roster: [{ id: "p1", name: "Yan", positionalKey: "blitzer" }] };
+    render(<TeamRosterTable team={team} race={humanRace} progression={progressionFor({ skills: [] })} />);
+    expect(screen.queryAllByTestId("elite-diamond").length).toBe(0);
+  });
+
+  it("separates skills and traits with commas, marking only bought ones", () => {
+    // blitzer starts with defensive + block (default); dodge is bought.
+    const team: Team = { ...baseTeam, roster: [{ id: "p1", name: "Yan", positionalKey: "blitzer" }] };
+    render(
+      <TeamRosterTable
+        team={team}
+        race={humanRace}
+        progression={progressionFor({ skills: ["dodge"] })}
+      />,
+    );
+    const row = screen.getByTestId("roster-row-p1");
+    // default skills are comma-separated and plain; the bought élite skill keeps the ◆ prefix.
+    expect(row.textContent).toContain(
+      `${skillDisplayName("defensive")}, ${skillDisplayName("block")},`,
+    );
+    expect(row.textContent).toContain(`◆ ${skillDisplayName("dodge")}`);
+    // only the bought élite skill carries the diamond.
+    expect(screen.queryAllByTestId("elite-diamond").length).toBe(1);
   });
 
   it("highlights an increased characteristic green vs the positional base", () => {
