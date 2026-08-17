@@ -31,7 +31,7 @@ export async function fetchTeamProgression(teamId: string): Promise<PlayerProgre
  * Fires a BB2025 PE spend on a roster player (`POST /api/teams/[teamId]/players/[playerId]/improve`).
  * Resolves with the endpoint JSON (success: `peRemaining`/`skill`/`candidates`;
  * failure: `{ error }` thrown verbatim). This is the `onImprove` client passed
- * to the ProgressionPanel.
+ * to the team detail improve modal.
  */
 export async function improvePlayer(
   teamId: string,

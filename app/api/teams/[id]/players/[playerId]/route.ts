@@ -62,7 +62,7 @@ export async function PATCH(
     );
   }
 
-  const roster = Array.isArray(team.roster) ? (team.roster as PlayerEntry[]) : [];
+  const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
   const nextRoster = roster.map((entry) =>
     entry.id === playerId ? { ...entry, name: trimmed } : entry,
   );
