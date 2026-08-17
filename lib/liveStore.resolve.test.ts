@@ -86,6 +86,7 @@ function finishedRow(overrides: Partial<LiveMatch> = {}): LiveMatch & { events: 
     concedeProposedBy: null,
     pendingCasualty: null,
     winnings: { home: 55000, away: 45000 },
+    pendingResolution: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     events: [
@@ -315,6 +316,57 @@ describe("resolveLiveMatch", () => {
     );
   });
 
+  it("reuses the persisted pendingResolution (RAU-49 fix): committed MVP + FF EQUAL the previewed values, no re-roll", async () => {
+    // The modal previewed h5/a6 + FF 4/3. The injected rolls would produce a
+    // DIFFERENT fresh result (h1/a1 + FF 3/2), proving the commit does NOT roll.
+    const { deps, matchResultCreate, liveEventCreateMany, playerUpdateMany } = makeResolveDeps({
+      row: finishedRow({
+        pendingResolution: { mvp: { home: "h5", away: "a6" }, postFf: { home: 4, away: 3 } },
+      }),
+      rolls: { d3: [1, 1], d6: [1, 1, 1, 1] },
+    });
+
+    const outcome = await resolveLiveMatch(resolveInput, deps);
+
+    // The reported awards are the previewed ones — never a second roll.
+    expect(outcome.mvp).toEqual({ home: "h5", away: "a6" });
+    expect(outcome.postFf).toEqual({ home: 4, away: 3 });
+
+    // The appended mvp events carry the previewed grantees (LM-mvp parity).
+    expect(liveEventCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({ kind: "mvp", side: "home", playerRosterId: "h5" }),
+          expect.objectContaining({ kind: "mvp", side: "away", playerRosterId: "a6" }),
+        ],
+      }),
+    );
+
+    // The MatchResult snapshot's FF + MVP equal the previewed values.
+    expect(matchResultCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          scores: {
+            home: { score: 1, postFf: 4, winnings: 55000, casualties: expect.any(Array), pe: expect.arrayContaining([{ rosterPlayerId: "h5", pe: 4 }]) },
+            away: { score: 0, postFf: 3, winnings: 45000, casualties: [], pe: expect.arrayContaining([{ rosterPlayerId: "a6", pe: 4 }]) },
+            winnerId: "home-t",
+            mvp: { home: "h5", away: "a6" },
+          },
+        }),
+      }),
+    );
+
+    // The +4 PE award lands on the previewed grantee.
+    expect(playerUpdateMany).toHaveBeenCalledWith({
+      where: { teamId: "home-t", rosterPlayerId: "h5" },
+      data: { pe: { increment: 4 } },
+    });
+    expect(playerUpdateMany).toHaveBeenCalledWith({
+      where: { teamId: "away-t", rosterPlayerId: "a6" },
+      data: { pe: { increment: 4 } },
+    });
+  });
+
   it("rejects with 409 when the live row is not finished", async () => {
     const { deps } = makeResolveDeps({ row: finishedRow({ status: "live" as const }) });
     await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 409 });
@@ -384,10 +436,11 @@ describe("resolveLiveMatch", () => {
 });
 
 describe("rollLiveMvp", () => {
-  it("returns the server-rolled MVP grantees + post-match FF without persisting anything", async () => {
-    const { deps, matchResultCreate, fixtureUpdate, teamUpdateMany } = makeResolveDeps({
-      rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
-    });
+  it("returns the server-rolled MVP grantees + post-match FF and PERSISTS them as pendingResolution (same tx)", async () => {
+    const { deps, liveMatchUpdateMany, matchResultCreate, fixtureUpdate, teamUpdateMany } =
+      makeResolveDeps({
+        rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
+      });
     const roll = await rollLiveMvp(
       { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", nominations: { home: homeNom, away: awayNom }, now: 6000 },
       deps,
@@ -399,9 +452,28 @@ describe("rollLiveMvp", () => {
       mvp: { home: "h3", away: "a4" },
       postFf: { home: 4, away: 3 },
     });
+    // RAU-49 fix: the previewed resolution is persisted in the SAME transaction
+    // so `resolveMatch` commits EXACTLY these values (never a second roll).
+    expect(liveMatchUpdateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1" },
+      data: {
+        pendingResolution: { mvp: { home: "h3", away: "a4" }, postFf: { home: 4, away: 3 } },
+      },
+    });
+    // No closure writes: the preview only persists pendingResolution.
     expect(matchResultCreate).not.toHaveBeenCalled();
     expect(fixtureUpdate).not.toHaveBeenCalled();
     expect(teamUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 409 when the match is already resolved (same guard as resolve)", async () => {
+    const { deps } = makeResolveDeps({ matchResult: { id: "mr-x" } });
+    await expect(
+      rollLiveMvp(
+        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", nominations: { home: homeNom, away: awayNom }, now: 6000 },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("rejects invalid nominations with 400 and a not-finished match with 409", async () => {

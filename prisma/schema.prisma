@@ -152,6 +152,14 @@ model LiveMatch {
   /// rolls at finish and is stored. Additive JSON, never re-typed; null until
   /// the live match reaches `finished`.
   winnings          Json?
+  /// RAU-49 fix: the resolution the PREVIEW roll produced (`{ mvp: { home,
+  /// away }, postFf: { home, away } }` — the chosen nominee rosterPlayerIds +
+  /// the post-match FF totals, both from the SAME server roll the modal
+  /// previewed). `resolveMatch` reuses these values at commit so the reported
+  /// result always equals what the summary showed (never a second independent
+  /// roll). Null until `rollMvp` runs on a finished live match; overwritten on
+  /// re-roll. Additive JSON, never re-typed.
+  pendingResolution Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   events        LiveEvent[]

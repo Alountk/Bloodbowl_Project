@@ -534,9 +534,11 @@ type ControlCommand =
   | { type: "concedeRespond"; accept: boolean }
   | {
       /** RAU-49: server-owned PREVIEW roll for the resolution modal — validates
-       * the 6 MJP nominations per team and rolls the MVP 1D6 + post-match FF
-       * dice WITHOUT persisting anything. The `resolveMatch` command re-rolls
-       * authoritatively at commit. */
+       * the 6 MJP nominations per team, rolls the MVP 1D6 + post-match FF dice
+       * and PERSISTS the result as `LiveMatch.pendingResolution` (in the same
+       * transaction). The `resolveMatch` command then reuses those EXACT rolls
+       * at commit, so the previewed summary is what gets reported. Overwriting
+       * a previous preview on re-roll is fine; 409 when already resolved. */
       type: "rollMvp";
       mvp: { home: string[]; away: string[] };
     }
@@ -850,14 +852,15 @@ export async function POST(
     }
   }
 
-  // RAU-49: the end-of-match RESOLUTION commands. `rollMvp` is a read-only
-  // server-owned preview (validates the 6+6 MJP nominations and reveals the
-  // rolled MVP grantees + post-match FF for the modal's summary step); the
-  // `resolveMatch` command is THE CLOSURE — it persists the PE awards, the
-  // treasuries, the FF snapshot, the `MatchResult` row, closes the fixture
-  // (idempotent for the concede walkover) and runs `maybeCloseLeague` in ONE
-  // transaction. Both skip the LM-12 side gate below (they are not turn-phase
-  // events); the coach/admin gate + the finished-league guard already ran.
+  // RAU-49: the end-of-match RESOLUTION commands. `rollMvp` is a server-owned
+  // preview (validates the 6+6 MJP nominations, reveals the rolled MVP
+  // grantees + post-match FF and PERSISTS them as `pendingResolution` so the
+  // commit reuses the SAME rolls); the `resolveMatch` command is THE CLOSURE —
+  // it persists the PE awards, the treasuries, the FF snapshot, the `MatchResult`
+  // row, closes the fixture (idempotent for the concede walkover) and runs
+  // `maybeCloseLeague` in ONE transaction. Both skip the LM-12 side gate below
+  // (they are not turn-phase events); the coach/admin gate + the finished-league
+  // guard already ran.
   if (command.type === "rollMvp") {
     try {
       const roll = await rollLiveMvp(
@@ -874,6 +877,9 @@ export async function POST(
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 400) return Response.json({ error: "Invalid MVP nominations" }, { status: 400 });
+      if (status === 409) {
+        return Response.json({ error: "Cannot roll MVP for a resolved match" }, { status: 409 });
+      }
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
       throw error;
     }

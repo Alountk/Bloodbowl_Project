@@ -1516,6 +1516,17 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
     expect(res.status).toBe(404);
   });
 
+  it("maps a rollMvp 409 (already resolved) to 409 before any preview roll", async () => {
+    finishedSetup();
+    rollLiveMvpMock.mockRejectedValue(Object.assign(new Error("already resolved"), { status: 409 }));
+    const res = await POST(
+      req({ type: "rollMvp", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Cannot roll MVP for a resolved match" });
+  });
+
   it("wires `resolveMatch` through resolveLiveMatch (THE closure) with the fixture team ids + league + loadedBy", async () => {
     finishedSetup();
     resolveLiveMatchMock.mockResolvedValue({

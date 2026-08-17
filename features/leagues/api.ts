@@ -671,7 +671,8 @@ export interface ResolveOutcome {
   resultId: string;
 }
 
-/** Rolls the server-owned MVP + FF preview for a finished live match (no write). */
+/** Rolls the server-owned MVP + FF preview for a finished live match and
+ * persists it as `pendingResolution` so the commit reuses the SAME rolls. */
 export async function rollLiveMvp(
   leagueId: string,
   fixtureId: string,
