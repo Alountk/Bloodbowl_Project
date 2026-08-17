@@ -612,7 +612,22 @@ export type LiveCommand =
   | { type: "requestTurn" }
   | { type: "endMatch" }
   | { type: "concede" }
-  | { type: "concedeRespond"; accept: boolean };
+  | { type: "concedeRespond"; accept: boolean }
+  | {
+      /** RAU-49: server-owned PREVIEW roll for the resolution modal — validates
+       * the 6 MJP nominations per team and reveals the rolled MVP grantees +
+       * post-match FF WITHOUT persisting anything (the resolve command re-rolls
+       * authoritatively). */
+      type: "rollMvp";
+      mvp: { home: string[]; away: string[] };
+    }
+  | {
+      /** RAU-49: THE end-of-match closure — persists the PE awards, treasuries,
+       * post-match FF, the MatchResult row, closes the fixture (idempotent for
+       * the concede walkover) and runs `maybeCloseLeague` in ONE transaction. */
+      type: "resolveMatch";
+      mvp: { home: string[]; away: string[] };
+    };
 
 /**
  * Sends a live control command via POST .../live. On success returns the new
@@ -634,4 +649,61 @@ export async function sendLiveCommand(
   );
   const body = await readJson<{ view: LiveMatchViewState }>(res);
   return body.view;
+}
+
+/** RAU-49: the server-owned preview roll for the resolution modal — the MVP
+ * grantees (1D6 per team over the six nominations) + the post-match FF. */
+export interface LiveMvpRoll {
+  mvp: { home: string; away: string };
+  postFf: { home: number; away: number };
+}
+
+/** RAU-49: the resolve command's response — the closure snapshot + awards. */
+export interface ResolveOutcome {
+  fixtureId: string;
+  status: "played";
+  homeScore: number;
+  awayScore: number;
+  winnerId: string | null;
+  winnings: { home: number; away: number };
+  postFf: { home: number; away: number };
+  mvp: { home: string; away: string };
+  resultId: string;
+}
+
+/** Rolls the server-owned MVP + FF preview for a finished live match (no write). */
+export async function rollLiveMvp(
+  leagueId: string,
+  fixtureId: string,
+  mvp: { home: string[]; away: string[] },
+): Promise<LiveMvpRoll> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "rollMvp", mvp }),
+    },
+  );
+  const body = await readJson<{ roll: LiveMvpRoll }>(res);
+  return body.roll;
+}
+
+/** Resolves a finished live match (THE closure): PE + treasuries + FF + the
+ * MatchResult row + the idempotent fixture close + `maybeCloseLeague`. */
+export async function resolveLiveMatch(
+  leagueId: string,
+  fixtureId: string,
+  mvp: { home: string[]; away: string[] },
+): Promise<ResolveOutcome> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "resolveMatch", mvp }),
+    },
+  );
+  const body = await readJson<{ resolved: ResolveOutcome }>(res);
+  return body.resolved;
 }
