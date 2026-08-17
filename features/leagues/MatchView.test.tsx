@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useSession } from "next-auth/react";
 import { MatchView } from "./MatchView";
 import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
@@ -1830,5 +1830,81 @@ describe("MatchView — RAU-39 casualty propose → confirm (two-phase)", () => 
     expect(screen.queryByRole("dialog", { name: /Baja registrada por el rival/i })).toBeNull();
     expect(screen.queryByText(/El rival registra una baja/)).toBeNull();
     expect(screen.queryByText(/Esperando confirmación del rival/)).toBeNull();
+  });
+});
+
+describe("MatchView — RAU-49 finished-live resolution flow", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A finished live match whose result is NOT loaded yet (resolve pending). */
+  function unresolvedFinishedDetail(): MatchDetail {
+    const detail = finishedLiveDetail();
+    detail.result = null;
+    detail.fixture.homeScore = null;
+    detail.fixture.awayScore = null;
+    detail.fixture.winnerId = null;
+    detail.liveWinnings = { home: 55_000, away: 45_000 };
+    return detail;
+  }
+
+  it("shows the 'Resolver partido' banner and opens the resolution modal for a finished-unresolved match", async () => {
+    stubMatch(unresolvedFinishedDetail());
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+
+    // The persistent banner keeps the resolution reachable.
+    const resolveButton = screen.getByRole("button", { name: "Resolver partido" });
+    expect(screen.getByText("El partido terminó. Falta resolver el resultado.")).toBeTruthy();
+
+    fireEvent.click(resolveButton);
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    // The MVP step renders the six numbered pickers per team.
+    expect(within(dialog).getByLabelText("MVP 1 Reavers")).toBeTruthy();
+    expect(within(dialog).getByLabelText("MVP 6 Dwarves")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
+  });
+
+  it("hides the resolve banner once the match is resolved (result present)", async () => {
+    stubMatch(finishedLiveDetail()); // playedDetail carries a result
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Resolver partido" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
+  });
+
+  it("auto-opens the resolution modal once when the live match finishes via SSE", async () => {
+    stubLiveEventSource();
+    const live = liveDetail();
+    const finished = unresolvedFinishedDetail();
+    // The initial load returns the LIVE match; the SSE-triggered refresh
+    // returns the finished (still unresolved) detail. The league-name fetch
+    // resolves separately so it never consumes the fixture sequence.
+    let calls = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (!url.includes("/fixtures/f1")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "Liga" }) });
+      }
+      calls += 1;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(calls === 1 ? live : finished),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPlayed();
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
+
+    // The hub fans a finished frame out → the page refreshes and auto-opens.
+    act(() => {
+      liveInstances[0]?.dispatch(
+        "state",
+        liveFrameWithEvents(8, { status: "finished", finishedAt: 5000 }, []),
+      );
+    });
+
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Resolver partido" })).toBeTruthy());
   });
 });

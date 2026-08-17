@@ -19,6 +19,7 @@ import { TeamEmblem } from "./TeamEmblem";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
 import { useLeagueName } from "./useLeagueName";
+import { MatchResolveModal } from "./MatchResolveModal";
 
 /**
  * Internal single-match fetch hook mirroring `useLeagueDetail`: loads the match
@@ -1277,6 +1278,7 @@ function FinishedLiveView({
   homeTeam,
   awayTeam,
   leagueId,
+  onResolve,
 }: {
   live: LiveMatchView;
   detail: MatchDetail;
@@ -1287,8 +1289,13 @@ function FinishedLiveView({
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
   leagueId: string;
+  /** RAU-49: when set, the finished live match is NOT resolved yet — a clear
+   * "Resolver partido" banner renders above the feed so the resolution is never
+   * stuck behind a dismissed modal. */
+  onResolve?: () => void;
 }) {
   const clock = useLiveClock(live);
+  const { t } = useI18n();
   return (
     <div className="bg-white border border-[#e2e8f0]">
       <TourplayHeader
@@ -1306,6 +1313,18 @@ function FinishedLiveView({
         awayTeam={awayTeam}
         turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
       />
+      {onResolve ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2e8f0] bg-[#f8fafc] px-3.5 py-2">
+          <p className="text-sm font-semibold text-slate-700">{t("match.resolve.banner")}</p>
+          <button
+            type="button"
+            onClick={onResolve}
+            className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d]"
+          >
+            {t("match.resolve.action")}
+          </button>
+        </div>
+      ) : null}
       {/* MVT-4: snapshot summary rows ABOVE the event timeline. */}
       <SummaryFeedRows detail={detail} names={names} />
       <FinishedLiveTimeline live={live} homeTeam={homeTeam} awayTeam={awayTeam} />
@@ -1437,6 +1456,20 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
   const { detail, loading, error, notFound, refresh } = useMatchDetail(leagueId, fixtureId);
   const leagueName = useLeagueName(leagueId);
   const { t } = useI18n();
+  // RAU-49: the end-of-match resolution modal — open when the finished live
+  // match is NOT resolved yet. Auto-opened ONCE when the match transitions to
+  // finished via the SSE-triggered refresh; the persistent "Resolver partido"
+  // banner keeps it reachable after a dismiss.
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const prevLiveStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const liveStatus = detail?.live?.status ?? null;
+    const prev = prevLiveStatusRef.current;
+    prevLiveStatusRef.current = liveStatus;
+    if (liveStatus === "finished" && prev != null && prev !== "finished") {
+      setResolveOpen(true);
+    }
+  }, [detail?.live?.status]);
   // D19: when no LiveMatch row exists yet, the per-viewer side is deduced from
   // the session user against the two team owners (the DTO carries it otherwise).
   const { data: session } = useSession();
@@ -1495,20 +1528,40 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     // A LiveMatch exists for this fixture (MV-5): the uniform header renders
     // for the consent/ready/live states (LiveActiveMatch) and for the finished
     // live timeline (FinishedLiveView); the body below holds the per-state panel.
-    body =
-      detail.live.status === "finished" ? (
-        <FinishedLiveView
-          live={detail.live}
-          detail={detail}
-          leagueLabel={leagueLabel}
-          names={names}
-          homeSubtitle={homeSubtitle}
-          awaySubtitle={awaySubtitle}
-          homeTeam={detail.homeTeam}
-          awayTeam={detail.awayTeam}
-          leagueId={leagueId}
-        />
-      ) : (
+    // RAU-49: a FINISHED live match with no result shows the resolution flow —
+    // the persistent "Resolver partido" banner + the two-step modal — instead
+    // of the manual result form; once resolved the plain finished feed renders.
+    if (detail.live.status === "finished") {
+      const unresolved = detail.result == null;
+      body = (
+        <>
+          <FinishedLiveView
+            live={detail.live}
+            detail={detail}
+            leagueLabel={leagueLabel}
+            names={names}
+            homeSubtitle={homeSubtitle}
+            awaySubtitle={awaySubtitle}
+            homeTeam={detail.homeTeam}
+            awayTeam={detail.awayTeam}
+            leagueId={leagueId}
+            onResolve={unresolved ? () => setResolveOpen(true) : undefined}
+          />
+          {unresolved ? (
+            <MatchResolveModal
+              open={resolveOpen}
+              detail={detail}
+              onClose={() => setResolveOpen(false)}
+              onResolved={async () => {
+                await refresh();
+                setResolveOpen(false);
+              }}
+            />
+          ) : null}
+        </>
+      );
+    } else {
+      body = (
         <LiveActiveMatch
           live={detail.live}
           leagueId={leagueId}
@@ -1524,6 +1577,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
           onFinished={refresh}
         />
       );
+    }
   } else if (summary.walkover) {
     // A walkover keeps its own panel (no uniform Tourplay header — the fixture
     // was never played live; the e2e asserts zero turn/clock chrome here).
