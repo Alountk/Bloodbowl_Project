@@ -129,6 +129,7 @@ const es: Dict = {
   "detail.tbl.injured": "Lesionado",
   "detail.tbl.dead": "Muerto",
   "detail.tbl.skillNone": "—",
+  "detail.tbl.bought": "Comprada con XP",
   "detail.tbl.valueBreakdown": "({base}+{bonus})k",
 
   // Improve modal (RAU-46)
@@ -564,6 +565,7 @@ const en: Dict = {
   "detail.tbl.injured": "Injured",
   "detail.tbl.dead": "Dead",
   "detail.tbl.skillNone": "—",
+  "detail.tbl.bought": "Bought with XP",
   "detail.tbl.valueBreakdown": "({base}+{bonus})k",
   "detail.modal.aria": "Improve {name}",
   "detail.modal.close": "Close",

@@ -280,7 +280,8 @@ describe("TeamDetailView", () => {
             p1: {
               rosterPlayerId: "p1",
               pe: 12,
-              skills: ["block"],
+              // dodge is élite and NOT a blitzer starting skill → bought → ◆ diamond.
+              skills: ["dodge"],
               improvements: 2,
               valueBonus: 20_000,
               alive: true,
@@ -307,8 +308,8 @@ describe("TeamDetailView", () => {
       expect(screen.getByTestId("spp-pe-p1").textContent).toContain("★12");
       expect(screen.getByTestId("cas-p1").textContent).toBe("1");
       expect(screen.getByTestId("mvp-p1").textContent).toBe("2");
-      // élite skill renders with the $ badge inside the table.
-      expect(screen.getAllByTestId("elite-badge").length).toBeGreaterThanOrEqual(1);
+      // élite bought skill renders with the ◆ diamond inside the table.
+      expect(screen.getAllByTestId("elite-diamond").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Marty").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Jane").length).toBeGreaterThanOrEqual(1);
 
