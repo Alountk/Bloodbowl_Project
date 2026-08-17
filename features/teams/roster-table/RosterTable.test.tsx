@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { PlayerEntry, Race } from "../types";
-import { PLAYER_NAME_BANKS } from "../data/playerNames";
+import { PLAYER_NAME_BANKS, PLAYER_SURNAME_BANKS } from "../data/playerNames";
 import { mockMatchMedia } from "../test/matchMedia";
 import { RosterTable } from "./RosterTable";
+
+/** Asserts a re-rolled name is composed as "{first} {surname}" from the human banks. */
+function expectComposedHumanName(name: string) {
+  const [first, ...rest] = name.split(" ");
+  expect(PLAYER_NAME_BANKS.human).toContain(first);
+  expect(PLAYER_SURNAME_BANKS.human).toContain(rest.join(" "));
+}
 
 const mockRace: Race = {
   id: "human",
@@ -291,14 +298,14 @@ describe("RosterTable", () => {
       expect(screen.queryByRole("button", { name: "Tirar nombre al azar" })).toBeNull();
     });
 
-    it("clicking the dice re-rolls to a bank name not used by other players", () => {
+    it("clicking the dice re-rolls to a composed bank name not used by other players", () => {
       const onRename = vi.fn();
       render(<RosterTable players={mockPlayers} race={mockRace} onRename={onRename} />);
       fireEvent.click(screen.getAllByRole("button", { name: "Tirar nombre al azar" })[0]);
       expect(onRename).toHaveBeenCalledTimes(1);
       const [id, name] = onRename.mock.calls[0] as [string, string];
       expect(id).toBe("p1");
-      expect(PLAYER_NAME_BANKS.human).toContain(name);
+      expectComposedHumanName(name);
       expect(["Smash"]).not.toContain(name);
     });
   });
@@ -452,7 +459,7 @@ describe("RosterTable", () => {
       expect(onRename).toHaveBeenCalledTimes(1);
       const [id, name] = onRename.mock.calls[0] as [string, string];
       expect(id).toBe("p1");
-      expect(PLAYER_NAME_BANKS.human).toContain(name);
+      expectComposedHumanName(name);
     });
 
     it("does not render textbox inputs in readOnly mobile cards", () => {

@@ -1,12 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { getRaceById } from "../data/races";
-import { PLAYER_NAME_BANKS } from "../data/playerNames";
+import { PLAYER_NAME_BANKS, PLAYER_SURNAME_BANKS } from "../data/playerNames";
 import { DEFAULT_COACHING } from "../types";
 import { useCreateTeamForm, type CreateTeamValues } from "./useCreateTeamForm";
 
 function setup(onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined)) {
   return renderHook(() => useCreateTeamForm(onSubmit));
+}
+
+/** Asserts a wizard auto-name is composed as "{first} {surname}" from the human banks. */
+function expectComposedHumanName(name: string) {
+  const [first, ...rest] = name.split(" ");
+  expect(PLAYER_NAME_BANKS.human).toContain(first);
+  expect(PLAYER_SURNAME_BANKS.human).toContain(rest.join(" "));
 }
 
 describe("useCreateTeamForm", () => {
@@ -98,17 +105,17 @@ describe("useCreateTeamForm", () => {
 
   // --- addPlayer ---
 
-  it("addPlayer creates a PlayerEntry with a unique id and a name from the race bank", () => {
+  it("addPlayer creates a PlayerEntry with a unique id and a composed name from the race banks", () => {
     const { result } = setup();
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
     expect(result.current.players).toHaveLength(1);
     expect(result.current.players[0].positionalKey).toBe("lineman");
-    expect(PLAYER_NAME_BANKS.human).toContain(result.current.players[0].name);
+    expectComposedHumanName(result.current.players[0].name);
     expect(result.current.players[0].id).toBeTruthy();
   });
 
-  it("addPlayer names every player from the race bank without duplicates", () => {
+  it("addPlayer names every player from the race banks without duplicates", () => {
     const { result } = setup();
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
@@ -117,11 +124,11 @@ describe("useCreateTeamForm", () => {
     expect(names).toHaveLength(2);
     expect(new Set(names).size).toBe(2);
     for (const name of names) {
-      expect(PLAYER_NAME_BANKS.human).toContain(name);
+      expectComposedHumanName(name);
     }
   });
 
-  it("addPlayer keeps bank names unique until the bank is exhausted", () => {
+  it("addPlayer keeps full names unique until the bank is exhausted", () => {
     const { result } = setup();
     act(() => result.current.changeRace("human"));
     for (let i = 0; i < 16; i++) {
@@ -131,7 +138,7 @@ describe("useCreateTeamForm", () => {
     const names = result.current.players.map((p) => p.name);
     expect(new Set(names).size).toBe(16);
     for (const name of names) {
-      expect(PLAYER_NAME_BANKS.human).toContain(name);
+      expectComposedHumanName(name);
     }
   });
 
@@ -243,7 +250,7 @@ describe("useCreateTeamForm", () => {
     const idToRename = result.current.players[0].id;
     act(() => result.current.renamePlayer(idToRename, "Grak"));
     expect(result.current.players[0].name).toBe("Grak");
-    expect(PLAYER_NAME_BANKS.human).toContain(result.current.players[1].name);
+    expectComposedHumanName(result.current.players[1].name);
   });
 
   it("renamePlayer to empty string does not crash", () => {
