@@ -25,6 +25,7 @@ export default defineConfig({
         "**/avatar.spec.ts",
         "**/match-report.spec.ts",
         "**/full-league-flow.spec.ts",
+        "**/roster-table.spec.ts",
         "**/match-view.spec.ts",
         "**/live-match.spec.ts",
       ],
