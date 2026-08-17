@@ -54,7 +54,7 @@ test.describe("Mobile", () => {
   test("create team wizard has no horizontal overflow and stacked availability rows", async ({ page }) => {
     await page.goto("/teams/create");
     await page.waitForLoadState("networkidle");
-    await page.getByLabel("Team name").fill("Mobile New Team");
+    await page.getByLabel("Team name", { exact: true }).fill("Mobile New Team");
     await page.getByLabel("Race").selectOption("human");
     await page.getByRole("button", { name: "Next →" }).click();
 
@@ -88,7 +88,7 @@ test.describe("Mobile", () => {
     await expect(select).toBeVisible();
     await select.selectOption("orc");
     await expect(select).toHaveValue("orc");
-    await page.getByLabel("Team name").fill("Orc Mobile");
+    await page.getByLabel("Team name", { exact: true }).fill("Orc Mobile");
     await page.getByRole("button", { name: "Next →" }).click();
     await expect(page.getByRole("button", { name: "Add Lineman" }).first()).toBeVisible();
     await expectNoHorizontalOverflow(page, "orc create step2");
