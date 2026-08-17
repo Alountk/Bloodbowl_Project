@@ -3,6 +3,7 @@
 import type { PlayerEntry, Race } from "../types";
 import { computeRosterCostFromPlayers, MAX_REROLLS } from "../roster";
 import { getSkillById } from "../data/skills";
+import { randomPlayerName } from "../data/playerNames";
 import { formatRulebookCost } from "../format";
 import { useIsDesktop } from "../hooks/useIsDesktop";
 import { useI18n } from "@/lib/i18n";
@@ -144,6 +145,40 @@ function SkillAccessRows({ data }: { data: PlayerCellData }) {
   );
 }
 
+/** Dice re-roll button for the inline rename UI; picks a bank name not used by other roster players. */
+function RollNameButton({
+  player,
+  players,
+  race,
+  onRename,
+}: {
+  player: PlayerEntry;
+  players: PlayerEntry[];
+  race: Race;
+  onRename: (id: string, name: string) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <button
+      type="button"
+      aria-label={t("create.rollName")}
+      title={t("create.rollName")}
+      onClick={() =>
+        onRename(
+          player.id,
+          randomPlayerName(
+            race.id,
+            new Set(players.map((p) => (p.id !== player.id ? p.name : "")).filter(Boolean)),
+          ),
+        )
+      }
+      className="shrink-0 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs hover:border-slate-400"
+    >
+      🎲
+    </button>
+  );
+}
+
 export function RosterTable({
   players,
   race,
@@ -210,12 +245,22 @@ export function RosterTable({
                     {readOnly ? (
                       <span>{player.name}</span>
                     ) : (
-                      <input
-                        value={player.name}
-                        onChange={(e) => onRename?.(player.id, e.target.value)}
-                        aria-label={t("roster.playerNameAria", { name: player.name })}
-                        className="w-full rounded border border-slate-300 bg-white px-2 py-0.5 text-slate-900 outline-none focus:border-blue-500"
-                      />
+                      <div className="flex items-center gap-1">
+                        <input
+                          value={player.name}
+                          onChange={(e) => onRename?.(player.id, e.target.value)}
+                          aria-label={t("roster.playerNameAria", { name: player.name })}
+                          className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-slate-900 outline-none focus:border-blue-500"
+                        />
+                        {onRename ? (
+                          <RollNameButton
+                            player={player}
+                            players={players}
+                            race={race}
+                            onRename={onRename}
+                          />
+                        ) : null}
+                      </div>
                     )}
                     {readOnly ? (
                       <span className="pos-subtext mt-0.5 block text-[11px] text-[#333]">
@@ -336,12 +381,22 @@ export function RosterTable({
                     {readOnly ? (
                       <span className="text-sm font-semibold text-[#1a1a1a]">{player.name}</span>
                     ) : (
-                      <input
-                        value={player.name}
-                        onChange={(e) => onRename?.(player.id, e.target.value)}
-                        aria-label={t("roster.playerNameAria", { name: player.name })}
-                        className="w-full rounded border border-slate-300 bg-white px-2 py-0.5 text-sm text-slate-900 outline-none focus:border-blue-500"
-                      />
+                      <div className="flex items-center gap-1">
+                        <input
+                          value={player.name}
+                          onChange={(e) => onRename?.(player.id, e.target.value)}
+                          aria-label={t("roster.playerNameAria", { name: player.name })}
+                          className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-sm text-slate-900 outline-none focus:border-blue-500"
+                        />
+                        {onRename ? (
+                          <RollNameButton
+                            player={player}
+                            players={players}
+                            race={race}
+                            onRename={onRename}
+                          />
+                        ) : null}
+                      </div>
                     )}
                     <span className="block text-[11px] text-[#333]">
                       {positional?.name ?? t("roster.playerFallback")} · ({race.name}, {translateRole(positional?.role)})

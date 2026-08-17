@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { RACES } from "../features/teams/data/races";
+import { PLAYER_NAME_BANKS } from "../features/teams/data/playerNames";
 
 /** Fills step 1 (name + race) and advances to step 2. */
 async function goToStep2(page: import("@playwright/test").Page, name: string, raceId: string) {
@@ -113,9 +114,16 @@ test.describe("Create Team — E2E", () => {
     const addLineman = page.getByRole("button", { name: "Add Lineman" });
     for (let i = 0; i < 11; i++) await addLineman.click();
 
-    // Plantilla table reflects the players with default names.
-    await expect(page.getByLabel("Player name for Player 1", { exact: true })).toHaveValue("Player 1");
-    await expect(page.getByLabel("Player name for Player 11", { exact: true })).toHaveValue("Player 11");
+    // Plantilla table reflects the players with random fantasy names from the race bank.
+    const roster = page.getByRole("region", { name: "Roster" });
+    const nameInputs = roster.getByLabel(/Player name for /);
+    await expect(nameInputs).toHaveCount(11);
+    for (let i = 0; i < 11; i++) {
+      const value = await nameInputs.nth(i).inputValue();
+      expect(PLAYER_NAME_BANKS.human).toContain(value);
+    }
+    // Every editable name row offers the dice re-roll button.
+    await expect(roster.getByRole("button", { name: "Roll a random name" })).toHaveCount(11);
 
     // Submit the team.
     await page.getByRole("button", { name: /create team/i }).click();
@@ -204,8 +212,8 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     // The availability counter reflects the count for the positional.
     await expect(page.getByText("3/16", { exact: true })).toBeVisible();
 
-    // Roster table reflects the players and totals with default names.
-    await expect(page.getByLabel("Player name for Player 1", { exact: true })).toHaveValue("Player 1");
+    // Roster table reflects the players and totals with random fantasy names.
+    await expect(page.getByLabel(/Player name for /)).toHaveCount(4);
     await expect(page.getByText("4 players", { exact: true })).toBeVisible();
   });
 
@@ -234,8 +242,8 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await expect(page.getByText("3 players · 185k / 1,000k gc")).toBeVisible();
     await expect(page.getByText("815k remaining")).toBeVisible();
 
-    // Remove the first Lineman (default Player 1) -> 135k.
-    await page.getByLabel("Player name for Player 1", { exact: true }).fill("Lineman One");
+    // Remove the first Lineman -> 135k.
+    await page.getByLabel(/Player name for /).first().fill("Lineman One");
     await page.getByRole("button", { name: "Remove Lineman One", exact: true }).click();
     await expect(page.getByText("2 players · 135k / 1,000k gc")).toBeVisible();
     await expect(page.getByText("865k remaining")).toBeVisible();

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { getRaceById } from "../data/races";
+import { PLAYER_NAME_BANKS } from "../data/playerNames";
 import { DEFAULT_COACHING } from "../types";
 import { useCreateTeamForm, type CreateTeamValues } from "./useCreateTeamForm";
 
@@ -97,22 +98,41 @@ describe("useCreateTeamForm", () => {
 
   // --- addPlayer ---
 
-  it("addPlayer creates a PlayerEntry with a unique id and default name", () => {
+  it("addPlayer creates a PlayerEntry with a unique id and a name from the race bank", () => {
     const { result } = setup();
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
     expect(result.current.players).toHaveLength(1);
     expect(result.current.players[0].positionalKey).toBe("lineman");
-    expect(result.current.players[0].name).toBe("Player 1");
+    expect(PLAYER_NAME_BANKS.human).toContain(result.current.players[0].name);
     expect(result.current.players[0].id).toBeTruthy();
   });
 
-  it("addPlayer auto-increments the default name across the roster", () => {
+  it("addPlayer names every player from the race bank without duplicates", () => {
     const { result } = setup();
     act(() => result.current.changeRace("human"));
     act(() => result.current.addPlayer("lineman"));
     act(() => result.current.addPlayer("blitzer"));
-    expect(result.current.players.map((p) => p.name)).toEqual(["Player 1", "Player 2"]);
+    const names = result.current.players.map((p) => p.name);
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    for (const name of names) {
+      expect(PLAYER_NAME_BANKS.human).toContain(name);
+    }
+  });
+
+  it("addPlayer keeps bank names unique until the bank is exhausted", () => {
+    const { result } = setup();
+    act(() => result.current.changeRace("human"));
+    for (let i = 0; i < 16; i++) {
+      act(() => result.current.addPlayer("lineman"));
+    }
+    expect(result.current.players).toHaveLength(16);
+    const names = result.current.players.map((p) => p.name);
+    expect(new Set(names).size).toBe(16);
+    for (const name of names) {
+      expect(PLAYER_NAME_BANKS.human).toContain(name);
+    }
   });
 
   it("addPlayer assigns a unique id to each player", () => {
@@ -223,7 +243,7 @@ describe("useCreateTeamForm", () => {
     const idToRename = result.current.players[0].id;
     act(() => result.current.renamePlayer(idToRename, "Grak"));
     expect(result.current.players[0].name).toBe("Grak");
-    expect(result.current.players[1].name).toBe("Player 2");
+    expect(PLAYER_NAME_BANKS.human).toContain(result.current.players[1].name);
   });
 
   it("renamePlayer to empty string does not crash", () => {

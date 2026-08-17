@@ -65,7 +65,7 @@ test.describe("Mobile", () => {
     // Adding a player updates the counter and the stacked roster row
     await page.getByRole("button", { name: "Add Lineman" }).first().click();
     await expect(page.getByText("1/16").first()).toBeVisible();
-    await expect(page.getByLabel("Player name for Player 1")).toBeVisible();
+    await expect(page.getByLabel(/Player name for /).first()).toBeVisible();
     await expectNoHorizontalOverflow(page, "create step2 with player");
   });
 

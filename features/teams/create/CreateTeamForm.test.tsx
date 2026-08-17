@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { AppProvider, useApp } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { RACES } from "@/features/teams/data/races";
+import { PLAYER_NAME_BANKS } from "@/features/teams/data/playerNames";
 import { CreateTeamForm } from "./CreateTeamForm";
 
 // Mock next/navigation
@@ -126,7 +127,8 @@ describe("CreateTeamForm", () => {
     fireEvent.click(within(availability).getByRole("button", { name: "Añadir Lineman" }));
     const plantilla = screen.getByRole("region", { name: "Plantilla" });
     expect(within(plantilla).getByRole("textbox")).toBeTruthy();
-    expect(screen.getByLabelText("Nombre del jugador para Player 1")).toBeTruthy();
+    const nameInput = within(plantilla).getByRole("textbox") as HTMLInputElement;
+    expect(PLAYER_NAME_BANKS.human).toContain(nameInput.value);
     // Empty-state message is gone now that the roster has a player.
     expect(screen.queryByText(/todavía no hay jugadores en la plantilla/i)).toBeNull();
   });
@@ -190,7 +192,8 @@ describe("CreateTeamForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     // Player remains in step 2 after clicking Siguiente again.
     fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
-    expect(screen.getByLabelText("Nombre del jugador para Player 1")).toBeTruthy();
+    const plantilla = screen.getByRole("region", { name: "Plantilla" });
+    expect(within(plantilla).getByRole("textbox")).toBeTruthy();
   });
 
   // --- Coaching staff ---
