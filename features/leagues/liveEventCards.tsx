@@ -439,10 +439,11 @@ export function LiveEventCards({
                         <Icon name={iconName} className="h-[15px] w-[15px]" />
                       </span>
                       {label}
-                      {/* The SPP stars ride on the CAUSER's action card for a
-                          casualty (the victim gains no XP); TD/completion/MVP
-                          keep them here. */}
-                      {spp > 0 && event.kind !== "casualty" ? (
+                      {/* RAU-47: the SPP stars show on BOTH casualty cards — the
+                          injury card ("Baja ★2") so the points are visible even
+                          when the causer can't be resolved, and the action card
+                          on the causer's side below (the causer earns the XP). */}
+                      {spp > 0 ? (
                         <span className={c.stars}>(★{spp})</span>
                       ) : null}
                     </span>

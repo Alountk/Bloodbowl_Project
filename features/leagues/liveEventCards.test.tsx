@@ -419,10 +419,10 @@ describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)",
     expect(action!.textContent).toContain("Blitz");
     expect(action!.textContent).toContain("Arnau hace una herida a Blitzer B");
     expect(action!.textContent).toContain("(★2)");
-    // The ROLL belongs to the injury card; the INJURY card carries NO stars
-    // (the victim gains no XP).
+    // The ROLL belongs to the injury card; RAU-47 keeps the ★2 on the injury
+    // card too so the points are visible even when no causer/action card exists.
     expect(injury!.textContent).toContain("Tirada 1D16: 13");
-    expect(injury!.textContent).not.toContain("★");
+    expect(injury!.textContent).toContain("(★2)");
   });
 
   it("renders NO action card for a self-inflicted (dodge/crowd) casualty — only the injury card", () => {
