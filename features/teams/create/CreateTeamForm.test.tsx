@@ -3,13 +3,21 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { AppProvider, useApp } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { RACES } from "@/features/teams/data/races";
-import { PLAYER_NAME_BANKS } from "@/features/teams/data/playerNames";
+import { PLAYER_NAME_BANKS, PLAYER_SURNAME_BANKS } from "@/features/teams/data/playerNames";
+import { TEAM_NAME_BANKS } from "@/features/teams/data/teamNames";
 import { CreateTeamForm } from "./CreateTeamForm";
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
+
+/** Asserts a wizard auto-name is composed as "{first} {surname}" from the human banks. */
+function expectComposedHumanName(name: string) {
+  const [first, ...rest] = name.split(" ");
+  expect(PLAYER_NAME_BANKS.human).toContain(first);
+  expect(PLAYER_SURNAME_BANKS.human).toContain(rest.join(" "));
+}
 
 describe("CreateTeamForm", () => {
   function HydrationProbe() {
@@ -100,6 +108,26 @@ describe("CreateTeamForm", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/selecciona una raza/i);
   });
 
+  it("renders the team-name dice next to the name input, disabled without a race", async () => {
+    await renderForm();
+    const dice = screen.getByRole("button", { name: /nombre de equipo al azar/i }) as HTMLButtonElement;
+    expect(dice).toBeTruthy();
+    expect(dice.disabled).toBe(true);
+    expect(dice.textContent).toContain("🎲");
+  });
+
+  it("clicking the team-name dice after selecting a race sets a name from that race's bank", async () => {
+    await renderForm();
+    const dice = screen.getByRole("button", { name: /nombre de equipo al azar/i }) as HTMLButtonElement;
+    expect(dice.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/raza/i), { target: { value: "orc" } });
+    expect(dice.disabled).toBe(false);
+    fireEvent.click(dice);
+    const nameInput = screen.getByLabelText(/nombre del equipo/i) as HTMLInputElement;
+    expect(nameInput.value.length).toBeGreaterThan(0);
+    expect(TEAM_NAME_BANKS.orc).toContain(nameInput.value);
+  });
+
   // --- Step 2 ---
 
   it("clicking Siguiente with a name and race moves to step 2 with a hero and subline", async () => {
@@ -128,9 +156,23 @@ describe("CreateTeamForm", () => {
     const plantilla = screen.getByRole("region", { name: "Plantilla" });
     expect(within(plantilla).getByRole("textbox")).toBeTruthy();
     const nameInput = within(plantilla).getByRole("textbox") as HTMLInputElement;
-    expect(PLAYER_NAME_BANKS.human).toContain(nameInput.value);
+    expectComposedHumanName(nameInput.value);
     // Empty-state message is gone now that the roster has a player.
     expect(screen.queryByText(/todavía no hay jugadores en la plantilla/i)).toBeNull();
+  });
+
+  it("player dice re-roll still works and composes a new name in step 2", async () => {
+    await goToStep2();
+    const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
+    fireEvent.click(within(availability).getByRole("button", { name: "Añadir Lineman" }));
+    const plantilla = screen.getByRole("region", { name: "Plantilla" });
+    const nameInput = within(plantilla).getByRole("textbox") as HTMLInputElement;
+    expectComposedHumanName(nameInput.value);
+    const previous = nameInput.value;
+
+    fireEvent.click(screen.getByRole("button", { name: /tirar nombre al azar/i }));
+    expect(nameInput.value).not.toBe(previous);
+    expectComposedHumanName(nameInput.value);
   });
 
   it("Editar nombre/raza returns to step 1 and preserves the entered team name", async () => {
