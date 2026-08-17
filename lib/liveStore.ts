@@ -1025,6 +1025,37 @@ function resolveEventsOf(rows: readonly unknown[]): ResolveEventLike[] {
     }));
 }
 
+/** The rolled resolution the preview persists for the commit to reuse (RAU-49
+ * fix): the chosen nominee rosterPlayerIds + the post-match FF totals — both
+ * from the SAME server roll the modal previewed. */
+export interface PendingResolution {
+  mvp: { home: string; away: string };
+  postFf: { home: number; away: number };
+}
+
+/** Defensive parse of the persisted `pendingResolution` JSON: a malformed or
+ * legacy shape returns null so `resolveLiveMatch` falls back to a fresh roll. */
+function parsePendingResolution(value: Prisma.JsonValue | null | undefined): PendingResolution | null {
+  if (typeof value !== "object" || value === null) return null;
+  const pending = value as Record<string, unknown>;
+  const mvp = pending.mvp as Record<string, unknown> | undefined;
+  const postFf = pending.postFf as Record<string, unknown> | undefined;
+  if (
+    !mvp ||
+    typeof mvp.home !== "string" ||
+    typeof mvp.away !== "string" ||
+    !postFf ||
+    typeof postFf.home !== "number" ||
+    typeof postFf.away !== "number"
+  ) {
+    return null;
+  }
+  return {
+    mvp: { home: mvp.home, away: mvp.away },
+    postFf: { home: postFf.home, away: postFf.away },
+  };
+}
+
 export interface RollLiveMvpInput {
   fixtureId: string;
   homeTeamId: string;
@@ -1034,10 +1065,13 @@ export interface RollLiveMvpInput {
 }
 
 /** The server-owned preview roll for the resolution modal (RAU-49): validates
- * the 6-per-team MJP nominations and rolls the MVP 1D6 + the post-match FF dice
- * WITHOUT persisting anything — the `resolveMatch` command re-rolls
- * authoritatively at commit. 400 on invalid nominations, 404 when the live row
- * or a team is missing, 409 when the live match is not finished. */
+ * the 6-per-team MJP nominations, rolls the MVP 1D6 + the post-match FF dice
+ * and PERSISTS the result as `pendingResolution` on the LiveMatch row (in the
+ * SAME transaction) — the `resolveMatch` command then reuses those EXACT rolls
+ * at commit, so what the modal previewed is what gets reported (never a second
+ * independent roll). Overwriting a previous preview on re-roll is fine; 400 on
+ * invalid nominations, 404 when the live row or a team is missing, 409 when
+ * the live match is not finished or already resolved. */
 export async function rollLiveMvp(
   input: RollLiveMvpInput,
   deps: StoreDeps,
@@ -1052,6 +1086,11 @@ export async function rollLiveMvp(
   const roll3 = deps.rollD3 ?? rollD3;
 
   return deps.prisma.$transaction(async (tx) => {
+    // Same guard as `resolveLiveMatch`: a match already resolved (or in the
+    // middle of it) must not accept a preview roll.
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+
     const teams = await tx.team.findMany({
       where: { id: { in: [input.homeTeamId, input.awayTeamId] } },
       select: {
@@ -1105,6 +1144,20 @@ export async function rollLiveMvp(
     });
     const postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
     const postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
+
+    // RAU-49 fix: persist the previewed resolution so `resolveMatch` reuses
+    // THESE exact values at commit (the summary the user approved IS what gets
+    // reported). Overwrite-on-reroll is fine; the write is in the same
+    // transaction as the guard so a race cannot roll after resolution.
+    await tx.liveMatch.updateMany({
+      where: { id: row.id },
+      data: {
+        pendingResolution: {
+          mvp: { home: homeMvp, away: awayMvp },
+          postFf: { home: postHomeFf, away: postAwayFf },
+        },
+      },
+    });
 
     return { mvp: { home: homeMvp, away: awayMvp }, postFf: { home: postHomeFf, away: postAwayFf } };
   });
@@ -1223,25 +1276,42 @@ export async function resolveLiveMatch(
       homeScore > awayScore ? "win" : homeScore < awayScore ? "loss" : "draw";
     const awayOutcome: MatchOutcome =
       awayScore > homeScore ? "win" : awayScore < homeScore ? "loss" : "draw";
-    // FF: fresh server-owned pre-match 1D3 + dedicated fans → post-match 1D6.
-    // Snapshot-only, exactly like the result route (no team mutation).
-    const preHomeFf = preMatchFanFactor({
-      roll3: roll3(),
-      dedicatedFans: dedicatedFansOf(homeTeam.coaching),
-    });
-    const preAwayFf = preMatchFanFactor({
-      roll3: roll3(),
-      dedicatedFans: dedicatedFansOf(awayTeam.coaching),
-    });
-    const postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
-    const postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
+    // RAU-49 fix: when `rollMvp` previewed the resolution, the commit reuses
+    // THOSE EXACT rolls (MVP grantees + post-match FF) — the reported result
+    // always equals what the modal's summary showed, never a second independent
+    // roll. A direct/legacy resolve without a preview falls back to fresh
+    // server-owned rolls exactly as before.
+    const pending = parsePendingResolution(row.pendingResolution);
+    let postHomeFf: number;
+    let postAwayFf: number;
+    let homeMvp: string;
+    let awayMvp: string;
+    if (pending) {
+      homeMvp = pending.mvp.home;
+      awayMvp = pending.mvp.away;
+      postHomeFf = pending.postFf.home;
+      postAwayFf = pending.postFf.away;
+    } else {
+      // FF: fresh server-owned pre-match 1D3 + dedicated fans → post-match 1D6.
+      // Snapshot-only, exactly like the result route (no team mutation).
+      const preHomeFf = preMatchFanFactor({
+        roll3: roll3(),
+        dedicatedFans: dedicatedFansOf(homeTeam.coaching),
+      });
+      const preAwayFf = preMatchFanFactor({
+        roll3: roll3(),
+        dedicatedFans: dedicatedFansOf(awayTeam.coaching),
+      });
+      postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
+      postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
+
+      // MVP: server-owned 1D6 per team over the six nominations.
+      homeMvp = computeMvpGrantee(input.nominations.home, roll6());
+      awayMvp = computeMvpGrantee(input.nominations.away, roll6());
+    }
 
     // Winnings: the RAU-44 finish-time values — applied, never recomputed.
     const winnings = parseWinningsJson(row.winnings) ?? { home: 0, away: 0 };
-
-    // MVP: server-owned 1D6 per team over the six nominations.
-    const homeMvp = computeMvpGrantee(input.nominations.home, roll6());
-    const awayMvp = computeMvpGrantee(input.nominations.away, roll6());
 
     // PE: derived from the persisted events + the MJP grant (+4 upsert).
     const events = resolveEventsOf((row as { events?: unknown[] }).events ?? []);

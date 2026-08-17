@@ -527,9 +527,10 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
         await dialog.getByLabel(`MVP ${i} ${team}`).selectOption({ index: i });
       }
     }
-    // The SERVER owns the 1D6 MVP roll: "Tirar MVP" posts the read-only
-    // rollMvp command and reveals the grantees + the summary (winnings → the
-    // finish-time persisted values, dedicated fans, match PE).
+    // The SERVER owns the 1D6 MVP roll: "Tirar MVP" posts the rollMvp command
+    // (which persists the roll so the commit reuses it) and reveals the
+    // grantees + the summary (winnings → the finish-time persisted values,
+    // dedicated fans, match PE).
     await dialog.getByRole("button", { name: "Tirar MVP" }).click();
     await expect(dialog.getByText("Resumen de la resolución")).toBeVisible();
     // Step 2 — "Guardar y reportar" posts resolveMatch (THE closure): the

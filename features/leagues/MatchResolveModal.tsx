@@ -46,8 +46,9 @@ function teamPe(
  * RAU-49 resolution modal — the guided end-of-match sequence that REPLACES the
  * manual result form for a FINISHED LIVE match. Two steps:
  *  1. MVP step (mandatory): six numbered MJP nominations per team; "Tirar MVP"
- *     POSTs the read-only `rollMvp` command so the server (never the client)
- *     rolls the 1D6 per team and reveals the grantees + post-match FF.
+ *     POSTs the server-owned `rollMvp` command so the server (never the client)
+ *     rolls the 1D6 per team, reveals the grantees + post-match FF and persists
+ *     them (`LiveMatch.pendingResolution`) so the commit reuses the SAME rolls.
  *  2. Summary step: per team — MVP (+4 PE), winnings (→ treasury, already
  *     persisted at finish, RAU-44), dedicated-fans roll and the PE earned from
  *     the match. "Guardar y reportar" POSTs `resolveMatch` (THE closure);
