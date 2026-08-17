@@ -617,6 +617,10 @@ test("scouting: a member views a rival's roster read-only; an outsider gets a 40
     await expect(
       member.getByRole("button", { name: /eliminar|renombrar|editar|delete/i }),
     ).toHaveCount(0);
+    // Read-only roster: clicking a row opens no improve modal (RAU-46).
+    await expect(member.getByTestId("team-roster-table")).toBeVisible();
+    await member.getByTestId("team-roster-table").locator("tbody tr").first().click();
+    await expect(member.getByTestId("improve-modal")).toHaveCount(0);
 
     // An outsider (D, not a member) navigating to the same team gets the 404
     // boundary (scouting GET returns 404 → notFound()).
