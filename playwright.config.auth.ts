@@ -25,6 +25,7 @@ export default defineConfig({
     "**/roster-table.spec.ts",
     "**/match-view.spec.ts",
     "**/live-match.spec.ts",
+    "**/live-resolution.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

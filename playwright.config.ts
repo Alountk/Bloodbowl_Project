@@ -28,6 +28,7 @@ export default defineConfig({
         "**/roster-table.spec.ts",
         "**/match-view.spec.ts",
         "**/live-match.spec.ts",
+        "**/live-resolution.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },

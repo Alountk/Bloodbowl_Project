@@ -135,8 +135,10 @@ describe("MatchResolveModal", () => {
   });
 
   it("rolls the MVP + FF through the server (rollMvp POST) and reveals the summary", async () => {
-    const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
-      Promise.resolve({
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
+      void _url;
+      void _init;
+      return Promise.resolve({
         ok: true,
         status: 200,
         json: () =>
@@ -144,8 +146,8 @@ describe("MatchResolveModal", () => {
             view: {},
             roll: { mvp: { home: "h2", away: "a4" }, postFf: { home: 4, away: 3 } },
           }),
-      }),
-    );
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     renderModal();
