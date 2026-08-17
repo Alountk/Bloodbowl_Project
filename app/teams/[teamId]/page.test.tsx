@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { AppProvider, useApp } from "@/app/providers/AppProvider";
 
 // `use(params)` in TeamDetailPage suspends until the params promise resolves.
@@ -179,7 +179,7 @@ describe("Team detail page", () => {
 describe("Team detail page — owner progression wiring", () => {
   const ownedTeam: Team = { ...fixtureTeam, id: "team-prog", roster: [{ id: "pl1", name: "Marty", positionalKey: "blitzer" }] };
 
-  it("fetches the owner team's progression rows and renders the Progresión panel with an onImprove client", async () => {
+  it("fetches the owner team's progression rows and renders the roster with progression in the table", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/teams/team-prog/progression") {
@@ -213,14 +213,69 @@ describe("Team detail page — owner progression wiring", () => {
 
     await waitForHydration();
     await waitFor(() => expect(screen.getByText("Test Team")).toBeTruthy());
-    // The owner's Player rows come back → the Progresión section renders with the
-    // panel showing the PE balance. This asserts the page passes progression down.
-    await waitFor(() => expect(screen.getByText("Progresión")).toBeTruthy());
-    // The player appears in the roster AND the progression panel; the panel's PE
-    // badge (`pe-pl1`) proves the progression row reached the panel.
-    expect(screen.getAllByText("Marty").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByTestId("pe-pl1").textContent).toBe("6");
+    // The owner's Player rows come back → the roster table renders the PE balance
+    // (SPP cell) — the separate Progresión section is gone (RAU-46).
+    await waitFor(() => expect(screen.getByTestId("spp-pe-pl1").textContent).toContain("★6"));
+    expect(screen.queryByRole("heading", { name: "Progresión" })).toBeNull();
+    expect(screen.getByText("Marty")).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("/api/teams/team-prog/progression");
+  });
+
+  it("opens the improve modal on a row click and persists a rename through the PATCH route", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams/team-prog/progression") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve([
+              { rosterPlayerId: "pl1", pe: 6, skills: [], injuries: [], valueBonus: 10000, alive: true, improvements: 1 },
+            ]),
+        });
+      }
+      if (url === "/api/teams/team-prog/players/pl1") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "Aldric" }) });
+      }
+      if (url.startsWith("/api/leagues/")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "L" }) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = new InMemoryTeamStore([ownedTeam]);
+    await act(async () => {
+      render(
+        <AppProvider store={store}>
+          <HydrationProbe />
+          {renderWithSuspense(
+            <TeamDetailPage params={Promise.resolve({ teamId: "team-prog" })} />,
+          )}
+        </AppProvider>,
+      );
+    });
+
+    await waitForHydration();
+    await waitFor(() => expect(screen.getByTestId("spp-pe-pl1")).toBeTruthy());
+
+    // Row click → modal; rename → ACEPTAR → PATCH route → roster shows the new name.
+    fireEvent.click(screen.getByTestId("roster-row-pl1"));
+    const nameInput = screen.getByRole("textbox", { name: "Nombre" });
+    fireEvent.change(nameInput, { target: { value: "Aldric" } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("modal-accept"));
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/teams/team-prog/players/pl1",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ name: "Aldric" }),
+        }),
+      );
+      expect(screen.getByText("Aldric")).toBeTruthy();
+    });
   });
 
   it("renders the roster read-only (no Progresión section) when the progression fetch fails", async () => {
@@ -251,8 +306,9 @@ describe("Team detail page — owner progression wiring", () => {
     await waitForHydration();
     await waitFor(() => expect(screen.getByText("Test Team")).toBeTruthy());
     // A failed progression fetch must not crash the page nor render the controls.
-    await waitFor(() => expect(screen.getByText("Plantilla")).toBeTruthy());
-    await expect(screen.findByText("Progresión")).rejects.toThrow();
+    await waitFor(() => expect(screen.getByTestId("team-roster-table")).toBeTruthy());
+    expect(screen.queryByRole("heading", { name: "Progresión" })).toBeNull();
+    expect(screen.queryByTestId("spp-pe-pl1")).toBeNull();
   });
 });
 

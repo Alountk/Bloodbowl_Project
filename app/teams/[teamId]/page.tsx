@@ -8,7 +8,7 @@ import { getRaceById } from "@/features/teams/data/races";
 import { TeamDetailView } from "@/features/teams/detail/TeamDetailView";
 import { useLeagueName } from "@/features/leagues/useLeagueName";
 import { getScoutedTeam, type ScoutedTeamDetail } from "@/features/leagues/api";
-import { fetchTeamProgression, improvePlayer } from "@/features/teams/api";
+import { fetchTeamProgression, improvePlayer, renamePlayer } from "@/features/teams/api";
 import type { PlayerProgressionCore } from "@/features/teams/types";
 import type { Race, Team } from "@/features/teams/types";
 import type { ImproveBody } from "@/lib/progression";
@@ -38,6 +38,10 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   // fetch fails or the team has no recorded result yet.
   const [progression, setProgression] = useState<Record<string, PlayerProgressionCore> | null>(null);
   const [progressionFailed, setProgressionFailed] = useState(false);
+  // Local name overrides applied after a successful rename, so the roster table
+  // reflects the change without a full team refetch (the PATCH route persists
+  // the name on both the Player row and the roster JSON).
+  const [renamedNames, setRenamedNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isHydrated || scouted) return;
@@ -124,15 +128,24 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
     positionals: [],
   };
 
+  // Reflect a successful rename in the rendered roster without a refetch: apply
+  // the latest name per rosterPlayerId over the team's roster entries.
+  const roster = resolvedTeam.roster.map((entry) => ({
+    ...entry,
+    name: renamedNames[entry.id] ?? entry.name,
+  }));
+  const teamForView: Team = { ...resolvedTeam, roster };
+
   // Owner teams wire the Progresión controls: `onImprove` fires the improve route
   // for the targeted roster player and refreshes the progression rows so the
-  // panel reflects the new PE balance. A failed fetch or a rival team renders the
-  // roster read-only (no controls).
+  // panel reflects the new PE balance. `onRename` fires the rename route and
+  // applies the new name to the local roster. A failed fetch or a rival team
+  // renders the roster read-only (no controls).
   const isOwner = localTeam != null;
   const onImprove = isOwner
     ? async (rosterPlayerId: string, body: ImproveBody): Promise<Record<string, unknown>> => {
         const result = await improvePlayer(teamId, rosterPlayerId, body).catch(
-          // keep signature: resolve `{ error }` so the panel surfaces it verbatim
+          // keep signature: resolve `{ error }` so the modal surfaces it verbatim
           (e: Error) => ({ error: e.message }),
         );
         if (!("error" in result)) {
@@ -144,14 +157,27 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
         return result;
       }
     : undefined;
+  const onRename = isOwner
+    ? async (rosterPlayerId: string, name: string): Promise<Record<string, unknown>> => {
+        const result = await renamePlayer(teamId, rosterPlayerId, name).catch(
+          // keep signature: resolve `{ error }` so the modal surfaces it verbatim
+          (e: Error) => ({ error: e.message }),
+        );
+        if (!("error" in result)) {
+          setRenamedNames((prev) => ({ ...prev, [rosterPlayerId]: result.name }));
+        }
+        return result;
+      }
+    : undefined;
 
   return (
     <TeamDetailView
-      team={resolvedTeam}
+      team={teamForView}
       race={resolvedRace}
       leagueName={leagueName}
       progression={isOwner && !progressionFailed && progression != null ? progression : undefined}
       onImprove={onImprove}
+      onRename={onRename}
     />
   );
 }

@@ -1,5 +1,4 @@
 import type { Race, Team, PlayerProgressionCore } from "../types";
-import { RosterTable } from "../roster-table/RosterTable";
 import { useIsDesktop } from "../hooks/useIsDesktop";
 import {
   computeRosterCostFromPlayers,
@@ -9,8 +8,8 @@ import {
   STARTING_TREASURY,
 } from "../roster";
 import { formatRulebookCost } from "../format";
-import { ProgressionPanel } from "./ProgressionPanel";
-import type { ImproveBody, PlayerProgression } from "@/lib/progression";
+import { TeamRosterTable } from "./TeamRosterTable";
+import type { ImproveBody } from "@/lib/progression";
 import { useI18n } from "@/lib/i18n";
 
 const COACHING_LABELS: Record<string, string> = {
@@ -37,16 +36,18 @@ export interface TeamDetailViewProps {
   leagueName?: string;
   /**
    * Each roster player's progression state, keyed by `rosterPlayerId`. When
-   * provided, a ProgressionPanel renders per player; otherwise the section is
-   * omitted (e.g. read-only rival scouting).
+   * provided, the roster renders the TourPlay-style table with PE-spending
+   * affordances; otherwise it is read-only (e.g. rival scouting).
    */
   progression?: Record<string, PlayerProgressionCore>;
   /** Improve-route client (rosterPlayerId + body). Required to render spend UI;
-   * absent = read-only. Each roster player's panel is bound to its player id. */
+   * absent = read-only. Each roster player's modal is bound to its player id. */
   onImprove?: (rosterPlayerId: string, body: ImproveBody) => Promise<Record<string, unknown>>;
+  /** Rename-route client (rosterPlayerId + name); absent = read-only. */
+  onRename?: (rosterPlayerId: string, name: string) => Promise<Record<string, unknown>>;
 }
 
-export function TeamDetailView({ team, race, leagueName, progression, onImprove }: TeamDetailViewProps) {
+export function TeamDetailView({ team, race, leagueName, progression, onImprove, onRename }: TeamDetailViewProps) {
   const isDesktop = useIsDesktop();
   const { t } = useI18n();
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
@@ -54,35 +55,6 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
   const treasury = STARTING_TREASURY - rosterCost - coachingCost;
   const coachingItems = computeCoachingCostItems(race, team.coaching);
   const leagueLabel = team.leagueId ? (leagueName ?? t("detail.sinLiga")) : t("detail.sinLiga");
-
-  const accessOf = (positionalKey: string): { primary: string[]; secondary: string[] } => {
-    const positional = race.positionals.find((p) => p.key === positionalKey);
-    return {
-      primary: positional?.accessPrimary ?? [],
-      secondary: positional?.accessSecondary ?? [],
-    };
-  };
-
-  const panels: PlayerProgression[] = team.roster.flatMap((entry) => {
-    const core = progression?.[entry.id];
-    if (!core) return [];
-    const access = accessOf(entry.positionalKey);
-    return [
-      {
-        rosterPlayerId: entry.id,
-        name: entry.name,
-        pe: core.pe,
-        improvements: core.improvements,
-        skills: core.skills,
-        valueBonus: core.valueBonus,
-        alive: core.alive,
-        accessPrimary: access.primary,
-        accessSecondary: access.secondary,
-      },
-    ];
-  });
-
-  const showProgression = panels.length > 0 && onImprove != null;
 
   return (
     <div className="mx-auto max-w-[860px] bg-white text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
@@ -103,7 +75,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
       </header>
 
       <div className="px-6 py-[18px]">
-        {/* Plantilla */}
+        {/* Plantilla (TourPlay-style roster with progression in the table) */}
         <section aria-labelledby="plantilla-heading">
           <h2
             id="plantilla-heading"
@@ -112,30 +84,15 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove 
             {t("detail.plantilla")}
           </h2>
           <div className="mx-auto max-w-[860px]">
-            <RosterTable readOnly players={team.roster} race={race} />
+            <TeamRosterTable
+              team={team}
+              race={race}
+              progression={progression}
+              onRename={onRename}
+              onImprove={onImprove}
+            />
           </div>
         </section>
-
-        {/* Progresión */}
-        {showProgression && (
-          <section className="mt-5" aria-labelledby="progression-heading">
-            <h2
-              id="progression-heading"
-              className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
-            >
-              {t("detail.progresion")}
-            </h2>
-            <div className="space-y-2.5">
-              {panels.map((panel) => (
-                <ProgressionPanel
-                  key={panel.rosterPlayerId}
-                  player={panel}
-                  onImprove={(body) => onImprove!(panel.rosterPlayerId, body)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* Cuerpo técnico */}
         <section className="mt-5" aria-labelledby="coaching-heading">

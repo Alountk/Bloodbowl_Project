@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { Race, Team } from "../types";
 import { DEFAULT_COACHING } from "../types";
 import { getRaceById } from "../data/races";
@@ -265,38 +265,66 @@ describe("TeamDetailView", () => {
     });
   });
 
-  describe("progression wiring (S4)", () => {
+  describe("progression wiring (RAU-46 roster)", () => {
     const roster = [
       { id: "p1", name: "Marty", positionalKey: "blitzer" },
       { id: "p2", name: "Jane", positionalKey: "lineman" },
     ];
 
-    it("renders a Panel per roster player when progression data and onImprove are provided", () => {
+    it("renders the TourPlay roster table with progression and opens the improve modal on a row click", () => {
       render(
         <TeamDetailView
           team={{ ...baseTeam, roster }}
           race={humanRace}
           progression={{
-            p1: { rosterPlayerId: "p1", pe: 12, skills: ["block"], improvements: 2, valueBonus: 20_000, alive: true },
-            p2: { rosterPlayerId: "p2", pe: 3, skills: [], improvements: 0, valueBonus: 0, alive: true },
+            p1: {
+              rosterPlayerId: "p1",
+              pe: 12,
+              skills: ["block"],
+              improvements: 2,
+              valueBonus: 20_000,
+              alive: true,
+              injuries: [],
+              stats: { casualties: 1, mvp: 2 },
+            },
+            p2: {
+              rosterPlayerId: "p2",
+              pe: 3,
+              skills: [],
+              improvements: 0,
+              valueBonus: 0,
+              alive: true,
+              injuries: [],
+              stats: { casualties: 0, mvp: 0 },
+            },
           }}
           onImprove={async () => ({})}
         />,
       );
-      expect(screen.getByRole("heading", { name: "Progresión" })).toBeTruthy();
-      expect(screen.getByTestId("improvements-p1").textContent).toBe("2");
-      expect(screen.getByTestId("pe-p2").textContent).toBe("3");
-      // élite skill renders with the $ badge inside the panel
-      expect(screen.getByTestId("skill-block")).toBeTruthy();
-      // name appears in both the roster table and the panel (>= 1 is sufficient)
+      // The separate Progresión section is gone; progression lives in the table.
+      expect(screen.queryByRole("heading", { name: "Progresión" })).toBeNull();
+      expect(screen.getByTestId("team-roster-table")).toBeTruthy();
+      expect(screen.getByTestId("spp-pe-p1").textContent).toContain("★12");
+      expect(screen.getByTestId("cas-p1").textContent).toBe("1");
+      expect(screen.getByTestId("mvp-p1").textContent).toBe("2");
+      // élite skill renders with the $ badge inside the table.
+      expect(screen.getAllByTestId("elite-badge").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Marty").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("Jane").length).toBeGreaterThanOrEqual(1);
+
+      // A row click opens the PE-spending modal.
+      fireEvent.click(screen.getByTestId("roster-row-p1"));
+      expect(screen.getByTestId("improve-modal")).toBeTruthy();
     });
 
-    it("omits the Progresión section when no progression data is provided", () => {
+    it("renders the roster read-only (no Progresión section, no modal) without progression data", () => {
       render(<TeamDetailView team={{ ...baseTeam, roster }} race={humanRace} />);
       expect(screen.queryByRole("heading", { name: "Progresión" })).toBeNull();
-      expect(screen.queryByText("Marty")).toBeTruthy(); // roster still renders via RosterTable
+      expect(screen.getByTestId("team-roster-table")).toBeTruthy();
+      expect(screen.queryByTestId("spp-pe-p1")).toBeNull();
+      expect(screen.getByText("Marty")).toBeTruthy(); // roster still renders
+      fireEvent.click(screen.getByTestId("roster-row-p1"));
+      expect(screen.queryByTestId("improve-modal")).toBeNull();
     });
   });
 });
