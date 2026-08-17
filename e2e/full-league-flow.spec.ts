@@ -16,7 +16,8 @@ test.use({ locale: "es-ES" });
  *      nominations) → "Partido 1 · Jugado" + the center "2 : 1" with the winner
  *      highlighted + "Jornada completa"; the RIVAL then
  *      spends the PE its scorer earned (1 TD + 2 completions + 1 interception =
- *      7 PE) on the élite primary Block → skill + `$` badge + value update;
+ *      7 PE) on the élite primary Block through the roster improve modal →
+ *      skill + ◆ diamond + value update;
  *      admin corrects the played result to 1–1 → the MatchCard updates.
  *   2. outsider (non-member) gets 404 on the started detail AND on the
  *      proposals and result routes (no existence leak).
@@ -498,24 +499,35 @@ test("complete lifecycle: join → start → schedule → result → progression
 
     // --- Progression: B (owner) spends the scorer's 7 PE on élite Block ---
     await pageB.goto(`/teams/${teamBId}`);
-    await expect(pageB.getByRole("heading", { name: "Progresión" })).toBeVisible();
+    await expect(pageB.getByTestId("team-roster-table")).toBeVisible();
     const p1Id = snap.teams.find((t) => t.id === teamBId)!.roster[0].id;
-    const peTestId = `pe-${p1Id}`;
-    const valueTestId = `value-${p1Id}`;
+    const peTestId = `spp-pe-${p1Id}`;
+    const valueTestId = `player-value-${p1Id}`;
     // Player 1 earned 7 PE (1 TD + 2 completions + 1 interception) plus the +4
     // MJP grant when the server's 1D6 lands on it — always ≥ the 6-PE primary.
-    await expect(pageB.getByTestId(peTestId).first()).toBeVisible();
-    const peBefore = Number((await pageB.getByTestId(peTestId).first().textContent())?.trim());
+    const peBefore = Number(
+      (await pageB.getByTestId(peTestId).first().textContent())?.trim().replace(/[^\d]/g, ""),
+    );
     expect(peBefore).toBeGreaterThanOrEqual(6);
-    await expect(pageB.getByTestId(valueTestId).first()).toHaveText("0");
-    await pageB.getByRole("button", { name: "Mejorar" }).first().click();
-    await pageB.getByLabel("Primaria").first().selectOption("block");
-    await pageB.getByRole("button", { name: "Comprar primaria" }).first().click();
-    await expect(pageB.getByTestId("skill-block").first()).toBeVisible();
-    await expect(pageB.getByTestId("elite-badge").first()).toBeVisible();
-    // Value +20.000 (élite) and the first primary costs 6 PE.
-    await expect(pageB.getByTestId(valueTestId).first()).toHaveText("20 000");
-    await expect(pageB.getByTestId(peTestId).first()).toHaveText(String(peBefore - 6));
+    await expect(pageB.getByTestId(valueTestId).first()).toHaveText("50 000");
+    // Row click opens the improve modal; buy Block as a primary (élite, G access
+    // on a human lineman) and confirm with ACEPTAR.
+    await pageB.getByTestId(`roster-row-${p1Id}`).click();
+    const modal = pageB.getByTestId("improve-modal");
+    await expect(modal).toBeVisible();
+    await expect(modal.getByTestId("modal-pe-label")).toHaveText(/★\d+ disponibles/);
+    await modal.getByTestId("upgrade-select").selectOption("primary:block");
+    await modal.getByTestId("modal-accept").click();
+    await expect(modal).not.toBeVisible();
+
+    // After a reload the skill persists: Block with the ◆ élite diamond, value
+    // +20.000, and exactly 6 PE spent.
+    await pageB.reload();
+    const afterRow = pageB.getByTestId(`roster-row-${p1Id}`);
+    await expect(afterRow.getByText("Block")).toBeVisible();
+    await expect(afterRow.getByTestId("elite-diamond")).toBeVisible();
+    await expect(pageB.getByTestId(valueTestId).first()).toHaveText("70 000");
+    await expect(pageB.getByTestId(peTestId).first()).toHaveText(`★${peBefore - 6}`);
 
     // --- Season close (RAU-40): the loaded result was the season's LAST fixture
     // (2-member, 1-jornada league) → the league finishes DEFINITIVELY and the
