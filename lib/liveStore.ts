@@ -240,7 +240,15 @@ function dedicatedFansOf(coaching: Prisma.JsonValue | null): number {
  * row is terminal, so this guards a re-entrant/retried finish).
  */
 async function computeLiveWinnings(
-  input: { liveMatchId: string; fixtureId: string; next: LiveMatchState },
+  input: {
+    liveMatchId: string;
+    fixtureId: string;
+    next: LiveMatchState;
+    /** RAU-44: the walkover scoreboard for a CONCEDED match (2-0 to the winner).
+     * The live state's own scoreboard stays 0-0 on a concede, so without this the
+     * winner would lose the 2-TD winnings boost. Auto-finishes pass undefined. */
+    finalScore?: { homeScore: number; awayScore: number };
+  },
   tx: StoreTx,
   deps: StoreDeps,
 ): Promise<{ home: number; away: number } | null> {
@@ -274,17 +282,20 @@ async function computeLiveWinnings(
     dedicatedFans: dedicatedFansOf(byId.get(fixture.awayTeamId)?.coaching ?? null),
   });
 
+  const homeScore = input.finalScore?.homeScore ?? input.next.homeScore;
+  const awayScore = input.finalScore?.awayScore ?? input.next.awayScore;
+
   return {
     home: computeWinnings({
       ffHome: preHomeFf,
       ffAway: preAwayFf,
-      ownTds: input.next.homeScore,
+      ownTds: homeScore,
       heldBall: true,
     }),
     away: computeWinnings({
       ffHome: preAwayFf,
       ffAway: preHomeFf,
-      ownTds: input.next.awayScore,
+      ownTds: awayScore,
       heldBall: true,
     }),
   };
@@ -329,7 +340,11 @@ async function persistAndPublish(
     // the finished feed can show "Ganancias" immediately at end. The reads are
     // static roster data; the write rides the seq-guarded updateMany so a
     // concurrent finish can never double-apply (finished is terminal anyway).
-    const liveWinnings = await computeLiveWinnings(input, tx, deps);
+    const liveWinnings = await computeLiveWinnings(
+      { ...input, finalScore: input.closeFixture },
+      tx,
+      deps,
+    );
     const updated = await tx.liveMatch.updateMany({
       where: { id: input.liveMatchId, seq: input.currentSeq },
       data: {
