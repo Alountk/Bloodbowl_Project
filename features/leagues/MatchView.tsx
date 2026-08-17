@@ -956,6 +956,7 @@ function LiveActiveMatch({
   awaySubtitle,
   homeTeam,
   awayTeam,
+  onFinished,
 }: {
   live: LiveMatchView | null;
   leagueId: string;
@@ -968,6 +969,10 @@ function LiveActiveMatch({
   awaySubtitle: string;
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
+  /** RAU-44: fired ONCE when the live SSE state reaches "finished", so the page
+   * refetches the match detail (fixture GET) and shows the persisted finish-time
+   * winnings WITHOUT a manual refresh. */
+  onFinished?: () => void;
 }) {
   const { live: hookLive, sendCommand } = useLiveMatch({ leagueId, fixtureId });
   // Start from the persisted snapshot (or an empty pending shell when no row
@@ -989,6 +994,17 @@ function LiveActiveMatch({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const { t } = useI18n();
+
+  // RAU-44: one-shot refetch trigger when the match finishes (the SSE state
+  // sees "finished" before the page-level detail does; without this the
+  // finished winnings only appear after a manual refresh).
+  const finishedNotified = useRef(false);
+  useEffect(() => {
+    if (state.status === "finished" && !finishedNotified.current) {
+      finishedNotified.current = true;
+      onFinished?.();
+    }
+  }, [state.status, onFinished]);
 
   // Synchronous in-flight lock: a second invocation while a command is pending
   // (e.g. the second click of a double-click) is dropped — the `submitting`
@@ -1175,7 +1191,7 @@ function formatCoins(value: number): string {
 /** One row of the finished-feed snapshot summary (MVT-4): rendered ABOVE the
  * event cards. Derived from the `MatchResult` snapshot — never a new event kind
  * (MV-6/LM-16) and never duplicating the event-derived MVP rows. */
-function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
+function SummaryFeedRowView({ row, names }: { row: SummaryFeedRow; names: { home: string; away: string } }) {
   const { t } = useI18n();
   switch (row.type) {
     case "reported":
@@ -1205,8 +1221,12 @@ function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
             {row.type === "winnings" ? t("match.winnings") : t("match.fans")}
           </span>
           <span className="flex flex-col items-end gap-0.5 text-right tabular-nums">
-            <span className="leading-tight">{row.type === "winnings" ? formatCoins(row.home) : `+${row.home}`}</span>
-            <span className="leading-tight">{row.type === "winnings" ? formatCoins(row.away) : `+${row.away}`}</span>
+            <span className="leading-tight">
+              {row.type === "winnings" ? `${names.home}: ${formatCoins(row.home)}` : `+${row.home}`}
+            </span>
+            <span className="leading-tight">
+              {row.type === "winnings" ? `${names.away}: ${formatCoins(row.away)}` : `+${row.away}`}
+            </span>
           </span>
         </li>
       );
@@ -1229,13 +1249,13 @@ function SummaryFeedRowView({ row }: { row: SummaryFeedRow }) {
 }
 
 /** The snapshot-driven summary block above the finished-feed cards (MVT-4). */
-function SummaryFeedRows({ detail }: { detail: MatchDetail }) {
+function SummaryFeedRows({ detail, names }: { detail: MatchDetail; names: { home: string; away: string } }) {
   const rows = buildSummaryFeedRows(detail);
   if (rows.length === 0) return null;
   return (
     <ol className="flex flex-col gap-2 bg-[#eef1f6] p-1.5">
       {rows.map((row) => (
-        <SummaryFeedRowView key={row.type} row={row} />
+        <SummaryFeedRowView key={row.type} row={row} names={names} />
       ))}
     </ol>
   );
@@ -1287,7 +1307,7 @@ function FinishedLiveView({
         turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
       />
       {/* MVT-4: snapshot summary rows ABOVE the event timeline. */}
-      <SummaryFeedRows detail={detail} />
+      <SummaryFeedRows detail={detail} names={names} />
       <FinishedLiveTimeline live={live} homeTeam={homeTeam} awayTeam={awayTeam} />
     </div>
   );
@@ -1414,7 +1434,7 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
  * League-section copy is Spanish; only rulebook-light tokens are used (MV-7).
  */
 export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId: string }) {
-  const { detail, loading, error, notFound } = useMatchDetail(leagueId, fixtureId);
+  const { detail, loading, error, notFound, refresh } = useMatchDetail(leagueId, fixtureId);
   const leagueName = useLeagueName(leagueId);
   const { t } = useI18n();
   // D19: when no LiveMatch row exists yet, the per-viewer side is deduced from
@@ -1501,6 +1521,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
           awaySubtitle={awaySubtitle}
           homeTeam={detail.homeTeam}
           awayTeam={detail.awayTeam}
+          onFinished={refresh}
         />
       );
   } else if (summary.walkover) {
