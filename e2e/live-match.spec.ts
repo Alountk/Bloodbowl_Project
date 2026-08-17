@@ -253,10 +253,10 @@ async function liveCommand(page: Page, leagueId: string, fixtureId: string, data
  * here — the two-phase (propose → confirm) and self-inflicted paths are driven
  * inline (RAU-39: the band is never a select, it derives from the 1D16 roll).
  */
-async function recordViaFab(page: Page, menuLabel: string, playerName: string) {
+async function recordViaFab(page: Page, menuLabel: string, playerValue: string) {
   await page.getByRole("button", { name: "+" }).click();
   await page.getByRole("button", { name: new RegExp(menuLabel, "i") }).click();
-  await page.getByLabel("Jugador").selectOption({ label: playerName });
+  await page.getByLabel("Jugador").selectOption({ value: playerValue });
   await page.getByRole("button", { name: "Registrar" }).click();
   // Menu + form close again after the submit.
   await expect(page.getByLabel("Jugador")).toHaveCount(0);
@@ -267,7 +267,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
   const league = await buildStartedLeague(browser, tag);
   try {
     const { admin, rival, leagueId, rivalEmail, adminTeam, rivalTeam } = league;
-    const { fixtureId, homeTeamName, awayTeamName, homeScorerName, awayScorerName } = await fixtureAndScorers(admin, leagueId);
+    const { fixtureId, homeTeamName, awayTeamName, homeScorerName, awayScorerName, homeScorerId, awayScorerId } = await fixtureAndScorers(admin, leagueId);
     // Which team is home is randomized by buildRoundRobin (~50/50); the TD
     // below targets the AWAY side (valid after Coach A's turn flip), so the
     // score lands on whatever team is away. Assert side-relative below.
@@ -414,7 +414,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(homeCoach.getByRole("button", { name: /Falta/i })).toHaveCount(0);
     await homeCoach.getByRole("button", { name: /Herida/i }).click();
     await expect(homeCoach.getByLabel("Víctima")).toBeVisible();
-    await homeCoach.getByLabel("Víctima").selectOption({ label: homeScorerName });
+    await homeCoach.getByLabel("Víctima").selectOption({ value: homeScorerId });
     // Only self-inflicted causes are offered to the NON-active coach.
     await homeCoach.getByLabel("Causa de la lesión").selectOption({ label: "Esquivando — se cayó" });
     await expect(homeCoach.getByLabel("Autor de la lesión")).toHaveCount(0);
@@ -436,9 +436,9 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await awayCoach.getByRole("button", { name: "+" }).click();
     await awayCoach.getByRole("button", { name: /Herida/i }).click();
     await expect(awayCoach.getByLabel("Víctima")).toBeVisible();
-    await awayCoach.getByLabel("Víctima").selectOption({ label: homeScorerName });
+    await awayCoach.getByLabel("Víctima").selectOption({ value: homeScorerId });
     await awayCoach.getByLabel("Causa de la lesión").selectOption({ label: "Blitz" });
-    await awayCoach.getByLabel("Autor de la lesión").selectOption({ label: awayScorerName });
+    await awayCoach.getByLabel("Autor de la lesión").selectOption({ value: awayScorerId });
     await awayCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
     await expect(awayCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
     await awayCoach.getByRole("button", { name: /Proponer/i }).click();
@@ -467,12 +467,12 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
 
     // [B] ACTIVE (away) coach records a Pase completo (completion ★1) through the
     // FAB mini-form → a completion Design-A row (★1) streams into both feeds.
-    await recordViaFab(awayCoach, "Pase completo", awayScorerName);
+    await recordViaFab(awayCoach, "Pase completo", awayScorerId);
     await expect(awayCoach.getByText("Pase completo").first()).toBeVisible();
 
     // [C] ACTIVE (away) coach records a Touchdown via the FAB → the Design-A TD
     // row (★3) + the hero score update (away +1) + the turn flips back to home.
-    await recordViaFab(awayCoach, "Touchdown", awayScorerName);
+    await recordViaFab(awayCoach, "Touchdown", awayScorerId);
     await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: "★3" })).toBeVisible();
     // MVT-1: the away TD card carries the per-TD partial score "(home - away)"
     // derived by accumulating TD events in seq order — home 0, away 1 here.
