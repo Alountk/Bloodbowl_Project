@@ -532,6 +532,7 @@ describe("getMatchDetail", () => {
         players: [],
       },
       live: null,
+      liveWinnings: null,
     };
     const fetchMock = vi.fn().mockResolvedValue(okJson(match));
     vi.stubGlobal("fetch", fetchMock);

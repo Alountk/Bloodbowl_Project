@@ -66,6 +66,9 @@ interface LiveMatchRow {
   finishedAt: Date | null;
   concedeProposedBy: "home" | "away" | null;
   pendingCasualty: unknown;
+  /** RAU-44: the persisted per-team live winnings JSON (`{ home, away }`),
+   * null until the match reaches `finished`. */
+  winnings: unknown;
   events: {
     seq: number;
     kind: string;
@@ -140,6 +143,16 @@ export function serializeLive(
         at: new Date(e.createdAt).getTime(),
       })),
   };
+}
+
+/** The persisted per-team winnings served for a finished live match (RAU-44):
+ * `{ home, away }` from the LiveMatch row's `winnings`, or null when the JSON
+ * is absent/malformed (defensive — never crash on a stale/foreign shape). */
+export function parseLiveWinnings(value: unknown): { home: number; away: number } | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.home !== "number" || typeof v.away !== "number") return null;
+  return { home: v.home, away: v.away };
 }
 
 /**
@@ -324,5 +337,13 @@ export async function GET(
     homeTeam: { ...homeTeam, players: mergeRosterPlayers(homeTeam as never) },
     awayTeam: { ...awayTeam, players: mergeRosterPlayers(awayTeam as never) },
     live,
+    // RAU-44: the winnings persisted at live finish are surfaced ONLY once the
+    // match is finished (a pending/live row has none). Once the result is
+    // loaded, `result.scores.*.winnings` are the official numbers and this is
+    // ignored by the summary/feed (result non-null wins).
+    liveWinnings:
+      fixture.liveMatch?.status === "finished"
+        ? parseLiveWinnings(fixture.liveMatch.winnings)
+        : null,
   });
 }

@@ -192,10 +192,23 @@ function buildMvp(detail: MatchDetail, scoreboard: Scoreboard): MatchMvpSection 
 }
 
 /**
+ * The winnings summary section from the persisted LIVE end (RAU-44): present
+ * exactly when the LiveMatch finished with stored winnings and the official
+ * snapshot is not loaded yet. Result-based winnings win once `result` exists.
+ */
+function buildLiveWinnings(detail: MatchDetail): MatchWinningsSection | null {
+  const live = detail.liveWinnings;
+  if (live == null) return null;
+  return { type: "winnings", home: live.home, away: live.away };
+}
+
+/**
  * Builds the summary sections for a match detail. A played fixture without a
  * snapshot (walkover) yields `walkover: true` and zero sections so the caller
- * renders the fixture scores + "Victoria por incomparecencia." notice. All
- * other fixtures render only non-empty sections.
+ * renders the fixture scores + "Victoria por incomparecencia." notice. A
+ * live-finished match whose result is not loaded yet (RAU-44) shows ONLY the
+ * persisted live winnings section (never a full snapshot summary). All other
+ * fixtures render only non-empty sections.
  */
 export function buildMatchSummary(detail: MatchDetail, fn: SummaryTFunc = esT): MatchSummary {
   const result = detail.result;
@@ -204,12 +217,14 @@ export function buildMatchSummary(detail: MatchDetail, fn: SummaryTFunc = esT): 
   // snapshot from which to build a summary. Scores set → deriveFixtureStatus
   // already reports `played`; the caller mirrors "no snapshot" → walkover.
   const played = detail.fixture.homeScore != null || detail.fixture.awayScore != null;
-  if (played && !result) {
-    return { walkover: true, sections: [] };
-  }
   if (!result) {
-    // Not played and no snapshot (scheduled/pending): no summary sections.
-    return { walkover: false, sections: [] };
+    // No snapshot: a walkover (played, no live) or a live-finished match whose
+    // result form has not been loaded yet. Only the live winnings can be shown
+    // here — omit-if-empty, never a placeholder.
+    const sections: MatchSummarySection[] = [];
+    const winnings = buildLiveWinnings(detail);
+    if (winnings) sections.push(winnings);
+    return { walkover: played && !result, sections };
   }
 
   const scoreboard = result.scores;
@@ -270,15 +285,28 @@ export function formatReportDate(iso: string): string {
  * winnings), "Fanáticos dedicados" (per-team post-Ff), and "Incentivos" (the
  * single fixed pettyCash, team-assigned card). Renders ONLY when the
  * `MatchResult` snapshot exists — a walkover (result == null) returns `[]`
- * (MV-2 guard) and never invents rows. Rows with null snapshot data are
- * omitted (omit-if-empty, never a placeholder). MVP is deliberately excluded:
- * it stays event-derived, so there is exactly one MVP row per grantee.
+ * (MV-2 guard) and never invents rows. The ONE live-only exception (RAU-44):
+ * a live-finished match whose result is not loaded yet shows its persisted
+ * live winnings as the "Ganancias" row immediately at end — no reported/fans/
+ * incentives rows exist without the snapshot, and once the result is loaded
+ * the snapshot rows take over (result non-null → liveWinnings ignored). Rows
+ * with null snapshot data are omitted (omit-if-empty, never a placeholder).
+ * MVP is deliberately excluded: it stays event-derived, so there is exactly
+ * one MVP row per grantee.
  */
 export function buildSummaryFeedRows(detail: MatchDetail): SummaryFeedRow[] {
   const result = detail.result;
-  if (!result) return [];
-
   const rows: SummaryFeedRow[] = [];
+
+  if (!result) {
+    // RAU-44: finished live match, result form not loaded yet — the persisted
+    // live winnings are the only summary row that exists at this point.
+    const live = detail.liveWinnings;
+    if (live != null) {
+      rows.push({ type: "winnings", home: live.home, away: live.away });
+    }
+    return rows;
+  }
 
   const date = formatReportDate(result.createdAt);
   if (date) rows.push({ type: "reported", date });

@@ -142,8 +142,9 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    // Top-level contract: fixture, result, both normalized teams, and the live DTO.
-    expect(Object.keys(body).sort()).toEqual(["awayTeam", "fixture", "homeTeam", "live", "result"].sort());
+    // Top-level contract: fixture, result, both normalized teams, the live DTO,
+    // and the RAU-44 live winnings field.
+    expect(Object.keys(body).sort()).toEqual(["awayTeam", "fixture", "homeTeam", "live", "liveWinnings", "result"].sort());
     expect(body.result?.id).toBe("mr1");
     expect(body.result.scores.home.score).toBe(2);
     // No live match on this fixture → live: null (MV-5 static inert).
@@ -349,5 +350,124 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.fixture.status).toBe("played");
     expect(body.fixture.homeScore).toBe(2);
     expect(body.fixture.awayScore).toBe(0);
+  });
+
+  it("returns liveWinnings from a FINISHED LiveMatch row and null result (RAU-44)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "finished",
+          half: 2,
+          turnNumber: 8,
+          activeSide: "away",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 1500,
+          awayTurnMs: 1600,
+          homeScore: 2,
+          awayScore: 1,
+          seq: 12,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: new Date("2026-03-01T21:00:00"),
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: { home: 55000, away: 45000 },
+          events: [
+            { id: "e1", liveMatchId: "lm-1", seq: 10, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, createdAt: new Date("2026-03-01T21:00:00") },
+          ],
+        },
+      }),
+    );
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The live finish is not yet result-loaded → result null, liveWinnings served.
+    expect(body.result).toBeNull();
+    expect(body.liveWinnings).toEqual({ home: 55000, away: 45000 });
+    expect(body.live.status).toBe("finished");
+  });
+
+  it("returns liveWinnings null for a pending/live LiveMatch row even with a winnings value (defensive)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "live",
+          half: 1,
+          turnNumber: 3,
+          activeSide: "home",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 5000,
+          awayTurnMs: 3000,
+          homeScore: 1,
+          awayScore: 0,
+          seq: 6,
+          paused: false,
+          clockStartedAt: new Date("2026-03-01T20:00:10"),
+          finishedAt: null,
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: { home: 55000, away: 45000 },
+          events: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    const body = await res.json();
+    expect(body.live.status).toBe("live");
+    expect(body.liveWinnings).toBeNull();
+  });
+
+  it("returns liveWinnings null when no LiveMatch row exists", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    const res = await callGet();
+    const body = await res.json();
+    expect(body.live).toBeNull();
+    expect(body.liveWinnings).toBeNull();
+  });
+
+  it("returns liveWinnings null for a FINISHED row with malformed winnings JSON (defensive)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "finished",
+          half: 2,
+          turnNumber: 8,
+          activeSide: "away",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 0,
+          awayScore: 0,
+          seq: 9,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: new Date("2026-03-01T21:00:00"),
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: "garbage",
+          events: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    const body = await res.json();
+    expect(body.live.status).toBe("finished");
+    expect(body.liveWinnings).toBeNull();
   });
 });

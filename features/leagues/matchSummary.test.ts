@@ -77,6 +77,7 @@ function playedDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
         ],
       },
       live: null,
+      liveWinnings: null,
       ...overrides,
   };
 }
@@ -284,5 +285,73 @@ describe("buildSummaryFeedRows — snapshot feed rows (MVT-4)", () => {
   it("formats the report date with zero-padded dd/MM/yyyy", () => {
     expect(formatReportDate("2026-07-21T09:05:00.000Z")).toBe("21/07/2026");
     expect(formatReportDate("2026-03-01T00:00:00.000Z")).toBe("01/03/2026");
+  });
+});
+
+describe("RAU-44 — live winnings in the summary before the result is loaded", () => {
+  it("buildSummaryFeedRows pushes the winnings row from liveWinnings when result is null", () => {
+    const detail: MatchDetail = {
+      ...playedDetail(),
+      result: null,
+      liveWinnings: { home: 55_000, away: 45_000 },
+    };
+    // Only the winnings row exists at live finish — no reported/fans/incentives
+    // until the snapshot is loaded.
+    expect(buildSummaryFeedRows(detail)).toEqual([{ type: "winnings", home: 55_000, away: 45_000 }]);
+  });
+
+  it("buildSummaryFeedRows returns [] for a live-finished match with no persisted winnings", () => {
+    const detail: MatchDetail = { ...playedDetail(), result: null, liveWinnings: null };
+    expect(buildSummaryFeedRows(detail)).toEqual([]);
+  });
+
+  it("buildSummaryFeedRows keeps preferring the snapshot rows once the result exists (liveWinnings ignored)", () => {
+    const detail: MatchDetail = {
+      ...playedDetail(),
+      result: {
+        ...(playedDetail().result as NonNullable<MatchDetail["result"]>),
+        scores: {
+          ...(playedDetail().result as NonNullable<MatchDetail["result"]>).scores,
+          home: { ...(playedDetail().result as NonNullable<MatchDetail["result"]>).scores.home, winnings: 12_000 },
+          away: { ...(playedDetail().result as NonNullable<MatchDetail["result"]>).scores.away, winnings: 8_000 },
+        },
+      },
+      // Deliberately different from the snapshot — must be IGNORED.
+      liveWinnings: { home: 99_999, away: 88_888 },
+    };
+    const rows = buildSummaryFeedRows(detail);
+    const winnings = rows.find((r) => r.type === "winnings") as { type: "winnings"; home: number; away: number } | undefined;
+    expect(winnings).toEqual({ type: "winnings", home: 12_000, away: 8_000 });
+    expect(rows.map((r) => r.type)).toEqual(["reported", "winnings", "fans", "incentives"]);
+  });
+
+  it("buildMatchSummary renders the live winnings section when result is null and no fixture scores", () => {
+    const detail: MatchDetail = {
+      ...playedDetail(),
+      result: null,
+      fixture: { ...playedDetail().fixture, homeScore: null, awayScore: null, winnerId: null },
+      liveWinnings: { home: 55_000, away: 45_000 },
+    };
+    const s = buildMatchSummary(detail);
+    expect(s.walkover).toBe(false);
+    expect(s.sections).toEqual([{ type: "winnings", home: 55_000, away: 45_000 }]);
+  });
+
+  it("buildMatchSummary keeps walkover semantics and still renders live winnings when scores are set (concede)", () => {
+    const detail: MatchDetail = {
+      ...playedDetail(), // fixture carries scores 2-1
+      result: null,
+      liveWinnings: { home: 30_000, away: 30_000 },
+    };
+    const s = buildMatchSummary(detail);
+    expect(s.walkover).toBe(true);
+    expect(s.sections).toEqual([{ type: "winnings", home: 30_000, away: 30_000 }]);
+  });
+
+  it("buildMatchSummary omits the winnings section when no result and no liveWinnings", () => {
+    const detail: MatchDetail = { ...playedDetail(), result: null, liveWinnings: null };
+    const s = buildMatchSummary(detail);
+    expect(s.walkover).toBe(true);
+    expect(s.sections).toEqual([]);
   });
 });
