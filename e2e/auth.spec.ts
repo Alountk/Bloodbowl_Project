@@ -28,7 +28,7 @@ async function login(page: Page, email: string, password: string) {
 
 async function createTeam(page: Page, name: string) {
   await page.goto("/teams/create");
-  await page.getByLabel("Team name").fill(name);
+  await page.getByLabel("Team name", { exact: true }).fill(name);
   await page.getByLabel("Race").selectOption("human");
   await page.getByRole("button", { name: "Next →" }).click();
   // 11 Linemen so the team meets the BB2025 minimum roster size.
@@ -87,7 +87,7 @@ test.describe("Auth flow regression (LAN host)", () => {
 
     // Create a team (11 Linemen).
     await page.goto(`${base}/teams/create`);
-    await page.getByLabel("Team name").fill("LAN Reavers");
+    await page.getByLabel("Team name", { exact: true }).fill("LAN Reavers");
     await page.getByLabel("Race").selectOption("human");
     await page.getByRole("button", { name: "Next →" }).click();
     const add = page.getByRole("button", { name: "Add Lineman" }).first();
@@ -110,6 +110,6 @@ test.describe("Auth flow regression (LAN host)", () => {
 
     // No refresh: navigating to another protected section must work.
     await page.goto(`${base}/teams/create`);
-    await expect(page.getByLabel("Team name")).toBeVisible();
+    await expect(page.getByLabel("Team name", { exact: true })).toBeVisible();
   });
 });

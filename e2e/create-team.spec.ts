@@ -5,7 +5,7 @@ import { TEAM_NAME_BANKS } from "../features/teams/data/teamNames";
 
 /** Fills step 1 (name + race) and advances to step 2. */
 async function goToStep2(page: import("@playwright/test").Page, name: string, raceId: string) {
-  await page.getByLabel("Team name").fill(name);
+  await page.getByLabel("Team name", { exact: true }).fill(name);
   await page.getByLabel("Race").selectOption(raceId);
   await page.getByRole("button", { name: "Next →" }).click();
 }
@@ -28,7 +28,7 @@ test.describe("Create Team — E2E", () => {
 
     // Step 1 form is visible
     await expect(page.getByRole("heading", { name: /step 1 · team details/i })).toBeVisible();
-    await expect(page.getByLabel("Team name")).toBeVisible();
+    await expect(page.getByLabel("Team name", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Race")).toBeVisible();
     await expect(page.getByRole("button", { name: "Next →" })).toBeVisible();
     // The team-name dice sits next to the name input (disabled until a race).
@@ -66,13 +66,13 @@ test.describe("Create Team — E2E", () => {
     await expect(teamDice).toBeDisabled();
 
     // No race -> the name input stays empty (the dice is inert).
-    await expect(page.getByLabel("Team name")).toHaveValue("");
+    await expect(page.getByLabel("Team name", { exact: true })).toHaveValue("");
 
     await page.getByLabel("Race").selectOption("orc");
     await expect(teamDice).toBeEnabled();
     await teamDice.click();
 
-    const nameInput = page.getByLabel("Team name");
+    const nameInput = page.getByLabel("Team name", { exact: true });
     await expect(nameInput).not.toHaveValue("");
     const value = await nameInput.inputValue();
     expect(TEAM_NAME_BANKS.orc).toContain(value);
@@ -123,7 +123,7 @@ test.describe("Create Team — E2E", () => {
     await goToStep2(page, "Reikland Reavers", "human");
     await page.getByRole("button", { name: /edit name\/race/i }).click();
 
-    await expect(page.getByLabel("Team name")).toHaveValue("Reikland Reavers");
+    await expect(page.getByLabel("Team name", { exact: true })).toHaveValue("Reikland Reavers");
     await expect(page.getByLabel("Race")).toHaveValue("human");
     await expect(page.getByRole("button", { name: "Next →" })).toBeVisible();
   });
