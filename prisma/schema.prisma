@@ -147,6 +147,11 @@ model LiveMatch {
   /// rolls); null until proposed / after the defender confirms. Additive JSON,
   /// never re-typed.
   pendingCasualty   Json?
+  /// RAU-44: the per-team match winnings persisted ONCE at live finish
+  /// (`{ home, away }`, both in gold). Deterministic: the pre-match FF 1D3
+  /// rolls at finish and is stored. Additive JSON, never re-typed; null until
+  /// the live match reaches `finished`.
+  winnings          Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   events        LiveEvent[]
