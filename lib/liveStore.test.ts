@@ -1332,14 +1332,14 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
       deps,
     );
 
-    // home FF = 2 + 2 = 4; away FF = 1 + 1 = 2. The live state's scoreboard
-    // stays untouched by a concede (0-0; the 2-0/0-2 walkover scores live on the
-    // fixture), so the formula sees 0 TDs on BOTH sides:
-    // home = ((4+2)/2 + 0 + 0) × 10k = 30k; away = ((2+4)/2 + 0 + 0) × 10k = 30k.
+    // home FF = 2 + 2 = 4; away FF = 1 + 1 = 2. AWAY accepts → AWAY wins the
+    // walkover 0-2, and the walkover scoreboard drives the winnings even though
+    // the live state's own scoreboard stays 0-0 on a concede:
+    // away = ((2+4)/2 + 2 + 0) × 10k = 50k; home = ((4+2)/2 + 0 + 0) × 10k = 30k.
     expect(updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "lm-1", seq: 8 },
-        data: expect.objectContaining({ seq: 9, status: "finished", winnings: { home: 30000, away: 30000 } }),
+        data: expect.objectContaining({ seq: 9, status: "finished", winnings: { home: 30000, away: 50000 } }),
       }),
     );
   });
