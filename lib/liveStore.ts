@@ -43,18 +43,33 @@ import {
 import type { CasualtyCause } from "./livePhase";
 import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
+import { computeWinnings, preMatchFanFactor } from "@/lib/rules";
+import { rollD3 } from "@/lib/random";
+import { DEFAULT_COACHING, isCoachingStaff } from "@/features/teams/types";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
 export interface StoreTx {
   liveMatch: {
     updateMany(args: Prisma.LiveMatchUpdateManyArgs): Promise<{ count: number }>;
     create?(args: Prisma.LiveMatchCreateArgs): Promise<LiveMatch>;
+    /** RAU-44: the finish-time idempotency read — already-persisted winnings
+     * are never recomputed/overwritten (the row is terminal once finished). */
+    findUnique(args: {
+      where: { id: string };
+      select: { winnings: true };
+    }): Promise<{ winnings: Prisma.JsonValue | null } | null>;
   };
   liveEvent: {
     create(args: Prisma.LiveEventCreateArgs): Promise<LiveEvent>;
   };
   team: {
     updateMany(args: Prisma.TeamUpdateManyArgs): Promise<{ count: number }>;
+    /** RAU-44: reads each side's `coaching` JSON to derive its roster
+     * dedicated-fans characteristic for the finish-time winnings formula. */
+    findMany(args: {
+      where: { id: { in: string[] } };
+      select: { id: true; coaching: true };
+    }): Promise<{ id: string; coaching: Prisma.JsonValue | null }[]>;
   };
   /** RAU-38: the accept-concede transaction closes the fixture (winner + scores)
    * in the SAME tx as the `concede` event rows. */
@@ -63,6 +78,12 @@ export interface StoreTx {
     /** RAU-40: the tx must be able to re-read the league's fixtures so the
      * accept-concede can auto-close the season when this was the last one. */
     findMany(args: Prisma.FixtureFindManyArgs): Promise<{ homeTeamId: string; awayTeamId: string; homeScore: number | null; awayScore: number | null; winnerId: string | null }[]>;
+    /** RAU-44: resolves the fixture's two team ids for the finish-time
+     * dedicated-fans read. */
+    findUnique(args: {
+      where: { id: string };
+      select: { homeTeamId: true; awayTeamId: true };
+    }): Promise<{ homeTeamId: string; awayTeamId: string } | null>;
   };
   /** RAU-40: the league row surface `maybeCloseLeague` needs (status read +
    * finished/champion write) inside the accept-concede transaction. */
@@ -90,6 +111,9 @@ export interface StoreDeps {
   hub: {
     publish(fixtureId: string, payload: unknown): void;
   };
+  /** RAU-44: the finish-time pre-match FF 1D3 source — injectable so tests are
+   * deterministic; defaults to the server-owned real roll. */
+  rollD3?: () => number;
 }
 
 /** The persisted row fields the store maps to/from a pure state. */
@@ -197,6 +221,75 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
   };
 }
 
+/** The team's dedicated-fans characteristic from its persisted `coaching` JSON
+ * (result-route `dedicatedFansOf` precedent); a malformed/absent value falls
+ * back to the roster default (1). */
+function dedicatedFansOf(coaching: Prisma.JsonValue | null): number {
+  return isCoachingStaff(coaching) ? coaching.dedicatedFans : DEFAULT_COACHING.dedicatedFans;
+}
+
+/**
+ * RAU-44: computes the per-team match winnings for a transition that FINISHES
+ * the live match (`next.status === "finished"`), mirroring the result route's
+ * server-owned formula — per team a fresh 1D3 + the roster dedicated fans gives
+ * the pre-match FF, then `computeWinnings` with `heldBall: true` (a live end
+ * never grants the +10k "never held the ball" bonus; the admin corrects it when
+ * the result is loaded). Treasury is NOT touched here — it still applies at
+ * result-load, so nothing is double-applied. Returns null unless the match JUST
+ * finished AND the row has no persisted winnings yet (idempotent: a finished
+ * row is terminal, so this guards a re-entrant/retried finish).
+ */
+async function computeLiveWinnings(
+  input: { liveMatchId: string; fixtureId: string; next: LiveMatchState },
+  tx: StoreTx,
+  deps: StoreDeps,
+): Promise<{ home: number; away: number } | null> {
+  if (input.next.status !== "finished") return null;
+
+  const existing = await tx.liveMatch.findUnique({
+    where: { id: input.liveMatchId },
+    select: { winnings: true },
+  });
+  if (existing?.winnings != null) return null;
+
+  const fixture = await tx.fixture.findUnique({
+    where: { id: input.fixtureId },
+    select: { homeTeamId: true, awayTeamId: true },
+  });
+  if (!fixture) return null;
+
+  const teams = await tx.team.findMany({
+    where: { id: { in: [fixture.homeTeamId, fixture.awayTeamId] } },
+    select: { id: true, coaching: true },
+  });
+  const byId = new Map(teams.map((team) => [team.id, team]));
+
+  const roll = deps.rollD3 ?? rollD3;
+  const preHomeFf = preMatchFanFactor({
+    roll3: roll(),
+    dedicatedFans: dedicatedFansOf(byId.get(fixture.homeTeamId)?.coaching ?? null),
+  });
+  const preAwayFf = preMatchFanFactor({
+    roll3: roll(),
+    dedicatedFans: dedicatedFansOf(byId.get(fixture.awayTeamId)?.coaching ?? null),
+  });
+
+  return {
+    home: computeWinnings({
+      ffHome: preHomeFf,
+      ffAway: preAwayFf,
+      ownTds: input.next.homeScore,
+      heldBall: true,
+    }),
+    away: computeWinnings({
+      ffHome: preAwayFf,
+      ffAway: preHomeFf,
+      ownTds: input.next.awayScore,
+      heldBall: true,
+    }),
+  };
+}
+
 /** Shared optimistic-guard persistence: bump seq, write fields, append delta events. */
 async function persistAndPublish(
   input: {
@@ -231,9 +324,19 @@ async function persistAndPublish(
   const nextSeq = Math.max(input.currentSeq + 1, highestEventSeq);
 
   await deps.prisma.$transaction(async (tx) => {
+    // RAU-44: a finish transition computes + persists the deterministic per-team
+    // winnings IN this SAME transaction (atomic with the event rows below) so
+    // the finished feed can show "Ganancias" immediately at end. The reads are
+    // static roster data; the write rides the seq-guarded updateMany so a
+    // concurrent finish can never double-apply (finished is terminal anyway).
+    const liveWinnings = await computeLiveWinnings(input, tx, deps);
     const updated = await tx.liveMatch.updateMany({
       where: { id: input.liveMatchId, seq: input.currentSeq },
-      data: { ...rowData(input.next), seq: nextSeq },
+      data: {
+        ...rowData(input.next),
+        seq: nextSeq,
+        ...(liveWinnings ? { winnings: liveWinnings } : {}),
+      },
     });
     if (updated.count === 0) {
       throw Object.assign(new Error("seq conflict"), { status: 409 });
@@ -585,10 +688,13 @@ export async function declineConcedeLiveMatch(
  * transaction as the `concede` event rows (`closeFixture`): the fixture gets
  * the acceptor as `winnerId` plus the walkover-style 2-0 scores (forfeit
  * precedent) so it closes as played and a later result load 409s. A concession
- * is NOT a played match — NO winnings/PE are computed here (documented choice);
- * the scoreboard in the live state stays untouched. A retried accept (already
- * finished) or an accept of one's own proposal is a state-machine rejection
- * → 409 (the optimistic seq guard catches a concurrent double-accept too).
+ * 409). A concession is NOT a played match — no PE/MVP are computed here
+ * (documented choice); the winnings snapshot IS persisted at finish like any
+ * live end (RAU-44: `persistAndPublish` computes `{ home, away }` when the
+ * row reaches `finished`), while the scoreboard in the live state stays
+ * untouched. A retried accept (already finished) or an accept of one's own
+ * proposal is a state-machine rejection → 409 (the optimistic seq guard
+ * catches a concurrent double-accept too).
  */
 export async function acceptConcedeLiveMatch(
   input: AcceptConcedeInput,
