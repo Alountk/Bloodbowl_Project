@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { RACES } from "./races";
 
-/** Valid BB2025 skill-access letters. F = Fitness is a real rulebook category. */
-const VALID_LETTERS = ["G", "A", "P", "S", "M", "F"] as const;
+/**
+ * Valid BB2025 skill-access letters (user-validated random-table categories):
+ * A=Agilidad, F=Fuerza, G=Generales, M=Mutación, P=Pase, T=Triquiñuelas.
+ * TourPlay exposes the same categories as G/A/S/P/M/D, where S=Strength and
+ * D=Devious; both are normalized onto this set (S→F, D→T).
+ */
+const VALID_LETTERS = ["A", "F", "G", "M", "P", "T"] as const;
 /** Canonical display order. */
-const CANONICAL_ORDER: Record<string, number> = { G: 0, A: 1, P: 2, S: 3, M: 4, F: 5 };
+const CANONICAL_ORDER: Record<string, number> = { A: 0, F: 1, G: 2, M: 3, P: 4, T: 5 };
 
 describe("Positional skill-access invariants (all races)", () => {
   it("declares both access arrays on every positional across all races", () => {
@@ -22,7 +27,7 @@ describe("Positional skill-access invariants (all races)", () => {
     expect(withoutSecondary).toEqual([]);
   });
 
-  it("restricts every access letter to {G,A,P,S,M,F} across all races", () => {
+  it("restricts every access letter to {A,F,G,M,P,T} across all races", () => {
     const bad: string[] = [];
     for (const race of RACES) {
       for (const p of race.positionals) {
@@ -48,7 +53,7 @@ describe("Positional skill-access invariants (all races)", () => {
     expect(dupes).toEqual([]);
   });
 
-  it("orders each access array canonically G→A→P→S→M→F", () => {
+  it("orders each access array canonically A→F→G→M→P→T", () => {
     const outOfOrder: string[] = [];
     for (const race of RACES) {
       for (const p of race.positionals) {
@@ -88,107 +93,107 @@ describe("Positional skill-access invariants (all races)", () => {
   });
 });
 
-describe("Human access (OCR page 180, high-confidence reference)", () => {
+describe("Human access (TourPlay reference)", () => {
   it("matches exact POSICIÓN → PRIMARIAS/SECUNDARIAS", () => {
     expect(RACES.find((r) => r.id === "human")!.positionals).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           key: "lineman",
           accessPrimary: ["G"],
-          accessSecondary: ["A", "F"],
+          accessSecondary: ["A", "F", "T"],
         }),
         expect.objectContaining({
           key: "thrower",
           accessPrimary: ["G", "P"],
-          accessSecondary: ["A", "F"],
+          accessSecondary: ["A", "F", "T"],
         }),
         expect.objectContaining({
           key: "blitzer",
-          accessPrimary: ["G", "F"],
-          accessSecondary: ["A"],
+          accessPrimary: ["F", "G"],
+          accessSecondary: ["A", "T"],
         }),
         expect.objectContaining({
           key: "catcher",
-          accessPrimary: ["G", "A"],
-          accessSecondary: ["P"],
+          accessPrimary: ["A", "G"],
+          accessSecondary: ["F", "P", "T"],
         }),
         expect.objectContaining({
           key: "ogre",
           accessPrimary: ["F"],
-          accessSecondary: ["G", "A", "M"],
+          accessSecondary: ["A", "G"],
         }),
       ]),
     );
   });
 });
 
-describe("Orc access (OCR page 189, high-confidence reference)", () => {
+describe("Orc access (TourPlay reference)", () => {
   it("matches exact POSICIÓN → PRIMARIAS/SECUNDARIAS", () => {
     expect(RACES.find((r) => r.id === "orc")!.positionals).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           key: "lineman",
-          accessPrimary: ["G"],
-          accessSecondary: ["A"],
+          accessPrimary: ["F", "G"],
+          accessSecondary: ["A", "T"],
         }),
         expect.objectContaining({
           key: "thrower",
           accessPrimary: ["G", "P"],
-          accessSecondary: ["A", "F"],
+          accessSecondary: ["A", "F", "T"],
         }),
         expect.objectContaining({
           key: "blitzer",
-          accessPrimary: ["G", "F"],
-          accessSecondary: ["A"],
+          accessPrimary: ["F", "G"],
+          accessSecondary: ["A", "T"],
         }),
         expect.objectContaining({
           key: "big-un-blocker",
-          accessPrimary: ["G", "F"],
-          accessSecondary: ["A"],
+          accessPrimary: ["F", "G"],
+          accessSecondary: ["A", "T"],
         }),
         expect.objectContaining({
           key: "goblin",
-          accessPrimary: ["A"],
-          accessSecondary: ["G", "P", "F"],
+          accessPrimary: ["A", "T"],
+          accessSecondary: ["F", "G", "P"],
         }),
         expect.objectContaining({
           key: "troll",
           accessPrimary: ["F"],
-          accessSecondary: ["G", "A", "P"],
+          accessSecondary: ["A", "G", "P"],
         }),
       ]),
     );
   });
 });
 
-describe("Dwarf access (OCR page 175, high-confidence reference)", () => {
+describe("Dwarf access (TourPlay reference)", () => {
   it("matches exact POSICIÓN → PRIMARIAS/SECUNDARIAS", () => {
     expect(RACES.find((r) => r.id === "dwarf")!.positionals).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           key: "lineman",
-          accessPrimary: ["G"],
-          accessSecondary: ["F"],
-        }),
-        expect.objectContaining({
-          key: "runner",
-          accessPrimary: ["G", "P"],
+          accessPrimary: ["G", "T"],
           accessSecondary: ["F"],
         }),
         expect.objectContaining({
           key: "blitzer",
-          accessPrimary: ["G", "F"],
+          accessPrimary: ["F", "G"],
           accessSecondary: ["P"],
         }),
         expect.objectContaining({
+          key: "runner",
+          accessPrimary: ["G", "P"],
+          accessSecondary: ["A", "F"],
+        }),
+        expect.objectContaining({
           key: "troll-slayer",
-          accessPrimary: ["G", "F"],
-          accessSecondary: [],
+          accessPrimary: ["F", "G"],
+          accessSecondary: ["T"],
         }),
         expect.objectContaining({
           key: "deathroller",
-          accessPrimary: ["F"],
-          accessSecondary: [],
+          accessPrimary: ["F", "T"],
+          accessSecondary: ["G"],
         }),
       ]),
     );
