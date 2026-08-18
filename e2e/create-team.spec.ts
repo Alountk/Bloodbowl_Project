@@ -109,8 +109,8 @@ test.describe("Create Team — E2E", () => {
     await expect(page.getByRole("region", { name: "Coaching Staff" })).toBeVisible();
 
     // Availability table shows positional Add buttons.
-    await expect(page.getByRole("button", { name: "Add Lineman" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Add Thrower" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Human Lineman" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Human Thrower" })).toBeVisible();
 
     // Budget bar.
     await expect(page.getByText(/remaining/i)).toBeVisible();
@@ -140,7 +140,7 @@ test.describe("Create Team — E2E", () => {
     await goToStep2(page, "Reikland Reavers", "human");
 
     // Add 11 Linemen (BB2025 minimum roster) from the availability table.
-    const addLineman = page.getByRole("button", { name: "Add Lineman" });
+    const addLineman = page.getByRole("button", { name: "Add Human Lineman" });
     for (let i = 0; i < 11; i++) await addLineman.click();
 
     // Plantilla table reflects the players with composed random fantasy names
@@ -163,7 +163,7 @@ test.describe("Create Team — E2E", () => {
     // Should redirect to home page and show the team.
     await expect(page).toHaveURL("/");
     await expect(page.getByText("Reikland Reavers")).toBeVisible();
-    await expect(page.getByText("Human")).toBeVisible();
+    await expect(page.getByText("Human", { exact: true })).toBeVisible();
   });
 
   test("rows disappear in Available players once a positional reaches its max", async ({
@@ -174,16 +174,14 @@ test.describe("Create Team — E2E", () => {
 
     await goToStep2(page, "Blitzer Crew", "human");
 
-    // Add 4 Blitzers (human max 4): each click keeps the row visible until max.
-    const addBlitzer = page.getByRole("button", { name: "Add Blitzer" });
+    // Add 2 Blitzers (human max 2 per BB2025): each click keeps the row visible until max.
+    const addBlitzer = page.getByRole("button", { name: "Add Human Blitzer" });
     await addBlitzer.click();
-    await expect(page.getByRole("button", { name: "Add Blitzer" })).toBeVisible();
-    await page.getByRole("button", { name: "Add Blitzer" }).click();
-    await page.getByRole("button", { name: "Add Blitzer" }).click();
-    // After the 4th the row disappears entirely.
-    await page.getByRole("button", { name: "Add Blitzer" }).click();
-    await expect(page.getByRole("button", { name: "Add Blitzer" })).not.toBeVisible();
-    await expect(page.getByRole("button", { name: "Add Lineman" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Human Blitzer" })).toBeVisible();
+    await page.getByRole("button", { name: "Add Human Blitzer" }).click();
+    // After the 2nd the row disappears entirely.
+    await expect(page.getByRole("button", { name: "Add Human Blitzer" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Human Lineman" })).toBeVisible();
   });
 
   test("shows race change confirmation dialog when roster is not empty", async ({ page }) => {
@@ -191,7 +189,7 @@ test.describe("Create Team — E2E", () => {
     await page.waitForLoadState("networkidle");
 
     await goToStep2(page, "Reikland Reavers", "human");
-    await page.getByRole("button", { name: "Add Lineman" }).click();
+    await page.getByRole("button", { name: "Add Human Lineman" }).click();
 
     // Return to step 1 to change race while the roster has players.
     await page.getByRole("button", { name: /edit name\/race/i }).click();
@@ -229,7 +227,7 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await expect(page.getByText("1,000k remaining")).toBeVisible();
 
     // Add 3 Linemen (50k each) -> 150k.
-    const addLineman = page.getByRole("button", { name: "Add Lineman" });
+    const addLineman = page.getByRole("button", { name: "Add Human Lineman" });
     await addLineman.click();
     await addLineman.click();
     await addLineman.click();
@@ -237,7 +235,7 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await expect(page.getByText("850k remaining")).toBeVisible();
 
     // Add 1 Blitzer (85k) -> 235k.
-    await page.getByRole("button", { name: "Add Blitzer" }).click();
+    await page.getByRole("button", { name: "Add Human Blitzer" }).click();
     await expect(page.getByText("4 players · 235k / 1,000k gc")).toBeVisible();
     await expect(page.getByText("765k remaining")).toBeVisible();
 
@@ -254,22 +252,22 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await page.getByRole("button", { name: "Add Ogre" }).click();
     await expect(page.getByRole("button", { name: "Add Ogre" })).not.toBeVisible();
 
-    // Blitzer: max 4 — after the 4th, the row disappears.
-    for (let i = 0; i < 4; i++) {
-      await page.getByRole("button", { name: "Add Blitzer" }).click();
+    // Blitzer: max 2 (BB2025 human roster) — after the 2nd, the row disappears.
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: "Add Human Blitzer" }).click();
     }
-    await expect(page.getByRole("button", { name: "Add Blitzer" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Human Blitzer" })).not.toBeVisible();
 
-    // Roster total after 1 Ogre (140k) + 4 Blitzers (340k) = 480k.
-    await expect(page.getByText("5 players · 480k / 1,000k gc")).toBeVisible();
-    await expect(page.getByText("520k remaining")).toBeVisible();
+    // Roster total after 1 Ogre (140k) + 2 Blitzers (170k) = 310k.
+    await expect(page.getByText("3 players · 310k / 1,000k gc")).toBeVisible();
+    await expect(page.getByText("690k remaining")).toBeVisible();
   });
 
   test("removing a player updates count and budget", async ({ page }) => {
-    const addLineman = page.getByRole("button", { name: "Add Lineman" });
+    const addLineman = page.getByRole("button", { name: "Add Human Lineman" });
     await addLineman.click();
     await addLineman.click();
-    await page.getByRole("button", { name: "Add Blitzer" }).click();
+    await page.getByRole("button", { name: "Add Human Blitzer" }).click();
     // 2 Linemen (100k) + 1 Blitzer (85k) = 185k.
     await expect(page.getByText("3 players · 185k / 1,000k gc")).toBeVisible();
     await expect(page.getByText("815k remaining")).toBeVisible();
@@ -311,11 +309,11 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
 
   test("roster and coaching costs combine into the team total", async ({ page }) => {
     // 3 Linemen (150k) + 1 Blitzer (85k) = 235k roster.
-    const addLineman = page.getByRole("button", { name: "Add Lineman" });
+    const addLineman = page.getByRole("button", { name: "Add Human Lineman" });
     await addLineman.click();
     await addLineman.click();
     await addLineman.click();
-    await page.getByRole("button", { name: "Add Blitzer" }).click();
+    await page.getByRole("button", { name: "Add Human Blitzer" }).click();
     await expect(page.getByText("4 players · 235k / 1,000k gc")).toBeVisible();
 
     // Coaching: 2 Rerolls (100k) + Apothecary (50k) = 150k.
@@ -330,13 +328,16 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
   });
 
   test("going over budget with coaching blocks submission with an error", async ({ page }) => {
-    // Roster: 4 Blitzers (340k) + Ogre (140k) + Lineman (50k) = 530k.
-    for (let i = 0; i < 4; i++) {
-      await page.getByRole("button", { name: "Add Blitzer" }).click();
+    // Roster: 2 Blitzers (170k) + 2 Catchers (150k) + Ogre (140k) + Lineman (50k) = 510k.
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: "Add Human Blitzer" }).click();
+    }
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("button", { name: "Add Human Catcher" }).click();
     }
     await page.getByRole("button", { name: "Add Ogre" }).click();
-    await page.getByRole("button", { name: "Add Lineman" }).click();
-    await expect(page.getByText("6 players · 530k / 1,000k gc")).toBeVisible();
+    await page.getByRole("button", { name: "Add Human Lineman" }).click();
+    await expect(page.getByText("6 players · 510k / 1,000k gc")).toBeVisible();
 
     // Coaching max: 8 Rerolls (400k) + 6 Assistants (60k) + 6 Cheerleaders (60k)
     // + 2 fan upgrades (10k) + Apothecary (50k) = 580k.
@@ -346,8 +347,8 @@ test.describe("Create Team — Roster & Coaching Math (Human)", () => {
     await page.getByLabel("Dedicated Fans").fill("3");
     await page.getByLabel("Apothecary").check();
 
-    // 530k + 580k = 1,110k -> over budget by 110k.
-    await expect(page.getByText("Over budget by 110k")).toBeVisible();
+    // 510k + 580k = 1,090k -> over budget by 90k.
+    await expect(page.getByText("Over budget by 90k")).toBeVisible();
 
     await page.getByRole("button", { name: "Create Team" }).click();
     await expect(page.getByText("Roster exceeds the 1,000,000 gc budget")).toBeVisible();

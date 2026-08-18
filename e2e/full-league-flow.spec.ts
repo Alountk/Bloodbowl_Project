@@ -62,7 +62,7 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
   await page.getByLabel("Nombre del equipo").fill(name);
   await page.getByLabel("Raza").selectOption("human");
   await page.getByRole("button", { name: "Siguiente →" }).click();
-  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
+  const add = page.getByRole("button", { name: "Añadir Human Lineman" }).first();
   for (let i = 0; i < playerCount; i++) await add.click();
   // Normalize the auto-generated fantasy names to deterministic "Player N" so
   // later steps can address players by a stable name.
@@ -524,7 +524,8 @@ test("complete lifecycle: join → start → schedule → result → progression
     // +20.000, and exactly 6 PE spent.
     await pageB.reload();
     const afterRow = pageB.getByTestId(`roster-row-${p1Id}`);
-    await expect(afterRow.getByText("Block")).toBeVisible();
+    // The es display name is "Placar" (slice-2 OCR correction); Block = the élite skill id.
+    await expect(afterRow.getByText("Placar")).toBeVisible();
     await expect(afterRow.getByTestId("elite-diamond")).toBeVisible();
     await expect(pageB.getByTestId(valueTestId).first()).toHaveText("70 000");
     await expect(pageB.getByTestId(peTestId).first()).toHaveText(`★${peBefore - 6}`);
