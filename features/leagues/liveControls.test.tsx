@@ -99,13 +99,13 @@ describe("EventControls — mini-form player + roll selects (LM-20, RAU-39)", ()
     // Causer (own roster, active coach).
     const author = screen.getByLabelText(/Autor/i) as HTMLSelectElement;
     const authorLabels = Array.from(author.options).map((o) => o.textContent);
-    expect(authorLabels).toContain("Blitzer A (Blitzer)");
-    expect(authorLabels).toContain("Thrower A (Thrower)");
+    expect(authorLabels).toContain("Blitzer A (Human Blitzer)");
+    expect(authorLabels).toContain("Thrower A (Human Thrower)");
     // Victim (rival roster, active coach).
     const victim = screen.getByLabelText(/Víctima/i) as HTMLSelectElement;
     const victimLabels = Array.from(victim.options).map((o) => o.textContent);
-    expect(victimLabels).toContain("Blitzer Rival (Blitzer)");
-    expect(victimLabels).toContain("Thrower Rival (Thrower)");
+    expect(victimLabels).toContain("Blitzer Rival (Human Blitzer)");
+    expect(victimLabels).toContain("Thrower Rival (Human Thrower)");
   });
 
   it("RAU-48: the foul victim select shows the position next to the rival names", () => {
@@ -114,7 +114,7 @@ describe("EventControls — mini-form player + roll selects (LM-20, RAU-39)", ()
     fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
     const foulVictim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
     const foulLabels = Array.from(foulVictim.options).map((o) => o.textContent);
-    expect(foulLabels).toContain("Blitzer Rival (Blitzer)");
+    expect(foulLabels).toContain("Blitzer Rival (Human Blitzer)");
   });
 
   it("shows the 1D16 roll + derived band instead of a band select, and the 1D6 ONLY when the derived band is permanent", () => {

@@ -43,7 +43,7 @@ describe("TeamRosterTable", () => {
       expect(screen.getByText(header)).toBeTruthy();
     }
     expect(screen.getByText("John")).toBeTruthy();
-    expect(screen.getByText("Lineman")).toBeTruthy();
+    expect(screen.getByText("Human Lineman")).toBeTruthy();
     expect(screen.getByText("(Línea, Human)")).toBeTruthy();
     expect(screen.getByTestId("player-icon").textContent).toContain("🚶");
   });
@@ -115,14 +115,14 @@ describe("TeamRosterTable", () => {
   });
 
   it("does not mark starting skills, only XP-purchased ones", () => {
-    // human blitzer starts with defensive + block (block is élite) → no diamond.
+    // human blitzer starts with block + tackle (block is élite) → no diamond.
     const team: Team = { ...baseTeam, roster: [{ id: "p1", name: "Yan", positionalKey: "blitzer" }] };
     render(<TeamRosterTable team={team} race={humanRace} progression={progressionFor({ skills: [] })} />);
     expect(screen.queryAllByTestId("elite-diamond").length).toBe(0);
   });
 
   it("separates skills and traits with commas, marking only bought ones", () => {
-    // blitzer starts with defensive + block (default); dodge is bought.
+    // blitzer starts with block + tackle (default); dodge is bought.
     const team: Team = { ...baseTeam, roster: [{ id: "p1", name: "Yan", positionalKey: "blitzer" }] };
     render(
       <TeamRosterTable
@@ -134,7 +134,7 @@ describe("TeamRosterTable", () => {
     const row = screen.getByTestId("roster-row-p1");
     // default skills are comma-separated and plain; the bought élite skill keeps the ◆ prefix.
     expect(row.textContent).toContain(
-      `${skillDisplayName("defensive")}, ${skillDisplayName("block")},`,
+      `${skillDisplayName("block")}, ${skillDisplayName("tackle")},`,
     );
     expect(row.textContent).toContain(`◆ ${skillDisplayName("dodge")}`);
     // only the bought élite skill carries the diamond.
