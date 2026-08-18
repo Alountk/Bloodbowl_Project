@@ -29,9 +29,9 @@ async function createTeam(page: Page) {
   await page.getByLabel("Raza").selectOption("human");
   await page.getByRole("button", { name: "Siguiente →" }).click();
   // Three players so the team is valid.
-  const addLineman = page.getByRole("button", { name: "Añadir Lineman" }).first();
+  const addLineman = page.getByRole("button", { name: "Añadir Human Lineman" }).first();
   for (let i = 0; i < 11; i++) await addLineman.click();
-  await page.getByRole("button", { name: "Añadir Blitzer" }).first().click();
+  await page.getByRole("button", { name: "Añadir Human Blitzer" }).first().click();
   await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
@@ -152,7 +152,7 @@ async function archiveGuardCreateTeam(page: import("@playwright/test").Page, nam
   await page.getByLabel("Nombre del equipo").fill(name);
   await page.getByLabel("Raza").selectOption("human");
   await page.getByRole("button", { name: "Siguiente →" }).click();
-  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
+  const add = page.getByRole("button", { name: "Añadir Human Lineman" }).first();
   for (let i = 0; i < 11; i++) await add.click();
   await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");

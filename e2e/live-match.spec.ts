@@ -72,7 +72,7 @@ async function createTeam(page: Page, name: string) {
   await page.getByLabel("Nombre del equipo").fill(name);
   await page.getByLabel("Raza").selectOption("human");
   await page.getByRole("button", { name: "Siguiente →" }).click();
-  const add = page.getByRole("button", { name: "Añadir Lineman" }).first();
+  const add = page.getByRole("button", { name: "Añadir Human Lineman" }).first();
   for (let i = 0; i < 11; i++) await add.click();
   await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
