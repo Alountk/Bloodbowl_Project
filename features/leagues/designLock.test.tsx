@@ -196,7 +196,7 @@ describe("B. LiveEventCards — validated v7 rendered structure", () => {
     expect(tk.querySelector("svg")).toBeTruthy();
     expect(row.querySelector(".dorsal")?.textContent).toBe("#1");
     expect(row.querySelector(".name")?.textContent).toBe("Blitzer A");
-    expect(row.querySelector(".pos")?.textContent).toBe("Blitzer");
+    expect(row.querySelector(".pos")?.textContent).toBe("Human Blitzer");
     const line = row.querySelector(".dline") as HTMLElement;
     expect(line.className).toContain("dline--home");
     expect(line.querySelector(".dicon svg path")?.getAttribute("d")).toBe(FOOTBALL_PATH);

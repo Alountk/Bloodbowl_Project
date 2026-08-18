@@ -6,7 +6,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Human Lineman",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -26,7 +26,7 @@
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Human Thrower",
         "role": "Thrower",
         "cost": 75000,
         "max": 2,
@@ -44,16 +44,16 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "sure-hands",
-          "pass"
+          "pass",
+          "sure-hands"
         ]
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Human Blitzer",
         "role": "Blitzer",
         "cost": 85000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -67,16 +67,16 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "defensive",
-          "block"
+          "block",
+          "tackle"
         ]
       },
       {
         "key": "catcher",
-        "name": "Catcher",
+        "name": "Human Catcher",
         "role": "Catcher",
         "cost": 75000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -114,11 +114,11 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "really-stupid",
+          "loner-3-plus",
           "mighty-blow-plus-1",
-          "throw-team-mate",
-          "loner-3-plus"
+          "thick-skull",
+          "throw-team-mate"
         ]
       }
     ]
@@ -130,7 +130,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Orc Lineman",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -149,7 +149,7 @@
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Orc Thrower",
         "role": "Thrower",
         "cost": 75000,
         "max": 2,
@@ -167,16 +167,16 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "sure-hands",
-          "pass"
+          "pass",
+          "sure-hands"
         ]
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Orc Blitzer",
         "role": "Blitzer",
         "cost": 85000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -190,8 +190,8 @@
         "pa": "4+",
         "av": "10+",
         "skills": [
-          "brawler",
-          "block"
+          "block",
+          "break-tackle"
         ]
       },
       {
@@ -199,7 +199,7 @@
         "name": "Big Un Blocker",
         "role": "Blocker",
         "cost": 95000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -213,16 +213,16 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "mighty-blow-plus-1",
           "taunt",
-          "unchannelled-fury"
+          "thick-skull",
+          "shakey"
         ]
       },
       {
         "key": "goblin",
-        "name": "Goblin",
-        "role": "Runner",
+        "name": "Goblin Lineman",
+        "role": "Lineman",
         "cost": 40000,
         "max": 4,
         "accessPrimary": [
@@ -236,13 +236,12 @@
         "ma": 6,
         "st": 2,
         "ag": "3+",
-        "pa": "3+",
+        "pa": "4+",
         "av": "8+",
         "skills": [
           "dodge",
           "right-stuff",
-          "stunty",
-          "titchy"
+          "stunty"
         ]
       },
       {
@@ -265,13 +264,13 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
+          "always-hungry",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "projectile-vomit",
           "really-stupid",
           "regeneration",
-          "always-hungry",
-          "loner-4-plus"
+          "throw-team-mate"
         ]
       }
     ]
@@ -283,7 +282,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Dwarf Lineman",
         "role": "Lineman",
         "cost": 70000,
         "max": 16,
@@ -299,17 +298,17 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "block",
-          "tackle"
+          "defensive",
+          "thick-skull"
         ]
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Dwarf Blitzer",
         "role": "Blitzer",
         "cost": 100000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -331,7 +330,7 @@
       },
       {
         "key": "runner",
-        "name": "Runner",
+        "name": "Dwarf Runner",
         "role": "Runner",
         "cost": 80000,
         "max": 2,
@@ -348,15 +347,15 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "thick-skull",
           "sprint",
-          "sure-hands"
+          "sure-hands",
+          "thick-skull"
         ]
       },
       {
         "key": "troll-slayer",
         "name": "Troll Slayer",
-        "role": "Blitzer",
+        "role": "Special",
         "cost": 95000,
         "max": 2,
         "accessPrimary": [
@@ -370,11 +369,11 @@
         "pa": "5+",
         "av": "9+",
         "skills": [
-          "dauntless",
-          "thick-skull",
-          "frenzy",
           "block",
-          "troll-hatred"
+          "dauntless",
+          "frenzy",
+          "troll-hatred",
+          "thick-skull"
         ]
       },
       {
@@ -394,13 +393,13 @@
         "av": "11+",
         "skills": [
           "break-tackle",
-          "secret-weapon",
-          "no-hands",
-          "mighty-blow-plus-1",
-          "juggernaut",
           "dirty-player-plus-1",
-          "stand-firm",
-          "loner-4-plus"
+          "juggernaut",
+          "loner-4-plus",
+          "mighty-blow-plus-1",
+          "no-hands",
+          "secret-weapon",
+          "stand-firm"
         ]
       }
     ]
@@ -412,7 +411,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Elf Lineman",
         "role": "Lineman",
         "cost": 65000,
         "max": 16,
@@ -434,7 +433,7 @@
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Elf Thrower",
         "role": "Thrower",
         "cost": 75000,
         "max": 2,
@@ -458,10 +457,10 @@
       },
       {
         "key": "catcher",
-        "name": "Catcher",
+        "name": "Elf Catcher",
         "role": "Catcher",
         "cost": 100000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -482,10 +481,10 @@
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Elf Blitzer",
         "role": "Blitzer",
         "cost": 115000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -500,8 +499,8 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "side-step",
-          "block"
+          "block",
+          "side-step"
         ]
       }
     ]
@@ -513,7 +512,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Skaven Clanrat",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -534,7 +533,7 @@
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Skaven Thrower",
         "role": "Thrower",
         "cost": 80000,
         "max": 2,
@@ -553,8 +552,8 @@
         "pa": "2+",
         "av": "8+",
         "skills": [
-          "sure-hands",
-          "pass"
+          "pass",
+          "sure-hands"
         ]
       },
       {
@@ -562,7 +561,7 @@
         "name": "Gutter Runner",
         "role": "Runner",
         "cost": 85000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -577,13 +576,13 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
-          "stab",
-          "dodge"
+          "dodge",
+          "stab"
         ]
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Skaven Blitzer",
         "role": "Blitzer",
         "cost": 90000,
         "max": 2,
@@ -625,11 +624,11 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "prehensile-tail",
           "animal-savagery",
           "frenzy",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "loner-4-plus"
+          "prehensile-tail"
         ]
       }
     ]
@@ -641,7 +640,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Dark Elf Lineman",
         "role": "Lineman",
         "cost": 65000,
         "max": 16,
@@ -661,10 +660,10 @@
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Dark Elf Blitzer",
         "role": "Blitzer",
         "cost": 105000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -684,7 +683,7 @@
       },
       {
         "key": "runner",
-        "name": "Runner",
+        "name": "Dark Elf Runner",
         "role": "Runner",
         "cost": 80000,
         "max": 2,
@@ -708,8 +707,8 @@
       },
       {
         "key": "assassin",
-        "name": "Assassin",
-        "role": "Blitzer",
+        "name": "Dark Elf Assassin",
+        "role": "Special",
         "cost": 90000,
         "max": 2,
         "accessPrimary": [
@@ -725,15 +724,15 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
-          "stab",
           "hit-and-run",
-          "shadowing"
+          "shadowing",
+          "stab"
         ]
       },
       {
         "key": "witch-elf",
         "name": "Witch Elf",
-        "role": "Blitzer",
+        "role": "Special",
         "cost": 110000,
         "max": 2,
         "accessPrimary": [
@@ -749,9 +748,9 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
-          "jump-up",
           "dodge",
-          "frenzy"
+          "frenzy",
+          "jump-up"
         ]
       }
     ]
@@ -780,8 +779,8 @@
         "pa": "6+",
         "av": "8+",
         "skills": [
-          "thick-skull",
-          "regeneration"
+          "regeneration",
+          "thick-skull"
         ]
       },
       {
@@ -805,7 +804,7 @@
         "skills": [
           "low-blow",
           "regeneration",
-          "unchannelled-fury"
+          "shakey"
         ]
       },
       {
@@ -813,7 +812,7 @@
         "name": "Ghoul Runner",
         "role": "Runner",
         "cost": 75000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -850,10 +849,10 @@
         "pa": "5+",
         "av": "9+",
         "skills": [
-          "thick-skull",
-          "defensive",
           "block",
-          "regeneration"
+          "regeneration",
+          "tackle",
+          "thick-skull"
         ]
       },
       {
@@ -888,7 +887,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Beastman Lineman",
         "role": "Lineman",
         "cost": 55000,
         "max": 16,
@@ -907,14 +906,14 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "thick-skull",
-          "horns"
+          "horns",
+          "thick-skull"
         ]
       },
       {
         "key": "chosen-blocker",
-        "name": "Chosen Blocker",
-        "role": "Blitzer",
+        "name": "Chaos Chosen",
+        "role": "Blocker",
         "cost": 100000,
         "max": 4,
         "accessPrimary": [
@@ -936,7 +935,7 @@
       },
       {
         "key": "chaos-troll",
-        "name": "Chaos Troll",
+        "name": "Troll",
         "role": "Big Guy",
         "cost": 115000,
         "max": 1,
@@ -955,13 +954,13 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
+          "always-hungry",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "projectile-vomit",
           "really-stupid",
           "regeneration",
-          "always-hungry",
-          "loner-4-plus"
+          "throw-team-mate"
         ]
       },
       {
@@ -984,12 +983,12 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "thick-skull",
-          "horns",
           "frenzy",
+          "horns",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "unchannelled-fury",
-          "loner-4-plus"
+          "thick-skull",
+          "unchannelled-fury"
         ]
       }
     ]
@@ -1022,7 +1021,7 @@
       {
         "key": "sneaky-stabba",
         "name": "Sneaky Stabba",
-        "role": "Runner",
+        "role": "Special",
         "cost": 60000,
         "max": 2,
         "accessPrimary": [
@@ -1038,8 +1037,8 @@
         "pa": "5+",
         "av": "8+",
         "skills": [
-          "stab",
-          "shadowing"
+          "shadowing",
+          "stab"
         ]
       },
       {
@@ -1062,15 +1061,15 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "thick-skull",
+          "block",
           "iron-hard-skin",
-          "tackle"
+          "thick-skull"
         ]
       },
       {
         "key": "flamesmith",
         "name": "Flamesmith",
-        "role": "Blocker",
+        "role": "Special",
         "cost": 80000,
         "max": 2,
         "accessPrimary": [
@@ -1087,10 +1086,10 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "thick-skull",
-          "fire-breathing",
           "brawler",
-          "disturbing-presence"
+          "fire-breathing",
+          "disturbing-presence",
+          "thick-skull"
         ]
       },
       {
@@ -1113,9 +1112,9 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "sprint",
           "sure-feet",
+          "thick-skull",
           "shakey"
         ]
       },
@@ -1139,12 +1138,12 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "thick-skull",
-          "horns",
           "frenzy",
+          "horns",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "unchannelled-fury",
-          "loner-4-plus"
+          "thick-skull",
+          "unchannelled-fury"
         ]
       }
     ]
@@ -1156,7 +1155,7 @@
     "positionals": [
       {
         "key": "linewoman",
-        "name": "Linewoman",
+        "name": "Eagle Warrior",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -1178,7 +1177,7 @@
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Python Warrior",
         "role": "Thrower",
         "cost": 80000,
         "max": 2,
@@ -1196,18 +1195,18 @@
         "pa": "3+",
         "av": "8+",
         "skills": [
-          "on-the-ball",
           "dodge",
+          "on-the-ball",
           "pass",
           "safe-pass"
         ]
       },
       {
         "key": "catcher",
-        "name": "Catcher",
-        "role": "Catcher",
+        "name": "Piranha Warrior",
+        "role": "Blitzer",
         "cost": 90000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -1221,17 +1220,17 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
+          "dodge",
           "hit-and-run",
-          "jump-up",
-          "dodge"
+          "jump-up"
         ]
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
-        "role": "Blitzer",
+        "name": "Jaguar Warrior",
+        "role": "Blocker",
         "cost": 110000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -1245,8 +1244,8 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "dodge",
-          "defensive"
+          "defensive",
+          "dodge"
         ]
       }
     ]
@@ -1258,7 +1257,7 @@
     "positionals": [
       {
         "key": "renegade-lineman",
-        "name": "Renegade Human Lineman",
+        "name": "Renegade Human",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -1281,10 +1280,10 @@
       },
       {
         "key": "renegade-orc-lineman",
-        "name": "Renegade Orc Lineman",
+        "name": "Renegade Orc",
         "role": "Lineman",
         "cost": 50000,
-        "max": 2,
+        "max": 1,
         "accessPrimary": [
           "G",
           "M"
@@ -1305,9 +1304,9 @@
       {
         "key": "renegade-goblin",
         "name": "Renegade Goblin",
-        "role": "Runner",
+        "role": "Lineman",
         "cost": 40000,
-        "max": 2,
+        "max": 1,
         "accessPrimary": [
           "A",
           "M"
@@ -1325,15 +1324,15 @@
           "animosity-all",
           "dodge",
           "right-stuff",
-          "titchy"
+          "stunty"
         ]
       },
       {
         "key": "renegade-skaven",
         "name": "Renegade Skaven",
-        "role": "Runner",
+        "role": "Lineman",
         "cost": 50000,
-        "max": 2,
+        "max": 1,
         "accessPrimary": [
           "G",
           "M"
@@ -1354,9 +1353,9 @@
       {
         "key": "renegade-dark-elf",
         "name": "Renegade Dark Elf",
-        "role": "Blitzer",
+        "role": "Lineman",
         "cost": 65000,
-        "max": 2,
+        "max": 1,
         "accessPrimary": [
           "G",
           "A",
@@ -1376,7 +1375,7 @@
       },
       {
         "key": "chaos-ogre",
-        "name": "Chaos Ogre",
+        "name": "Ogre",
         "role": "Big Guy",
         "cost": 140000,
         "max": 1,
@@ -1394,15 +1393,16 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "really-stupid",
-          "throw-team-mate",
-          "loner-4-plus"
+          "loner-3-plus",
+          "mighty-blow-plus-1",
+          "thick-skull",
+          "throw-team-mate"
         ]
       },
       {
         "key": "renegade-troll",
-        "name": "Renegade Troll",
+        "name": "Troll",
         "role": "Big Guy",
         "cost": 115000,
         "max": 1,
@@ -1421,18 +1421,18 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
+          "always-hungry",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "projectile-vomit",
           "really-stupid",
           "regeneration",
-          "always-hungry",
-          "loner-4-plus"
+          "throw-team-mate"
         ]
       },
       {
         "key": "renegade-minotaur",
-        "name": "Renegade Minotaur",
+        "name": "Minotaur",
         "role": "Big Guy",
         "cost": 150000,
         "max": 1,
@@ -1450,15 +1450,17 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "horns",
           "frenzy",
+          "horns",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "loner-4-plus"
+          "thick-skull",
+          "unchannelled-fury"
         ]
       },
       {
         "key": "renegade-rat-ogre",
-        "name": "Renegade Rat Ogre",
+        "name": "Rat Ogre",
         "role": "Big Guy",
         "cost": 150000,
         "max": 1,
@@ -1476,10 +1478,11 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "prehensile-tail",
+          "animal-savagery",
           "frenzy",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "loner-4-plus"
+          "prehensile-tail"
         ]
       }
     ]
@@ -1491,7 +1494,7 @@
     "positionals": [
       {
         "key": "hopeful",
-        "name": "Hopeful",
+        "name": "Halfling Hopeful",
         "role": "Lineman",
         "cost": 30000,
         "max": 16,
@@ -1510,15 +1513,15 @@
         "skills": [
           "dodge",
           "right-stuff",
-          "titchy"
+          "stunty"
         ]
       },
       {
         "key": "catcher",
-        "name": "Catcher",
+        "name": "Halfling Catcher",
         "role": "Catcher",
         "cost": 55000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "A"
         ],
@@ -1533,16 +1536,16 @@
         "av": "7+",
         "skills": [
           "catch",
-          "sprint",
           "dodge",
           "right-stuff",
-          "titchy"
+          "sprint",
+          "stunty"
         ]
       },
       {
         "key": "hefty",
-        "name": "Hefty",
-        "role": "Blitzer",
+        "name": "Halfling Hefty",
+        "role": "Blocker",
         "cost": 50000,
         "max": 2,
         "accessPrimary": [
@@ -1560,13 +1563,13 @@
         "av": "8+",
         "skills": [
           "dodge",
-          "right-stuff",
-          "sneaky-git"
+          "fend",
+          "stunty"
         ]
       },
       {
         "key": "treeman",
-        "name": "Treeman",
+        "name": "Altern Forest Treeman",
         "role": "Big Guy",
         "cost": 120000,
         "max": 2,
@@ -1584,12 +1587,12 @@
         "pa": "5+",
         "av": "11+",
         "skills": [
-          "strong-arm",
-          "thick-skull",
-          "take-root",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "stand-firm",
+          "strong-arm",
+          "take-root",
+          "thick-skull",
+          "throw-team-mate",
           "timmm-ber"
         ]
       }
@@ -1602,24 +1605,24 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "High Elf Lineman",
         "role": "Lineman",
-        "cost": 70000,
+        "cost": 65000,
         "max": 16,
         "accessPrimary": [],
         "accessSecondary": [],
         "ma": 6,
         "st": 3,
         "ag": "2+",
-        "pa": "4+",
-        "av": "8+",
+        "pa": "3+",
+        "av": "9+",
         "skills": []
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Phoenix Warrior",
         "role": "Thrower",
-        "cost": 100000,
+        "cost": 90000,
         "max": 2,
         "accessPrimary": [],
         "accessSecondary": [],
@@ -1627,7 +1630,7 @@
         "st": 3,
         "ag": "2+",
         "pa": "2+",
-        "av": "8+",
+        "av": "9+",
         "skills": [
           "pass",
           "sure-hands"
@@ -1635,17 +1638,17 @@
       },
       {
         "key": "catcher",
-        "name": "Catcher",
-        "role": "Catcher",
-        "cost": 85000,
-        "max": 4,
+        "name": "Dragon Prince",
+        "role": "Runner",
+        "cost": 110000,
+        "max": 2,
         "accessPrimary": [],
         "accessSecondary": [],
         "ma": 8,
-        "st": 2,
+        "st": 3,
         "ag": "2+",
         "pa": "4+",
-        "av": "8+",
+        "av": "9+",
         "skills": [
           "catch",
           "dodge"
@@ -1653,10 +1656,10 @@
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "White Lion",
         "role": "Blitzer",
         "cost": 110000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [],
         "accessSecondary": [],
         "ma": 7,
@@ -1665,7 +1668,8 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "block"
+          "claws",
+          "wrestle"
         ]
       }
     ]
@@ -1695,9 +1699,9 @@
         "av": "7+",
         "skills": [
           "jump-up",
-          "slippery",
-          "wrestle",
-          "right-stuff"
+          "right-stuff",
+          "stunty",
+          "wrestle"
         ]
       },
       {
@@ -1723,7 +1727,7 @@
       {
         "key": "gnome-illusionist",
         "name": "Gnome Illusionist",
-        "role": "Thrower",
+        "role": "Special",
         "cost": 50000,
         "max": 2,
         "accessPrimary": [
@@ -1739,9 +1743,9 @@
         "pa": "3+",
         "av": "7+",
         "skills": [
-          "trickster",
           "jump-up",
-          "slippery",
+          "stunty",
+          "trickster",
           "wrestle"
         ]
       },
@@ -1790,12 +1794,12 @@
         "pa": "5+",
         "av": "11+",
         "skills": [
-          "strong-arm",
-          "thick-skull",
-          "take-root",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "stand-firm",
+          "strong-arm",
+          "take-root",
+          "thick-skull",
+          "throw-team-mate",
           "timmm-ber"
         ]
       }
@@ -1804,13 +1808,13 @@
   {
     "id": "bretonnian",
     "name": "Bretonnian",
-    "rerollCost": 50000,
+    "rerollCost": 60000,
     "positionals": [
       {
         "key": "peasant-lineman",
-        "name": "Peasant Lineman",
+        "name": "Bretonnian Squire",
         "role": "Lineman",
-        "cost": 40000,
+        "cost": 50000,
         "max": 16,
         "accessPrimary": [
           "G"
@@ -1825,7 +1829,7 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
-          "bribery-and-corruption"
+          "wrestle"
         ]
       },
       {
@@ -1894,7 +1898,7 @@
     "positionals": [
       {
         "key": "lackey-lineman",
-        "name": "Lackey Lineman",
+        "name": "Imperial Retainer",
         "role": "Lineman",
         "cost": 45000,
         "max": 16,
@@ -1931,13 +1935,13 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "wrestle",
-          "stand-firm"
+          "stand-firm",
+          "wrestle"
         ]
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Imperial Thrower",
         "role": "Thrower",
         "cost": 75000,
         "max": 2,
@@ -1961,10 +1965,10 @@
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Noble Blitzer",
         "role": "Blitzer",
         "cost": 90000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -1976,8 +1980,8 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "catch",
           "block",
+          "catch",
           "pro"
         ]
       },
@@ -2001,11 +2005,11 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "really-stupid",
+          "loner-3-plus",
           "mighty-blow-plus-1",
-          "throw-team-mate",
-          "loner-3-plus"
+          "thick-skull",
+          "throw-team-mate"
         ]
       }
     ]
@@ -2017,7 +2021,7 @@
     "positionals": [
       {
         "key": "marauder",
-        "name": "Marauder",
+        "name": "Bloodborn Marauder",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -2040,10 +2044,10 @@
       },
       {
         "key": "khorne-blocker",
-        "name": "Khorne Blocker",
-        "role": "Blitzer",
+        "name": "Khorngor",
+        "role": "Runner",
         "cost": 70000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "M",
@@ -2059,16 +2063,16 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "thick-skull",
           "horns",
+          "juggernaut",
           "jump-up",
-          "juggernaut"
+          "thick-skull"
         ]
       },
       {
         "key": "bloodseeker",
         "name": "Bloodseeker",
-        "role": "Blitzer",
+        "role": "Blocker",
         "cost": 105000,
         "max": 4,
         "accessPrimary": [
@@ -2090,7 +2094,7 @@
       },
       {
         "key": "juggernaut",
-        "name": "Juggernaut",
+        "name": "Bloodspawn",
         "role": "Big Guy",
         "cost": 160000,
         "max": 1,
@@ -2108,11 +2112,11 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "frenzy",
           "claws",
+          "frenzy",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "unchannelled-fury",
-          "loner-4-plus"
+          "unchannelled-fury"
         ]
       }
     ]
@@ -2124,8 +2128,8 @@
     "positionals": [
       {
         "key": "skink-runner",
-        "name": "Skink Runner",
-        "role": "Runner",
+        "name": "Skink Lineman",
+        "role": "Lineman",
         "cost": 60000,
         "max": 16,
         "accessPrimary": [
@@ -2143,7 +2147,7 @@
         "av": "8+",
         "skills": [
           "dodge",
-          "right-stuff"
+          "stunty"
         ]
       },
       {
@@ -2166,7 +2170,7 @@
         "av": "10+",
         "skills": [
           "juggernaut",
-          "unchannelled-fury"
+          "shakey"
         ]
       },
       {
@@ -2174,7 +2178,7 @@
         "name": "Kroxigor",
         "role": "Big Guy",
         "cost": 140000,
-        "max": 2,
+        "max": 1,
         "accessPrimary": [
           "F"
         ],
@@ -2188,11 +2192,11 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "thick-skull",
-          "prehensile-tail",
           "really-stupid",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "loner-4-plus"
+          "prehensile-tail",
+          "thick-skull"
         ]
       }
     ]
@@ -2223,13 +2227,13 @@
         "skills": [
           "low-blow",
           "regeneration",
-          "unchannelled-fury"
+          "shakey"
         ]
       },
       {
         "key": "werewolf",
         "name": "Werewolf",
-        "role": "Runner",
+        "role": "Blitzer",
         "cost": 120000,
         "max": 2,
         "accessPrimary": [
@@ -2245,8 +2249,8 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "frenzy",
           "claws",
+          "frenzy",
           "regeneration"
         ]
       },
@@ -2269,16 +2273,16 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "thick-skull",
-          "stand-firm",
           "regeneration",
-          "unchannelled-fury"
+          "stand-firm",
+          "thick-skull",
+          "shakey"
         ]
       },
       {
         "key": "wraith",
         "name": "Wraith",
-        "role": "Blitzer",
+        "role": "Blocker",
         "cost": 85000,
         "max": 2,
         "accessPrimary": [
@@ -2294,11 +2298,11 @@
         "pa": "—",
         "av": "9+",
         "skills": [
-          "foul-appearance",
-          "side-step",
-          "no-hands",
           "block",
-          "regeneration"
+          "foul-appearance",
+          "no-hands",
+          "regeneration",
+          "side-step"
         ]
       },
       {
@@ -2331,7 +2335,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Norse Raider",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -2347,10 +2351,10 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
+          "block",
           "drunkard",
           "thick-skull",
-          "block",
-          "unchannelled-fury"
+          "shakey"
         ]
       },
       {
@@ -2381,10 +2385,10 @@
       },
       {
         "key": "berserker",
-        "name": "Berserker",
+        "name": "Norse Berserker",
         "role": "Blitzer",
         "cost": 90000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -2399,15 +2403,15 @@
         "pa": "5+",
         "av": "8+",
         "skills": [
-          "jump-up",
+          "block",
           "frenzy",
-          "block"
+          "jump-up"
         ]
       },
       {
         "key": "valkyrie",
         "name": "Valkyrie",
-        "role": "Blitzer",
+        "role": "Catcher",
         "cost": 95000,
         "max": 2,
         "accessPrimary": [
@@ -2424,8 +2428,8 @@
         "pa": "3+",
         "av": "8+",
         "skills": [
-          "dauntless",
           "catch",
+          "dauntless",
           "pass",
           "strip-ball"
         ]
@@ -2433,7 +2437,7 @@
       {
         "key": "ulfwerener",
         "name": "Ulfwerener",
-        "role": "Big Guy",
+        "role": "Blocker",
         "cost": 105000,
         "max": 2,
         "accessPrimary": [
@@ -2450,12 +2454,12 @@
         "av": "9+",
         "skills": [
           "frenzy",
-          "unchannelled-fury"
+          "shakey"
         ]
       },
       {
         "key": "snow-troll",
-        "name": "Snow Troll",
+        "name": "Yhetee",
         "role": "Big Guy",
         "cost": 140000,
         "max": 1,
@@ -2472,11 +2476,11 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "frenzy",
           "claws",
-          "unchannelled-fury",
           "disturbing-presence",
-          "loner-4-plus"
+          "frenzy",
+          "loner-4-plus",
+          "unchannelled-fury"
         ]
       }
     ]
@@ -2515,7 +2519,7 @@
         "name": "Pestigor",
         "role": "Runner",
         "cost": 70000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "M",
@@ -2617,17 +2621,17 @@
         "pa": "4+",
         "av": "6+",
         "skills": [
-          "titchy",
-          "side-step",
-          "slippery",
           "dodge",
-          "right-stuff"
+          "right-stuff",
+          "side-step",
+          "stunty",
+          "titchy"
         ]
       },
       {
         "key": "ogre-blocker",
         "name": "Ogre Blocker",
-        "role": "Blocker",
+        "role": "Big Guy",
         "cost": 140000,
         "max": 5,
         "accessPrimary": [
@@ -2644,16 +2648,16 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "really-stupid",
           "mighty-blow-plus-1",
+          "thick-skull",
           "throw-team-mate"
         ]
       },
       {
         "key": "ogre-runt-punter",
         "name": "Ogre Runt Punter",
-        "role": "Thrower",
+        "role": "Big Guy",
         "cost": 145000,
         "max": 1,
         "accessPrimary": [
@@ -2669,11 +2673,10 @@
         "pa": "4+",
         "av": "10+",
         "skills": [
-          "thick-skull",
-          "runt-punter",
-          "kick-team-mate",
           "really-stupid",
-          "mighty-blow-plus-1"
+          "kick-team-mate",
+          "mighty-blow-plus-1",
+          "thick-skull"
         ]
       }
     ]
@@ -2708,7 +2711,7 @@
         "name": "Dwarf Lineman",
         "role": "Lineman",
         "cost": 70000,
-        "max": 6,
+        "max": 3,
         "accessPrimary": [
           "G"
         ],
@@ -2721,9 +2724,9 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "block",
-          "tackle"
+          "defensive",
+          "thick-skull"
         ]
       },
       {
@@ -2731,7 +2734,7 @@
         "name": "Halfling Hopeful",
         "role": "Lineman",
         "cost": 30000,
-        "max": 4,
+        "max": 3,
         "accessPrimary": [
           "A"
         ],
@@ -2747,15 +2750,15 @@
         "skills": [
           "dodge",
           "right-stuff",
-          "titchy"
+          "stunty"
         ]
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Human Thrower",
         "role": "Thrower",
         "cost": 75000,
-        "max": 2,
+        "max": 1,
         "accessPrimary": [
           "G",
           "P"
@@ -2770,16 +2773,16 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "sure-hands",
-          "pass"
+          "pass",
+          "sure-hands"
         ]
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
+        "name": "Human Blitzer",
         "role": "Blitzer",
         "cost": 85000,
-        "max": 4,
+        "max": 1,
         "accessPrimary": [
           "G",
           "F"
@@ -2793,8 +2796,8 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "defensive",
-          "block"
+          "block",
+          "tackle"
         ]
       },
       {
@@ -2817,11 +2820,11 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "thick-skull",
           "really-stupid",
+          "loner-3-plus",
           "mighty-blow-plus-1",
-          "throw-team-mate",
-          "loner-3-plus"
+          "thick-skull",
+          "throw-team-mate"
         ]
       }
     ]
@@ -2833,7 +2836,7 @@
     "positionals": [
       {
         "key": "snotling",
-        "name": "Snotling",
+        "name": "Snotling Lineman",
         "role": "Lineman",
         "cost": 15000,
         "max": 16,
@@ -2858,10 +2861,10 @@
       },
       {
         "key": "fun-hoppa",
-        "name": "Fun Hoppa",
-        "role": "Runner",
+        "name": "Fun-hoppa",
+        "role": "Special",
         "cost": 20000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "A"
         ],
@@ -2872,10 +2875,11 @@
         "pa": "4+",
         "av": "6+",
         "skills": [
-          "side-step",
           "dodge",
+          "pogo-stick",
           "right-stuff",
-          "pogo-stick"
+          "side-step",
+          "stunty"
         ]
       },
       {
@@ -2883,7 +2887,7 @@
         "name": "Stilty Runna",
         "role": "Runner",
         "cost": 20000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "A"
         ],
@@ -2894,10 +2898,11 @@
         "pa": "4+",
         "av": "6+",
         "skills": [
+          "dodge",
+          "right-stuff",
           "side-step",
           "sprint",
-          "dodge",
-          "right-stuff"
+          "stunty"
         ]
       },
       {
@@ -2919,9 +2924,10 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "mighty-blow-plus-1",
-          "juggernaut",
           "dirty-player-plus-1",
+          "juggernaut",
+          "mighty-blow-plus-1",
+          "really-stupid",
           "stand-firm"
         ]
       },
@@ -2930,7 +2936,7 @@
         "name": "Trained Troll",
         "role": "Big Guy",
         "cost": 115000,
-        "max": 1,
+        "max": 2,
         "accessPrimary": [
           "F"
         ],
@@ -2945,13 +2951,12 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
+          "always-hungry",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "projectile-vomit",
           "really-stupid",
           "regeneration",
-          "always-hungry",
-          "loner-4-plus"
+          "throw-team-mate"
         ]
       }
     ]
@@ -2978,13 +2983,13 @@
         "pa": "6+",
         "av": "8+",
         "skills": [
-          "thick-skull",
-          "regeneration"
+          "regeneration",
+          "thick-skull"
         ]
       },
       {
         "key": "thro-ra",
-        "name": "Thro-Ra",
+        "name": "Tomb Kings Thrower",
         "role": "Thrower",
         "cost": 65000,
         "max": 2,
@@ -3002,18 +3007,18 @@
         "pa": "3+",
         "av": "9+",
         "skills": [
-          "thick-skull",
-          "sure-hands",
           "pass",
-          "regeneration"
+          "regeneration",
+          "sure-hands",
+          "thick-skull"
         ]
       },
       {
         "key": "blitz-ra",
-        "name": "Blitz-Ra",
+        "name": "Tomb Kings Blitzer",
         "role": "Blitzer",
         "cost": 85000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -3027,15 +3032,15 @@
         "pa": "5+",
         "av": "9+",
         "skills": [
-          "thick-skull",
           "block",
-          "regeneration"
+          "regeneration",
+          "thick-skull"
         ]
       },
       {
         "key": "tomb-guardian",
         "name": "Tomb Guardian",
-        "role": "Blocker",
+        "role": "Big Guy",
         "cost": 115000,
         "max": 4,
         "accessPrimary": [
@@ -3051,8 +3056,8 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "decay",
           "brawler",
+          "decay",
           "regeneration"
         ]
       }
@@ -3065,7 +3070,7 @@
     "positionals": [
       {
         "key": "underworld-goblin",
-        "name": "Underworld Goblin Lineman",
+        "name": "Goblin Lineman",
         "role": "Lineman",
         "cost": 40000,
         "max": 16,
@@ -3086,16 +3091,15 @@
         "skills": [
           "dodge",
           "right-stuff",
-          "stunty",
-          "titchy"
+          "stunty"
         ]
       },
       {
         "key": "skaven-lineman",
-        "name": "Skaven Lineman",
+        "name": "Skaven Clanrat",
         "role": "Lineman",
         "cost": 50000,
-        "max": 2,
+        "max": 3,
         "accessPrimary": [
           "G",
           "M"
@@ -3135,8 +3139,8 @@
         "av": "8+",
         "skills": [
           "animosity-goblin",
-          "sure-hands",
-          "pass"
+          "pass",
+          "sure-hands"
         ]
       },
       {
@@ -3166,7 +3170,7 @@
       },
       {
         "key": "mutant-rat-ogre",
-        "name": "Mutant Rat Ogre",
+        "name": "Rat Ogre",
         "role": "Big Guy",
         "cost": 150000,
         "max": 1,
@@ -3184,11 +3188,11 @@
         "pa": "6+",
         "av": "9+",
         "skills": [
-          "prehensile-tail",
           "animal-savagery",
           "frenzy",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "loner-4-plus"
+          "prehensile-tail"
         ]
       }
     ]
@@ -3237,9 +3241,9 @@
         "pa": "3+",
         "av": "8+",
         "skills": [
+          "blood-lust-2-plus",
           "hypnotic-gaze",
-          "regeneration",
-          "blood-lust-2-plus"
+          "regeneration"
         ]
       },
       {
@@ -3262,10 +3266,10 @@
         "pa": "2+",
         "av": "9+",
         "skills": [
+          "blood-lust-2-plus",
           "hypnotic-gaze",
           "pass",
-          "regeneration",
-          "blood-lust-2-plus"
+          "regeneration"
         ]
       },
       {
@@ -3287,10 +3291,10 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "juggernaut",
+          "blood-lust-3-plus",
           "hypnotic-gaze",
-          "regeneration",
-          "blood-lust-3-plus"
+          "juggernaut",
+          "regeneration"
         ]
       },
       {
@@ -3312,11 +3316,11 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "frenzy",
-          "claws",
-          "regeneration",
           "blood-lust-3-plus",
-          "loner-4-plus"
+          "claws",
+          "frenzy",
+          "loner-4-plus",
+          "regeneration"
         ]
       }
     ]
@@ -3328,7 +3332,7 @@
     "positionals": [
       {
         "key": "goblin-bruiser",
-        "name": "Goblin Bruiser Lineman",
+        "name": "Goblin Bruiser",
         "role": "Lineman",
         "cost": 45000,
         "max": 16,
@@ -3346,15 +3350,15 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
-          "thick-skull",
-          "right-stuff",
           "dodge",
-          "titchy"
+          "right-stuff",
+          "stunty",
+          "thick-skull"
         ]
       },
       {
         "key": "black-orc-blocker",
-        "name": "Black Orc Blocker",
+        "name": "Black Orc",
         "role": "Blocker",
         "cost": 90000,
         "max": 6,
@@ -3371,8 +3375,8 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "grab",
-          "brawler"
+          "brawler",
+          "grab"
         ]
       },
       {
@@ -3395,13 +3399,12 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
+          "always-hungry",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "projectile-vomit",
           "really-stupid",
           "regeneration",
-          "always-hungry",
-          "loner-4-plus"
+          "throw-team-mate"
         ]
       }
     ]
@@ -3409,7 +3412,7 @@
   {
     "id": "goblin",
     "name": "Goblin",
-    "rerollCost": 80000,
+    "rerollCost": 60000,
     "positionals": [
       {
         "key": "goblin-lineman",
@@ -3433,14 +3436,13 @@
         "skills": [
           "dodge",
           "right-stuff",
-          "stunty",
-          "titchy"
+          "stunty"
         ]
       },
       {
         "key": "fanatic",
         "name": "Fanatic",
-        "role": "Blitzer",
+        "role": "Special",
         "cost": 70000,
         "max": 1,
         "accessPrimary": [
@@ -3456,16 +3458,16 @@
         "pa": "—",
         "av": "8+",
         "skills": [
-          "secret-weapon",
           "ball-and-chain",
           "no-hands",
+          "secret-weapon",
           "stunty"
         ]
       },
       {
         "key": "loony",
-        "name": "Loony",
-        "role": "Blitzer",
+        "name": "Looney",
+        "role": "Special",
         "cost": 40000,
         "max": 1,
         "accessPrimary": [],
@@ -3480,16 +3482,16 @@
         "pa": "—",
         "av": "8+",
         "skills": [
-          "secret-weapon",
-          "stunty",
+          "chainsaw",
           "no-hands",
-          "chainsaw"
+          "secret-weapon",
+          "stunty"
         ]
       },
       {
         "key": "pogoer",
         "name": "Pogoer",
-        "role": "Runner",
+        "role": "Special",
         "cost": 75000,
         "max": 1,
         "accessPrimary": [
@@ -3506,14 +3508,14 @@
         "av": "8+",
         "skills": [
           "dodge",
-          "right-stuff",
-          "pogo-stick"
+          "pogo-stick",
+          "stunty"
         ]
       },
       {
         "key": "bombardier",
-        "name": "Bombardier",
-        "role": "Thrower",
+        "name": "Bomma",
+        "role": "Special",
         "cost": 45000,
         "max": 1,
         "accessPrimary": [
@@ -3530,10 +3532,10 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
-          "secret-weapon",
           "bombardier",
-          "stunty",
-          "dodge"
+          "dodge",
+          "secret-weapon",
+          "stunty"
         ]
       },
       {
@@ -3556,13 +3558,12 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
+          "always-hungry",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "projectile-vomit",
           "really-stupid",
           "regeneration",
-          "always-hungry",
-          "loner-4-plus"
+          "throw-team-mate"
         ]
       }
     ]
@@ -3574,7 +3575,7 @@
     "positionals": [
       {
         "key": "lineman",
-        "name": "Lineman",
+        "name": "Wood Elf Lineman",
         "role": "Lineman",
         "cost": 65000,
         "max": 16,
@@ -3594,7 +3595,7 @@
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Wood Elf Thrower",
         "role": "Thrower",
         "cost": 85000,
         "max": 2,
@@ -3613,15 +3614,15 @@
         "av": "8+",
         "skills": [
           "pass",
-          "pro"
+          "safe-pair-of-hands"
         ]
       },
       {
         "key": "catcher",
-        "name": "Catcher",
+        "name": "Wood Elf Catcher",
         "role": "Catcher",
         "cost": 90000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -3637,8 +3638,8 @@
         "av": "8+",
         "skills": [
           "catch",
-          "sprint",
-          "dodge"
+          "dodge",
+          "sprint"
         ]
       },
       {
@@ -3660,14 +3661,14 @@
         "pa": "3+",
         "av": "8+",
         "skills": [
-          "dodge",
           "block",
+          "dodge",
           "leap"
         ]
       },
       {
         "key": "treeman",
-        "name": "Treeman",
+        "name": "Loren Forest Treeman",
         "role": "Big Guy",
         "cost": 120000,
         "max": 1,
@@ -3685,13 +3686,13 @@
         "pa": "5+",
         "av": "11+",
         "skills": [
-          "strong-arm",
-          "thick-skull",
-          "take-root",
+          "loner-4-plus",
           "mighty-blow-plus-1",
-          "throw-team-mate",
           "stand-firm",
-          "loner-4-plus"
+          "strong-arm",
+          "take-root",
+          "thick-skull",
+          "throw-team-mate"
         ]
       }
     ]

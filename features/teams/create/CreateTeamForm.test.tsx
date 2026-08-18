@@ -148,11 +148,11 @@ describe("CreateTeamForm", () => {
   it("Jugadores disponibles shows Add buttons; adding a player populates Plantilla", async () => {
     await goToStep2();
     const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
-    expect(within(availability).getByRole("button", { name: "Añadir Lineman" })).toBeTruthy();
+    expect(within(availability).getByRole("button", { name: "Añadir Human Lineman" })).toBeTruthy();
     // Empty Plantilla roster shows the empty-state message.
     expect(screen.getByText(/todavía no hay jugadores en la plantilla/i)).toBeTruthy();
 
-    fireEvent.click(within(availability).getByRole("button", { name: "Añadir Lineman" }));
+    fireEvent.click(within(availability).getByRole("button", { name: "Añadir Human Lineman" }));
     const plantilla = screen.getByRole("region", { name: "Plantilla" });
     expect(within(plantilla).getByRole("textbox")).toBeTruthy();
     const nameInput = within(plantilla).getByRole("textbox") as HTMLInputElement;
@@ -164,7 +164,7 @@ describe("CreateTeamForm", () => {
   it("player dice re-roll still works and composes a new name in step 2", async () => {
     await goToStep2();
     const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
-    fireEvent.click(within(availability).getByRole("button", { name: "Añadir Lineman" }));
+    fireEvent.click(within(availability).getByRole("button", { name: "Añadir Human Lineman" }));
     const plantilla = screen.getByRole("region", { name: "Plantilla" });
     const nameInput = within(plantilla).getByRole("textbox") as HTMLInputElement;
     expectComposedHumanName(nameInput.value);
@@ -187,14 +187,14 @@ describe("CreateTeamForm", () => {
 
   it("step 2 hides rows in Jugadores disponibles once a positional reaches its max", async () => {
     await goToStep2();
-    // Add 4 Blitzers (human max 4) through the availability table.
+    // Add 2 Blitzers (human max 2) through the availability table.
     const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
-    for (let i = 0; i < 4; i += 1) {
-      fireEvent.click(within(availability).getByRole("button", { name: "Añadir Blitzer" }));
+    for (let i = 0; i < 2; i += 1) {
+      fireEvent.click(within(availability).getByRole("button", { name: "Añadir Human Blitzer" }));
     }
-    expect(screen.queryByRole("button", { name: "Añadir Blitzer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Añadir Human Blitzer" })).toBeNull();
     // Other positionals still available.
-    expect(screen.getByRole("button", { name: "Añadir Lineman" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Añadir Human Lineman" })).toBeTruthy();
   });
 
   it("shows budget feedback with formatGold strings in step 2", async () => {
@@ -208,7 +208,7 @@ describe("CreateTeamForm", () => {
   it("shows a confirm dialog when changing race with an active roster", async () => {
     await goToStep2("Reikland Reavers", "human");
     // Add a player from the availability table (step 2).
-    fireEvent.click(screen.getByRole("button", { name: "Añadir Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Human Lineman" }));
     // Return to step 1 where the race select lives.
     fireEvent.click(screen.getByRole("button", { name: /editar nombre\/raza/i }));
     fireEvent.change(screen.getByLabelText(/raza/i), { target: { value: "orc" } });
@@ -217,7 +217,7 @@ describe("CreateTeamForm", () => {
 
   it("clears roster on confirm race change", async () => {
     await goToStep2("Reikland Reavers", "human");
-    fireEvent.click(screen.getByRole("button", { name: "Añadir Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Human Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: /editar nombre\/raza/i }));
     fireEvent.change(screen.getByLabelText(/raza/i), { target: { value: "orc" } });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
@@ -228,7 +228,7 @@ describe("CreateTeamForm", () => {
 
   it("keeps roster on cancel race change", async () => {
     await goToStep2("Reikland Reavers", "human");
-    fireEvent.click(screen.getByRole("button", { name: "Añadir Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Human Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: /editar nombre\/raza/i }));
     fireEvent.change(screen.getByLabelText(/raza/i), { target: { value: "orc" } });
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
