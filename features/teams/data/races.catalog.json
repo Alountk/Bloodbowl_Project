@@ -1156,7 +1156,7 @@
     "positionals": [
       {
         "key": "linewoman",
-        "name": "Linewoman",
+        "name": "Eagle Warrior",
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
@@ -1178,7 +1178,7 @@
       },
       {
         "key": "thrower",
-        "name": "Thrower",
+        "name": "Python Warrior",
         "role": "Thrower",
         "cost": 80000,
         "max": 2,
@@ -1196,18 +1196,18 @@
         "pa": "3+",
         "av": "8+",
         "skills": [
-          "on-the-ball",
           "dodge",
+          "on-the-ball",
           "pass",
           "safe-pass"
         ]
       },
       {
         "key": "catcher",
-        "name": "Catcher",
-        "role": "Catcher",
+        "name": "Piranha Warrior",
+        "role": "Blitzer",
         "cost": 90000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "A"
@@ -1221,17 +1221,17 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
+          "dodge",
           "hit-and-run",
-          "jump-up",
-          "dodge"
+          "jump-up"
         ]
       },
       {
         "key": "blitzer",
-        "name": "Blitzer",
-        "role": "Blitzer",
+        "name": "Jaguar Warrior",
+        "role": "Blocker",
         "cost": 110000,
-        "max": 4,
+        "max": 2,
         "accessPrimary": [
           "G",
           "F"
@@ -1245,8 +1245,8 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "dodge",
-          "defensive"
+          "defensive",
+          "dodge"
         ]
       }
     ]
