@@ -69,10 +69,10 @@ describe("Team creation", () => {
     fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
 
     const availability = screen.getByRole("region", { name: "Jugadores disponibles" });
-    expect(within(availability).getByText("Lineman · (Human, Línea)")).toBeTruthy();
-    expect(within(availability).getByText("Blitzer · (Human, Blitzer)")).toBeTruthy();
-    expect(within(availability).getByText("Thrower · (Human, Lanzador)")).toBeTruthy();
-    expect(within(availability).getByText("Catcher · (Human, Receptor)")).toBeTruthy();
+    expect(within(availability).getByText("Human Lineman · (Human, Línea)")).toBeTruthy();
+    expect(within(availability).getByText("Human Blitzer · (Human, Blitzer)")).toBeTruthy();
+    expect(within(availability).getByText("Human Thrower · (Human, Lanzador)")).toBeTruthy();
+    expect(within(availability).getByText("Human Catcher · (Human, Receptor)")).toBeTruthy();
     expect(within(availability).getByText("Ogre · (Human, Grandullón)")).toBeTruthy();
   });
 
@@ -89,8 +89,8 @@ describe("Team creation", () => {
     renderWithStoreAndList();
     await goToStep2("Half Squad", "human");
 
-    fireEvent.click(screen.getByRole("button", { name: "Añadir Lineman" }));
-    fireEvent.click(screen.getByRole("button", { name: "Añadir Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Human Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Human Lineman" }));
     fireEvent.click(screen.getByRole("button", { name: "Crear equipo" }));
 
     expect(screen.getByText(/al menos 11 jugadores/i)).toBeTruthy();
@@ -107,12 +107,12 @@ describe("Team creation", () => {
     expect(addDeathroller.disabled).toBe(false);
     fireEvent.click(addDeathroller);
     for (let index = 0; index < 11; index += 1) {
-      const addLineman = screen.getByRole("button", { name: "Añadir Lineman" }) as HTMLButtonElement;
+      const addLineman = screen.getByRole("button", { name: "Añadir Dwarf Lineman" }) as HTMLButtonElement;
       expect(addLineman.disabled).toBe(false);
       fireEvent.click(addLineman);
     }
     // At 940k the 12th lineman button should be disabled.
-    const addLinemanBtn = screen.getByRole("button", { name: "Añadir Lineman" }) as HTMLButtonElement;
+    const addLinemanBtn = screen.getByRole("button", { name: "Añadir Dwarf Lineman" }) as HTMLButtonElement;
     expect(addLinemanBtn.disabled).toBe(true);
   });
 
@@ -139,13 +139,13 @@ describe("Team creation", () => {
     await goToStep2("Reikland Reavers", "human");
 
     for (let i = 0; i < 11; i++) {
-      fireEvent.click(screen.getByRole("button", { name: "Añadir Lineman" }));
+      fireEvent.click(screen.getByRole("button", { name: "Añadir Human Lineman" }));
     }
     fireEvent.click(screen.getByRole("button", { name: "Crear equipo" }));
 
     await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
     const teamCard = screen.getByText("Reikland Reavers").closest("li")!;
     expect(within(teamCard).getByText("Human")).toBeTruthy();
-    expect(within(teamCard).getByText("11 jugadores · 11x Lineman")).toBeTruthy();
+    expect(within(teamCard).getByText("11 jugadores · 11x Human Lineman")).toBeTruthy();
   });
 });

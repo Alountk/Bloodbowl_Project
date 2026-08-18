@@ -116,10 +116,10 @@ describe("TeamList", () => {
 
     expect(screen.getByText("Reikland Reavers")).toBeTruthy();
     expect(screen.getByText("Human")).toBeTruthy();
-    expect(screen.getByText("11 jugadores · 7x Lineman · 4x Blitzer")).toBeTruthy();
+    expect(screen.getByText("11 jugadores · 7x Human Lineman · 4x Human Blitzer")).toBeTruthy();
     expect(screen.getByText("Da Krumpaz")).toBeTruthy();
     expect(screen.getByText("Orc")).toBeTruthy();
-    expect(screen.getByText("11 jugadores · 11x Blitzer")).toBeTruthy();
+    expect(screen.getByText("11 jugadores · 11x Orc Blitzer")).toBeTruthy();
   });
 
   it("shows an empty state when there are no teams", async () => {

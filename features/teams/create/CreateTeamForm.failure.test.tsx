@@ -33,10 +33,10 @@ async function fillAndSubmit(stored: TeamStore) {
   fireEvent.change(screen.getByLabelText(/nombre del equipo/i), { target: { value: "Reikland" } });
   fireEvent.change(screen.getByLabelText(/raza/i), { target: { value: "human" } });
   fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Añadir Lineman" })).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole("button", { name: "Añadir Human Lineman" })).toBeTruthy());
   // step 2 — 11 Linemen (BB2025 minimum) so the form is valid except for storage.
   for (let i = 0; i < 11; i += 1) {
-    fireEvent.click(screen.getByRole("button", { name: "Añadir Lineman" }));
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Human Lineman" }));
   }
   fireEvent.click(screen.getByRole("button", { name: /crear equipo/i }));
 }
