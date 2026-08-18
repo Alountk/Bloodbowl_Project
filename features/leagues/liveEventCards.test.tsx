@@ -83,7 +83,7 @@ describe("LiveEventCards — team cards 68% + generic 100% (MVT-1/D3)", () => {
     expect(row.querySelector(".token svg")).toBeTruthy();
     expect(row.querySelector(".dorsal")?.textContent).toBe("#1");
     expect(row.querySelector(".name")?.textContent).toBe("Blitzer A");
-    expect(row.querySelector(".pos")?.textContent).toBe("Blitzer");
+    expect(row.querySelector(".pos")?.textContent).toBe("Human Blitzer");
     const dline = row.querySelector(".dline");
     expect(dline?.textContent).toContain("Touchdown");
     expect(dline?.textContent).toContain("(★3)");
