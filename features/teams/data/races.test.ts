@@ -618,20 +618,20 @@ describe("REQ-RACE-04: Exhaustive parity — elven-union positionals", () => {
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("elven-union exists, rerollCost 50000", () => { const r = getRaceById("elven-union")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(50_000); });
-  it("elven-union lineman: MA6 ST3 AG2+ PA3+ AV8+ cost65000 skills:dejada", () => {
+  it("elven-union lineman: MA6 ST3 AG2+ PA3+ AV8+ cost65000 skills:fumblerooski", () => {
     const p = fp("elven-union", "lineman")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(65_000);
-    expect(norm(p.skills)).toEqual(norm(["Dejada"]));
+    expect(norm(p.skills)).toEqual(norm(["Fumblerooski"]));
   });
-  it("elven-union thrower: MA6 ST3 AG2+ PA2+ AV8+ cost75000 skills:pass,running pass", () => {
+  it("elven-union thrower: MA6 ST3 AG2+ PA2+ AV8+ cost75000 skills:hail mary pass,pass", () => {
     const p = fp("elven-union", "thrower")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("2+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(75_000);
-    expect(norm(p.skills)).toEqual(norm(["Pass", "Running Pass"]));
+    expect(norm(p.skills)).toEqual(norm(["Hail Mary Pass", "Pass"]));
   });
-  it("elven-union catcher: MA8 ST3 AG2+ PA4+ AV8+ cost100000 skills:catch,nerves of steel,safe pair of hands", () => {
+  it("elven-union catcher: MA8 ST3 AG2+ PA4+ AV8+ cost100000 skills:catch,diving catch,nerves of steel", () => {
     const p = fp("elven-union", "catcher")!; expect(p).toBeDefined();
     expect(p.ma).toBe(8); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(100_000);
-    expect(norm(p.skills)).toEqual(norm(["Catch", "Nerves of Steel", "Safe Pair of Hands"]));
+    expect(norm(p.skills)).toEqual(norm(["Catch", "Diving Catch", "Nerves of Steel"]));
   });
   it("elven-union blitzer: MA7 ST3 AG2+ PA3+ AV9+ cost115000 skills:sidestep,block", () => {
     const p = fp("elven-union", "blitzer")!; expect(p).toBeDefined();
@@ -687,11 +687,10 @@ describe("REQ-RACE-04: Exhaustive parity — dark-elf positionals", () => {
     expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(105_000);
     expect(norm(p.skills)).toEqual(norm(["Block"]));
   });
-  it("dark-elf runner: MA7 ST3 AG2+ PA3+ AV8+ cost80000", () => {
+  it("dark-elf runner: MA7 ST3 AG2+ PA3+ AV8+ cost80000 skills:dump-off,punt", () => {
     const p = fp("dark-elf", "runner")!; expect(p).toBeDefined();
     expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(80_000);
-    // skills stored as Spanish OCR-derived strings matching implementation
-    expect(norm(p.skills)).toEqual(norm(["Pase precipitado", "Patada de despeje"]));
+    expect(norm(p.skills)).toEqual(norm(["Dump-off", "Punt"]));
   });
   it("dark-elf assassin: MA7 ST3 AG2+ PA4+ AV8+ cost90000 skills:stab,hit and run,shadowing", () => {
     const p = fp("dark-elf", "assassin")!; expect(p).toBeDefined();

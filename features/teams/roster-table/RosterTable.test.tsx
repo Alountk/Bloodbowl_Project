@@ -188,10 +188,10 @@ describe("RosterTable", () => {
       expect(screen.queryByText(/\(general\)/i)).toBeNull();
     });
 
-    it("falls back to the English name when no Spanish translation exists", () => {
+    it("renders a skill's Spanish translation when present", () => {
       render(<RosterTable players={[{ id: "p7", name: "B", positionalKey: "blitzer" }]} race={mockRace} readOnly />);
-      // "block" has no es translation -> English "Block".
-      expect(screen.getByText("Block")).toBeTruthy();
+      // "block" has es "Placar" (BB2025 rulebook); previously it fell back to English.
+      expect(screen.getByText("Placar")).toBeTruthy();
     });
 
     it("renders Ninguna for a positional with no starting skills", () => {
@@ -431,8 +431,8 @@ describe("RosterTable", () => {
 
     it("renders Spanish skill and PRIMARIAS/SECUNDARIAS letters in editable cards", () => {
       renderMobile(<RosterTable players={[{ id: "p2", name: "Smash", positionalKey: "blitzer" }]} race={mockRace} />);
-      // blitzer has skills ["block"] (no es -> English "Block") and accessPrimary G F.
-      expect(screen.getByText("Block")).toBeTruthy();
+      // blitzer has skills ["block"] (es -> "Placar") and accessPrimary G F.
+      expect(screen.getByText("Placar")).toBeTruthy();
       expect(screen.getByText("G F")).toBeTruthy();
       expect(screen.getByText("A")).toBeTruthy();
     });
