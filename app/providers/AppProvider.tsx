@@ -20,6 +20,8 @@ interface AppContextValue {
   isHydrated: boolean;
   addTeam: (values: CreateTeamValues) => Promise<void>;
   removeTeam: (id: string) => Promise<void>;
+  /** Re-lists the store so server-side mutations (hire/fire, winnings) surface. */
+  refreshTeams: () => Promise<void>;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   /** True when the shell is backed by an authenticated (API) session. */
@@ -74,18 +76,24 @@ export function AppProvider({
     [store],
   );
 
+  const refreshTeams = useCallback(async () => {
+    const loaded = await store.list();
+    setTeams(loaded);
+  }, [store]);
+
   const value = useMemo(
     () => ({
       teams,
       isHydrated,
       addTeam,
       removeTeam,
+      refreshTeams,
       searchQuery,
       setSearchQuery,
       authenticated,
       logout: onLogout,
     }),
-    [teams, isHydrated, addTeam, removeTeam, searchQuery, authenticated, onLogout],
+    [teams, isHydrated, addTeam, removeTeam, refreshTeams, searchQuery, authenticated, onLogout],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

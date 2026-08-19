@@ -1,6 +1,12 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import type { ImproveBody } from "@/lib/progression";
-import { fetchTeamProgression, improvePlayer, renamePlayer } from "./api";
+import {
+  fetchTeamProgression,
+  improvePlayer,
+  renamePlayer,
+  hirePlayer,
+  firePlayer,
+} from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -116,6 +122,75 @@ describe("renamePlayer", () => {
     );
     await expect(renamePlayer("t1", "pl1", "")).rejects.toThrow(
       "Name must be between 1 and 50 characters",
+    );
+  });
+});
+
+describe("hirePlayer", () => {
+  it("POSTs the positionalKey to the hire route and resolves roster + treasury", async () => {
+    const response = {
+      roster: [{ id: "p1", name: "Marty", positionalKey: "blitzer" }],
+      treasury: 850_000,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(response) }),
+    );
+
+    const result = await hirePlayer("t1", "blitzer");
+    expect(result).toEqual(response);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/teams/t1/players",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ positionalKey: "blitzer" }),
+      }),
+    );
+  });
+
+  it("throws the server error on an over-budget hire (409)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ error: "Not enough treasury to hire this player" }),
+      }),
+    );
+    await expect(hirePlayer("t1", "ogre")).rejects.toThrow(
+      "Not enough treasury to hire this player",
+    );
+  });
+});
+
+describe("firePlayer", () => {
+  it("DELETEs the player and resolves roster + treasury", async () => {
+    const response = { roster: [], treasury: 115_000 };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(response) }),
+    );
+
+    const result = await firePlayer("t1", "pl1");
+    expect(result).toEqual(response);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/teams/t1/players/pl1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("throws the server error when firing below the 11-player minimum", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ error: "A team cannot drop below 11 players" }),
+      }),
+    );
+    await expect(firePlayer("t1", "pl1")).rejects.toThrow(
+      "A team cannot drop below 11 players",
     );
   });
 });

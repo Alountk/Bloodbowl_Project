@@ -91,10 +91,10 @@ export async function reorderRoster(
 }
 
 /** The persisted roster + treasury after a hire/fire (RAU-11/10). */
-export interface RosterTreasuryResult {
+export type RosterTreasuryResult = {
   roster: { id: string; name: string; positionalKey: string }[];
   treasury: number;
-}
+};
 
 /**
  * Hires a positional onto the roster (`POST /api/teams/[teamId]/players`).
