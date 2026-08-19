@@ -15,7 +15,8 @@
         ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -36,7 +37,8 @@
         ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -55,11 +57,12 @@
         "cost": 85000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 7,
         "st": 3,
@@ -78,11 +81,13 @@
         "cost": 75000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
-          "P"
+          "F",
+          "P",
+          "T"
         ],
         "ma": 8,
         "st": 3,
@@ -104,9 +109,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
-          "M"
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -114,11 +118,36 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "really-stupid",
+          "bone-head",
           "loner-3-plus",
           "mighty-blow-plus-1",
           "thick-skull",
           "throw-team-mate"
+        ]
+      },
+      {
+        "key": "halfling-hopeful",
+        "name": "Halfling Hopeful",
+        "role": "Lineman",
+        "cost": 30000,
+        "max": 3,
+        "accessPrimary": [
+          "A"
+        ],
+        "accessSecondary": [
+          "F",
+          "G",
+          "T"
+        ],
+        "ma": 5,
+        "st": 2,
+        "ag": "3+",
+        "pa": "4+",
+        "av": "7+",
+        "skills": [
+          "dodge",
+          "right-stuff",
+          "stunty"
         ]
       }
     ]
@@ -135,10 +164,12 @@
         "cost": 50000,
         "max": 16,
         "accessPrimary": [
+          "F",
           "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 5,
         "st": 3,
@@ -159,7 +190,8 @@
         ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -178,11 +210,12 @@
         "cost": 85000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -201,11 +234,12 @@
         "cost": 95000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 5,
         "st": 4,
@@ -226,12 +260,13 @@
         "cost": 40000,
         "max": 4,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "P",
-          "F"
+          "P"
         ],
         "ma": 6,
         "st": 2,
@@ -254,8 +289,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 4,
@@ -287,7 +322,8 @@
         "cost": 70000,
         "max": 16,
         "accessPrimary": [
-          "G"
+          "G",
+          "T"
         ],
         "accessSecondary": [
           "F"
@@ -310,8 +346,8 @@
         "cost": 100000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "P"
@@ -322,9 +358,9 @@
         "pa": "4+",
         "av": "10+",
         "skills": [
-          "defensive",
-          "arm-bar",
           "block",
+          "diving-tackle",
+          "tackle",
           "thick-skull"
         ]
       },
@@ -339,6 +375,7 @@
           "P"
         ],
         "accessSecondary": [
+          "A",
           "F"
         ],
         "ma": 6,
@@ -359,10 +396,12 @@
         "cost": 95000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
-        "accessSecondary": [],
+        "accessSecondary": [
+          "T"
+        ],
         "ma": 5,
         "st": 3,
         "ag": "4+",
@@ -383,9 +422,12 @@
         "cost": 170000,
         "max": 1,
         "accessPrimary": [
-          "F"
+          "F",
+          "T"
         ],
-        "accessSecondary": [],
+        "accessSecondary": [
+          "G"
+        ],
         "ma": 5,
         "st": 7,
         "ag": "5+",
@@ -416,8 +458,8 @@
         "cost": 65000,
         "max": 16,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
           "F"
@@ -428,7 +470,7 @@
         "pa": "3+",
         "av": "8+",
         "skills": [
-          "dump-off"
+          "fumblerooski"
         ]
       },
       {
@@ -438,8 +480,8 @@
         "cost": 75000,
         "max": 2,
         "accessPrimary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "accessSecondary": [
@@ -451,8 +493,8 @@
         "pa": "2+",
         "av": "8+",
         "skills": [
-          "pass",
-          "running-pass"
+          "hail-mary-pass",
+          "pass"
         ]
       },
       {
@@ -462,8 +504,8 @@
         "cost": 100000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
           "F"
@@ -475,8 +517,8 @@
         "av": "8+",
         "skills": [
           "catch",
-          "nerves-of-steel",
-          "safe-pair-of-hands"
+          "diving-catch",
+          "nerves-of-steel"
         ]
       },
       {
@@ -486,12 +528,12 @@
         "cost": 115000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
-          "P",
-          "F"
+          "F",
+          "P"
         ],
         "ma": 7,
         "st": 3,
@@ -517,12 +559,13 @@
         "cost": 50000,
         "max": 16,
         "accessPrimary": [
-          "G"
+          "G",
+          "T"
         ],
         "accessSecondary": [
           "A",
-          "M",
-          "F"
+          "F",
+          "M"
         ],
         "ma": 7,
         "st": 3,
@@ -543,8 +586,9 @@
         ],
         "accessSecondary": [
           "A",
+          "F",
           "M",
-          "F"
+          "T"
         ],
         "ma": 7,
         "st": 3,
@@ -563,12 +607,13 @@
         "cost": 85000,
         "max": 2,
         "accessPrimary": [
+          "A",
           "G",
-          "A"
+          "T"
         ],
         "accessSecondary": [
-          "M",
-          "F"
+          "F",
+          "M"
         ],
         "ma": 9,
         "st": 2,
@@ -587,12 +632,13 @@
         "cost": 90000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A",
-          "M"
+          "M",
+          "T"
         ],
         "ma": 8,
         "st": 3,
@@ -614,8 +660,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "M"
         ],
         "ma": 6,
@@ -645,11 +691,12 @@
         "cost": 65000,
         "max": 16,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
-          "F"
+          "F",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -665,12 +712,13 @@
         "cost": 105000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
+          "F",
           "P",
-          "F"
+          "T"
         ],
         "ma": 7,
         "st": 3,
@@ -688,12 +736,13 @@
         "cost": 80000,
         "max": 2,
         "accessPrimary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "accessSecondary": [
-          "F"
+          "F",
+          "T"
         ],
         "ma": 7,
         "st": 3,
@@ -701,8 +750,8 @@
         "pa": "3+",
         "av": "8+",
         "skills": [
-          "running-pass",
-          "kick"
+          "dump-off",
+          "punt"
         ]
       },
       {
@@ -712,11 +761,12 @@
         "cost": 90000,
         "max": 2,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
         "accessSecondary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "ma": 7,
         "st": 3,
@@ -736,11 +786,12 @@
         "cost": 110000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
-          "F"
+          "F",
+          "T"
         ],
         "ma": 7,
         "st": 3,
@@ -771,7 +822,8 @@
         ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 5,
         "st": 3,
@@ -790,7 +842,8 @@
         "cost": 40000,
         "max": 16,
         "accessPrimary": [
-          "G"
+          "G",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -814,12 +867,13 @@
         "cost": 75000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
+          "F",
           "P",
-          "F"
+          "T"
         ],
         "ma": 7,
         "st": 3,
@@ -838,10 +892,12 @@
         "cost": 95000,
         "max": 2,
         "accessPrimary": [
+          "F",
           "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -865,8 +921,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 3,
         "st": 5,
@@ -897,8 +953,9 @@
         ],
         "accessSecondary": [
           "A",
+          "F",
           "P",
-          "F"
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -917,12 +974,13 @@
         "cost": 100000,
         "max": 4,
         "accessPrimary": [
+          "F",
           "G",
-          "M",
-          "F"
+          "M"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 5,
         "st": 4,
@@ -940,12 +998,12 @@
         "cost": 115000,
         "max": 1,
         "accessPrimary": [
-          "M",
-          "F"
+          "F",
+          "M"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 4,
@@ -964,18 +1022,45 @@
         ]
       },
       {
+        "key": "ogre",
+        "name": "Ogre",
+        "role": "Big Guy",
+        "cost": 140000,
+        "max": 1,
+        "accessPrimary": [
+          "F",
+          "M"
+        ],
+        "accessSecondary": [
+          "A",
+          "G"
+        ],
+        "ma": 5,
+        "st": 5,
+        "ag": "4+",
+        "pa": "5+",
+        "av": "10+",
+        "skills": [
+          "bone-head",
+          "loner-4-plus",
+          "mighty-blow-plus-1",
+          "thick-skull",
+          "throw-team-mate"
+        ]
+      },
+      {
         "key": "minotaur",
         "name": "Minotaur",
         "role": "Big Guy",
         "cost": 150000,
         "max": 1,
         "accessPrimary": [
-          "M",
-          "F"
+          "F",
+          "M"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -1005,11 +1090,12 @@
         "cost": 40000,
         "max": 16,
         "accessPrimary": [
-          "A"
+          "T"
         ],
         "accessSecondary": [
-          "G",
-          "F"
+          "A",
+          "F",
+          "G"
         ],
         "ma": 6,
         "st": 3,
@@ -1025,7 +1111,8 @@
         "cost": 60000,
         "max": 2,
         "accessPrimary": [
-          "G"
+          "G",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -1048,12 +1135,13 @@
         "cost": 70000,
         "max": 4,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A",
-          "M"
+          "M",
+          "T"
         ],
         "ma": 4,
         "st": 3,
@@ -1073,12 +1161,13 @@
         "cost": 80000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A",
-          "M"
+          "M",
+          "T"
         ],
         "ma": 5,
         "st": 3,
@@ -1099,12 +1188,13 @@
         "cost": 130000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A",
-          "M"
+          "M",
+          "T"
         ],
         "ma": 6,
         "st": 4,
@@ -1125,12 +1215,12 @@
         "cost": 150000,
         "max": 1,
         "accessPrimary": [
-          "M",
-          "F"
+          "F",
+          "M"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -1208,8 +1298,8 @@
         "cost": 90000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
           "F"
@@ -1232,8 +1322,8 @@
         "cost": 110000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A"
@@ -1263,7 +1353,8 @@
         "max": 16,
         "accessPrimary": [
           "G",
-          "M"
+          "M",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -1286,7 +1377,8 @@
         "max": 1,
         "accessPrimary": [
           "G",
-          "M"
+          "M",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -1309,7 +1401,8 @@
         "max": 1,
         "accessPrimary": [
           "A",
-          "M"
+          "M",
+          "T"
         ],
         "accessSecondary": [
           "G",
@@ -1335,7 +1428,8 @@
         "max": 1,
         "accessPrimary": [
           "G",
-          "M"
+          "M",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -1357,12 +1451,13 @@
         "cost": 65000,
         "max": 1,
         "accessPrimary": [
-          "G",
           "A",
+          "G",
           "M"
         ],
         "accessSecondary": [
-          "F"
+          "F",
+          "P"
         ],
         "ma": 6,
         "st": 3,
@@ -1371,6 +1466,33 @@
         "av": "9+",
         "skills": [
           "animosity-all"
+        ]
+      },
+      {
+        "key": "renegade-human-thrower",
+        "name": "Renegade Human Thrower",
+        "role": "Thrower",
+        "cost": 75000,
+        "max": 1,
+        "accessPrimary": [
+          "G",
+          "M",
+          "P",
+          "T"
+        ],
+        "accessSecondary": [
+          "A",
+          "F"
+        ],
+        "ma": 6,
+        "st": 3,
+        "ag": "3+",
+        "pa": "3+",
+        "av": "9+",
+        "skills": [
+          "animosity-all",
+          "pass",
+          "sure-hands"
         ]
       },
       {
@@ -1383,8 +1505,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "M"
         ],
         "ma": 5,
@@ -1393,7 +1515,7 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "really-stupid",
+          "bone-head",
           "loner-3-plus",
           "mighty-blow-plus-1",
           "thick-skull",
@@ -1410,10 +1532,10 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
-          "P",
-          "M"
+          "G",
+          "M",
+          "P"
         ],
         "ma": 4,
         "st": 5,
@@ -1440,8 +1562,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "M"
         ],
         "ma": 5,
@@ -1468,8 +1590,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "M"
         ],
         "ma": 6,
@@ -1502,8 +1624,9 @@
           "A"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "F"
+          "T"
         ],
         "ma": 5,
         "st": 2,
@@ -1526,8 +1649,9 @@
           "A"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "F"
+          "T"
         ],
         "ma": 5,
         "st": 2,
@@ -1553,8 +1677,9 @@
           "P"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "F"
+          "T"
         ],
         "ma": 5,
         "st": 2,
@@ -1577,8 +1702,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 2,
@@ -1609,8 +1734,13 @@
         "role": "Lineman",
         "cost": 65000,
         "max": 16,
-        "accessPrimary": [],
-        "accessSecondary": [],
+        "accessPrimary": [
+          "A",
+          "G"
+        ],
+        "accessSecondary": [
+          "F"
+        ],
         "ma": 6,
         "st": 3,
         "ag": "2+",
@@ -1624,16 +1754,23 @@
         "role": "Thrower",
         "cost": 90000,
         "max": 2,
-        "accessPrimary": [],
-        "accessSecondary": [],
+        "accessPrimary": [
+          "A",
+          "G",
+          "P"
+        ],
+        "accessSecondary": [
+          "F"
+        ],
         "ma": 6,
         "st": 3,
         "ag": "2+",
         "pa": "2+",
         "av": "9+",
         "skills": [
+          "cloud-burster",
           "pass",
-          "sure-hands"
+          "safe-pass"
         ]
       },
       {
@@ -1642,16 +1779,22 @@
         "role": "Runner",
         "cost": 110000,
         "max": 2,
-        "accessPrimary": [],
-        "accessSecondary": [],
+        "accessPrimary": [
+          "A",
+          "G"
+        ],
+        "accessSecondary": [
+          "F"
+        ],
         "ma": 8,
         "st": 3,
         "ag": "2+",
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "catch",
-          "dodge"
+          "block",
+          "my-ball",
+          "steady-footing"
         ]
       },
       {
@@ -1660,8 +1803,14 @@
         "role": "Blitzer",
         "cost": 110000,
         "max": 2,
-        "accessPrimary": [],
-        "accessSecondary": [],
+        "accessPrimary": [
+          "A",
+          "G"
+        ],
+        "accessSecondary": [
+          "F",
+          "P"
+        ],
         "ma": 7,
         "st": 3,
         "ag": "2+",
@@ -1689,8 +1838,9 @@
           "A"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "F"
+          "T"
         ],
         "ma": 5,
         "st": 2,
@@ -1711,17 +1861,19 @@
         "cost": 50000,
         "max": 2,
         "accessPrimary": [],
-        "accessSecondary": [],
+        "accessSecondary": [
+          "A"
+        ],
         "ma": 7,
         "st": 2,
         "ag": "2+",
         "pa": "—",
         "av": "6+",
         "skills": [
+          "dodge",
+          "my-ball",
           "side-step",
-          "safe-pair-of-hands",
-          "slippery",
-          "dodge"
+          "stunty"
         ]
       },
       {
@@ -1735,7 +1887,8 @@
           "P"
         ],
         "accessSecondary": [
-          "G"
+          "G",
+          "T"
         ],
         "ma": 5,
         "st": 2,
@@ -1759,8 +1912,9 @@
           "A"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "F"
+          "T"
         ],
         "ma": 5,
         "st": 2,
@@ -1768,9 +1922,9 @@
         "pa": "4+",
         "av": "8+",
         "skills": [
-          "defensive",
+          "guard",
           "jump-up",
-          "slippery",
+          "stunty",
           "wrestle"
         ]
       },
@@ -1784,8 +1938,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 2,
@@ -1833,60 +1987,76 @@
         ]
       },
       {
-        "key": "blitzer",
-        "name": "Blitzer",
-        "role": "Blitzer",
+        "key": "knight-thrower",
+        "name": "Bretonnian Knight Thrower",
+        "role": "Thrower",
+        "cost": 80000,
+        "max": 2,
+        "accessPrimary": [
+          "G",
+          "P"
+        ],
+        "accessSecondary": [
+          "A",
+          "F"
+        ],
+        "ma": 6,
+        "st": 3,
+        "ag": "3+",
+        "pa": "3+",
+        "av": "9+",
+        "skills": [
+          "dauntless",
+          "nerves-of-steel",
+          "pass"
+        ]
+      },
+      {
+        "key": "knight-catcher",
+        "name": "Bretonnian Knight Catcher",
+        "role": "Catcher",
         "cost": 85000,
-        "max": 4,
-        "accessPrimary": [],
-        "accessSecondary": [],
+        "max": 2,
+        "accessPrimary": [
+          "A",
+          "G"
+        ],
+        "accessSecondary": [
+          "F"
+        ],
         "ma": 7,
         "st": 3,
         "ag": "3+",
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "defensive",
-          "block"
+          "catch",
+          "dauntless",
+          "nerves-of-steel"
         ]
       },
       {
-        "key": "blocker",
-        "name": "Blocker",
-        "role": "Blocker",
-        "cost": 65000,
-        "max": 4,
-        "accessPrimary": [],
-        "accessSecondary": [],
-        "ma": 5,
+        "key": "grail-knight",
+        "name": "Grail Knight",
+        "role": "Blitzer",
+        "cost": 95000,
+        "max": 2,
+        "accessPrimary": [
+          "F",
+          "G"
+        ],
+        "accessSecondary": [
+          "A"
+        ],
+        "ma": 7,
         "st": 3,
-        "ag": "4+",
-        "pa": "6+",
-        "av": "9+",
-        "skills": [
-          "wrestle",
-          "thick-skull"
-        ]
-      },
-      {
-        "key": "ogre",
-        "name": "Ogre",
-        "role": "Big Guy",
-        "cost": 140000,
-        "max": 1,
-        "accessPrimary": [],
-        "accessSecondary": [],
-        "ma": 5,
-        "st": 5,
-        "ag": "4+",
-        "pa": "5+",
+        "ag": "3+",
+        "pa": "4+",
         "av": "10+",
         "skills": [
-          "thick-skull",
-          "really-stupid",
-          "mighty-blow-plus-1",
-          "throw-team-mate",
-          "loner-3-plus"
+          "block",
+          "dauntless",
+          "steady-footing"
         ]
       }
     ]
@@ -1902,7 +2072,9 @@
         "role": "Lineman",
         "cost": 45000,
         "max": 16,
-        "accessPrimary": [],
+        "accessPrimary": [
+          "G"
+        ],
         "accessSecondary": [
           "A",
           "F"
@@ -1923,8 +2095,8 @@
         "cost": 85000,
         "max": 4,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A"
@@ -1959,8 +2131,9 @@
         "pa": "2+",
         "av": "9+",
         "skills": [
+          "give-and-go",
           "pass",
-          "running-pass"
+          "pro"
         ]
       },
       {
@@ -1970,10 +2143,13 @@
         "cost": 90000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
-        "accessSecondary": [],
+        "accessSecondary": [
+          "F",
+          "P"
+        ],
         "ma": 7,
         "st": 3,
         "ag": "3+",
@@ -1995,9 +2171,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
-          "M"
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -2005,7 +2180,7 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "really-stupid",
+          "bone-head",
           "loner-3-plus",
           "mighty-blow-plus-1",
           "thick-skull",
@@ -2031,7 +2206,8 @@
         ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -2049,13 +2225,14 @@
         "cost": 70000,
         "max": 2,
         "accessPrimary": [
+          "F",
           "G",
-          "M",
-          "F"
+          "M"
         ],
         "accessSecondary": [
           "A",
-          "P"
+          "P",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -2076,12 +2253,13 @@
         "cost": 105000,
         "max": 4,
         "accessPrimary": [
+          "F",
           "G",
-          "M",
-          "F"
+          "M"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 5,
         "st": 4,
@@ -2099,12 +2277,12 @@
         "cost": 160000,
         "max": 1,
         "accessPrimary": [
-          "M",
-          "F"
+          "F",
+          "M"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -2136,9 +2314,10 @@
           "A"
         ],
         "accessSecondary": [
+          "F",
           "G",
           "P",
-          "F"
+          "T"
         ],
         "ma": 8,
         "st": 2,
@@ -2151,14 +2330,41 @@
         ]
       },
       {
+        "key": "chameleon-skink",
+        "name": "Chameleon Skink",
+        "role": "Thrower",
+        "cost": 70000,
+        "max": 2,
+        "accessPrimary": [
+          "A",
+          "P"
+        ],
+        "accessSecondary": [
+          "F",
+          "G",
+          "T"
+        ],
+        "ma": 7,
+        "st": 2,
+        "ag": "3+",
+        "pa": "3+",
+        "av": "8+",
+        "skills": [
+          "dodge",
+          "on-the-ball",
+          "shadowing",
+          "stunty"
+        ]
+      },
+      {
         "key": "saurus-blocker",
         "name": "Saurus Blocker",
         "role": "Blocker",
         "cost": 90000,
         "max": 6,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A"
@@ -2183,8 +2389,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 6,
         "st": 5,
@@ -2192,7 +2398,7 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "really-stupid",
+          "bone-head",
           "loner-4-plus",
           "mighty-blow-plus-1",
           "prehensile-tail",
@@ -2213,7 +2419,8 @@
         "cost": 40000,
         "max": 16,
         "accessPrimary": [
-          "G"
+          "G",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -2237,11 +2444,13 @@
         "cost": 120000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
-          "P"
+          "F",
+          "P",
+          "T"
         ],
         "ma": 8,
         "st": 3,
@@ -2261,11 +2470,12 @@
         "cost": 110000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 4,
         "st": 4,
@@ -2286,11 +2496,12 @@
         "cost": 85000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -2312,10 +2523,14 @@
         "cost": 75000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
-        "accessSecondary": [],
+        "accessSecondary": [
+          "F",
+          "P",
+          "T"
+        ],
         "ma": 7,
         "st": 3,
         "ag": "3+",
@@ -2339,11 +2554,13 @@
         "role": "Lineman",
         "cost": 50000,
         "max": 16,
-        "accessPrimary": [],
+        "accessPrimary": [
+          "G"
+        ],
         "accessSecondary": [
           "A",
-          "P",
-          "F"
+          "F",
+          "P"
         ],
         "ma": 6,
         "st": 3,
@@ -2358,40 +2575,14 @@
         ]
       },
       {
-        "key": "thrower",
-        "name": "Thrower",
-        "role": "Thrower",
-        "cost": 95000,
-        "max": 2,
-        "accessPrimary": [
-          "G",
-          "A",
-          "P"
-        ],
-        "accessSecondary": [
-          "F"
-        ],
-        "ma": 7,
-        "st": 3,
-        "ag": "3+",
-        "pa": "3+",
-        "av": "8+",
-        "skills": [
-          "dauntless",
-          "catch",
-          "pass",
-          "strip-ball"
-        ]
-      },
-      {
         "key": "berserker",
         "name": "Norse Berserker",
         "role": "Blitzer",
         "cost": 90000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A",
@@ -2415,8 +2606,8 @@
         "cost": 95000,
         "max": 2,
         "accessPrimary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "accessSecondary": [
@@ -2441,8 +2632,8 @@
         "cost": 105000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A"
@@ -2467,8 +2658,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -2481,6 +2672,29 @@
           "frenzy",
           "loner-4-plus",
           "unchannelled-fury"
+        ]
+      },
+      {
+        "key": "beer-boar",
+        "name": "Beer Boar",
+        "role": "Special",
+        "cost": 20000,
+        "max": 2,
+        "accessPrimary": [],
+        "accessSecondary": [
+          "A"
+        ],
+        "ma": 5,
+        "st": 1,
+        "ag": "3+",
+        "pa": "—",
+        "av": "6+",
+        "skills": [
+          "dodge",
+          "no-hands",
+          "pick-me-up",
+          "stunty",
+          "titchy"
         ]
       }
     ]
@@ -2498,7 +2712,8 @@
         "max": 16,
         "accessPrimary": [
           "G",
-          "M"
+          "M",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -2511,7 +2726,7 @@
         "av": "9+",
         "skills": [
           "decay",
-          "nurgling-infestation"
+          "plague-ridden"
         ]
       },
       {
@@ -2521,13 +2736,14 @@
         "cost": 70000,
         "max": 2,
         "accessPrimary": [
+          "F",
           "G",
-          "M",
-          "F"
+          "M"
         ],
         "accessSecondary": [
           "A",
-          "P"
+          "P",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -2535,10 +2751,11 @@
         "pa": "4+",
         "av": "9+",
         "skills": [
-          "thick-skull",
           "horns",
-          "sure-feet",
-          "regeneration"
+          "plague-ridden",
+          "regeneration",
+          "steady-footing",
+          "thick-skull"
         ]
       },
       {
@@ -2548,12 +2765,13 @@
         "cost": 110000,
         "max": 4,
         "accessPrimary": [
+          "F",
           "G",
-          "M",
-          "F"
+          "M"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 4,
         "st": 4,
@@ -2561,11 +2779,12 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "foul-appearance",
-          "stand-firm",
           "disturbing-presence",
+          "foul-appearance",
+          "plague-ridden",
           "regeneration",
-          "unchannelled-fury"
+          "stand-firm",
+          "shakey"
         ]
       },
       {
@@ -2579,7 +2798,8 @@
         ],
         "accessSecondary": [
           "G",
-          "M"
+          "M",
+          "T"
         ],
         "ma": 4,
         "st": 5,
@@ -2587,13 +2807,15 @@
         "pa": "6+",
         "av": "10+",
         "skills": [
-          "foul-appearance",
-          "mighty-blow-plus-1",
           "disturbing-presence",
+          "foul-appearance",
+          "loner-4-plus",
+          "mighty-blow-plus-1",
+          "pick-me-up",
+          "plague-ridden",
           "really-stupid",
           "regeneration",
-          "tentacles",
-          "loner-4-plus"
+          "tentacles"
         ]
       }
     ]
@@ -2610,7 +2832,8 @@
         "cost": 15000,
         "max": 16,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
         "accessSecondary": [
           "G"
@@ -2638,9 +2861,10 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
-          "P"
+          "G",
+          "P",
+          "T"
         ],
         "ma": 5,
         "st": 5,
@@ -2648,7 +2872,7 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "really-stupid",
+          "bone-head",
           "mighty-blow-plus-1",
           "thick-skull",
           "throw-team-mate"
@@ -2661,11 +2885,13 @@
         "cost": 145000,
         "max": 1,
         "accessPrimary": [
+          "F",
           "P"
         ],
         "accessSecondary": [
+          "A",
           "G",
-          "A"
+          "T"
         ],
         "ma": 5,
         "st": 5,
@@ -2673,7 +2899,7 @@
         "pa": "4+",
         "av": "10+",
         "skills": [
-          "really-stupid",
+          "bone-head",
           "kick-team-mate",
           "mighty-blow-plus-1",
           "thick-skull"
@@ -2713,7 +2939,8 @@
         "cost": 70000,
         "max": 3,
         "accessPrimary": [
-          "G"
+          "G",
+          "T"
         ],
         "accessSecondary": [
           "F"
@@ -2739,8 +2966,8 @@
           "A"
         ],
         "accessSecondary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "ma": 5,
         "st": 2,
@@ -2784,8 +3011,8 @@
         "cost": 85000,
         "max": 1,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
           "A"
@@ -2810,9 +3037,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
-          "M"
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -2820,11 +3046,141 @@
         "pa": "5+",
         "av": "10+",
         "skills": [
-          "really-stupid",
+          "bone-head",
           "loner-3-plus",
           "mighty-blow-plus-1",
           "thick-skull",
           "throw-team-mate"
+        ]
+      },
+      {
+        "key": "human-catcher",
+        "name": "Human Catcher",
+        "role": "Catcher",
+        "cost": 75000,
+        "max": 1,
+        "accessPrimary": [
+          "A",
+          "G"
+        ],
+        "accessSecondary": [
+          "F",
+          "P"
+        ],
+        "ma": 8,
+        "st": 3,
+        "ag": "3+",
+        "pa": "4+",
+        "av": "8+",
+        "skills": [
+          "catch",
+          "dodge"
+        ]
+      },
+      {
+        "key": "dwarf-runner",
+        "name": "Dwarf Runner",
+        "role": "Runner",
+        "cost": 80000,
+        "max": 1,
+        "accessPrimary": [
+          "G",
+          "P"
+        ],
+        "accessSecondary": [
+          "A",
+          "F"
+        ],
+        "ma": 6,
+        "st": 3,
+        "ag": "3+",
+        "pa": "4+",
+        "av": "9+",
+        "skills": [
+          "sprint",
+          "sure-hands",
+          "thick-skull"
+        ]
+      },
+      {
+        "key": "troll-slayer",
+        "name": "Troll Slayer",
+        "role": "Special",
+        "cost": 95000,
+        "max": 1,
+        "accessPrimary": [
+          "F",
+          "G"
+        ],
+        "accessSecondary": [
+          "A"
+        ],
+        "ma": 5,
+        "st": 3,
+        "ag": "4+",
+        "pa": "5+",
+        "av": "9+",
+        "skills": [
+          "block",
+          "dauntless",
+          "frenzy",
+          "troll-hatred",
+          "thick-skull"
+        ]
+      },
+      {
+        "key": "dwarf-blitzer",
+        "name": "Dwarf Blitzer",
+        "role": "Blitzer",
+        "cost": 100000,
+        "max": 1,
+        "accessPrimary": [
+          "F",
+          "G"
+        ],
+        "accessSecondary": [
+          "P"
+        ],
+        "ma": 5,
+        "st": 3,
+        "ag": "4+",
+        "pa": "4+",
+        "av": "10+",
+        "skills": [
+          "block",
+          "diving-tackle",
+          "tackle",
+          "thick-skull"
+        ]
+      },
+      {
+        "key": "altern-forest-treeman",
+        "name": "Altern Forest Treeman",
+        "role": "Big Guy",
+        "cost": 120000,
+        "max": 1,
+        "accessPrimary": [
+          "F"
+        ],
+        "accessSecondary": [
+          "A",
+          "G",
+          "P"
+        ],
+        "ma": 2,
+        "st": 6,
+        "ag": "5+",
+        "pa": "5+",
+        "av": "11+",
+        "skills": [
+          "loner-4-plus",
+          "mighty-blow-plus-1",
+          "stand-firm",
+          "strong-arm",
+          "take-root",
+          "thick-skull",
+          "throw-team-mate",
+          "timmm-ber"
         ]
       }
     ]
@@ -2841,7 +3197,8 @@
         "cost": 15000,
         "max": 16,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
         "accessSecondary": [
           "G"
@@ -2853,10 +3210,11 @@
         "av": "6+",
         "skills": [
           "dodge",
+          "insignificant",
           "right-stuff",
           "side-step",
-          "titchy",
-          "swarming"
+          "stunty",
+          "titchy"
         ]
       },
       {
@@ -2866,9 +3224,12 @@
         "cost": 20000,
         "max": 2,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
-        "accessSecondary": [],
+        "accessSecondary": [
+          "G"
+        ],
         "ma": 6,
         "st": 1,
         "ag": "3+",
@@ -2889,9 +3250,12 @@
         "cost": 20000,
         "max": 2,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
-        "accessSecondary": [],
+        "accessSecondary": [
+          "G"
+        ],
         "ma": 6,
         "st": 1,
         "ag": "3+",
@@ -2912,11 +3276,12 @@
         "cost": 100000,
         "max": 2,
         "accessPrimary": [
-          "F"
+          "F",
+          "T"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -2941,8 +3306,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 4,
@@ -2958,6 +3323,35 @@
           "regeneration",
           "throw-team-mate"
         ]
+      },
+      {
+        "key": "fungus-flinga",
+        "name": "Fungus Flinga",
+        "role": "Special",
+        "cost": 30000,
+        "max": 2,
+        "accessPrimary": [
+          "A",
+          "P",
+          "T"
+        ],
+        "accessSecondary": [
+          "G"
+        ],
+        "ma": 5,
+        "st": 1,
+        "ag": "3+",
+        "pa": "4+",
+        "av": "6+",
+        "skills": [
+          "bombardier",
+          "dodge",
+          "right-stuff",
+          "secret-weapon",
+          "side-step",
+          "stunty",
+          "titchy"
+        ]
       }
     ]
   },
@@ -2972,10 +3366,13 @@
         "role": "Lineman",
         "cost": 40000,
         "max": 16,
-        "accessPrimary": [],
+        "accessPrimary": [
+          "G"
+        ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 5,
         "st": 3,
@@ -2999,7 +3396,8 @@
         ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -3020,11 +3418,12 @@
         "cost": 85000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 6,
         "st": 3,
@@ -3047,8 +3446,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 4,
         "st": 5,
@@ -3076,12 +3475,13 @@
         "max": 16,
         "accessPrimary": [
           "A",
-          "M"
+          "M",
+          "T"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "P",
-          "F"
+          "P"
         ],
         "ma": 6,
         "st": 2,
@@ -3102,7 +3502,8 @@
         "max": 3,
         "accessPrimary": [
           "G",
-          "M"
+          "M",
+          "T"
         ],
         "accessSecondary": [
           "A",
@@ -3125,12 +3526,13 @@
         "max": 1,
         "accessPrimary": [
           "G",
-          "P",
-          "M"
+          "M",
+          "P"
         ],
         "accessSecondary": [
           "A",
-          "F"
+          "F",
+          "T"
         ],
         "ma": 7,
         "st": 3,
@@ -3150,12 +3552,13 @@
         "cost": 90000,
         "max": 1,
         "accessPrimary": [
+          "F",
           "G",
-          "M",
-          "F"
+          "M"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "P"
         ],
         "ma": 8,
         "st": 3,
@@ -3175,12 +3578,12 @@
         "cost": 150000,
         "max": 1,
         "accessPrimary": [
-          "M",
-          "F"
+          "F",
+          "M"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 6,
         "st": 5,
@@ -3193,6 +3596,90 @@
           "loner-4-plus",
           "mighty-blow-plus-1",
           "prehensile-tail"
+        ]
+      },
+      {
+        "key": "snotling-lineman",
+        "name": "Snotling Lineman",
+        "role": "Lineman",
+        "cost": 15000,
+        "max": 6,
+        "accessPrimary": [
+          "A",
+          "M",
+          "T"
+        ],
+        "accessSecondary": [
+          "G"
+        ],
+        "ma": 5,
+        "st": 1,
+        "ag": "3+",
+        "pa": "4+",
+        "av": "6+",
+        "skills": [
+          "dodge",
+          "insignificant",
+          "right-stuff",
+          "side-step",
+          "stunty",
+          "titchy"
+        ]
+      },
+      {
+        "key": "gutter-runner",
+        "name": "Gutter Runner",
+        "role": "Runner",
+        "cost": 85000,
+        "max": 1,
+        "accessPrimary": [
+          "A",
+          "G",
+          "M",
+          "T"
+        ],
+        "accessSecondary": [
+          "F"
+        ],
+        "ma": 9,
+        "st": 2,
+        "ag": "2+",
+        "pa": "4+",
+        "av": "8+",
+        "skills": [
+          "animosity-goblin",
+          "dodge",
+          "stab"
+        ]
+      },
+      {
+        "key": "troll",
+        "name": "Troll",
+        "role": "Big Guy",
+        "cost": 115000,
+        "max": 1,
+        "accessPrimary": [
+          "F",
+          "M"
+        ],
+        "accessSecondary": [
+          "A",
+          "G",
+          "P"
+        ],
+        "ma": 4,
+        "st": 5,
+        "ag": "5+",
+        "pa": "5+",
+        "av": "10+",
+        "skills": [
+          "always-hungry",
+          "loner-4-plus",
+          "mighty-blow-plus-1",
+          "projectile-vomit",
+          "really-stupid",
+          "regeneration",
+          "throw-team-mate"
         ]
       }
     ]
@@ -3229,10 +3716,11 @@
         "cost": 100000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
+          "F",
           "P"
         ],
         "ma": 8,
@@ -3253,8 +3741,8 @@
         "cost": 110000,
         "max": 2,
         "accessPrimary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "accessSecondary": [
@@ -3279,12 +3767,11 @@
         "cost": 110000,
         "max": 2,
         "accessPrimary": [
-          "A"
+          "A",
+          "F",
+          "G"
         ],
-        "accessSecondary": [
-          "G",
-          "F"
-        ],
+        "accessSecondary": [],
         "ma": 6,
         "st": 4,
         "ag": "2+",
@@ -3307,8 +3794,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 5,
         "st": 5,
@@ -3337,12 +3824,13 @@
         "cost": 45000,
         "max": 16,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "P",
-          "F"
+          "P"
         ],
         "ma": 6,
         "st": 2,
@@ -3363,11 +3851,12 @@
         "cost": 90000,
         "max": 6,
         "accessPrimary": [
-          "G",
-          "F"
+          "F",
+          "G"
         ],
         "accessSecondary": [
-          "A"
+          "A",
+          "T"
         ],
         "ma": 4,
         "st": 4,
@@ -3389,8 +3878,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 4,
@@ -3421,12 +3910,13 @@
         "cost": 40000,
         "max": 16,
         "accessPrimary": [
-          "A"
+          "A",
+          "T"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "P",
-          "F"
+          "P"
         ],
         "ma": 6,
         "st": 2,
@@ -3446,11 +3936,12 @@
         "cost": 70000,
         "max": 1,
         "accessPrimary": [
-          "F"
+          "F",
+          "T"
         ],
         "accessSecondary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "ma": 3,
         "st": 7,
@@ -3470,11 +3961,13 @@
         "role": "Special",
         "cost": 40000,
         "max": 1,
-        "accessPrimary": [],
+        "accessPrimary": [
+          "T"
+        ],
         "accessSecondary": [
-          "G",
           "A",
-          "F"
+          "F",
+          "G"
         ],
         "ma": 6,
         "st": 2,
@@ -3498,8 +3991,9 @@
           "A"
         ],
         "accessSecondary": [
+          "F",
           "G",
-          "F"
+          "T"
         ],
         "ma": 7,
         "st": 2,
@@ -3519,12 +4013,13 @@
         "cost": 45000,
         "max": 1,
         "accessPrimary": [
-          "P"
+          "P",
+          "T"
         ],
         "accessSecondary": [
-          "G",
           "A",
-          "F"
+          "F",
+          "G"
         ],
         "ma": 6,
         "st": 2,
@@ -3539,6 +4034,60 @@
         ]
       },
       {
+        "key": "ooligan",
+        "name": "’Ooligan",
+        "role": "Special",
+        "cost": 60000,
+        "max": 1,
+        "accessPrimary": [
+          "A",
+          "T"
+        ],
+        "accessSecondary": [
+          "F",
+          "G"
+        ],
+        "ma": 6,
+        "st": 2,
+        "ag": "3+",
+        "pa": "5+",
+        "av": "8+",
+        "skills": [
+          "dirty-player-plus-1",
+          "disturbing-presence",
+          "dodge",
+          "right-stuff",
+          "stunty",
+          "taunt"
+        ]
+      },
+      {
+        "key": "doom-diver",
+        "name": "Doom Diver",
+        "role": "Special",
+        "cost": 65000,
+        "max": 1,
+        "accessPrimary": [
+          "A"
+        ],
+        "accessSecondary": [
+          "F",
+          "G",
+          "T"
+        ],
+        "ma": 6,
+        "st": 2,
+        "ag": "3+",
+        "pa": "6+",
+        "av": "8+",
+        "skills": [
+          "dodge",
+          "right-stuff",
+          "stunty",
+          "swoop"
+        ]
+      },
+      {
         "key": "trained-troll",
         "name": "Trained Troll",
         "role": "Big Guy",
@@ -3548,8 +4097,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 4,
@@ -3580,8 +4129,8 @@
         "cost": 65000,
         "max": 16,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
           "F"
@@ -3600,8 +4149,8 @@
         "cost": 85000,
         "max": 2,
         "accessPrimary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "accessSecondary": [
@@ -3624,12 +4173,12 @@
         "cost": 90000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
-          "P",
-          "F"
+          "F",
+          "P"
         ],
         "ma": 8,
         "st": 2,
@@ -3649,10 +4198,11 @@
         "cost": 130000,
         "max": 2,
         "accessPrimary": [
-          "G",
-          "A"
+          "A",
+          "G"
         ],
         "accessSecondary": [
+          "F",
           "P"
         ],
         "ma": 8,
@@ -3676,8 +4226,8 @@
           "F"
         ],
         "accessSecondary": [
-          "G",
           "A",
+          "G",
           "P"
         ],
         "ma": 2,
@@ -3693,6 +4243,113 @@
           "take-root",
           "thick-skull",
           "throw-team-mate"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "slann",
+    "name": "Slann",
+    "rerollCost": 50000,
+    "positionals": [
+      {
+        "key": "slann-lineman",
+        "name": "Slann Lineman",
+        "role": "Lineman",
+        "cost": 60000,
+        "max": 16,
+        "accessPrimary": [
+          "G"
+        ],
+        "accessSecondary": [
+          "A",
+          "F"
+        ],
+        "ma": 6,
+        "st": 3,
+        "ag": "3+",
+        "pa": "4+",
+        "av": "9+",
+        "skills": [
+          "pogo-stick"
+        ]
+      },
+      {
+        "key": "slann-catcher",
+        "name": "Slann Catcher",
+        "role": "Catcher",
+        "cost": 80000,
+        "max": 2,
+        "accessPrimary": [
+          "A",
+          "G"
+        ],
+        "accessSecondary": [
+          "F",
+          "P"
+        ],
+        "ma": 7,
+        "st": 2,
+        "ag": "2+",
+        "pa": "3+",
+        "av": "8+",
+        "skills": [
+          "diving-catch",
+          "on-the-ball",
+          "pogo-stick",
+          "very-long-legs"
+        ]
+      },
+      {
+        "key": "slann-blitzer",
+        "name": "Slann Blitzer",
+        "role": "Blitzer",
+        "cost": 100000,
+        "max": 2,
+        "accessPrimary": [
+          "A",
+          "F",
+          "G"
+        ],
+        "accessSecondary": [
+          "P"
+        ],
+        "ma": 7,
+        "st": 3,
+        "ag": "3+",
+        "pa": "4+",
+        "av": "9+",
+        "skills": [
+          "diving-tackle",
+          "hit-and-run",
+          "jump-up",
+          "pogo-stick"
+        ]
+      },
+      {
+        "key": "kroxigor",
+        "name": "Kroxigor",
+        "role": "Big Guy",
+        "cost": 140000,
+        "max": 1,
+        "accessPrimary": [
+          "F"
+        ],
+        "accessSecondary": [
+          "A",
+          "G"
+        ],
+        "ma": 6,
+        "st": 5,
+        "ag": "5+",
+        "pa": "6+",
+        "av": "10+",
+        "skills": [
+          "bone-head",
+          "loner-4-plus",
+          "mighty-blow-plus-1",
+          "prehensile-tail",
+          "thick-skull"
         ]
       }
     ]

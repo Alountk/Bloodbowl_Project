@@ -32,7 +32,7 @@ async function createTeam(page: Page, name: string) {
   await page.getByLabel("Race").selectOption("human");
   await page.getByRole("button", { name: "Next →" }).click();
   // 11 Linemen so the team meets the BB2025 minimum roster size.
-  const addLineman = page.getByRole("button", { name: "Add Lineman" }).first();
+  const addLineman = page.getByRole("button", { name: "Add Human Lineman" }).first();
   for (let i = 0; i < 11; i++) await addLineman.click();
   await page.getByRole("button", { name: /create team/i }).click();
   // Redirect home and show the saved team.
@@ -90,7 +90,7 @@ test.describe("Auth flow regression (LAN host)", () => {
     await page.getByLabel("Team name", { exact: true }).fill("LAN Reavers");
     await page.getByLabel("Race").selectOption("human");
     await page.getByRole("button", { name: "Next →" }).click();
-    const add = page.getByRole("button", { name: "Add Lineman" }).first();
+    const add = page.getByRole("button", { name: "Add Human Lineman" }).first();
     for (let i = 0; i < 11; i++) await add.click();
     await page.getByRole("button", { name: /create team/i }).click();
     await expect(page).toHaveURL(`${base}/`);

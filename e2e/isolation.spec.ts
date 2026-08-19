@@ -32,7 +32,7 @@ test.describe("User isolation E2E (real Postgres)", () => {
     await pageA.getByLabel("Team name", { exact: true }).fill("Alpha Blitzers");
     await pageA.getByLabel("Race").selectOption("human");
     await pageA.getByRole("button", { name: "Next →" }).click();
-    const addLineman = pageA.getByRole("button", { name: "Add Lineman" }).first();
+    const addLineman = pageA.getByRole("button", { name: "Add Human Lineman" }).first();
     for (let i = 0; i < 11; i++) await addLineman.click();
     await pageA.getByRole("button", { name: /create team/i }).click();
     await expect(pageA).toHaveURL("/");

@@ -59,11 +59,11 @@ test.describe("Mobile", () => {
     await page.getByRole("button", { name: "Next →" }).click();
 
     // Availability rows are stacked (Add buttons always visible) and no page overflow
-    await expect(page.getByRole("button", { name: "Add Lineman" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Human Lineman" }).first()).toBeVisible();
     await expectNoHorizontalOverflow(page, "create step2");
 
     // Adding a player updates the counter and the stacked roster row
-    await page.getByRole("button", { name: "Add Lineman" }).first().click();
+    await page.getByRole("button", { name: "Add Human Lineman" }).first().click();
     await expect(page.getByText("1/16").first()).toBeVisible();
     await expect(page.getByLabel(/Player name for /).first()).toBeVisible();
     await expectNoHorizontalOverflow(page, "create step2 with player");
@@ -90,7 +90,7 @@ test.describe("Mobile", () => {
     await expect(select).toHaveValue("orc");
     await page.getByLabel("Team name", { exact: true }).fill("Orc Mobile");
     await page.getByRole("button", { name: "Next →" }).click();
-    await expect(page.getByRole("button", { name: "Add Lineman" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add Orc Lineman" }).first()).toBeVisible();
     await expectNoHorizontalOverflow(page, "orc create step2");
   });
 });
