@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { Race, Team } from "../types";
 import { DEFAULT_COACHING } from "../types";
@@ -282,6 +282,21 @@ describe("TeamDetailView", () => {
       expect(panel?.className).toContain("min-w-[640px]");
       const wrapper = panel?.parentElement;
       expect(wrapper?.className).toContain("overflow-x-auto");
+    });
+  });
+
+  describe("hire action (RAU-11)", () => {
+    it("shows a Contratar button and opens the hire dialog when onHire is present", () => {
+      const onHire = vi.fn(async () => ({}));
+      render(<TeamDetailView team={baseTeam} race={humanRace} onHire={onHire} />);
+
+      fireEvent.click(screen.getByTestId("open-hire-dialog"));
+      expect(screen.getByRole("dialog", { name: "Contratar jugadores" })).toBeTruthy();
+    });
+
+    it("never shows the Contratar action for a read-only (rival) view", () => {
+      render(<TeamDetailView team={baseTeam} race={humanRace} />);
+      expect(screen.queryByTestId("open-hire-dialog")).toBeNull();
     });
   });
 

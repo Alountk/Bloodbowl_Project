@@ -50,6 +50,8 @@ export interface TeamRosterTableProps {
   onReorder?: (rosterPlayerIds: string[]) => Promise<Record<string, unknown>>;
   /** A reorder failure surfaced by the parent (shown under the table). */
   reorderError?: string | null;
+  /** Fire-route client (RAU-10); absent = no Despedir action in the modal. */
+  onFire?: (rosterPlayerId: string) => Promise<Record<string, unknown>>;
 }
 
 /** The cost of the player's NEXT random (cheapest) improvement — SPP bar target. */
@@ -97,6 +99,7 @@ export function TeamRosterTable({
   onRename,
   onImprove,
   onReorder,
+  onFire,
   reorderError,
 }: TeamRosterTableProps) {
   const { t } = useI18n();
@@ -419,6 +422,7 @@ export function TeamRosterTable({
           otherNames={otherNames.filter((n) => n !== selected.name)}
           onRename={onRename ? (name) => onRename(selected.rosterPlayerId, name) : undefined}
           onImprove={(body) => onImprove!(selected.rosterPlayerId, body)}
+          onFire={onFire ? () => onFire(selected.rosterPlayerId) : undefined}
           onClose={() => setSelected(null)}
         />
       ) : null}

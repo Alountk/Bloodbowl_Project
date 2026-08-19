@@ -32,6 +32,7 @@ function renderModal(
   handlers: {
     onRename?: (name: string) => Promise<Record<string, unknown>>;
     onImprove?: (body: ImproveBody) => Promise<Record<string, unknown>>;
+    onFire?: () => Promise<Record<string, unknown>>;
     onClose?: () => void;
   } = {},
 ) {
@@ -45,10 +46,11 @@ function renderModal(
       otherNames={["Jane"]}
       onRename={onRename}
       onImprove={onImprove}
+      onFire={handlers.onFire}
       onClose={onClose}
     />,
   );
-  return { onRename, onImprove, onClose };
+  return { onRename, onImprove, onClose, onFire: handlers.onFire };
 }
 
 describe("PlayerImproveModal", () => {
@@ -165,5 +167,53 @@ describe("PlayerImproveModal", () => {
     });
     expect(screen.getByRole("alert").textContent).toContain("Not enough PE");
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe("fire action (RAU-10)", () => {
+    it("hides the Despedir button when no onFire client is provided", () => {
+      renderModal(lineman(), { onFire: undefined });
+      expect(screen.queryByTestId("modal-fire")).toBeNull();
+    });
+
+    it("requires a confirmation before firing (BB2025 no refund warning)", async () => {
+      const onFire = vi.fn(async () => ({}));
+      renderModal(lineman(), { onFire });
+      fireEvent.click(screen.getByTestId("modal-fire"));
+      // The confirmation replaces the action bar and warns about the no-refund rule.
+      expect(screen.getByText(/¿Despedir a Marty\?/)).toBeTruthy();
+      expect(screen.getByText(/despedir no devuelve el coste/i)).toBeTruthy();
+      expect(onFire).not.toHaveBeenCalled();
+
+      // Cancel returns to the normal modal without firing.
+      fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+      expect(onFire).not.toHaveBeenCalled();
+      expect(screen.getByTestId("modal-fire")).toBeTruthy();
+    });
+
+    it("fires on confirmation and closes the modal on success", async () => {
+      const onFire = vi.fn(async () => ({}));
+      const onClose = vi.fn();
+      renderModal(lineman(), { onFire, onClose });
+      fireEvent.click(screen.getByTestId("modal-fire"));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("modal-fire-confirm"));
+      });
+      expect(onFire).toHaveBeenCalledOnce();
+      expect(onClose).toHaveBeenCalled();
+    });
+
+    it("surfaces the fire error and stays open (e.g. the 11-player minimum)", async () => {
+      const onFire = vi.fn(async () => ({ error: "A team cannot drop below 11 players" }));
+      const onClose = vi.fn();
+      renderModal(lineman(), { onFire, onClose });
+      fireEvent.click(screen.getByTestId("modal-fire"));
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("modal-fire-confirm"));
+      });
+      expect(screen.getByRole("alert").textContent).toContain(
+        "A team cannot drop below 11 players",
+      );
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 });
