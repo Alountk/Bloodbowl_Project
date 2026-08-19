@@ -69,9 +69,9 @@ describe("PlayerAvailabilityTable", () => {
         maxPlayers={16}
       />,
     );
-    // "dodge" -> Spanish "Esquivar"; "block" has no es translation -> English "Block".
+    // "dodge" -> Spanish "Esquivar"; "block" -> Spanish "Placar".
     expect(screen.getByText("Esquivar")).toBeTruthy();
-    expect(screen.getByText("Block")).toBeTruthy();
+    expect(screen.getByText("Placar")).toBeTruthy();
     // Lineman has no skills -> "Ninguna".
     expect(screen.getAllByText("Ninguna").length).toBeGreaterThan(0);
   });

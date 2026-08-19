@@ -14,9 +14,9 @@ export interface Positional {
   max: number;
   /** Minimum roster quantity; defaults to 0 when absent; must never exceed max. */
   min?: number;
-  /** Primary skill-access letters ⊆ {G,A,P,S,M,F}; [] renders "—". */
+  /** Primary skill-access letters ⊆ {A,F,G,M,P,T}; [] renders "—". */
   accessPrimary: string[];
-  /** Secondary skill-access letters ⊆ {G,A,P,S,M,F}; [] renders "—". */
+  /** Secondary skill-access letters ⊆ {A,F,G,M,P,T}; [] renders "—". */
   accessSecondary: string[];
   /** Movement Allowance (numeric) */
   ma: number;

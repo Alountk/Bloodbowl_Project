@@ -18,9 +18,10 @@ describe("access-letter category mapping (rulebook columns A/F/G/M/P/T)", () => 
 
 describe("skill reference resolution (ids and names share one list)", () => {
   it("resolves a catalog skill id to its display name, preferring Spanish when present", () => {
-    // block has no es catalog translation; falls back to the canonical English name.
-    expect(skillDisplayName("kick")).toBe("Patada de despeje"); // es translation present
-    expect(skillDisplayName("block")).toBe("Block");
+    // kick carries an es translation (Patada); block renders as Placar per the
+    // BB2025 rulebook (OCR), not the English canonical name.
+    expect(skillDisplayName("kick")).toBe("Patada"); // es translation present
+    expect(skillDisplayName("block")).toBe("Placar");
   });
 
   it("resolves a raw name (random-table or catalog) through unchanged", () => {
@@ -32,7 +33,7 @@ describe("skill reference resolution (ids and names share one list)", () => {
     // Élite catalog skills (REQ-RACE-08): Placar, Esquivar, Defensa, Golpe mortífero.
     expect(skillElite("block")).toBe(true); // Placar
     expect(skillElite("dodge")).toBe(true); // Esquivar
-    expect(skillElite("kick")).toBe(false); // Patada de despeje → not élite
+    expect(skillElite("kick")).toBe(false); // Patada → not élite
     expect(skillElite("Agallas")).toBe(false);
   });
 

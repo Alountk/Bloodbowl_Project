@@ -10,8 +10,8 @@ function skillRefToId(ref: string): string {
 }
 
 describe("race dataset", () => {
-  it("contains the 30 BB2025 races", () => {
-    expect(RACES).toHaveLength(30);
+  it("contains the 31 BB2025 races", () => {
+    expect(RACES).toHaveLength(31);
   });
 
   it("uses unique race ids", () => {
@@ -128,12 +128,13 @@ describe("BB2025 roster corrections", () => {
     expect(keys).not.toContain("beastman-runner");
   });
 
-  it("chaos-chosen contains lineman, chosen-blocker, chaos-troll, and minotaur", () => {
+  it("chaos-chosen contains lineman, chosen-blocker, chaos-troll, ogre, and minotaur", () => {
     const cc = getRaceById("chaos-chosen")!;
     const keys = cc.positionals.map((p) => p.key);
     expect(keys).toContain("lineman");
     expect(keys).toContain("chosen-blocker");
     expect(keys).toContain("chaos-troll");
+    expect(keys).toContain("ogre");
     expect(keys).toContain("minotaur");
   });
 
@@ -216,51 +217,56 @@ describe("REQ-RACE-01: BB2025 reference table availability", () => {
 // REQ-RACE-02: Preserve Unlisted Keys — exact race ID set and positional key inventory
 // ---------------------------------------------------------------------------
 describe("REQ-RACE-02: Exact post-migration race ID set and positional key inventory", () => {
-  // Authoritative BB2025 race ID list (30 races)
+  // Authoritative BB2025 race ID list (31 races)
   const EXPECTED_RACE_IDS = new Set([
     "human", "orc", "dwarf", "elven-union", "skaven", "dark-elf",
     "shambling-undead", "chaos-chosen", "chaos-dwarf", "amazon", "chaos-renegade",
     "halfling", "high-elf", "bretonnian", "gnome", "imperial-nobility", "khorne", "lizardmen",
     "necromantic-horror", "norse", "nurgle", "old-world-alliance", "snotling",
     "ogre", "tomb-kings", "underworld-denizens", "vampire", "black-orc", "goblin", "wood-elf",
+    "slann",
   ]);
 
   // Approved positional key inventory per race (approved delta applied)
   const EXPECTED_POSITIONAL_KEYS: Record<string, string[]> = {
-    "human":               ["lineman", "thrower", "blitzer", "catcher", "ogre"],
+    "human":               ["lineman", "thrower", "blitzer", "catcher", "ogre", "halfling-hopeful"],
     "orc":                 ["lineman", "thrower", "blitzer", "big-un-blocker", "goblin", "troll"],
     "dwarf":               ["lineman", "blitzer", "runner", "troll-slayer", "deathroller"],
     "elven-union":         ["lineman", "thrower", "catcher", "blitzer"],
     "skaven":              ["lineman", "thrower", "gutter-runner", "blitzer", "rat-ogre"],
     "dark-elf":            ["lineman", "blitzer", "runner", "assassin", "witch-elf"],
     "shambling-undead":    ["skeleton-lineman", "zombie-lineman", "ghoul-runner", "wight-blitzer", "mummy"],
-    "chaos-chosen":        ["lineman", "chosen-blocker", "chaos-troll", "minotaur"],
+    "chaos-chosen":        ["lineman", "chosen-blocker", "chaos-troll", "ogre", "minotaur"],
     "chaos-dwarf":         ["hobgoblin-lineman", "sneaky-stabba", "chaos-dwarf-blocker", "flamesmith", "bull-centaur", "minotaur"],
     "amazon":              ["linewoman", "thrower", "catcher", "blitzer"],
     "chaos-renegade":      ["renegade-lineman", "renegade-orc-lineman", "renegade-goblin", "renegade-skaven",
-                             "renegade-dark-elf", "chaos-ogre", "renegade-troll", "renegade-minotaur", "renegade-rat-ogre"],
+                             "renegade-dark-elf", "renegade-human-thrower", "chaos-ogre", "renegade-troll",
+                             "renegade-minotaur", "renegade-rat-ogre"],
     "halfling":            ["hopeful", "catcher", "hefty", "treeman"],
     "high-elf":            ["lineman", "thrower", "catcher", "blitzer"],
-    "bretonnian":          ["peasant-lineman", "blitzer", "blocker", "ogre"],
+    "bretonnian":          ["peasant-lineman", "knight-thrower", "knight-catcher", "grail-knight"],
     "gnome":               ["gnome-lineman", "woodland-fox", "gnome-illusionist", "gnome-beastmaster", "altern-forest-treeman"],
     "imperial-nobility":   ["lackey-lineman", "bodyguard", "thrower", "blitzer", "ogre"],
     "khorne":              ["marauder", "khorne-blocker", "bloodseeker", "juggernaut"],
-    "lizardmen":           ["skink-runner", "saurus-blocker", "kroxigor"],
+    "lizardmen":           ["skink-runner", "chameleon-skink", "saurus-blocker", "kroxigor"],
     "necromantic-horror":  ["zombie-lineman", "werewolf", "flesh-golem", "wraith", "ghoul-runner"],
-    "norse":               ["lineman", "thrower", "berserker", "valkyrie", "ulfwerener", "snow-troll"],
+    "norse":               ["lineman", "berserker", "valkyrie", "ulfwerener", "snow-troll", "beer-boar"],
     "nurgle":              ["rotter-lineman", "pestigor", "bloater", "rotspawn"],
     "ogre":                ["gnoblar-lineman", "ogre-blocker", "ogre-runt-punter"],
-    "old-world-alliance":  ["human-lineman", "dwarf-lineman", "halfling-hopeful", "thrower", "blitzer", "ogre"],
-    "snotling":            ["snotling", "fun-hoppa", "stilty-runna", "pump-wagon", "trained-troll"],
+    "old-world-alliance":  ["human-lineman", "dwarf-lineman", "halfling-hopeful", "thrower", "blitzer", "ogre",
+                             "human-catcher", "dwarf-runner", "troll-slayer", "dwarf-blitzer", "altern-forest-treeman"],
+    "snotling":            ["snotling", "fun-hoppa", "stilty-runna", "pump-wagon", "trained-troll", "fungus-flinga"],
     "tomb-kings":          ["skeleton-lineman", "thro-ra", "blitz-ra", "tomb-guardian"],
-    "underworld-denizens": ["underworld-goblin", "skaven-lineman", "skaven-thrower", "skaven-blitzer", "mutant-rat-ogre"],
+    "underworld-denizens": ["underworld-goblin", "skaven-lineman", "skaven-thrower", "skaven-blitzer", "mutant-rat-ogre",
+                             "snotling-lineman", "gutter-runner", "troll"],
     "vampire":             ["thrall-lineman", "vampire-runner", "vampire-thrower", "vampire-blitzer", "vargheist"],
     "black-orc":           ["goblin-bruiser", "black-orc-blocker", "trained-troll"],
-    "goblin":              ["goblin-lineman", "fanatic", "loony", "pogoer", "bombardier", "trained-troll"],
+    "goblin":              ["goblin-lineman", "fanatic", "loony", "pogoer", "bombardier", "ooligan", "doom-diver", "trained-troll"],
     "wood-elf":            ["lineman", "thrower", "catcher", "wardancer", "treeman"],
+    "slann":               ["slann-lineman", "slann-catcher", "slann-blitzer", "kroxigor"],
   };
 
-  it("exact post-migration race ID set equals the approved 30-race BB2025 roster", () => {
+  it("exact post-migration race ID set equals the approved 31-race BB2025 roster", () => {
     const actualIds = new Set(RACES.map((r) => r.id));
     expect(actualIds).toEqual(EXPECTED_RACE_IDS);
   });
@@ -315,6 +321,7 @@ describe("REQ-RACE-04: Exact reroll costs from verified BB2025 reference table",
     "black-orc":           60_000,
     "goblin":              60_000,
     "wood-elf":            50_000,
+    "slann":               50_000,
   };
 
   for (const [raceId, expectedCost] of Object.entries(EXPECTED_REROLL_COSTS)) {
@@ -439,27 +446,31 @@ describe("REQ-RACE-04: Full positional stat/cost/skill parity against verified r
       expect(p.pa).toBe("4+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(50_000);
       expect(normalizeSkills(p.skills)).toEqual(normalizeSkills(["Wrestle"]));
     });
-    it("blitzer: MA7 ST3 AG3+ PA4+ AV9+ cost85000 skills:defensive,block", () => {
-      const p = findPositional("bretonnian", "blitzer")!;
+    it("knight-thrower: MA6 ST3 AG3+ PA3+ AV9+ cost80000 skills:dauntless,nerves of steel,pass", () => {
+      const p = findPositional("bretonnian", "knight-thrower")!;
+      expect(p).toBeDefined();
+      expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("3+");
+      expect(p.pa).toBe("3+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(80_000);
+      expect(normalizeSkills(p.skills)).toEqual(
+        normalizeSkills(["Dauntless", "Nerves of Steel", "Pass"]),
+      );
+    });
+    it("knight-catcher: MA7 ST3 AG3+ PA4+ AV9+ cost85000 skills:catch,dauntless,nerves of steel", () => {
+      const p = findPositional("bretonnian", "knight-catcher")!;
       expect(p).toBeDefined();
       expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("3+");
       expect(p.pa).toBe("4+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(85_000);
-      expect(normalizeSkills(p.skills)).toEqual(normalizeSkills(["Defensive", "Block"]));
-    });
-    it("blocker: MA5 ST3 AG4+ PA6+ AV9+ cost65000 skills:wrestle,thick skull", () => {
-      const p = findPositional("bretonnian", "blocker")!;
-      expect(p).toBeDefined();
-      expect(p.ma).toBe(5); expect(p.st).toBe(3); expect(p.ag).toBe("4+");
-      expect(p.pa).toBe("6+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(65_000);
-      expect(normalizeSkills(p.skills)).toEqual(normalizeSkills(["Wrestle", "Thick Skull"]));
-    });
-    it("ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000 skills:thick skull,really stupid,mighty blow (+1),throw team-mate,loner (3+)", () => {
-      const p = findPositional("bretonnian", "ogre")!;
-      expect(p).toBeDefined();
-      expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+");
-      expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
       expect(normalizeSkills(p.skills)).toEqual(
-        normalizeSkills(["Thick Skull", "Really Stupid", "Mighty Blow (+1)", "Throw Team-mate", "Loner (3+)"]),
+        normalizeSkills(["Catch", "Dauntless", "Nerves of Steel"]),
+      );
+    });
+    it("grail-knight: MA7 ST3 AG3+ PA4+ AV10+ cost95000 skills:block,dauntless,steady footing", () => {
+      const p = findPositional("bretonnian", "grail-knight")!;
+      expect(p).toBeDefined();
+      expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("3+");
+      expect(p.pa).toBe("4+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(95_000);
+      expect(normalizeSkills(p.skills)).toEqual(
+        normalizeSkills(["Block", "Dauntless", "Steady Footing"]),
       );
     });
   });
@@ -468,6 +479,38 @@ describe("REQ-RACE-04: Full positional stat/cost/skill parity against verified r
   describe("high-elf parity", () => {
     it("high-elf race exists", () => {
       expect(getRaceById("high-elf")).toBeDefined();
+    });
+    it("lineman: MA6 ST3 AG2+ PA3+ AV9+ cost65000 skills:none", () => {
+      const p = findPositional("high-elf", "lineman")!;
+      expect(p).toBeDefined();
+      expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("2+");
+      expect(p.pa).toBe("3+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(65_000);
+      expect(normalizeSkills(p.skills)).toEqual([]);
+    });
+    it("thrower (Phoenix Warrior): MA6 ST3 AG2+ PA2+ AV9+ cost90000 skills:cloud burster,pass,safe pass", () => {
+      const p = findPositional("high-elf", "thrower")!;
+      expect(p).toBeDefined();
+      expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("2+");
+      expect(p.pa).toBe("2+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(90_000);
+      expect(normalizeSkills(p.skills)).toEqual(
+        normalizeSkills(["Cloud Burster", "Pass", "Safe Pass"]),
+      );
+    });
+    it("catcher (Dragon Prince): MA8 ST3 AG2+ PA4+ AV9+ cost110000 skills:block,my ball,steady footing", () => {
+      const p = findPositional("high-elf", "catcher")!;
+      expect(p).toBeDefined();
+      expect(p.ma).toBe(8); expect(p.st).toBe(3); expect(p.ag).toBe("2+");
+      expect(p.pa).toBe("4+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(110_000);
+      expect(normalizeSkills(p.skills)).toEqual(
+        normalizeSkills(["Block", "My Ball", "Steady Footing"]),
+      );
+    });
+    it("blitzer (White Lion): MA7 ST3 AG2+ PA3+ AV9+ cost110000 skills:claws,wrestle", () => {
+      const p = findPositional("high-elf", "blitzer")!;
+      expect(p).toBeDefined();
+      expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("2+");
+      expect(p.pa).toBe("3+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(110_000);
+      expect(normalizeSkills(p.skills)).toEqual(normalizeSkills(["Claws", "Wrestle"]));
     });
   });
 
@@ -591,10 +634,10 @@ describe("REQ-RACE-04: Exhaustive parity — dwarf positionals", () => {
     expect(p.ma).toBe(4); expect(p.st).toBe(3); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(70_000);
     expect(norm(p.skills)).toEqual(norm(["Thick Skull", "Block", "Defensive"]));
   });
-  it("dwarf blitzer: MA5 ST3 AG4+ PA4+ AV10+ cost100000 skills:defensive,arm bar,block,thick skull", () => {
+  it("dwarf blitzer: MA5 ST3 AG4+ PA4+ AV10+ cost100000 skills:block,diving tackle,tackle,thick skull", () => {
     const p = fp("dwarf", "blitzer")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(3); expect(p.ag).toBe("4+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(100_000);
-    expect(norm(p.skills)).toEqual(norm(["Defensive", "Arm Bar", "Block", "Thick Skull"]));
+    expect(norm(p.skills)).toEqual(norm(["Block", "Diving Tackle", "Tackle", "Thick Skull"]));
   });
   it("dwarf runner: MA6 ST3 AG3+ PA4+ AV9+ cost80000 skills:thick skull,sprint,sure hands", () => {
     const p = fp("dwarf", "runner")!; expect(p).toBeDefined();
@@ -618,20 +661,20 @@ describe("REQ-RACE-04: Exhaustive parity — elven-union positionals", () => {
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("elven-union exists, rerollCost 50000", () => { const r = getRaceById("elven-union")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(50_000); });
-  it("elven-union lineman: MA6 ST3 AG2+ PA3+ AV8+ cost65000 skills:dejada", () => {
+  it("elven-union lineman: MA6 ST3 AG2+ PA3+ AV8+ cost65000 skills:fumblerooski", () => {
     const p = fp("elven-union", "lineman")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(65_000);
-    expect(norm(p.skills)).toEqual(norm(["Dejada"]));
+    expect(norm(p.skills)).toEqual(norm(["Fumblerooski"]));
   });
-  it("elven-union thrower: MA6 ST3 AG2+ PA2+ AV8+ cost75000 skills:pass,running pass", () => {
+  it("elven-union thrower: MA6 ST3 AG2+ PA2+ AV8+ cost75000 skills:hail mary pass,pass", () => {
     const p = fp("elven-union", "thrower")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("2+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(75_000);
-    expect(norm(p.skills)).toEqual(norm(["Pass", "Running Pass"]));
+    expect(norm(p.skills)).toEqual(norm(["Hail Mary Pass", "Pass"]));
   });
-  it("elven-union catcher: MA8 ST3 AG2+ PA4+ AV8+ cost100000 skills:catch,nerves of steel,safe pair of hands", () => {
+  it("elven-union catcher: MA8 ST3 AG2+ PA4+ AV8+ cost100000 skills:catch,diving catch,nerves of steel", () => {
     const p = fp("elven-union", "catcher")!; expect(p).toBeDefined();
     expect(p.ma).toBe(8); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(100_000);
-    expect(norm(p.skills)).toEqual(norm(["Catch", "Nerves of Steel", "Safe Pair of Hands"]));
+    expect(norm(p.skills)).toEqual(norm(["Catch", "Diving Catch", "Nerves of Steel"]));
   });
   it("elven-union blitzer: MA7 ST3 AG2+ PA3+ AV9+ cost115000 skills:sidestep,block", () => {
     const p = fp("elven-union", "blitzer")!; expect(p).toBeDefined();
@@ -687,11 +730,10 @@ describe("REQ-RACE-04: Exhaustive parity — dark-elf positionals", () => {
     expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(105_000);
     expect(norm(p.skills)).toEqual(norm(["Block"]));
   });
-  it("dark-elf runner: MA7 ST3 AG2+ PA3+ AV8+ cost80000", () => {
+  it("dark-elf runner: MA7 ST3 AG2+ PA3+ AV8+ cost80000 skills:dump-off,punt", () => {
     const p = fp("dark-elf", "runner")!; expect(p).toBeDefined();
     expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(80_000);
-    // skills stored as Spanish OCR-derived strings matching implementation
-    expect(norm(p.skills)).toEqual(norm(["Pase precipitado", "Patada de despeje"]));
+    expect(norm(p.skills)).toEqual(norm(["Dump-off", "Punt"]));
   });
   it("dark-elf assassin: MA7 ST3 AG2+ PA4+ AV8+ cost90000 skills:stab,hit and run,shadowing", () => {
     const p = fp("dark-elf", "assassin")!; expect(p).toBeDefined();
@@ -758,6 +800,11 @@ describe("REQ-RACE-04: Exhaustive parity — chaos-chosen positionals", () => {
     expect(p.ma).toBe(4); expect(p.st).toBe(5); expect(p.ag).toBe("5+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(115_000);
     expect(norm(p.skills)).toEqual(norm(["Mighty Blow (+1)", "Throw Team-mate", "Projectile Vomit", "Really Stupid", "Regeneration", "Always Hungry", "Loner (4+)"]));
   });
+  it("chaos-chosen ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000 skills:bone head,loner (4+),mighty blow (+1),thick skull,throw team-mate", () => {
+    const p = fp("chaos-chosen", "ogre")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Loner (4+)", "Mighty Blow (+1)", "Thick Skull", "Throw Team-mate"]));
+  });
   it("minotaur: MA5 ST5 AG4+ PA6+ AV9+ cost150000", () => {
     const p = fp("chaos-chosen", "minotaur")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(150_000);
@@ -822,10 +869,15 @@ describe("REQ-RACE-04: Exhaustive parity — chaos-renegade positionals", () => 
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("2+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(65_000);
     expect(norm(p.skills)).toEqual(norm(["Animosity (all)"]));
   });
-  it("chaos-ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000", () => {
+  it("renegade-human-thrower: MA6 ST3 AG3+ PA3+ AV9+ cost75000 skills:animosity (all),pass,sure hands", () => {
+    const p = fp("chaos-renegade", "renegade-human-thrower")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(75_000);
+    expect(norm(p.skills)).toEqual(norm(["Animosity (all)", "Pass", "Sure Hands"]));
+  });
+  it("chaos-ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000 skills:bone head,loner (3+),mighty blow (+1),thick skull,throw team-mate", () => {
     const p = fp("chaos-renegade", "chaos-ogre")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
-    expect(norm(p.skills)).toEqual(norm(["Thick Skull", "Really Stupid", "Mighty Blow (+1)", "Throw Team-mate", "Loner (3+)"]));
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Loner (3+)", "Mighty Blow (+1)", "Thick Skull", "Throw Team-mate"]));
   });
   it("renegade-troll: MA4 ST5 AG5+ PA5+ AV10+ cost115000", () => {
     const p = fp("chaos-renegade", "renegade-troll")!; expect(p).toBeDefined();
@@ -886,20 +938,20 @@ describe("REQ-RACE-04: Exhaustive parity — imperial-nobility positionals", () 
     expect(p.ma).toBe(5); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(85_000);
     expect(norm(p.skills)).toEqual(norm(["Wrestle", "Stand Firm"]));
   });
-  it("imperial-nobility thrower: MA6 ST3 AG3+ PA2+ AV9+ cost75000 skills:pass,running pass", () => {
+  it("imperial-nobility thrower: MA6 ST3 AG3+ PA2+ AV9+ cost75000 skills:give and go,pass,pro", () => {
     const p = fp("imperial-nobility", "thrower")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("2+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(75_000);
-    expect(norm(p.skills)).toEqual(norm(["Pass", "Running Pass"]));
+    expect(norm(p.skills)).toEqual(norm(["Give and Go", "Pass", "Pro"]));
   });
   it("imperial-nobility blitzer: MA7 ST3 AG3+ PA4+ AV9+ cost90000 skills:catch,block,pro", () => {
     const p = fp("imperial-nobility", "blitzer")!; expect(p).toBeDefined();
     expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(90_000);
     expect(norm(p.skills)).toEqual(norm(["Catch", "Block", "Pro"]));
   });
-  it("imperial-nobility ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000", () => {
+  it("imperial-nobility ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000 skills:bone head,loner (3+),mighty blow (+1),thick skull,throw team-mate", () => {
     const p = fp("imperial-nobility", "ogre")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
-    expect(norm(p.skills)).toEqual(norm(["Thick Skull", "Really Stupid", "Mighty Blow (+1)", "Throw Team-mate", "Loner (3+)"]));
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Loner (3+)", "Mighty Blow (+1)", "Thick Skull", "Throw Team-mate"]));
   });
 });
 
@@ -936,15 +988,20 @@ describe("REQ-RACE-04: Exhaustive parity — lizardmen positionals (remaining)",
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("lizardmen exists, rerollCost 70000", () => { const r = getRaceById("lizardmen")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
+  it("chameleon-skink: MA7 ST2 AG3+ PA3+ AV8+ cost70000 skills:dodge,on the ball,shadowing,stunty", () => {
+    const p = fp("lizardmen", "chameleon-skink")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(7); expect(p.st).toBe(2); expect(p.ag).toBe("3+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(70_000);
+    expect(norm(p.skills)).toEqual(norm(["Dodge", "On the Ball", "Shadowing", "Stunty"]));
+  });
   it("saurus-blocker: MA6 ST4 AG5+ PA6+ AV10+ cost90000 skills:juggernaut,shakey", () => {
     const p = fp("lizardmen", "saurus-blocker")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(4); expect(p.ag).toBe("5+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(90_000);
     expect(norm(p.skills)).toEqual(norm(["Juggernaut", "Shakey"]));
   });
-  it("kroxigor: MA6 ST5 AG5+ PA6+ AV10+ cost140000", () => {
+  it("kroxigor: MA6 ST5 AG5+ PA6+ AV10+ cost140000 skills:bone head,thick skull,prehensile tail,mighty blow (+1),loner (4+)", () => {
     const p = fp("lizardmen", "kroxigor")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(5); expect(p.ag).toBe("5+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
-    expect(norm(p.skills)).toEqual(norm(["Thick Skull", "Prehensile Tail", "Really Stupid", "Mighty Blow (+1)", "Loner (4+)"]));
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Thick Skull", "Prehensile Tail", "Mighty Blow (+1)", "Loner (4+)"]));
   });
 });
 
@@ -985,10 +1042,10 @@ describe("REQ-RACE-04: Exhaustive parity — norse positionals", () => {
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(50_000);
     expect(norm(p.skills)).toEqual(norm(["Drunkard", "Thick Skull", "Block", "Shakey"]));
   });
-  it("norse thrower: MA7 ST3 AG3+ PA3+ AV8+ cost95000", () => {
-    const p = fp("norse", "thrower")!; expect(p).toBeDefined();
-    expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("3+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(95_000);
-    expect(norm(p.skills)).toEqual(norm(["Dauntless", "Catch", "Pass", "Strip Ball"]));
+  it("beer-boar: MA5 ST1 AG3+ PA— AV6+ cost20000 skills:dodge,no hands,pick-me-up,stunty,titchy", () => {
+    const p = fp("norse", "beer-boar")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(1); expect(p.ag).toBe("3+"); expect(p.pa).toBe("—"); expect(p.av).toBe("6+"); expect(p.cost).toBe(20_000);
+    expect(norm(p.skills)).toEqual(norm(["Dodge", "No Hands", "Pick-me-up", "Stunty", "Titchy"]));
   });
   it("berserker: MA6 ST3 AG3+ PA5+ AV8+ cost90000 skills:jump up,frenzy,block", () => {
     const p = fp("norse", "berserker")!; expect(p).toBeDefined();
@@ -1017,25 +1074,25 @@ describe("REQ-RACE-04: Exhaustive parity — nurgle positionals", () => {
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("nurgle exists, rerollCost 60000", () => { const r = getRaceById("nurgle")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(60_000); });
-  it("rotter-lineman: MA5 ST3 AG4+ PA6+ AV9+ cost40000 skills:decay,nurgling infestation", () => {
+  it("rotter-lineman: MA5 ST3 AG4+ PA6+ AV9+ cost40000 skills:decay,plague ridden", () => {
     const p = fp("nurgle", "rotter-lineman")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(3); expect(p.ag).toBe("4+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(40_000);
-    expect(norm(p.skills)).toEqual(norm(["Decay", "Nurgling Infestation"]));
+    expect(norm(p.skills)).toEqual(norm(["Decay", "Plague Ridden"]));
   });
-  it("pestigor: MA6 ST3 AG3+ PA4+ AV9+ cost70000 skills:thick skull,horns,sure feet,regeneration", () => {
+  it("pestigor: MA6 ST3 AG3+ PA4+ AV9+ cost70000 skills:horns,plague ridden,regeneration,steady footing,thick skull", () => {
     const p = fp("nurgle", "pestigor")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(70_000);
-    expect(norm(p.skills)).toEqual(norm(["Thick Skull", "Horns", "Sure Feet", "Regeneration"]));
+    expect(norm(p.skills)).toEqual(norm(["Horns", "Plague Ridden", "Regeneration", "Steady Footing", "Thick Skull"]));
   });
   it("bloater: MA4 ST4 AG4+ PA6+ AV10+ cost110000", () => {
     const p = fp("nurgle", "bloater")!; expect(p).toBeDefined();
     expect(p.ma).toBe(4); expect(p.st).toBe(4); expect(p.ag).toBe("4+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(110_000);
-    expect(norm(p.skills)).toEqual(norm(["Foul Appearance", "Stand Firm", "Disturbing Presence", "Regeneration", "Unchannelled Fury"]));
+    expect(norm(p.skills)).toEqual(norm(["Disturbing Presence", "Foul Appearance", "Plague Ridden", "Regeneration", "Stand Firm", "Shakey"]));
   });
   it("rotspawn: MA4 ST5 AG5+ PA6+ AV10+ cost140000", () => {
     const p = fp("nurgle", "rotspawn")!; expect(p).toBeDefined();
     expect(p.ma).toBe(4); expect(p.st).toBe(5); expect(p.ag).toBe("5+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
-    expect(norm(p.skills)).toEqual(norm(["Foul Appearance", "Mighty Blow (+1)", "Disturbing Presence", "Really Stupid", "Regeneration", "Tentacles", "Loner (4+)"]));
+    expect(norm(p.skills)).toEqual(norm(["Disturbing Presence", "Foul Appearance", "Loner (4+)", "Mighty Blow (+1)", "Pick-me-up", "Plague Ridden", "Really Stupid", "Regeneration", "Tentacles"]));
   });
 });
 
@@ -1069,10 +1126,35 @@ describe("REQ-RACE-04: Exhaustive parity — old-world-alliance positionals", ()
     expect(p.ma).toBe(7); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(85_000);
     expect(norm(p.skills)).toEqual(norm(["Block", "Tackle"]));
   });
-  it("old-world-alliance ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000", () => {
+  it("old-world-alliance human-catcher: MA8 ST3 AG3+ PA4+ AV8+ cost75000 skills:catch,dodge", () => {
+    const p = fp("old-world-alliance", "human-catcher")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(8); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(75_000);
+    expect(norm(p.skills)).toEqual(norm(["Catch", "Dodge"]));
+  });
+  it("old-world-alliance dwarf-runner: MA6 ST3 AG3+ PA4+ AV9+ cost80000 skills:sprint,sure hands,thick skull", () => {
+    const p = fp("old-world-alliance", "dwarf-runner")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(6); expect(p.st).toBe(3); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(80_000);
+    expect(norm(p.skills)).toEqual(norm(["Sprint", "Sure Hands", "Thick Skull"]));
+  });
+  it("old-world-alliance troll-slayer: MA5 ST3 AG4+ PA5+ AV9+ cost95000 skills:block,dauntless,frenzy,troll hatred,thick skull", () => {
+    const p = fp("old-world-alliance", "troll-slayer")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(3); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(95_000);
+    expect(norm(p.skills)).toEqual(norm(["Block", "Dauntless", "Frenzy", "Troll Hatred", "Thick Skull"]));
+  });
+  it("old-world-alliance dwarf-blitzer: MA5 ST3 AG4+ PA4+ AV10+ cost100000 skills:block,diving tackle,tackle,thick skull", () => {
+    const p = fp("old-world-alliance", "dwarf-blitzer")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(3); expect(p.ag).toBe("4+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(100_000);
+    expect(norm(p.skills)).toEqual(norm(["Block", "Diving Tackle", "Tackle", "Thick Skull"]));
+  });
+  it("old-world-alliance altern-forest-treeman: MA2 ST6 AG5+ PA5+ AV11+ cost120000", () => {
+    const p = fp("old-world-alliance", "altern-forest-treeman")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(2); expect(p.st).toBe(6); expect(p.ag).toBe("5+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("11+"); expect(p.cost).toBe(120_000);
+    expect(norm(p.skills)).toEqual(norm(["Loner (4+)", "Mighty Blow (+1)", "Stand Firm", "Strong Arm", "Take Root", "Thick Skull", "Throw Team-mate", "Timmm-Ber!"]));
+  });
+  it("old-world-alliance ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000 skills:bone head,loner (3+),mighty blow (+1),thick skull,throw team-mate", () => {
     const p = fp("old-world-alliance", "ogre")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
-    expect(norm(p.skills)).toEqual(norm(["Thick Skull", "Really Stupid", "Mighty Blow (+1)", "Throw Team-mate", "Loner (3+)"]));
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Loner (3+)", "Mighty Blow (+1)", "Thick Skull", "Throw Team-mate"]));
   });
 });
 
@@ -1081,10 +1163,15 @@ describe("REQ-RACE-04: Exhaustive parity — snotling positionals", () => {
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
   it("snotling exists, rerollCost 70000", () => { const r = getRaceById("snotling")!; expect(r).toBeDefined(); expect(r.rerollCost).toBe(70_000); });
-  it("snotling lineman: MA5 ST1 AG3+ PA4+ AV6+ cost15000 skills:dodge,right stuff,side step,titchy,swarming", () => {
+  it("snotling lineman: MA5 ST1 AG3+ PA4+ AV6+ cost15000 skills:dodge,insignificant,right stuff,side step,stunty,titchy", () => {
     const p = fp("snotling", "snotling")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(1); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("6+"); expect(p.cost).toBe(15_000);
-    expect(norm(p.skills)).toEqual(norm(["Dodge", "Right Stuff", "Side Step", "Titchy", "Swarming"]));
+    expect(norm(p.skills)).toEqual(norm(["Dodge", "Insignificant", "Right Stuff", "Side Step", "Stunty", "Titchy"]));
+  });
+  it("fungus-flinga: MA5 ST1 AG3+ PA4+ AV6+ cost30000 skills:bombardier,dodge,right stuff,secret weapon,side step,stunty,titchy", () => {
+    const p = fp("snotling", "fungus-flinga")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(1); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("6+"); expect(p.cost).toBe(30_000);
+    expect(norm(p.skills)).toEqual(norm(["Bombardier", "Dodge", "Right Stuff", "Secret Weapon", "Side Step", "Stunty", "Titchy"]));
   });
   it("fun-hoppa: MA6 ST1 AG3+ PA4+ AV6+ cost20000 skills:side step,dodge,right stuff,pogo stick,stunty", () => {
     const p = fp("snotling", "fun-hoppa")!; expect(p).toBeDefined();
@@ -1164,6 +1251,21 @@ describe("REQ-RACE-04: Exhaustive parity — underworld-denizens positionals", (
     const p = fp("underworld-denizens", "mutant-rat-ogre")!; expect(p).toBeDefined();
     expect(p.ma).toBe(6); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("9+"); expect(p.cost).toBe(150_000);
     expect(norm(p.skills)).toEqual(norm(["Prehensile Tail", "Animal Savagery", "Frenzy", "Mighty Blow (+1)", "Loner (4+)"]));
+  });
+  it("snotling-lineman: MA5 ST1 AG3+ PA4+ AV6+ cost15000 max6 skills:dodge,insignificant,right stuff,side step,stunty,titchy", () => {
+    const p = fp("underworld-denizens", "snotling-lineman")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(1); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("6+"); expect(p.cost).toBe(15_000); expect(p.max).toBe(6);
+    expect(norm(p.skills)).toEqual(norm(["Dodge", "Insignificant", "Right Stuff", "Side Step", "Stunty", "Titchy"]));
+  });
+  it("gutter-runner: MA9 ST2 AG2+ PA4+ AV8+ cost85000 skills:animosity (goblin),dodge,stab", () => {
+    const p = fp("underworld-denizens", "gutter-runner")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(9); expect(p.st).toBe(2); expect(p.ag).toBe("2+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(85_000);
+    expect(norm(p.skills)).toEqual(norm(["Animosity (Goblin)", "Dodge", "Stab"]));
+  });
+  it("troll: MA4 ST5 AG5+ PA5+ AV10+ cost115000 skills:always hungry,loner (4+),mighty blow (+1),projectile vomit,really stupid,regeneration,throw team-mate", () => {
+    const p = fp("underworld-denizens", "troll")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(4); expect(p.st).toBe(5); expect(p.ag).toBe("5+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(115_000);
+    expect(norm(p.skills)).toEqual(norm(["Always Hungry", "Loner (4+)", "Mighty Blow (+1)", "Projectile Vomit", "Really Stupid", "Regeneration", "Throw Team-mate"]));
   });
 });
 
@@ -1256,6 +1358,16 @@ describe("REQ-RACE-04: Exhaustive parity — goblin positionals", () => {
     expect(p.ma).toBe(4); expect(p.st).toBe(5); expect(p.ag).toBe("5+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(115_000);
     expect(norm(p.skills)).toEqual(norm(["Mighty Blow (+1)", "Throw Team-mate", "Projectile Vomit", "Really Stupid", "Regeneration", "Always Hungry"]));
   });
+  it("ooligan: MA6 ST2 AG3+ PA5+ AV8+ cost60000 skills:dirty player,disturbing presence,dodge,right stuff,stunty,taunt", () => {
+    const p = fp("goblin", "ooligan")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(6); expect(p.st).toBe(2); expect(p.ag).toBe("3+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(60_000);
+    expect(norm(p.skills)).toEqual(norm(["Dirty Player (+1)", "Disturbing Presence", "Dodge", "Right Stuff", "Stunty", "Taunt"]));
+  });
+  it("doom-diver: MA6 ST2 AG3+ PA6+ AV8+ cost65000 skills:dodge,right stuff,stunty,swoop", () => {
+    const p = fp("goblin", "doom-diver")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(6); expect(p.st).toBe(2); expect(p.ag).toBe("3+"); expect(p.pa).toBe("6+"); expect(p.av).toBe("8+"); expect(p.cost).toBe(65_000);
+    expect(norm(p.skills)).toEqual(norm(["Dodge", "Right Stuff", "Stunty", "Swoop"]));
+  });
 });
 
 describe("REQ-RACE-04: Exhaustive parity — wood-elf positionals", () => {
@@ -1294,9 +1406,24 @@ describe("REQ-RACE-04: Exhaustive parity — human ogre (completing human covera
   function norm(s: string[]): string[] { return s.map(x => skillRefToId(x.trim())).sort(); }
   function fp(raceId: string, key: string) { return getRaceById(raceId)?.positionals.find(p => p.key === key); }
 
-  it("human ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000", () => {
+  it("human halfling-hopeful: MA5 ST2 AG3+ PA4+ AV7+ cost30000 max3 skills:dodge,right stuff,stunty", () => {
+    const p = fp("human", "halfling-hopeful")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(2); expect(p.ag).toBe("3+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("7+"); expect(p.cost).toBe(30_000); expect(p.max).toBe(3);
+    expect(norm(p.skills)).toEqual(norm(["Dodge", "Right Stuff", "Stunty"]));
+  });
+  it("human ogre: MA5 ST5 AG4+ PA5+ AV10+ cost140000 skills:bone head,loner (3+),mighty blow (+1),thick skull,throw team-mate", () => {
     const p = fp("human", "ogre")!; expect(p).toBeDefined();
     expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
-    expect(norm(p.skills)).toEqual(norm(["Thick Skull", "Really Stupid", "Mighty Blow (+1)", "Throw Team-mate", "Loner (3+)"]));
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Loner (3+)", "Mighty Blow (+1)", "Thick Skull", "Throw Team-mate"]));
+  });
+  it("ogre blocker: MA5 ST5 AG4+ PA5+ AV10+ cost140000 skills:bone head,mighty blow (+1),thick skull,throw team-mate", () => {
+    const p = fp("ogre", "ogre-blocker")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("5+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(140_000);
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Mighty Blow (+1)", "Thick Skull", "Throw Team-mate"]));
+  });
+  it("ogre-runt-punter: MA5 ST5 AG4+ PA4+ AV10+ cost145000 skills:bone head,kick team-mate,mighty blow (+1),thick skull", () => {
+    const p = fp("ogre", "ogre-runt-punter")!; expect(p).toBeDefined();
+    expect(p.ma).toBe(5); expect(p.st).toBe(5); expect(p.ag).toBe("4+"); expect(p.pa).toBe("4+"); expect(p.av).toBe("10+"); expect(p.cost).toBe(145_000);
+    expect(norm(p.skills)).toEqual(norm(["Bone Head", "Kick Team-mate", "Mighty Blow (+1)", "Thick Skull"]));
   });
 });
