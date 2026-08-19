@@ -114,3 +114,22 @@ export async function hirePlayer(
   });
   return readJson<RosterTreasuryResult>(res);
 }
+
+/**
+ * Fires/retires a roster player (`DELETE /api/teams/[teamId]/players/[playerId]`).
+ * BB2025 gives no refund: the server decrements the team treasury by the
+ * player's cost so the spendable balance stays flat. Resolves with the updated
+ * `{ roster, treasury }`; a foreign/archived team resolves 404, a firing that
+ * would drop below the 11-player minimum or an unknown roster id 409 — failures
+ * are thrown with the server's `error` verbatim.
+ */
+export async function firePlayer(
+  teamId: string,
+  rosterPlayerId: string,
+): Promise<RosterTreasuryResult> {
+  const res = await fetch(
+    `/api/teams/${encodeURIComponent(teamId)}/players/${encodeURIComponent(rosterPlayerId)}`,
+    { method: "DELETE" },
+  );
+  return readJson<RosterTreasuryResult>(res);
+}
