@@ -19,6 +19,7 @@ import {
   confirmCasualtyLiveMatch,
   rollLiveMvp,
   resolveLiveMatch,
+  nominateMvpLiveMatch,
 } from "@/lib/liveStore";
 import {
   applyEndTurn,
@@ -534,20 +535,30 @@ type ControlCommand =
   | { type: "concedeRespond"; accept: boolean }
   | {
       /** RAU-49: server-owned PREVIEW roll for the resolution modal — validates
-       * the 6 MJP nominations per team, rolls the MVP 1D6 + post-match FF dice
-       * and PERSISTS the result as `LiveMatch.pendingResolution` (in the same
-       * transaction). The `resolveMatch` command then reuses those EXACT rolls
-       * at commit, so the previewed summary is what gets reported. Overwriting
-       * a previous preview on re-roll is fine; 409 when already resolved. */
+       * the persisted per-side MJP nominations (RAU-51: BOTH sides must have
+       * nominated), rolls the MVP 1D6 + post-match FF dice and PERSISTS the
+       * result as `LiveMatch.pendingResolution` (in the same transaction). The
+       * `resolveMatch` command then reuses those EXACT rolls at commit, so the
+       * previewed summary is what gets reported. Overwriting a previous preview
+       * on re-roll is fine; 409 when already resolved or a side has not
+       * nominated yet. */
       type: "rollMvp";
-      mvp: { home: string[]; away: string[] };
     }
   | {
       /** RAU-49: THE end-of-match closure — persists the PE awards, treasuries,
        * post-match FF, the MatchResult row, closes the fixture (idempotent for
-       * a concede walkover) and runs `maybeCloseLeague` in ONE transaction. */
+       * a concede walkover) and runs `maybeCloseLeague` in ONE transaction.
+       * RAU-51: rolls/reuses the persisted per-side nominations, never a body. */
       type: "resolveMatch";
-      mvp: { home: string[]; away: string[] };
+    }
+  | {
+      /** RAU-51: a coach submits THEIR OWN side's six MJP nominations (the
+       * route enforces the caller owns that side's team). Persisted per-side on
+       * `LiveMatch.mvpNominations`; replace-on-resubmit; both sides gate the
+       * roll. 400 invalid/dead/suspended nominees, 409 not finished/resolved. */
+      type: "nominateMvp";
+      side: TeamSide;
+      players: string[];
     };
 
 function isControlCommand(value: unknown): value is ControlCommand {
@@ -600,17 +611,18 @@ function isControlCommand(value: unknown): value is ControlCommand {
     case "concedeRespond":
       return typeof c.accept === "boolean";
     case "rollMvp":
-    case "resolveMatch": {
-      // RAU-49: the mvp body MUST carry the two six-nomination arrays (the
-      // store validates 6-distinct + roster membership, mapping to 400).
-      const mvp = c.mvp;
+    case "resolveMatch":
+      // RAU-51: the resolution commands no longer carry the nominations in the
+      // body — the server rolls from the PERSISTED per-side `mvpNominations`.
+      return true;
+    case "nominateMvp":
+      // RAU-51: the caller's side + their six roster ids (6-distinct + roster/
+      // availability membership are validated in the store → 400).
       return (
-        typeof mvp === "object" &&
-        mvp !== null &&
-        Array.isArray((mvp as Record<string, unknown>).home) &&
-        Array.isArray((mvp as Record<string, unknown>).away)
+        (c.side === "home" || c.side === "away") &&
+        Array.isArray(c.players) &&
+        c.players.every((p) => typeof p === "string")
       );
-    }
     default:
       return false;
   }
@@ -852,15 +864,47 @@ export async function POST(
     }
   }
 
-  // RAU-49: the end-of-match RESOLUTION commands. `rollMvp` is a server-owned
-  // preview (validates the 6+6 MJP nominations, reveals the rolled MVP
-  // grantees + post-match FF and PERSISTS them as `pendingResolution` so the
-  // commit reuses the SAME rolls); the `resolveMatch` command is THE CLOSURE —
-  // it persists the PE awards, the treasuries, the FF snapshot, the `MatchResult`
-  // row, closes the fixture (idempotent for the concede walkover) and runs
-  // `maybeCloseLeague` in ONE transaction. Both skip the LM-12 side gate below
-  // (they are not turn-phase events); the coach/admin gate + the finished-league
-  // guard already ran.
+  // RAU-49/RAU-51: the end-of-match RESOLUTION commands. `nominateMvp` is the
+  // per-coach nomination of their OWN side (the route enforces the caller owns
+  // that side's team); `rollMvp` is a server-owned preview that requires BOTH
+  // sides nominated and reveals the rolled MVP grantees + post-match FF,
+  // persisting them as `pendingResolution` so the commit reuses the SAME rolls;
+  // the `resolveMatch` command is THE CLOSURE — it persists the PE awards, the
+  // treasuries, the FF snapshot, the `MatchResult` row, closes the fixture
+  // (idempotent for the concede walkover) and runs `maybeCloseLeague` in ONE
+  // transaction. All three skip the LM-12 side gate below (they are not
+  // turn-phase events); the coach/admin gate + the finished-league guard already
+  // ran. `nominateMvp` is additionally restricted to the side's OWN owner.
+  if (command.type === "nominateMvp") {
+    if (side === null) {
+      return Response.json({ error: "No side to nominate" }, { status: 409 });
+    }
+    if (command.side !== side) {
+      return Response.json({ error: "Not your team" }, { status: 409 });
+    }
+    try {
+      const result = await nominateMvpLiveMatch(
+        {
+          fixtureId,
+          teamId: command.side === "home" ? ctx.homeTeamId : ctx.awayTeamId,
+          side: command.side,
+          players: command.players,
+          now,
+        },
+        deps,
+      );
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400) return Response.json({ error: "Invalid MVP nominations" }, { status: 400 });
+      if (status === 409) {
+        return Response.json({ error: "Cannot nominate MVP in current state" }, { status: 409 });
+      }
+      if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      throw error;
+    }
+  }
+
   if (command.type === "rollMvp") {
     try {
       const roll = await rollLiveMvp(
@@ -868,7 +912,6 @@ export async function POST(
           fixtureId,
           homeTeamId: ctx.homeTeamId,
           awayTeamId: ctx.awayTeamId,
-          nominations: command.mvp,
           now,
         },
         deps,
@@ -878,6 +921,9 @@ export async function POST(
       const status = (error as { status?: number }).status;
       if (status === 400) return Response.json({ error: "Invalid MVP nominations" }, { status: 400 });
       if (status === 409) {
+        if ((error as Error).message === "both sides must nominate first") {
+          return Response.json({ error: "Both sides must nominate first" }, { status: 409 });
+        }
         return Response.json({ error: "Cannot roll MVP for a resolved match" }, { status: 409 });
       }
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
@@ -896,7 +942,6 @@ export async function POST(
           leagueId: ctx.leagueId,
           homeTeamId: ctx.homeTeamId,
           awayTeamId: ctx.awayTeamId,
-          nominations: command.mvp,
           loadedBy: userId as string,
           now,
         },
@@ -910,6 +955,9 @@ export async function POST(
       const status = (error as { status?: number }).status;
       if (status === 400) return Response.json({ error: "Invalid MVP nominations" }, { status: 400 });
       if (status === 409) {
+        if ((error as Error).message === "both sides must nominate first") {
+          return Response.json({ error: "Both sides must nominate first" }, { status: 409 });
+        }
         return Response.json({ error: "Cannot resolve match in current state" }, { status: 409 });
       }
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });

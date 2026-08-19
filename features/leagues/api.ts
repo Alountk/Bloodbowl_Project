@@ -563,6 +563,10 @@ export interface LiveMatchViewState {
     roll16: number;
     roll6?: number;
   } | null;
+  /** RAU-51: the persisted per-side MJP nominations (null per side = that coach
+   * has not nominated yet) — the resolution modal renders the per-coach pickers
+   * and gates the server roll on BOTH sides. */
+  mvpNominations: { home: string[] | null; away: string[] | null };
 }
 
 /** A chronological live event delivered by the hub (LM-6). */
@@ -578,8 +582,10 @@ export interface LiveMatchEventDto {
 }
 
 /** Control commands the live POST route accepts (LM-4/D10/D11/LM-11/LM-13).
- * `mvp` is deliberately absent (LM-14): it is NEVER a live command — the result
- * route writes it, not the control surface. */
+ * The resolution commands (RAU-49/RAU-51) are server-owned: `nominateMvp`
+ * submits a coach's OWN side's six nominations, `rollMvp` rolls from the
+ * PERSISTED per-side nominations (never a body) and `resolveMatch` closes the
+ * match from that same persisted state. */
 export type LiveCommand =
   | { type: "consent"; side: "home" | "away" }
   | { type: "retractConsent"; side: "home" | "away" }
@@ -616,19 +622,26 @@ export type LiveCommand =
   | { type: "concede" }
   | { type: "concedeRespond"; accept: boolean }
   | {
-      /** RAU-49: server-owned PREVIEW roll for the resolution modal — validates
-       * the 6 MJP nominations per team and reveals the rolled MVP grantees +
-       * post-match FF WITHOUT persisting anything (the resolve command re-rolls
-       * authoritatively). */
+      /** RAU-51: a coach submits THEIR OWN side's six MJP nominations (the
+       * route enforces the caller owns that side's team; dead/suspended players
+       * are rejected server-side, RAU-12). Replaces that side's persisted
+       * nominations; both sides gate the roll. */
+      type: "nominateMvp";
+      side: "home" | "away";
+      players: string[];
+    }
+  | {
+      /** RAU-49: server-owned PREVIEW roll for the resolution modal — requires
+       * BOTH sides' persisted nominations (RAU-51) and reveals the rolled MVP
+       * grantees + post-match FF WITHOUT persisting anything until the commit
+       * (`resolveMatch` reuses the previewed values). */
       type: "rollMvp";
-      mvp: { home: string[]; away: string[] };
     }
   | {
       /** RAU-49: THE end-of-match closure — persists the PE awards, treasuries,
        * post-match FF, the MatchResult row, closes the fixture (idempotent for
        * the concede walkover) and runs `maybeCloseLeague` in ONE transaction. */
       type: "resolveMatch";
-      mvp: { home: string[]; away: string[] };
     };
 
 /**
@@ -673,19 +686,40 @@ export interface ResolveOutcome {
   resultId: string;
 }
 
+/** RAU-51: submits a coach's OWN side's six MJP nominations (the route enforces
+ * the caller owns that side's team). The server persists them per-side; the
+ * roll is gated on BOTH sides. */
+export async function nominateMvp(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+  players: string[],
+): Promise<void> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "nominateMvp", side, players }),
+    },
+  );
+  await readJson<{ view: LiveMatchViewState }>(res);
+}
+
 /** Rolls the server-owned MVP + FF preview for a finished live match and
- * persists it as `pendingResolution` so the commit reuses the SAME rolls. */
+ * persists it as `pendingResolution` so the commit reuses the SAME rolls. The
+ * nominations come from the PERSISTED per-side state (RAU-51) — the body
+ * carries nothing. */
 export async function rollLiveMvp(
   leagueId: string,
   fixtureId: string,
-  mvp: { home: string[]; away: string[] },
 ): Promise<LiveMvpRoll> {
   const res = await fetch(
     `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "rollMvp", mvp }),
+      body: JSON.stringify({ type: "rollMvp" }),
     },
   );
   const body = await readJson<{ roll: LiveMvpRoll }>(res);
@@ -693,18 +727,18 @@ export async function rollLiveMvp(
 }
 
 /** Resolves a finished live match (THE closure): PE + treasuries + FF + the
- * MatchResult row + the idempotent fixture close + `maybeCloseLeague`. */
+ * MatchResult row + the idempotent fixture close + `maybeCloseLeague`. The
+ * nominations come from the PERSISTED per-side state (RAU-51). */
 export async function resolveLiveMatch(
   leagueId: string,
   fixtureId: string,
-  mvp: { home: string[]; away: string[] },
 ): Promise<ResolveOutcome> {
   const res = await fetch(
     `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ type: "resolveMatch", mvp }),
+      body: JSON.stringify({ type: "resolveMatch" }),
     },
   );
   const body = await readJson<{ resolved: ResolveOutcome }>(res);
