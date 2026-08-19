@@ -3,10 +3,7 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { RACES } from "@/features/teams/data/races";
-import {
-  RACE_PRESETS,
-  presetTodas,
-} from "./presets";
+import { RACE_PRESETS, presetTodas } from "./presets";
 import {
   createRuleset,
   updateRuleset,
@@ -14,23 +11,24 @@ import {
   type RulesetDraft,
 } from "./api";
 
-interface RulesetWizardProps {
-  onClose: () => void;
-  /** Fired with the persisted ruleset after create/update so the grid refreshes. */
+export type RulesetTab = "info" | "races" | "economy" | "management";
+
+interface RulesetEditorProps {
+  /** When null the editor runs the create (sequential) flow. */
+  editing: Ruleset | null;
   onSaved: (ruleset: Ruleset) => void;
-  /** When set, the wizard opens in edit mode pre-filled from this ruleset. */
-  editing?: Ruleset | null;
+  onClose: () => void;
 }
 
-const STEPS = [
-  { n: 1, key: "info" },
-  { n: 2, key: "races" },
-  { n: 3, key: "economy" },
-  { n: 4, key: "management" },
-] as const;
+const TABS: ReadonlyArray<{ key: RulesetTab; n: number }> = [
+  { key: "info", n: 1 },
+  { key: "races", n: 2 },
+  { key: "economy", n: 3 },
+  { key: "management", n: 4 },
+];
 
-/** A ruleset as typed by the wizard (numeric fields kept as strings for inputs). */
-interface WizardDraft {
+/** A ruleset as edited by the tabs (numeric fields kept as strings for inputs). */
+interface EditorDraft {
   name: string;
   description: string;
   races: string[];
@@ -44,7 +42,7 @@ interface WizardDraft {
   active: boolean;
 }
 
-function draftFrom(ruleset?: Ruleset | null): WizardDraft {
+function draftFrom(ruleset?: Ruleset | null): EditorDraft {
   if (ruleset) {
     return {
       name: ruleset.name,
@@ -81,157 +79,183 @@ function parsePositiveInt(value: string): number | null {
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+function validateTab(tab: RulesetTab, draft: EditorDraft, t: Translate): string | null {
+  if (tab === "info" && !draft.name.trim()) {
+    return t("rulesets.wizard.errors.nameRequired");
+  }
+  if (tab === "races" && draft.races.length === 0) {
+    return t("rulesets.wizard.errors.noRaces");
+  }
+  if (tab === "economy") {
+    if (!parsePositiveInt(draft.startingTreasury)) {
+      return t("rulesets.wizard.errors.treasury");
+    }
+    const tvCap = draft.tvCap.trim() === "" ? null : parsePositiveInt(draft.tvCap);
+    if (draft.tvCap.trim() !== "" && !tvCap) {
+      return t("rulesets.wizard.errors.tvCap");
+    }
+    const min = parsePositiveInt(draft.minPlayers);
+    const max = parsePositiveInt(draft.maxPlayers);
+    if (!min || !max || min > 16 || max > 16) {
+      return t("rulesets.wizard.errors.players");
+    }
+    if (min > max) {
+      return t("rulesets.wizard.errors.minMax");
+    }
+  }
+  return null;
+}
+
+/** First invalid tab in wizard order, or null when the whole draft is valid. */
+function firstInvalid(draft: EditorDraft, t: Translate): { tab: RulesetTab; message: string } | null {
+  for (const { key } of TABS) {
+    const message = validateTab(key, draft, t);
+    if (message) return { tab: key, message };
+  }
+  return null;
+}
+
+function tabIndex(tab: RulesetTab): number {
+  return TABS.findIndex(({ key }) => key === tab);
+}
+
 /**
- * The Option-B 4-step ruleset wizard (RAU-52, developer-only section):
- * 1 Información → 2 Razas (31 checkboxes + presets) → 3 Economía y plantilla
- * → 4 Gestión y reglas. Saves via POST (new) or PATCH (edit). Rulebook-light
- * tokens, red accent on the active step, navy primary actions.
- *
- * The parent mounts this component ONLY while the wizard is open, so the draft
- * state initializes fresh from `editing` on every mount (no reset effect).
+ * RAU-52b inline ruleset editor (developer-only section): the bottom half of
+ * the page under the cards grid. Create mode walks the 4 tabs sequentially
+ * ("Siguiente →" ... "Crear tipo de reglas" POSTs). Edit mode loads a card and
+ * allows free tab navigation. Nothing persists until an explicit save.
  */
-export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps) {
+export function RulesetEditor({ editing, onSaved, onClose }: RulesetEditorProps) {
   const { t } = useI18n();
-  const [step, setStep] = useState(1);
-  const [draft, setDraft] = useState<WizardDraft>(() => draftFrom(editing));
+  const createMode = editing === null;
+  const [activeTab, setActiveTab] = useState<RulesetTab>("info");
+  const [draft, setDraft] = useState<EditorDraft>(() => draftFrom(editing));
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const toggleRace = (id: string, checked: boolean) => {
-    setDraft((current) => ({
-      ...current,
-      races: checked
-        ? [...current.races, id]
-        : current.races.filter((raceId) => raceId !== id),
-    }));
+  const setField = <K extends keyof EditorDraft>(field: K, value: EditorDraft[K]) => {
+    setDraft((current) => ({ ...current, [field]: value }));
     setStepError(null);
   };
 
-  const applyPreset = (apply: () => string[]) => {
-    setDraft((current) => ({ ...current, races: apply() }));
+  const go = (tab: RulesetTab) => {
+    setActiveTab(tab);
     setStepError(null);
   };
 
-  const validateStep = (): boolean => {
-    if (step === 1) {
-      if (!draft.name.trim()) {
-        setStepError(t("rulesets.wizard.errors.nameRequired"));
-        return false;
-      }
+  const requestTab = (tab: RulesetTab) => {
+    if (tab !== activeTab) go(tab);
+  };
+
+  const payload = (): RulesetDraft => ({
+    name: draft.name.trim(),
+    description: draft.description.trim() === "" ? null : draft.description.trim(),
+    races: draft.races,
+    startingTreasury: parsePositiveInt(draft.startingTreasury) ?? 0,
+    tvCap: draft.tvCap.trim() === "" ? null : parsePositiveInt(draft.tvCap),
+    minPlayers: parsePositiveInt(draft.minPlayers) ?? 0,
+    maxPlayers: parsePositiveInt(draft.maxPlayers) ?? 0,
+    hireFire: draft.hireFire,
+    seasonReform: draft.seasonReform,
+    mercenaries: draft.mercenaries,
+    active: draft.active,
+  });
+
+  /** Validates every tab; on success persists (POST in create, PATCH in edit). */
+  const persist = async (): Promise<boolean> => {
+    const invalid = firstInvalid(draft, t);
+    if (invalid) {
+      go(invalid.tab);
+      setStepError(invalid.message);
+      return false;
     }
-    if (step === 2) {
-      if (draft.races.length === 0) {
-        setStepError(t("rulesets.wizard.errors.noRaces"));
-        return false;
-      }
-    }
-    if (step === 3) {
-      const treasury = parsePositiveInt(draft.startingTreasury);
-      if (!treasury) {
-        setStepError(t("rulesets.wizard.errors.treasury"));
-        return false;
-      }
-      const tvCap = draft.tvCap.trim() === "" ? null : parsePositiveInt(draft.tvCap);
-      if (draft.tvCap.trim() !== "" && !tvCap) {
-        setStepError(t("rulesets.wizard.errors.tvCap"));
-        return false;
-      }
-      const min = parsePositiveInt(draft.minPlayers);
-      const max = parsePositiveInt(draft.maxPlayers);
-      if (!min || !max || min > 16 || max > 16) {
-        setStepError(t("rulesets.wizard.errors.players"));
-        return false;
-      }
-      if (min > max) {
-        setStepError(t("rulesets.wizard.errors.minMax"));
-        return false;
-      }
-    }
+    setSubmitting(true);
     setStepError(null);
-    return true;
+    try {
+      const saved = editing
+        ? await updateRuleset(editing.id, payload())
+        : await createRuleset(payload());
+      onSaved(saved);
+      return true;
+    } catch (e) {
+      setStepError(e instanceof Error ? e.message : t("rulesets.wizard.errors.save"));
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const next = () => {
-    if (!validateStep()) return;
-    setStep((current) => current + 1);
+    const message = validateTab(activeTab, draft, t);
+    if (message) {
+      setStepError(message);
+      return;
+    }
+    go(TABS[Math.min(TABS.length - 1, tabIndex(activeTab) + 1)].key);
   };
 
   const back = () => {
     setStepError(null);
-    setStep((current) => Math.max(1, current - 1));
+    go(TABS[Math.max(0, tabIndex(activeTab) - 1)].key);
+  };
+
+  const create = async () => {
+    const ok = await persist();
+    if (ok) onClose();
   };
 
   const save = async () => {
-    if (!validateStep()) return;
-    const payload: RulesetDraft = {
-      name: draft.name.trim(),
-      description: draft.description.trim() === "" ? null : draft.description.trim(),
-      races: draft.races,
-      startingTreasury: parsePositiveInt(draft.startingTreasury) ?? 0,
-      tvCap: draft.tvCap.trim() === "" ? null : parsePositiveInt(draft.tvCap),
-      minPlayers: parsePositiveInt(draft.minPlayers) ?? 0,
-      maxPlayers: parsePositiveInt(draft.maxPlayers) ?? 0,
-      hireFire: draft.hireFire,
-      seasonReform: draft.seasonReform,
-      mercenaries: draft.mercenaries,
-      active: draft.active,
-    };
-    setSubmitting(true);
-    setStepError(null);
-    try {
-      const saved = editing ? await updateRuleset(editing.id, payload) : await createRuleset(payload);
-      onSaved(saved);
-      onClose();
-    } catch (e) {
-      setStepError(e instanceof Error ? e.message : t("rulesets.wizard.errors.save"));
-    } finally {
-      setSubmitting(false);
-    }
+    await persist();
   };
 
   const inputClass =
     "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#12225a]";
   const labelClass = "mb-1 block text-[11px] font-extrabold uppercase tracking-wide text-slate-500";
 
+  const onLastStep = tabIndex(activeTab) === TABS.length - 1;
+  const stepNumber = TABS[tabIndex(activeTab)].n;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label={t("rulesets.wizard.closeAria")}
-        onClick={onClose}
-        className="fixed inset-0 bg-slate-900/60"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("rulesets.wizard.title")}
-        className="relative z-10 w-full max-w-[720px] overflow-hidden border border-slate-200 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
-      >
-        {/* Step bar */}
-        <div className="flex border-b border-slate-200 bg-slate-100">
-          {STEPS.map(({ n, key }) => {
-            const isNow = n === step;
-            const isDone = n < step;
+    <div className="mt-8">
+      <div className="border border-slate-200 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.06)]">
+        {/* Tab bar */}
+        <div role="tablist" aria-label={t("rulesets.editor.tablist")} className="flex border-b border-slate-200 bg-slate-100">
+          {TABS.map(({ key, n }) => {
+            const active = key === activeTab;
             return (
-              <div
+              <button
                 key={key}
-                aria-current={isNow ? "step" : undefined}
-                className={`flex-1 border-b-[3px] px-2 py-3 text-center text-xs font-extrabold ${
-                  isNow
+                type="button"
+                role="tab"
+                id={`ruleset-tab-${key}`}
+                aria-selected={active}
+                aria-controls={`ruleset-panel-${key}`}
+                disabled={createMode}
+                onClick={() => requestTab(key)}
+                className={`flex-1 border-b-[3px] px-2 py-3 text-center text-xs font-extrabold transition-colors ${
+                  active
                     ? "border-[#d11938] bg-white text-[#12225a]"
-                    : isDone
-                      ? "border-transparent text-green-700"
-                      : "border-transparent text-slate-400"
+                    : createMode
+                      ? "cursor-not-allowed border-transparent bg-slate-100 text-slate-400"
+                      : "border-transparent text-slate-500 hover:bg-white hover:text-[#12225a]"
                 }`}
               >
                 {t(`rulesets.wizard.steps.${key}`, { n: String(n) })}
-              </div>
+              </button>
             );
           })}
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto p-5">
-          {step === 1 ? (
+        {/* Active tab panel */}
+        <div
+          role="tabpanel"
+          id={`ruleset-panel-${activeTab}`}
+          aria-labelledby={`ruleset-tab-${activeTab}`}
+          className="p-5"
+        >
+          {activeTab === "info" ? (
             <div className="space-y-4">
               <div>
                 <label htmlFor="ruleset-name" className={labelClass}>
@@ -240,10 +264,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                 <input
                   id="ruleset-name"
                   value={draft.name}
-                  onChange={(event) => {
-                    setDraft((current) => ({ ...current, name: event.target.value }));
-                    setStepError(null);
-                  }}
+                  onChange={(event) => setField("name", event.target.value)}
                   placeholder={t("rulesets.wizard.namePlaceholder")}
                   className={inputClass}
                 />
@@ -255,9 +276,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                 <textarea
                   id="ruleset-description"
                   value={draft.description}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, description: event.target.value }))
-                  }
+                  onChange={(event) => setField("description", event.target.value)}
                   rows={3}
                   className={inputClass}
                 />
@@ -265,14 +284,14 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
             </div>
           ) : null}
 
-          {step === 2 ? (
+          {activeTab === "races" ? (
             <div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {RACE_PRESETS.map((preset) => (
                   <button
                     key={preset.key}
                     type="button"
-                    onClick={() => applyPreset(preset.apply)}
+                    onClick={() => setField("races", preset.apply())}
                     className="rounded-md border border-[#c7d2fe] bg-[#eef2ff] px-2.5 py-1 text-xs font-extrabold text-[#12225a] hover:bg-[#e0e7ff]"
                   >
                     {t(`rulesets.wizard.presets.${preset.key}`)}
@@ -297,7 +316,14 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={(event) => toggleRace(race.id, event.target.checked)}
+                        onChange={(event) =>
+                          setField(
+                            "races",
+                            event.target.checked
+                              ? [...draft.races, race.id]
+                              : draft.races.filter((raceId) => raceId !== race.id),
+                          )
+                        }
                         className="h-3.5 w-3.5 accent-[#12225a]"
                       />
                       {race.name}
@@ -308,7 +334,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
             </div>
           ) : null}
 
-          {step === 3 ? (
+          {activeTab === "economy" ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="ruleset-treasury" className={labelClass}>
@@ -319,9 +345,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                   type="number"
                   min={1}
                   value={draft.startingTreasury}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, startingTreasury: event.target.value }))
-                  }
+                  onChange={(event) => setField("startingTreasury", event.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -335,9 +359,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                   min={1}
                   placeholder={t("rulesets.wizard.tvCapEmpty")}
                   value={draft.tvCap}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, tvCap: event.target.value }))
-                  }
+                  onChange={(event) => setField("tvCap", event.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -351,9 +373,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                   min={1}
                   max={16}
                   value={draft.minPlayers}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, minPlayers: event.target.value }))
-                  }
+                  onChange={(event) => setField("minPlayers", event.target.value)}
                   className={inputClass}
                 />
               </div>
@@ -367,16 +387,14 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                   min={1}
                   max={16}
                   value={draft.maxPlayers}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, maxPlayers: event.target.value }))
-                  }
+                  onChange={(event) => setField("maxPlayers", event.target.value)}
                   className={inputClass}
                 />
               </div>
             </div>
           ) : null}
 
-          {step === 4 ? (
+          {activeTab === "management" ? (
             <div className="space-y-4">
               <div>
                 <label htmlFor="ruleset-hirefire" className={labelClass}>
@@ -386,10 +404,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                   id="ruleset-hirefire"
                   value={draft.hireFire}
                   onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      hireFire: event.target.value as "between-jornadas" | "libre",
-                    }))
+                    setField("hireFire", event.target.value as EditorDraft["hireFire"])
                   }
                   className={inputClass}
                 >
@@ -409,9 +424,7 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
                     <input
                       type="checkbox"
                       checked={draft[field]}
-                      onChange={(event) =>
-                        setDraft((current) => ({ ...current, [field]: event.target.checked }))
-                      }
+                      onChange={(event) => setField(field, event.target.checked)}
                       className="h-4 w-4 accent-[#12225a]"
                     />
                     {label}
@@ -428,30 +441,46 @@ export function RulesetWizard({ onClose, onSaved, editing }: RulesetWizardProps)
           ) : null}
         </div>
 
+        {/* Footer actions */}
         <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3">
           <button
             type="button"
-            onClick={step === 1 ? onClose : back}
+            onClick={createMode && stepNumber > 1 ? back : onClose}
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-[#12225a] hover:text-[#12225a]"
           >
-            {step === 1 ? t("common.cancel") : t("rulesets.wizard.back")}
+            {createMode
+              ? stepNumber === 1
+                ? t("common.cancel")
+                : t("rulesets.wizard.back")
+              : t("common.cancel")}
           </button>
-          {step < 4 ? (
-            <button
-              type="button"
-              onClick={next}
-              className="rounded-md bg-[#12225a] px-5 py-2 text-sm font-bold text-white hover:bg-[#0f1d48]"
-            >
-              {t("rulesets.wizard.next")}
-            </button>
+          {createMode ? (
+            !onLastStep ? (
+              <button
+                type="button"
+                onClick={next}
+                className="rounded-md bg-[#12225a] px-5 py-2 text-sm font-bold text-white hover:bg-[#0f1d48]"
+              >
+                {t("rulesets.wizard.next")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void create()}
+                disabled={submitting}
+                className="rounded-md bg-[#d11938] px-5 py-2 text-sm font-bold text-white hover:bg-[#b3122f] disabled:opacity-60"
+              >
+                {submitting ? t("rulesets.editor.creating") : t("rulesets.editor.createAction")}
+              </button>
+            )
           ) : (
             <button
               type="button"
-              onClick={save}
+              onClick={() => void save()}
               disabled={submitting}
-              className="rounded-md bg-[#d11938] px-5 py-2 text-sm font-bold text-white hover:bg-[#b3122f] disabled:opacity-60"
+              className="rounded-md bg-[#12225a] px-5 py-2 text-sm font-bold text-white hover:bg-[#0f1d48] disabled:opacity-60"
             >
-              {submitting ? t("rulesets.wizard.saving") : t("rulesets.wizard.save")}
+              {submitting ? t("rulesets.wizard.saving") : t("rulesets.editor.save")}
             </button>
           )}
         </div>
