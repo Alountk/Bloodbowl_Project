@@ -127,6 +127,7 @@ function emptyPendingView(): LiveMatchViewState {
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
   };
 }
 
@@ -1558,6 +1559,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
                 await refresh();
                 setResolveOpen(false);
               }}
+              onNominated={refresh}
             />
           ) : null}
         </>

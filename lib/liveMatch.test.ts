@@ -46,6 +46,7 @@ function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
     events: [],
     ...overrides,
   };
@@ -70,6 +71,7 @@ function pending(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
     events: [],
     ...overrides,
   };

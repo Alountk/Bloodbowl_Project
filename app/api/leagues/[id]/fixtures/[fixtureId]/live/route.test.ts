@@ -27,6 +27,7 @@ const proposeCasualtyLiveMatchMock = vi.hoisted(() => vi.fn());
 const confirmCasualtyLiveMatchMock = vi.hoisted(() => vi.fn());
 const rollLiveMvpMock = vi.hoisted(() => vi.fn());
 const resolveLiveMatchMock = vi.hoisted(() => vi.fn());
+const nominateMvpLiveMatchMock = vi.hoisted(() => vi.fn());
 
 const hubMock = vi.hoisted(() => ({
   subscribe: vi.fn(),
@@ -62,6 +63,7 @@ vi.mock("@/lib/liveStore", () => ({
   confirmCasualtyLiveMatch: confirmCasualtyLiveMatchMock,
   rollLiveMvp: rollLiveMvpMock,
   resolveLiveMatch: resolveLiveMatchMock,
+  nominateMvpLiveMatch: nominateMvpLiveMatchMock,
 }));
 
 import { GET, POST } from "./route";
@@ -1468,10 +1470,7 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
       ...startedFixture("f-1", "lg-1"),
       league: { ...(startedFixture("f-1", "lg-1").league as Record<string, unknown>), status: "finished" },
     });
-    for (const body of [
-      { type: "rollMvp", mvp: { home: ["p1"], away: ["p2"] } },
-      { type: "resolveMatch", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p1", "p2", "p3", "p4", "p5", "p6"] } },
-    ]) {
+    for (const body of [{ type: "rollMvp" }, { type: "resolveMatch" }]) {
       const res = await POST(req(body), { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never);
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({ error: "League is finished" });
@@ -1480,11 +1479,11 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
     expect(resolveLiveMatchMock).not.toHaveBeenCalled();
   });
 
-  it("wires `rollMvp` through rollLiveMvp (server-owned preview roll) and returns the roll", async () => {
+  it("wires `rollMvp` through rollLiveMvp (server-owned preview roll, NO body nominations — RAU-51) and returns the roll", async () => {
     finishedSetup();
     rollLiveMvpMock.mockResolvedValue({ mvp: { home: "p1", away: "p2" }, postFf: { home: 4, away: 3 } });
     const res = await POST(
-      req({ type: "rollMvp", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+      req({ type: "rollMvp" }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(200);
@@ -1493,7 +1492,6 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
         fixtureId: "f-1",
         homeTeamId: "home-t",
         awayTeamId: "away-t",
-        nominations: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] },
       }),
       expect.anything(),
     );
@@ -1504,13 +1502,13 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
   it("maps a rollMvp 400 (invalid nominations) and 404 to the matching responses", async () => {
     finishedSetup();
     rollLiveMvpMock.mockRejectedValue(Object.assign(new Error("mvp.six"), { status: 400 }));
-    let res = await POST(req({ type: "rollMvp", mvp: { home: ["p1"], away: [] } }), {
+    let res = await POST(req({ type: "rollMvp" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(400);
 
     rollLiveMvpMock.mockRejectedValue(Object.assign(new Error("not found"), { status: 404 }));
-    res = await POST(req({ type: "rollMvp", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p1", "p2", "p3", "p4", "p5", "p6"] } }), {
+    res = await POST(req({ type: "rollMvp" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(404);
@@ -1520,14 +1518,27 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
     finishedSetup();
     rollLiveMvpMock.mockRejectedValue(Object.assign(new Error("already resolved"), { status: 409 }));
     const res = await POST(
-      req({ type: "rollMvp", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+      req({ type: "rollMvp" }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "Cannot roll MVP for a resolved match" });
   });
 
-  it("wires `resolveMatch` through resolveLiveMatch (THE closure) with the fixture team ids + league + loadedBy", async () => {
+  it("maps a rollMvp 409 (both sides must nominate first) to a dedicated message (RAU-51)", async () => {
+    finishedSetup();
+    rollLiveMvpMock.mockRejectedValue(
+      Object.assign(new Error("both sides must nominate first"), { status: 409 }),
+    );
+    const res = await POST(
+      req({ type: "rollMvp" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Both sides must nominate first" });
+  });
+
+  it("wires `resolveMatch` through resolveLiveMatch (THE closure, no body nominations — RAU-51) with the fixture team ids + league + loadedBy", async () => {
     finishedSetup();
     resolveLiveMatchMock.mockResolvedValue({
       fixtureId: "f-1",
@@ -1541,7 +1552,7 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
       resultId: "mr-1",
     });
     const res = await POST(
-      req({ type: "resolveMatch", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+      req({ type: "resolveMatch" }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(200);
@@ -1552,7 +1563,6 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
         homeTeamId: "home-t",
         awayTeamId: "away-t",
         loadedBy: "owner-1",
-        nominations: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] },
       }),
       expect.anything(),
     );
@@ -1563,23 +1573,155 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
     expect(body.resolved.status).toBe("played");
   });
 
-  it("maps a resolveMatch store rejection to 409 (not-finished / already-resolved)", async () => {
+  it("maps a resolveMatch store rejection to 409 (not-finished / already-resolved / both-sides)", async () => {
     finishedSetup();
     resolveLiveMatchMock.mockRejectedValue(Object.assign(new Error("already resolved"), { status: 409 }));
-    const res = await POST(
-      req({ type: "resolveMatch", mvp: { home: ["p1", "p2", "p3", "p4", "p5", "p6"], away: ["p2", "p3", "p4", "p5", "p6", "p1"] } }),
+    let res = await POST(
+      req({ type: "resolveMatch" }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "Cannot resolve match in current state" });
+
+    resolveLiveMatchMock.mockRejectedValue(
+      Object.assign(new Error("both sides must nominate first"), { status: 409 }),
+    );
+    res = await POST(
+      req({ type: "resolveMatch" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Both sides must nominate first" });
   });
 
-  it("rejects a malformed resolveMatch body (missing mvp arrays) with 400 (Unsupported command)", async () => {
+  it("accepts a resolveMatch with NO nominations body (RAU-51 — the server rolls from the persisted per-side state)", async () => {
     finishedSetup();
-    const res = await POST(req({ type: "resolveMatch", mvp: {} }), {
+    resolveLiveMatchMock.mockResolvedValue({
+      fixtureId: "f-1",
+      status: "played",
+      homeScore: 1,
+      awayScore: 0,
+      winnerId: "home-t",
+      winnings: { home: 0, away: 0 },
+      postFf: { home: 0, away: 0 },
+      mvp: { home: "p1", away: "p2" },
+      resultId: "mr-1",
+    });
+    const res = await POST(
+      req({ type: "resolveMatch" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(resolveLiveMatchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("POST .../live — RAU-51 per-side MVP nominations (nominateMvp)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+    prismaMock.team.findMany.mockResolvedValue([]);
+  });
+
+  function finishedSetup(sessionId = "owner-1") {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(8),
+      status: "finished",
+      finishedAt: new Date(2000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({
+      ...liveState,
+      seq: 8,
+      status: "finished",
+      finishedAt: 2000,
+      events: [],
+    });
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("rejects with 409 when the caller owns NO side (admin/bye — read-only) (RAU-51)", async () => {
+    finishedSetup("owner-1"); // league admin, not a fixture coach
+    const res = await POST(
+      req({ type: "nominateMvp", side: "home", players: ["p1", "p2", "p3", "p4", "p5", "p6"] }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "No side to nominate" });
+    expect(nominateMvpLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 409 when a coach tries to nominate the RIVAL side (RAU-51)", async () => {
+    // coach-home is the fixture's home team owner.
+    finishedSetup("coach-home");
+    const res = await POST(
+      req({ type: "nominateMvp", side: "away", players: ["p1", "p2", "p3", "p4", "p5", "p6"] }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Not your team" });
+    expect(nominateMvpLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("wires `nominateMvp` through nominateMvpLiveMatch with the OWNER-side team id + side (RAU-51)", async () => {
+    finishedSetup("coach-home");
+    nominateMvpLiveMatchMock.mockResolvedValue({ seq: 9, view: { seq: 9, status: "finished" } });
+    const res = await POST(
+      req({ type: "nominateMvp", side: "home", players: ["p1", "p2", "p3", "p4", "p5", "p6"] }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(nominateMvpLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fixtureId: "f-1",
+        teamId: "home-t",
+        side: "home",
+        players: ["p1", "p2", "p3", "p4", "p5", "p6"],
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("maps a nominateMvp 400 (invalid/dead/suspended nominees) to 400", async () => {
+    finishedSetup("coach-home");
+    nominateMvpLiveMatchMock.mockRejectedValue(Object.assign(new Error("mvp.unavailable"), { status: 400 }));
+    const res = await POST(
+      req({ type: "nominateMvp", side: "home", players: ["p1", "p2", "p3", "p4", "p5", "p6"] }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid MVP nominations" });
+  });
+
+  it("maps a nominateMvp 409 (not-finished / already-resolved) to 409", async () => {
+    finishedSetup("coach-home");
+    nominateMvpLiveMatchMock.mockRejectedValue(Object.assign(new Error("already resolved"), { status: 409 }));
+    const res = await POST(
+      req({ type: "nominateMvp", side: "home", players: ["p1", "p2", "p3", "p4", "p5", "p6"] }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Cannot nominate MVP in current state" });
+  });
+
+  it("rejects a malformed nominateMvp body (bad side / non-string players) with 400", async () => {
+    finishedSetup("coach-home");
+    let res = await POST(req({ type: "nominateMvp", side: "home", players: ["p1", 2, 3] }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
     expect(res.status).toBe(400);
-    expect(resolveLiveMatchMock).not.toHaveBeenCalled();
+    res = await POST(req({ type: "nominateMvp", side: "midfield", players: [] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(nominateMvpLiveMatchMock).not.toHaveBeenCalled();
   });
 });

@@ -120,6 +120,10 @@ export interface LiveMatchState {
    * rolls), or null when none is pending. The defender confirms it to persist
    * the casualty event (see `confirmCasualty`). */
   pendingCasualty: PendingCasualty | null;
+  /** RAU-51: the persisted per-side MJP nominations (null per side = that coach
+   * has not nominated yet). Not part of the turn lifecycle — carried on the
+   * state so the shared DTO exposes it for the per-side resolution modal. */
+  mvpNominations: MvpNominations;
   events: LiveEventRecord[];
 }
 
@@ -139,6 +143,36 @@ export interface PendingCasualty {
   cause: CasualtyCause;
   roll16: number;
   roll6?: number;
+}
+
+/**
+ * RAU-51: the per-side MJP nominations persisted on the LiveMatch row. Each
+ * side's SIX rosterPlayerIds, or null while that coach has not nominated. The
+ * whole value is null until the FIRST side nominates (defensive parse).
+ */
+export interface MvpNominations {
+  home: string[] | null;
+  away: string[] | null;
+}
+
+/** A LiveMatch whose sides have not nominated anything yet (RAU-51 default). */
+export const EMPTY_MVP_NOMINATIONS: MvpNominations = { home: null, away: null };
+
+/**
+ * Defensively parses a persisted `mvpNominations` JSON value (RAU-51):
+ * malformed/unknown values collapse each side to null (never crash). A side
+ * that nominated carries its six ids; anything else reads as "not nominated".
+ */
+export function parseMvpNominations(value: unknown): MvpNominations {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return EMPTY_MVP_NOMINATIONS;
+  }
+  const raw = value as Record<string, unknown>;
+  const side = (candidate: unknown): string[] | null =>
+    Array.isArray(candidate) && candidate.some((x) => typeof x === "string")
+      ? candidate.filter((x): x is string => typeof x === "string")
+      : null;
+  return { home: side(raw.home), away: side(raw.away) };
 }
 
 /**
@@ -168,6 +202,10 @@ export interface LiveMatchViewState {
   concedeProposedBy: TeamSide | null;
   /** RAU-39: the pending casualty proposal, or null when none is pending. */
   pendingCasualty: PendingCasualty | null;
+  /** RAU-51: the persisted per-side MJP nominations (null per side = that coach
+   * has not nominated yet). The resolution modal needs it to render the
+   * per-coach pickers/status and gate the server roll on BOTH sides. */
+  mvpNominations: MvpNominations;
 }
 
 const TURNS_PER_HALF = 8;
@@ -824,5 +862,6 @@ export function toLiveViewState(
     finishedAt: state.finishedAt,
     concedeProposedBy: state.concedeProposedBy,
     pendingCasualty: state.pendingCasualty,
+    mvpNominations: state.mvpNominations,
   };
 }

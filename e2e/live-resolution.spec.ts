@@ -262,9 +262,9 @@ async function autoFinishByTurnEightTd(
   });
 }
 
-/** Opens the resolution modal (auto-open tolerant) and runs the two steps:
- * six MJP nominations per team → server roll → save. */
-async function openAndResolve(page: Page, homeTeamName: string, awayTeamName: string) {
+/** Opens the resolution modal (auto-open tolerant) on a coach's OWN page. */
+async function openResolution(page: Page, matchUrl: string) {
+  await page.goto(matchUrl);
   const dialog = page.getByRole("dialog", { name: "Resolver partido" });
   try {
     await dialog.waitFor({ state: "visible", timeout: 8_000 });
@@ -272,15 +272,61 @@ async function openAndResolve(page: Page, homeTeamName: string, awayTeamName: st
     await page.getByRole("button", { name: "Resolver partido" }).click();
     await expect(dialog).toBeVisible();
   }
-  for (const team of [homeTeamName, awayTeamName]) {
-    for (let i = 1; i <= 6; i++) {
-      await dialog.getByLabel(`MVP ${i} ${team}`).selectOption({ index: i });
-    }
+  return dialog;
+}
+
+/**
+ * RAU-51: a coach nominates THEIR OWN side from their own page. Asserts the
+ * per-side contract: only the viewer's OWN six pickers exist (the rival side
+ * is a read-only status, never their players) and the roll stays disabled
+ * until BOTH sides have submitted. Saves via "Guardar mis nominaciones" and
+ * returns the dialog for the roll/save steps.
+ */
+async function nominateOwnSide(
+  page: Page,
+  ownTeamName: string,
+  rivalTeamName: string,
+  matchUrl: string,
+) {
+  const dialog = await openResolution(page, matchUrl);
+  // The rival's pickers are NOT editable for this coach — only their own six.
+  for (let i = 1; i <= 6; i++) {
+    await expect(dialog.getByLabel(`MVP ${i} ${ownTeamName}`)).toBeVisible();
+    await expect(dialog.getByLabel(`MVP ${i} ${rivalTeamName}`)).toHaveCount(0);
   }
+  // The roll is gated on BOTH sides' submissions.
+  await expect(dialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
+  for (let i = 1; i <= 6; i++) {
+    await dialog.getByLabel(`MVP ${i} ${ownTeamName}`).selectOption({ index: i });
+  }
+  await dialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
+  await expect(dialog.getByText("Nominaciones enviadas")).toBeVisible();
+  return dialog;
+}
+
+/** RAU-51: once BOTH sides nominated, the server-owned roll → resolve close. */
+async function rollAndResolve(dialog: ReturnType<Page["getByRole"]>) {
+  await expect(dialog.getByRole("button", { name: "Tirar MVP" })).toBeEnabled();
   await dialog.getByRole("button", { name: "Tirar MVP" }).click();
   await expect(dialog.getByText("Resumen de la resolución")).toBeVisible();
   await dialog.getByRole("button", { name: "Guardar y reportar" }).click();
   await expect(dialog).not.toBeVisible();
+}
+
+/** RAU-51: the full per-side resolution — each coach nominates their own side
+ * from their OWN page, then the roll + resolve close the match. */
+async function resolvePerSide(
+  homePage: Page,
+  awayPage: Page,
+  homeTeamName: string,
+  awayTeamName: string,
+  matchUrl: string,
+) {
+  await nominateOwnSide(homePage, homeTeamName, awayTeamName, matchUrl);
+  const awayDialog = await nominateOwnSide(awayPage, awayTeamName, homeTeamName, matchUrl);
+  // The second coach sees the rival's submission (status only — never the picks).
+  await expect(awayDialog.getByText("El rival nominó 6 jugadores")).toBeVisible();
+  await rollAndResolve(awayDialog);
 }
 
 /** Polls the league detail until the fixture is played and its round complete. */
@@ -324,7 +370,10 @@ test("endMatch → resolve closes the fixture, writes the result and completes t
     const matchUrl = `/leagues/${leagueId}/fixtures/${fixtureId}`;
     await admin.goto(matchUrl);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
-    await openAndResolve(admin, homeTeamName, awayTeamName);
+    await resolvePerSide(homePage, awayPage, homeTeamName, awayTeamName, matchUrl);
+    // The admin page re-loads the RESOLVED match (whichever coach did the final
+    // save) so the feed shows the closure summary deterministically.
+    await admin.goto(matchUrl);
 
     // THE CLOSURE: the fixture is played, the result row exists with winnings,
     // the round completes and the feed shows the MVP rows + reported summary.
@@ -377,7 +426,8 @@ test("auto-finish (TD in half-2 turn 8) → the resolve closure still runs", asy
     const matchUrl = `/leagues/${leagueId}/fixtures/${fixtureId}`;
     await admin.goto(matchUrl);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
-    await openAndResolve(admin, homeTeamName, awayTeamName);
+    await resolvePerSide(homePage, awayPage, homeTeamName, awayTeamName, matchUrl);
+    await admin.goto(matchUrl);
 
     await waitFixturePlayed(admin, leagueId, fixtureId, 1);
     await expect(
@@ -454,7 +504,8 @@ test("RAU-12: a lasting casualty suspends the victim for the next match until it
     expect(afterEnd.status).toBe("finished");
     await admin.goto(`/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
-    await openAndResolve(admin, r1.homeTeamName, r1.awayTeamName);
+    await resolvePerSide(r1.homePage, r1.awayPage, r1.homeTeamName, r1.awayTeamName, `/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
+    await admin.goto(`/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
     await waitFixturePlayed(admin, leagueId, r1.fixtureId, 1);
 
     const after1 = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
@@ -501,7 +552,8 @@ test("RAU-12: a lasting casualty suspends the victim for the next match until it
     expect(afterEnd2.status).toBe("finished");
     await admin.goto(`/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
-    await openAndResolve(admin, home2Name, away2Name);
+    await resolvePerSide(home2Page, away2Page, home2Name, away2Name, `/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    await admin.goto(`/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
     await waitFixturePlayed(admin, leagueId, r2Fixture.id, 2);
 
     const after2 = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
@@ -540,7 +592,8 @@ test("concede → the resolution still runs (awards + MatchResult) though the fi
     // The fixture is already closed, but the finished live match is NOT
     // resolved → the resolution flow still offers the awards + report.
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
-    await openAndResolve(admin, homeTeamName, awayTeamName);
+    await resolvePerSide(homePage, awayPage, homeTeamName, awayTeamName, matchUrl);
+    await admin.goto(matchUrl);
 
     // The MatchResult row exists with the walkover scoreboard (awards applied),
     // and round 1 completes while the season stays STARTED (round 2 pending).
