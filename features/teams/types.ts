@@ -73,6 +73,8 @@ export interface PlayerProgressionCore {
   improvements: number;
   valueBonus: number;
   alive: boolean;
+  /** RAU-12: unavailable for the team's NEXT match (a lasting-band casualty of the previous one). */
+  missNextMatch: boolean;
   /** Recorded injury outcomes (rulebook bands) carried from the Player row. */
   injuries?: string[];
   /** Named attribute increases applied (e.g. `{ st: 1 }`), keyed by attribute. */
