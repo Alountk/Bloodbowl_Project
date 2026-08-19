@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
 import { addMvpPe, deriveLivePeAwards } from "@/lib/liveResolve";
 import {
+  nominateMvp,
   rollLiveMvp,
   resolveLiveMatch,
   type LiveMvpRoll,
@@ -43,38 +44,76 @@ function teamPe(
 }
 
 /**
- * RAU-49 resolution modal — the guided end-of-match sequence that REPLACES the
- * manual result form for a FINISHED LIVE match. Two steps:
- *  1. MVP step (mandatory): six numbered MJP nominations per team; "Tirar MVP"
- *     POSTs the server-owned `rollMvp` command so the server (never the client)
- *     rolls the 1D6 per team, reveals the grantees + post-match FF and persists
- *     them (`LiveMatch.pendingResolution`) so the commit reuses the SAME rolls.
+ * RAU-51 resolution modal — the guided end-of-match sequence for a FINISHED
+ * live match, now PER-SIDE. Two steps:
+ *  1. Nomination step (mandatory): each coach nominates ONLY their OWN team's
+ *     six MJP nominations from their ALIVE + AVAILABLE roster (dead/suspended
+ *     players are excluded client-side and rejected server-side, RAU-12).
+ *     "Guardar mis nominaciones" POSTs `nominateMvp` (persisted per-side and
+ *     replaceable). The rival side and the admin/bye viewer see a read-only
+ *     status (never the rival's picks before the roll). "Tirar MVP" is enabled
+ *     only once BOTH sides have nominated — the server rolls the 1D6 per team
+ *     from the PERSISTED nominations (`rollMvp`) and reveals the grantees +
+ *     post-match FF.
  *  2. Summary step: per team — MVP (+4 PE), winnings (→ treasury, already
  *     persisted at finish, RAU-44), dedicated-fans roll and the PE earned from
  *     the match. "Guardar y reportar" POSTs `resolveMatch` (THE closure);
- *     `onResolved` lets the parent refresh the detail.
- * The resolve POST itself rejects without the six nominations (MVP is
- * mandatory); the modal mirrors that contract client-side.
+ *     `onResolved` lets the parent refresh + close.
  */
 export function MatchResolveModal({
   open,
   detail,
   onClose,
   onResolved,
+  onNominated,
 }: {
   open: boolean;
   detail: MatchDetail;
   onClose: () => void;
   onResolved: () => Promise<void>;
+  /** RAU-51: after a nomination POST, refresh the match detail so the persisted
+   * per-side state (status line + the roll gate) re-renders without closing. */
+  onNominated: () => Promise<void>;
 }) {
   const { t } = useI18n();
-  const [home, setHome] = useState<string[]>(emptyNominations);
-  const [away, setAway] = useState<string[]>(emptyNominations);
   const [roll, setRoll] = useState<LiveMvpRoll | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rolling, setRolling] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [nominating, setNominating] = useState(false);
 
+  const viewerSide = detail.live?.viewerSide ?? null;
+  const nominations = detail.live?.mvpNominations ?? { home: null, away: null };
+  const ownSide = viewerSide;
+  const rivalSide = ownSide === "home" ? "away" : ownSide === "away" ? "home" : null;
+  const ownNomination = ownSide ? nominations[ownSide] : null;
+  const rivalNominated = rivalSide != null && nominations[rivalSide] != null;
+  const bothNominated = nominations.home != null && nominations.away != null;
+
+  // RAU-51: the draft is seeded ONCE from the PERSISTED per-side nomination so
+  // a reload never loses the coach's own picks (re-saves replace; while the
+  // modal stays open the draft is the client's local working copy).
+  const [draft, setDraft] = useState<string[]>(() => {
+    if (ownSide && ownNomination) {
+      const next = emptyNominations();
+      ownNomination.slice(0, 6).forEach((id, i) => {
+        next[i] = id;
+      });
+      return next;
+    }
+    return emptyNominations();
+  });
+
+  // RAU-51: the pickers are fed ONLY the viewer's own team's alive+available
+  // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
+  // players here.
+  const ownRoster = useMemo<RosterPlayerRef[]>(
+    () =>
+      (ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players)
+        .filter((p) => p.alive && !p.missNextMatch)
+        .map((p) => ({ id: p.rosterPlayerId, name: p.name })),
+    [ownSide, detail.homeTeam.players, detail.awayTeam.players],
+  );
   const homeRoster = useMemo<RosterPlayerRef[]>(
     () => detail.homeTeam.players.map((p) => ({ id: p.rosterPlayerId, name: p.name })),
     [detail.homeTeam.players],
@@ -88,17 +127,34 @@ export function MatchResolveModal({
 
   const homeName = detail.homeTeam.name;
   const awayName = detail.awayTeam.name;
-  const canRoll = nominationsReady(home) && nominationsReady(away);
+  const ownName = ownSide === "home" ? homeName : ownSide === "away" ? awayName : null;
+  const rivalName =
+    rivalSide === "home" ? homeName : rivalSide === "away" ? awayName : null;
+  const canRoll = bothNominated && !rolling;
   const winnings = detail.liveWinnings ?? { home: 0, away: 0 };
 
   const nameOf = (roster: RosterPlayerRef[], id: string | null | undefined) =>
     roster.find((p) => p.id === id)?.name ?? id ?? "—";
 
+  const doNominate = async () => {
+    if (!ownSide || !nominationsReady(draft)) return;
+    setError(null);
+    setNominating(true);
+    try {
+      await nominateMvp(detail.fixture.leagueId, detail.fixture.id, ownSide, draft);
+      await onNominated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("match.resolve.nominateError"));
+    } finally {
+      setNominating(false);
+    }
+  };
+
   const doRoll = async () => {
     setError(null);
     setRolling(true);
     try {
-      const result = await rollLiveMvp(detail.fixture.leagueId, detail.fixture.id, { home, away });
+      const result = await rollLiveMvp(detail.fixture.leagueId, detail.fixture.id);
       setRoll(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("match.resolve.rollError"));
@@ -112,7 +168,7 @@ export function MatchResolveModal({
     setError(null);
     setSaving(true);
     try {
-      await resolveLiveMatch(detail.fixture.leagueId, detail.fixture.id, { home, away });
+      await resolveLiveMatch(detail.fixture.leagueId, detail.fixture.id);
       await onResolved();
     } catch (e) {
       setError(e instanceof Error ? e.message : t("match.resolve.saveError"));
@@ -159,28 +215,62 @@ export function MatchResolveModal({
               <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">
                 {t("match.resolve.mvpStep")}
               </h4>
-              <TeamNominationSection
-                name={homeName}
-                roster={homeRoster}
-                nominations={home}
-                onSlot={(index, value) => {
-                  const next = [...home];
-                  next[index] = value;
-                  setHome(next);
-                }}
-                t={t}
-              />
-              <TeamNominationSection
-                name={awayName}
-                roster={awayRoster}
-                nominations={away}
-                onSlot={(index, value) => {
-                  const next = [...away];
-                  next[index] = value;
-                  setAway(next);
-                }}
-                t={t}
-              />
+
+              {ownSide && ownName ? (
+                <>
+                  {/* RAU-51: ONLY the viewer's own side is editable — the pickers
+                      list their OWN alive+available roster; the rival is a
+                      read-only status that never leaks the rival's picks. */}
+                  <OwnNominationSection
+                    name={ownName}
+                    roster={ownRoster}
+                    nominations={draft}
+                    saved={ownNomination != null}
+                    nominating={nominating}
+                    onSlot={(index, value) => {
+                      const next = [...draft];
+                      next[index] = value;
+                      setDraft(next);
+                    }}
+                    onSave={() => void doNominate()}
+                    t={t}
+                  />
+                  <SideStatusSection
+                    name={rivalName ?? awayName}
+                    status={
+                      rivalNominated
+                        ? t("match.resolve.rivalDone")
+                        : t("match.resolve.rivalPending")
+                    }
+                  />
+                </>
+              ) : (
+                <>
+                  {/* RAU-51: an admin/bye viewer (no side) sees BOTH sides as
+                      read-only statuses — never the rival's picks before the
+                      roll reveals the MVP. */}
+                  <SideStatusSection
+                    name={homeName}
+                    status={
+                      nominations.home != null
+                        ? t("match.resolve.statusDone")
+                        : t("match.resolve.statusPending")
+                    }
+                  />
+                  <SideStatusSection
+                    name={awayName}
+                    status={
+                      nominations.away != null
+                        ? t("match.resolve.statusDone")
+                        : t("match.resolve.statusPending")
+                    }
+                  />
+                </>
+              )}
+
+              {!bothNominated ? (
+                <p className="text-[11px] text-slate-500">{t("match.resolve.needBothSides")}</p>
+              ) : null}
               <p className="text-[11px] text-slate-500">{t("match.resolve.mvpHint")}</p>
               <div className="flex justify-end border-t border-[#e2e8f0] pt-3">
                 <button
@@ -193,7 +283,7 @@ export function MatchResolveModal({
                 <button
                   type="button"
                   onClick={() => void doRoll()}
-                  disabled={!canRoll || rolling}
+                  disabled={!canRoll}
                   className="ml-2 rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {rolling ? t("match.resolve.rolling") : t("match.resolve.roll")}
@@ -254,22 +344,30 @@ export function MatchResolveModal({
   );
 }
 
-/** One team's six numbered MJP nomination pickers. */
-function TeamNominationSection({
+/** RAU-51: the viewer's OWN team's six numbered MJP pickers (alive+available
+ * roster only) + the "Guardar mis nominaciones" action and status line. */
+function OwnNominationSection({
   name,
   roster,
   nominations,
+  saved,
+  nominating,
   onSlot,
+  onSave,
   t,
 }: {
   name: string;
   roster: RosterPlayerRef[];
   nominations: string[];
+  saved: boolean;
+  nominating: boolean;
   onSlot: (index: number, value: string) => void;
+  onSave: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  const ready = nominationsReady(nominations);
   return (
-    <section aria-label={t("match.resolve.mvpStep")} className="border border-[#e2e8f0] p-3">
+    <section aria-label={t("match.resolve.ownNomination")} className="border border-[#e2e8f0] p-3">
       <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: 6 }, (_, i) => (
@@ -291,6 +389,30 @@ function TeamNominationSection({
           </label>
         ))}
       </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-slate-600">
+          {saved ? t("match.resolve.nominated") : t("match.resolve.nominationPending")}
+        </p>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!ready || nominating}
+          className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {nominating ? t("match.resolve.nominating") : t("match.resolve.nominate")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** RAU-51: a READ-ONLY per-side status — never the player picks. Used for the
+ * coach's rival side and for every side an admin/bye viewer sees. */
+function SideStatusSection({ name, status }: { name: string; status: string }) {
+  return (
+    <section aria-label={name} className="border border-[#e2e8f0] p-3">
+      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
+      <p className="text-sm text-slate-600">{status}</p>
     </section>
   );
 }

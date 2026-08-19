@@ -4,12 +4,14 @@ import { MatchResolveModal } from "./MatchResolveModal";
 import type { LiveMatchView, MatchDetail } from "./api";
 
 /**
- * RAU-49 resolution modal tests: the guided end-of-match sequence for a
- * finished live match. The modal exercises the REAL `rollLiveMvp` /
- * `resolveLiveMatch` api wrappers through a stubbed global fetch (repo
- * convention). MVP is mandatory (the resolve POST rejects without it, so the
- * modal mirrors the contract client-side); the server owns the roll — the
- * modal only sends the six nominations.
+ * RAU-51 resolution modal tests: the PER-SIDE end-of-match sequence for a
+ * finished live match. Each coach nominates ONLY their own team (dead/suspended
+ * players are excluded from the pickers), the rival is a read-only status that
+ * never leaks the rival's picks, and "Tirar MVP" is gated on BOTH sides'
+ * PERSISTED nominations. The modal exercises the REAL `nominateMvp` /
+ * `rollLiveMvp` / `resolveLiveMatch` api wrappers through a stubbed global
+ * fetch (repo convention); the server owns the roll — the modal never sends
+ * nominations in the roll/resolve bodies.
  */
 
 function player(rosterPlayerId: string, name: string) {
@@ -20,7 +22,12 @@ function sixRoster(prefix: string, namePrefix: string) {
   return Array.from({ length: 6 }, (_, i) => player(`${prefix}${i + 1}`, `${namePrefix}${i + 1}`));
 }
 
-function unresolvedDetail(): MatchDetail {
+function baseDetail(overrides: {
+  viewerSide?: "home" | "away" | null;
+  mvpNominations?: { home: string[] | null; away: string[] | null };
+  homePlayers?: ReturnType<typeof sixRoster>;
+} = {}): MatchDetail {
+  const { viewerSide = "home", mvpNominations = { home: null, away: null }, homePlayers = sixRoster("h", "Hugo") } = overrides;
   return {
     fixture: {
       id: "f1",
@@ -44,7 +51,7 @@ function unresolvedDetail(): MatchDetail {
       name: "Reavers",
       raceId: "human",
       user: { id: "u1", name: "Coach A", email: "a@x", avatar: null },
-      players: sixRoster("h", "Hugo"),
+      players: homePlayers,
     },
     awayTeam: {
       id: "ta",
@@ -61,7 +68,7 @@ function unresolvedDetail(): MatchDetail {
       activeSide: "away",
       homeConsented: true,
       awayConsented: true,
-      viewerSide: null,
+      viewerSide,
       startedAt: 1000,
       elapsed: 3100,
       homeTurnMs: 1500,
@@ -72,6 +79,7 @@ function unresolvedDetail(): MatchDetail {
       finishedAt: 5000,
       concedeProposedBy: null,
       pendingCasualty: null,
+      mvpNominations,
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -87,54 +95,124 @@ function unresolvedDetail(): MatchDetail {
 const homeName = "Reavers";
 const awayName = "Orcs";
 
+const homeNom = ["h1", "h2", "h3", "h4", "h5", "h6"];
+const awayNom = ["a1", "a2", "a3", "a4", "a5", "a6"];
+
 afterEach(() => vi.unstubAllGlobals());
 
-/** Picks six distinct nominations for one team's section (index i = player i). */
-function pickNominations(dialog: HTMLElement, name: string) {
+/** Picks six distinct nominations for the OWN side's pickers. */
+function pickOwnNominations(dialog: HTMLElement) {
   for (let i = 1; i <= 6; i++) {
-    const select = within(dialog).getByLabelText(`MVP ${i} ${name}`);
-    fireEvent.change(select, { target: { value: `${name === homeName ? "h" : "a"}${i}` } });
+    const select = within(dialog).getByLabelText(`MVP ${i} ${homeName}`);
+    fireEvent.change(select, { target: { value: `h${i}` } });
   }
 }
 
 function renderModal(props: Partial<Parameters<typeof MatchResolveModal>[0]> = {}) {
   const onResolved = vi.fn().mockResolvedValue(undefined);
+  const onNominated = vi.fn().mockResolvedValue(undefined);
   const onClose = vi.fn();
   render(
     <MatchResolveModal
       open
-      detail={unresolvedDetail()}
+      detail={baseDetail()}
       onClose={onClose}
       onResolved={onResolved}
+      onNominated={onNominated}
       {...props}
     />,
   );
-  return { onResolved, onClose };
+  return { onResolved, onNominated, onClose };
 }
 
 describe("MatchResolveModal", () => {
-  it("renders the MVP nomination step (6 pickers per team) for a finished-unresolved match", () => {
+  it("RAU-51: a coach sees ONLY their OWN side's pickers — the rival is a read-only status, never their players", () => {
     renderModal();
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
     for (let i = 1; i <= 6; i++) {
       expect(within(dialog).getByLabelText(`MVP ${i} ${homeName}`)).toBeTruthy();
-      expect(within(dialog).getByLabelText(`MVP ${i} ${awayName}`)).toBeTruthy();
+      expect(within(dialog).queryByLabelText(`MVP ${i} ${awayName}`)).toBeNull();
     }
-    // The roll button is disabled until both teams have six distinct picks.
+    // The rival side renders a status only ("El rival aún no ha nominado").
+    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
+    // The roll is gated on BOTH sides' PERSISTED nominations.
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });
 
-  it("keeps the roll button disabled until exactly six distinct nominations per team", () => {
-    renderModal();
+  it("RAU-51: the roll stays disabled until BOTH sides have submitted; the status flips once the rival did", () => {
+    renderModal({
+      detail: baseDetail({
+        viewerSide: "home",
+        mvpNominations: { home: homeNom, away: null },
+      }),
+    });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // Only home picks six; away stays empty → still disabled.
-    pickNominations(dialog, homeName);
+    expect(within(dialog).getByText("Nominaciones enviadas")).toBeTruthy();
+    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
-    pickNominations(dialog, awayName);
+  });
+
+  it("RAU-51: the roll is enabled once BOTH sides nominated (persisted state)", () => {
+    renderModal({
+      detail: baseDetail({
+        viewerSide: "home",
+        mvpNominations: { home: homeNom, away: awayNom },
+      }),
+    });
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    expect(within(dialog).getByText("El rival nominó 6 jugadores")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", false);
   });
 
-  it("rolls the MVP + FF through the server (rollMvp POST) and reveals the summary", async () => {
+  it("RAU-51: excludes dead/suspended players from the OWN pickers (RAU-12)", () => {
+    const homePlayers = [
+      player("h1", "Hugo1"),
+      player("h2", "Hugo2"),
+      { ...player("h3", "Hugo3"), alive: false },
+      { ...player("h4", "Hugo4"), missNextMatch: true },
+      player("h5", "Hugo5"),
+      player("h6", "Hugo6"),
+      player("h7", "Hugo7"),
+    ];
+    renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    const options = within(dialog).getByLabelText(`MVP 1 ${homeName}`).querySelectorAll("option");
+    const texts = Array.from(options).map((o) => o.textContent);
+    expect(texts).toContain("Hugo1");
+    expect(texts).not.toContain("Hugo3");
+    expect(texts).not.toContain("Hugo4");
+  });
+
+  it("RAU-51: 'Guardar mis nominaciones' POSTs nominateMvp for the OWN side and refreshes (onNominated)", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      void _url;
+      void init;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            view: { seq: 13, mvpNominations: { home: homeNom, away: null } },
+          }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { onNominated } = renderModal();
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    pickOwnNominations(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar mis nominaciones" }));
+
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    const nominateCall = fetchMock.mock.calls.find(([, init]) =>
+      String((init as RequestInit).body).includes("nominateMvp"),
+    );
+    expect(nominateCall).toBeTruthy();
+    const body = JSON.parse((nominateCall![1] as RequestInit).body as string);
+    expect(body).toEqual({ type: "nominateMvp", side: "home", players: homeNom });
+  });
+
+  it("rolls the MVP + FF through the server (rollMvp POST with NO nominations body) and reveals the summary", async () => {
     const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
       void _url;
       void _init;
@@ -150,24 +228,24 @@ describe("MatchResolveModal", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderModal();
+    renderModal({
+      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
+    });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    pickNominations(dialog, homeName);
-    pickNominations(dialog, awayName);
     fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
 
     await waitFor(() =>
       expect(within(dialog).getByText("Resumen de la resolución")).toBeTruthy(),
     );
 
-    // The roll POST carried only the six nominations (the dice are server-owned).
+    // RAU-51: the roll body carries NO nominations — the server rolls from the
+    // persisted per-side state.
     const rollCall = fetchMock.mock.calls.find(([, init]) =>
       String((init as RequestInit).body).includes("rollMvp"),
     );
     expect(rollCall).toBeTruthy();
     const body = JSON.parse((rollCall![1] as RequestInit).body as string);
-    expect(body.mvp.home).toEqual(["h1", "h2", "h3", "h4", "h5", "h6"]);
-    expect(body.mvp.away).toEqual(["a1", "a2", "a3", "a4", "a5", "a6"]);
+    expect(body).toEqual({ type: "rollMvp" });
 
     // Summary: MVP winners (h2 / a4, +4 PE), winnings (→ treasury), FF and the
     // PE derived from the events + the MVP grant.
@@ -175,7 +253,6 @@ describe("MatchResolveModal", () => {
     expect(within(homeSection).getByText("Hugo2 · +4 PE")).toBeTruthy();
     expect(within(homeSection).getByText("55.000 gp.")).toBeTruthy();
     expect(within(homeSection).getByText("+4")).toBeTruthy();
-    // h1 (1 TD) +3, h2 (1 TD) +3 plus the +4 MVP = 7, h3 (1 completion) +1.
     expect(within(homeSection).getByText("+3 PE · Hugo1")).toBeTruthy();
     expect(within(homeSection).getByText("+7 PE · Hugo2")).toBeTruthy();
     expect(within(homeSection).getByText("+1 PE · Hugo3")).toBeTruthy();
@@ -186,7 +263,7 @@ describe("MatchResolveModal", () => {
     expect(within(awaySection).getByText("+3")).toBeTruthy();
   });
 
-  it("saves through the resolveMatch POST and calls onResolved on success", async () => {
+  it("saves through the resolveMatch POST (no nominations body) and calls onResolved on success", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       if (body.type === "rollMvp") {
@@ -218,10 +295,10 @@ describe("MatchResolveModal", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { onResolved } = renderModal();
+    const { onResolved } = renderModal({
+      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
+    });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    pickNominations(dialog, homeName);
-    pickNominations(dialog, awayName);
     fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
     await waitFor(() => expect(within(dialog).getByText("Guardar y reportar")).toBeTruthy());
 
@@ -233,8 +310,7 @@ describe("MatchResolveModal", () => {
     );
     expect(resolveCall).toBeTruthy();
     const body = JSON.parse((resolveCall![1] as RequestInit).body as string);
-    expect(body.type).toBe("resolveMatch");
-    expect(body.mvp.home).toHaveLength(6);
+    expect(body).toEqual({ type: "resolveMatch" });
   });
 
   it("surfaces a resolveMatch rejection (409 already resolved) in the modal and does NOT call onResolved", async () => {
@@ -255,10 +331,10 @@ describe("MatchResolveModal", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { onResolved } = renderModal();
+    const { onResolved } = renderModal({
+      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
+    });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    pickNominations(dialog, homeName);
-    pickNominations(dialog, awayName);
     fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
     await waitFor(() => expect(within(dialog).getByText("Guardar y reportar")).toBeTruthy());
 
@@ -267,6 +343,20 @@ describe("MatchResolveModal", () => {
       expect(within(dialog).getByRole("alert").textContent).toMatch(/Cannot resolve match/),
     );
     expect(onResolved).not.toHaveBeenCalled();
+  });
+
+  it("RAU-51: an admin/bye viewer (no side) sees BOTH sides as read-only statuses — no pickers", () => {
+    renderModal({
+      detail: baseDetail({
+        viewerSide: null,
+        mvpNominations: { home: homeNom, away: null },
+      }),
+    });
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    expect(within(dialog).queryByLabelText(`MVP 1 ${homeName}`)).toBeNull();
+    expect(within(dialog).getByText("6 jugadores nominados")).toBeTruthy();
+    expect(within(dialog).getByText("Pendiente")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });
 
   it("renders nothing when closed", () => {

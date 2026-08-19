@@ -51,6 +51,7 @@ function liveSnapshot(overrides: Partial<LiveMatchViewState> = {}): LiveMatchVie
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
     ...overrides,
   };
 }
