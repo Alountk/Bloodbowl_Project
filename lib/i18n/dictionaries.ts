@@ -134,6 +134,9 @@ const es: Dict = {
   "detail.tbl.skillNone": "—",
   "detail.tbl.bought": "Comprada con XP",
   "detail.tbl.valueBreakdown": "({base}+{bonus})k",
+  "detail.tbl.reorderUp": "Subir a {name}",
+  "detail.tbl.reorderDown": "Bajar a {name}",
+  "detail.tbl.reorderError": "No se pudo reordenar la plantilla",
 
   // Improve modal (RAU-46)
   "detail.modal.aria": "Mejorar a {name}",
@@ -611,6 +614,9 @@ const en: Dict = {
   "detail.tbl.skillNone": "—",
   "detail.tbl.bought": "Bought with XP",
   "detail.tbl.valueBreakdown": "({base}+{bonus})k",
+  "detail.tbl.reorderUp": "Move {name} up",
+  "detail.tbl.reorderDown": "Move {name} down",
+  "detail.tbl.reorderError": "Could not reorder the roster",
   "detail.modal.aria": "Improve {name}",
   "detail.modal.close": "Close",
   "detail.modal.number": "No.",

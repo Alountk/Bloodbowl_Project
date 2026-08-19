@@ -310,6 +310,72 @@ describe("Team detail page — owner progression wiring", () => {
     expect(screen.queryByRole("heading", { name: "Progresión" })).toBeNull();
     expect(screen.queryByTestId("spp-pe-pl1")).toBeNull();
   });
+
+  it("RAU-9: the reorder arrows fire the reorder route and apply the new order optimistically", async () => {
+    const owned2: Team = {
+      ...fixtureTeam,
+      id: "team-2p",
+      roster: [
+        { id: "pa", name: "Alpha", positionalKey: "blitzer" },
+        { id: "pb", name: "Beta", positionalKey: "lineman" },
+      ],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams/team-2p/progression") {
+        // No Player rows yet → the owner view is still interactive (arrows).
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url === "/api/teams/team-2p/roster-order") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              roster: [
+                { id: "pb", name: "Beta", positionalKey: "lineman" },
+                { id: "pa", name: "Alpha", positionalKey: "blitzer" },
+              ],
+            }),
+        });
+      }
+      if (url.startsWith("/api/leagues/")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "L" }) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = new InMemoryTeamStore([owned2]);
+    await act(async () => {
+      render(
+        <AppProvider store={store}>
+          <HydrationProbe />
+          {renderWithSuspense(
+            <TeamDetailPage params={Promise.resolve({ teamId: "team-2p" })} />,
+          )}
+        </AppProvider>,
+      );
+    });
+
+    await waitForHydration();
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeTruthy());
+    expect(screen.getByTestId("roster-number-pa").textContent).toBe("1");
+
+    fireEvent.click(screen.getByTestId("reorder-down-pa"));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/teams/team-2p/roster-order",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ order: ["pb", "pa"] }),
+        }),
+      );
+      // The dorsal flips as the page applies the optimistic order.
+      expect(screen.getByTestId("roster-number-pb").textContent).toBe("1");
+      expect(screen.getByTestId("roster-number-pa").textContent).toBe("2");
+    });
+  });
 });
 
 describe("Team detail page — rival scouting fallback", () => {

@@ -163,17 +163,23 @@ export function parseLiveWinnings(value: unknown): { home: number; away: number 
 }
 
 /**
- * Builds the served `players` roster for a team side (D21): the squad ALWAYS
- * carries every roster entry (id → rosterPlayerId, name, positionalKey) so the
- * Design-A feed and EventControls mini-form resolve names/positions/dorsals even
+ * Builds the served `players` roster for a team side (D21/RAU-9): the squad
+ * ALWAYS carries every roster entry (id → rosterPlayerId, name, positionalKey)
+ * so the Design-A feed and EventControls mini-form resolve names/positions/dorsals even
  * during a LIVE match before the lazy `Player` progression rows exist. When a
  * `Player` row is present it is overlaid (progression fields, alive) so a played
- * match keeps the authoritative post-result state. Dorsal = roster index + 1.
+ * match keeps the authoritative post-result state. Dorsal = roster index + 1 —
+ * the served order IS the roster JSON order (RAU-9 reorders the dorsal by
+ * reordering the roster), with the id-asc `players` rows as the overlay source
+ * and the fallback when the roster JSON is missing/unparseable.
  */
 function mergeRosterPlayers(
   team: { roster: unknown; players: MatchPlayerRow[] },
 ): MatchPlayerRow[] {
   const entries = Array.isArray(team.roster) ? (team.roster as PlayerEntry[]) : [];
+  // A missing/unparseable roster cannot define an order: serve the id-asc
+  // Player rows (D21 deterministic) so a live dorsal never disappears.
+  if (entries.length === 0 && team.players.length > 0) return team.players;
   const rowByRef = new Map(team.players.map((p) => [p.rosterPlayerId, p]));
   // Roster JSON is the identity source and its order is deterministic; a
   // Player-progression row, when present, overlays the live fields.
@@ -260,7 +266,10 @@ export async function GET(
           user: { select: { id: true, name: true, email: true, avatar: true } },
           roster: true,
           players: {
-            orderBy: { id: "asc" }, // D21: stable row order for dorsal = index+1
+            // D21: deterministic RAW row order — the served players follow the
+            // roster JSON via mergeRosterPlayers (RAU-9 dorsal = roster order);
+            // id-asc is the overlay map source + the missing-roster fallback.
+            orderBy: { id: "asc" },
             select: {
               rosterPlayerId: true,
               name: true,
@@ -284,7 +293,7 @@ export async function GET(
           user: { select: { id: true, name: true, email: true, avatar: true } },
           roster: true,
           players: {
-            orderBy: { id: "asc" }, // D21: stable row order for dorsal = index+1
+            orderBy: { id: "asc" }, // D21 fallback; served order = roster JSON (RAU-9)
             select: {
               rosterPlayerId: true,
               name: true,
