@@ -701,6 +701,24 @@ describe("LeagueDetail — FINISHED league (RAU-40)", () => {
   });
 });
 
+describe("LeagueDetail — ruleset badge (RAU-52)", () => {
+  it("shows the ruleset name badge in the hero when the league has one", async () => {
+    makeFetch({ ...ownOpenLeague, rulesetId: "tier1", rulesetName: "Liga Tier 1" });
+    render(<LeagueDetail leagueId="l1" />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "My Public League" })).toBeTruthy());
+    expect(screen.getByText("Liga Tier 1")).toBeTruthy();
+  });
+
+  it("renders no ruleset badge for a legacy league", async () => {
+    makeFetch(ownOpenLeague);
+    render(<LeagueDetail leagueId="l1" />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "My Public League" })).toBeTruthy());
+    expect(screen.queryByText("Estándar BB2025")).toBeNull();
+  });
+});
+
 interface ResultPayloadTestShape {
   home: { score: number; players: { tds: number }[] };
 }

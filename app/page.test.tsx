@@ -7,6 +7,12 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
+// The Sidebar reads the session to gate the developer nav link (RAU-52);
+// without a SessionProvider the session resolves to none.
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}));
+
 describe("Home page", () => {
   it("renders the app shell with an empty team list after hydration", async () => {
     render(

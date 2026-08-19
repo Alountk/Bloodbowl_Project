@@ -47,8 +47,8 @@ export function useLeagues() {
   }, []);
 
   const create = useCallback(
-    async (name: string, description: string | null) => {
-      const league = await createLeague(name, description);
+    async (name: string, description: string | null, rulesetId: string | null) => {
+      const league = await createLeague(name, description, rulesetId);
       await refresh();
       return league;
     },

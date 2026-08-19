@@ -148,14 +148,19 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
       <header className="mb-5 bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <h1
-                id="league-detail-heading"
-                className="border-b-[3px] border-[#d11938] pb-1 text-2xl font-black tracking-[0.02em] md:text-[24px]"
-              >
-                {league?.name}
-              </h1>
-              <span
+              <div className="flex items-center gap-3">
+                <h1
+                  id="league-detail-heading"
+                  className="border-b-[3px] border-[#d11938] pb-1 text-2xl font-black tracking-[0.02em] md:text-[24px]"
+                >
+                  {league?.name}
+                </h1>
+                {league?.rulesetName ? (
+                  <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                    {league.rulesetName}
+                  </span>
+                ) : null}
+                <span
                 className={
                   finished
                     ? "rounded-full bg-[#fbbf24] px-2.5 py-0.5 text-[11px] font-bold text-[#12225a]"

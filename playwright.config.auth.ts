@@ -27,6 +27,7 @@ export default defineConfig({
     "**/match-view.spec.ts",
     "**/live-match.spec.ts",
     "**/live-resolution.spec.ts",
+    "**/rulesets.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

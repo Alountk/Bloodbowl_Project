@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
 import { LocaleSwitcher } from "@/lib/i18n/LocaleSwitcher";
 
@@ -10,6 +11,9 @@ const NAV_ITEMS = [
   { href: "/leagues", key: "nav.leagues" },
   { href: "/profile", key: "nav.profile" },
 ] as const;
+
+/** Developer-only nav link (RAU-52); the /dev/rulesets page re-gates server-side. */
+const DEV_NAV_ITEM = { href: "/dev/rulesets", key: "nav.devRulesets" } as const;
 
 interface SidebarProps {
   /** Every instance shares the same nav markup; the wrapper decides placement. */
@@ -24,7 +28,10 @@ interface SidebarProps {
  */
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const { t } = useI18n();
+  const isDeveloper = session?.user?.role === "developer";
+  const items = isDeveloper ? [...NAV_ITEMS, DEV_NAV_ITEM] : NAV_ITEMS;
 
   return (
     <div className="flex h-full flex-col">
@@ -33,7 +40,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <span className="text-[10px] font-bold uppercase tracking-wide text-[#d11938]">Teams</span>
       </p>
       <nav className="flex flex-col gap-1">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
