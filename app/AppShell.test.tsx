@@ -6,6 +6,13 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/",
 }));
 
+// The Sidebar reads the session to gate the developer nav link (RAU-52). These
+// shell tests render AppShell without a SessionProvider, so useSession resolves
+// to no session → no dev link (the plain 3-item nav, as before).
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}));
+
 /** The drawer mounts only while open, so the desktop Sidebar is the sole "Sidebar" landmark. */
 describe("AppShell mobile drawer", () => {
   it("does not render the drawer or scrim when closed, and shows exactly one Sidebar landmark", () => {

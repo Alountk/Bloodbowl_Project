@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
-import { createLeague } from "./api";
+import { createLeague, listActiveRulesets, type ActiveRuleset } from "./api";
 
 interface CreateLeagueModalProps {
   open: boolean;
@@ -12,18 +12,46 @@ interface CreateLeagueModalProps {
 }
 
 /**
- * Rulebook create-league modal: name (unique globally) + optional description.
- * The per-turn clock option was REMOVED (D15): the deprecated columns remain on
- * the League row but the creation UI no longer exposes them. On POST the API
- * returns 409 for a duplicate name, surfaced as an inline error without closing
- * the modal so the user can pick another name.
+ * Rulebook create-league modal: name (unique globally) + optional description +
+ * the chosen "Tipo de reglas" (RAU-52). The selector lists ACTIVE rulesets via
+ * the public `/api/rulesets` endpoint and defaults to the seeded Estándar
+ * BB2025 (the first option); when no ruleset is available the league is created
+ * without one (legacy behavior). The per-turn clock option was REMOVED (D15):
+ * the deprecated columns remain on the League row but the creation UI no longer
+ * exposes them. On POST the API returns 409 for a duplicate name, surfaced as
+ * an inline error without closing the modal so the user can pick another name.
  */
 export function CreateLeagueModal({ open, onClose, onCreate }: CreateLeagueModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [rulesets, setRulesets] = useState<ActiveRuleset[]>([]);
+  const [rulesetId, setRulesetId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { t } = useI18n();
+
+  // Load the active rulesets every time the modal opens so the selector is
+  // fresh (a developer may add/activate a ruleset between opens).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    listActiveRulesets()
+      .then((list) => {
+        if (cancelled) return;
+        setRulesets(list);
+        // Default selection: the first active ruleset (the seeded Estándar
+        // BB2025) so every new league picks a ruleset by default.
+        setRulesetId(list[0]?.id ?? null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRulesets([]);
+        setRulesetId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   if (!open) return null;
 
@@ -37,7 +65,7 @@ export function CreateLeagueModal({ open, onClose, onCreate }: CreateLeagueModal
     setSubmitting(true);
     setError(null);
     try {
-      await createLeague(trimmed, description.trim() === "" ? null : description.trim());
+      await createLeague(trimmed, description.trim() === "" ? null : description.trim(), rulesetId);
       setName("");
       setDescription("");
       onClose();
@@ -97,6 +125,27 @@ export function CreateLeagueModal({ open, onClose, onCreate }: CreateLeagueModal
               placeholder={t("leagues.create.descriptionPlaceholder")}
               className={fieldClassName}
             />
+          </div>
+          <div>
+            <label htmlFor="league-ruleset" className="mb-1 block text-sm font-medium text-slate-700">
+              {t("leagues.create.ruleset")}
+            </label>
+            <select
+              id="league-ruleset"
+              value={rulesetId ?? ""}
+              onChange={(event) => setRulesetId(event.target.value || null)}
+              className={fieldClassName}
+            >
+              {rulesets.length === 0 ? (
+                <option value="">{t("leagues.create.noRulesets")}</option>
+              ) : (
+                rulesets.map((ruleset) => (
+                  <option key={ruleset.id} value={ruleset.id}>
+                    {ruleset.name}
+                  </option>
+                ))
+              )}
+            </select>
           </div>
           {error ? (
             <p role="alert" className="text-sm text-red-600">

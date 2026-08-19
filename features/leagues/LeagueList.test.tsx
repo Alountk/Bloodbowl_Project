@@ -247,4 +247,59 @@ describe("LeagueList", () => {
     expect(screen.getByLabelText("Nombre")).toBeTruthy();
     expect(screen.getByLabelText("Descripción")).toBeTruthy();
   });
+
+  it("shows the ruleset name badge on a league card when the league has one (RAU-52)", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/leagues") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve([
+              {
+                id: "l-ruleset",
+                name: "Ruleset League",
+                description: null,
+                ownerId: me,
+                createdAt: "2026-07-01",
+                status: "open",
+                seasonLength: null,
+                startedAt: null,
+                ownerName: "Coach A",
+                memberCount: 1,
+                isMember: false,
+                rulesetId: "tier1",
+                rulesetName: "Liga Tier 1",
+              },
+              {
+                id: "l-legacy",
+                name: "Legacy League",
+                description: null,
+                ownerId: me,
+                createdAt: "2026-07-02",
+                status: "open",
+                seasonLength: null,
+                startedAt: null,
+                ownerName: "Coach A",
+                memberCount: 1,
+                isMember: false,
+                rulesetId: null,
+                rulesetName: null,
+              },
+            ]),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueList />);
+
+    await waitFor(() => expect(screen.getByText("Ruleset League")).toBeTruthy());
+    const card = screen.getByText("Ruleset League").closest("li") as HTMLElement;
+    expect(within(card).getByText("Liga Tier 1")).toBeTruthy();
+    // Legacy leagues without a ruleset render no badge.
+    const legacyCard = screen.getByText("Legacy League").closest("li") as HTMLElement;
+    expect(within(legacyCard).queryByText("Liga Tier 1")).toBeNull();
+  });
 });

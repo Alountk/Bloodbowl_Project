@@ -39,7 +39,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const passwordMatches = await compare(password, user.passwordHash);
         if (!passwordMatches) return null;
 
-        return { id: user.id, email: user.email, name: user.name };
+        // `role` rides the JWT so the client nav can gate the dev section. The
+        // /api/dev/rulesets routes re-check the role from the DB (authoritative)
+        // on every call — the JWT copy is a UI convenience, not the security
+        // boundary. Snapshot at sign-in: promoting a user requires re-login for
+        // the nav link to appear.
+        return { id: user.id, email: user.email, name: user.name, role: user.role };
       },
     }),
   ],

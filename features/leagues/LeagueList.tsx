@@ -45,7 +45,14 @@ function LeagueCard({ league }: { league: League }) {
       <div className="flex flex-1 flex-col p-4">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-[15px] font-extrabold text-[#12225a]">{league.name}</h3>
-          <StatusBadge status={league.status} />
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {league.rulesetName ? (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                {league.rulesetName}
+              </span>
+            ) : null}
+            <StatusBadge status={league.status} />
+          </div>
         </div>
         {league.description ? (
           <p className="mt-1 line-clamp-2 text-xs text-slate-500">{league.description}</p>

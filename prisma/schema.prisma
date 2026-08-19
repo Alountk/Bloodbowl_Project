@@ -21,6 +21,9 @@ model User {
   /// or null when the user has no avatar. Never a client-supplied URL.
   avatar            String?
   createdAt         DateTime           @default(now())
+  /// Developer-only tools gate (RAU-52): "developer" unlocks the /dev/rulesets
+  /// section (server-enforced 403 otherwise); any other value is a regular user.
+  role              String             @default("user")
   teams             Team[]
   leagues           League[]
   scheduleProposals ScheduleProposal[]
@@ -50,10 +53,45 @@ model League {
   /// run clockless (no ticking, no grace pause).
   turnClockEnabled Boolean @default(true)
   turnClockSeconds Int    @default(240)
+  /// RAU-52: the ruleset this league plays under (picked at creation). Null for
+  /// legacy leagues created before rulesets existed → today's default behavior.
+  rulesetId String?
+  ruleset   Ruleset? @relation(fields: [rulesetId], references: [id], onDelete: SetNull)
   teams        Team[]       @relation("LeagueMembers")
   fixtures     Fixture[]
 
   @@index([ownerId])
+  @@index([rulesetId])
+}
+
+/// A reusable "Tipo de reglas" definition (RAU-52, developer-only section).
+/// Every league picks one at creation; the seeded "Estándar BB2025" is the
+/// default. The `races` column holds a JSON array of allowed race catalog ids
+/// (a ruleset allowing every race stores all 31 ids — no wildcard).
+model Ruleset {
+  id               String   @id @default(cuid())
+  name             String
+  description      String?
+  /// JSON array of allowed race ids from the 31-race catalog (never a wildcard).
+  races            Json
+  startingTreasury Int      @default(1000000)
+  /// Optional Team Value cap in gold (null = no cap, "∞" in the UI).
+  tvCap            Int?
+  minPlayers       Int      @default(11)
+  maxPlayers       Int      @default(16)
+  /// Hire/fire window: "between-jornadas" (locked between matchdays) or "libre".
+  hireFire         String   @default("between-jornadas")
+  seasonReform     Boolean  @default(true)
+  mercenaries      Boolean  @default(false)
+  /// Active rulesets are offered in the league-creation selector; inactive ones
+  /// stay editable by developers but are never offered to new leagues.
+  active           Boolean  @default(true)
+  /// Developer who created the ruleset (plain id reference, no FK to avoid
+  /// coupling ruleset lifetime to the author's account).
+  createdBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  leagues          League[]
 }
 
 /// Lifecycle state of a league: joinable/open, locked after a season starts, or
