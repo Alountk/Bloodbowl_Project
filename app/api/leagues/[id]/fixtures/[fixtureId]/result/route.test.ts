@@ -310,6 +310,94 @@ describe("POST /api/.../[fixtureId]/result", () => {
     );
   });
 
+  it("RAU-12: clears both teams' served suspensions then flags a lasting-band victim for the next match", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    const body = structuredClone(validBody);
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    randomMock.rollD16.mockReturnValueOnce(9); // 9-10 → apaleado (lasting)
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [], alive: true },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(200);
+
+    const calls = prismaMock.player.updateMany.mock.calls.map((c) => c[0]);
+    // Clear: EVERY player of both teams has their served suspension released.
+    const clear = calls.find(
+      (c) => c.data.missNextMatch === false && c.data.injuries === undefined,
+    );
+    expect(clear).toEqual({
+      where: { teamId: { in: ["t1", "t2"] } },
+      data: { missNextMatch: false },
+    });
+    // Set: the lasting victim is flagged unavailable for the NEXT match.
+    const set = calls.find(
+      (c) => c.where.rosterPlayerId === "av1" && c.data.injuries !== undefined,
+    );
+    expect(set!.data).toEqual(
+      expect.objectContaining({ missNextMatch: true, alive: true }),
+    );
+    // Order matters: the clear runs BEFORE the newly-injured are flagged, so a
+    // player injured in THIS match starts their suspension after it.
+    const clearIndex = calls.indexOf(clear!);
+    const setIndex = calls.indexOf(set!);
+    expect(clearIndex).toBeGreaterThanOrEqual(0);
+    expect(clearIndex).toBeLessThan(setIndex);
+  });
+
+  it("RAU-12: a bruise victim stays available and a dead victim stays dead with missNextMatch false", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    const body = structuredClone(validBody);
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    body.away.casualties = [{ team: "home", rosterPlayerId: "hv1" }];
+    randomMock.rollD16.mockReturnValueOnce(16).mockReturnValueOnce(2); // av1 dead, hv1 bruise
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [], alive: true },
+      { teamId: "t1", rosterPlayerId: "hv1", injuries: [], alive: true },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(200);
+
+    const calls = prismaMock.player.updateMany.mock.calls.map((c) => c[0]);
+    // Dead: alive=false and the suspension flag is irrelevant → false.
+    expect(
+      calls.find((c) => c.where.rosterPlayerId === "av1")?.data,
+    ).toEqual(expect.objectContaining({ alive: false, missNextMatch: false }));
+    // Bruise: never blocks the next match → flag stays false, player alive.
+    expect(
+      calls.find((c) => c.where.rosterPlayerId === "hv1")?.data,
+    ).toEqual(expect.objectContaining({ alive: true, missNextMatch: false }));
+  });
+
+  it("RAU-12: a second match's load clears the previous flag even with no new casualties", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    // No casualties in this payload — the suspension from the prior match is
+    // still served (cleared) for every player of both teams.
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(200);
+
+    expect(
+      prismaMock.player.updateMany.mock.calls.some(
+        (c) =>
+          c[0].data.missNextMatch === false &&
+          c[0].data.injuries === undefined &&
+          c[0].where.teamId !== undefined,
+      ),
+    ).toBe(true);
+  });
+
   it("skips unknown victim ids that are not in the roster (no write)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
@@ -693,11 +781,15 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     await callRoute("PUT", validBody);
 
     // delta = max(0, 3 - 9) = 0 → never a decrement, never a negative increment.
+    // (The RAU-12 clear writes `missNextMatch`, not `pe` — skip it.)
     for (const call of prismaMock.player.updateMany.mock.calls) {
+      if (call[0].data.pe === undefined) continue;
       expect(call[0].data.pe.increment).toBeGreaterThanOrEqual(0);
     }
     // No player is given a negative PE delta to "recover" spent PE.
-    const increments = prismaMock.player.updateMany.mock.calls.map((c) => c[0].data.pe.increment);
+    const increments = prismaMock.player.updateMany.mock.calls
+      .map((c) => c[0].data.pe?.increment)
+      .filter((n): n is number => typeof n === "number");
     expect(increments.some((n) => n < 0)).toBe(false);
   });
 
@@ -755,6 +847,30 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
         }),
       }),
     );
+  });
+
+  it("RAU-12: the correction re-applies clear-then-set for the corrected casualties", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
+    stubFixedRolls();
+    const body = structuredClone(validBody);
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    randomMock.rollD16.mockReturnValueOnce(11); // 11-12 → grave (lasting)
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [], alive: true },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    const calls = prismaMock.player.updateMany.mock.calls.map((c) => c[0]);
+    // The correction is an applied match: served suspensions clear first…
+    expect(calls.some((c) => c.data.missNextMatch === false && c.data.injuries === undefined)).toBe(true);
+    // …then the corrected lasting victim is re-flagged.
+    expect(
+      calls.find((c) => c.where.rosterPlayerId === "av1")?.data,
+    ).toEqual(expect.objectContaining({ missNextMatch: true, alive: true }));
   });
 
   it("returns 409 when there is no result to correct", async () => {

@@ -21,6 +21,7 @@ import {
   type ResolvedCasualty,
 } from "@/lib/result";
 import { rollD3, rollD6, rollD16 } from "@/lib/random";
+import { clearSuspensionUpdate, injurySuspensionUpdate } from "@/lib/playerInjuries";
 import { ensurePlayersForTeam } from "@/lib/players";
 import { getRaceById } from "@/features/teams/data/races";
 import {
@@ -126,10 +127,14 @@ type PlayerPersistenceTx = {
 
 /**
  * Appends each resolved casualty's injury band to the victim's Player row,
- * marking the victim dead when the outcome is Muerto. Runs inside the result
- * `$transaction`. Behaviour mirrors `ensurePlayersForTeam`'s skip-unknown:
- * a victim with no backfilled Player row is skipped, an already-dead Player is
- * skipped (no revive / re-append), and duplicate victim ids are applied once.
+ * marking the victim dead when the outcome is Muerto and flagging a lasting
+ * band (apaleado/grave/permanent) as unavailable for the NEXT match (RAU-12).
+ * Runs inside the result `$transaction`. Behaviour mirrors
+ * `ensurePlayersForTeam`'s skip-unknown: a victim with no backfilled Player row
+ * is skipped, an already-dead Player is skipped (no revive / re-append), and
+ * duplicate victim ids are applied once. The caller CLEARS both teams'
+ * pre-existing suspension flags BEFORE invoking this (a player injured in THIS
+ * match starts their suspension after it, not during).
  */
 async function persistCasualtyOutcomes(
   player: PlayerPersistenceTx,
@@ -156,7 +161,7 @@ async function persistCasualtyOutcomes(
       where: { teamId, rosterPlayerId: c.rosterPlayerId },
       data: {
         injuries: [...injuries, { kind: c.outcome.kind }] as never,
-        alive: c.outcome.kind === "dead" ? false : row.alive,
+        ...injurySuspensionUpdate(c.outcome.kind, row.alive),
       },
     });
   }
@@ -173,7 +178,9 @@ async function persistCasualtyOutcomes(
  * cash), each team's winnings to the
  * treasury, post-match fan factor, per-player PE (incl. the MJP 4-PE grant),
  * and each reported casualty's server-resolved 1D16 injury persisted on the
- * victim's Player row (`injuries[]` appended, `alive:false` on death)
+ * victim's Player row (`injuries[]` appended, `alive:false` on death, and a
+ * lasting band — apaleado/grave/permanent — flagged `missNextMatch` after
+ * clearing both teams' served suspensions, RAU-12)
  * (bb2025-rules R5). A fixture already played or
  * forfeited returns 409 with no re-award (idempotency).
  */
@@ -407,6 +414,14 @@ export async function POST(
           data: { pe: { increment: award.pe } },
         });
       }
+      // RAU-12 clear: suspensions from BEFORE this match are served — every
+      // player of both teams is available again, THEN the new lasting victims
+      // below are re-flagged (order matters: a player injured in THIS match
+      // starts their suspension AFTER it).
+      await tx.player.updateMany({
+        where: { teamId: { in: [homeTeamId, awayTeamId] } },
+        data: clearSuspensionUpdate(),
+      });
       await persistCasualtyOutcomes(
         tx.player as unknown as PlayerPersistenceTx,
         (role) => (role === "home" ? homeTeamId : awayTeamId),
@@ -619,6 +634,13 @@ export async function PUT(
         data: { pe: { increment: delta } },
       });
     }
+    // RAU-12 clear-then-set: the corrected result is an applied match, so the
+    // served suspensions from before it are cleared and the corrected lasting
+    // victims re-flagged (mirrors the POST transaction).
+    await tx.player.updateMany({
+      where: { teamId: { in: [homeTeamId, awayTeamId] } },
+      data: clearSuspensionUpdate(),
+    });
     await persistCasualtyOutcomes(
       tx.player as unknown as PlayerPersistenceTx,
       (role) => (role === "home" ? homeTeamId : awayTeamId),
