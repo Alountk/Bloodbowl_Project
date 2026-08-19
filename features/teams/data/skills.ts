@@ -337,7 +337,6 @@ const SKILL_DEFS = [
   { id: "shadowing", name: "Shadowing", category: "devious", translations: [{ id: "es", translation: "Perseguir" }] },
   { id: "shakey", name: "Shakey", category: "trait", translations: [{ id: "es", translation: "Tembloroso" }] },
   { id: "side-step", name: "Side Step", category: "agility", translations: [{ id: "en-alt", translation: "Sidestep" }, { id: "es", translation: "Echarse a un lado" }] },
-  { id: "slippery", name: "Slippery", category: "trait", translations: [{ id: "es", translation: "Escurridizo" }] },
   { id: "sneaky-git", name: "Sneaky Git", category: "devious" },
   { id: "sprint", name: "Sprint", category: "agility", translations: [{ id: "es", translation: "Esprintar" }] },
   { id: "stab", name: "Stab", category: "trait", translations: [{ id: "es", translation: "Apuñalar" }] },
