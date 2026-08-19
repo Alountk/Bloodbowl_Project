@@ -110,6 +110,11 @@ export function PlayerImproveModal({
   const [candidates, setCandidates] = useState<string[]>([]);
   const [attrPlus, setAttrPlus] = useState<Partial<Record<PlayerAttribute, boolean>>>({});
   const [confirmingFire, setConfirmingFire] = useState(false);
+  // Guards the backdrop-close against a click whose mousedown started on an
+  // inner control that was re-rendered away mid-click (React retargets the
+  // click to the overlay, which would otherwise read as a backdrop click and
+  // close the modal while the owner is still interacting with it).
+  const pointerDownOnBackdrop = useRef(false);
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -244,8 +249,12 @@ export function PlayerImproveModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/55 p-4"
+      onMouseDown={(e) => {
+        pointerDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (pointerDownOnBackdrop.current && e.target === e.currentTarget) onClose();
+        pointerDownOnBackdrop.current = false;
       }}
     >
       <div
