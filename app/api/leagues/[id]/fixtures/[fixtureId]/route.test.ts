@@ -310,6 +310,7 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
       paused: false,
       clockStartedAt: new Date("2026-03-01T20:00:10"),
       finishedAt: null,
+      mvpNominations: null,
       events: [],
     };
     const now = new Date("2026-03-01T20:00:15").getTime();
@@ -333,6 +334,7 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
         finishedAt: null,
         concedeProposedBy: null,
         pendingCasualty: null,
+        mvpNominations: { home: null, away: null },
         events: [],
       },
       now,
@@ -347,6 +349,8 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(liveDto.startedAt).toBe(stateView.startedAt);
     expect(liveDto.viewerSide).toBe(stateView.viewerSide);
     expect(liveDto.paused).toBe(stateView.paused);
+    // RAU-51: the per-side nominations surface on BOTH serializers identically.
+    expect(liveDto.mvpNominations).toEqual(stateView.mvpNominations);
   });
 
   it("returns 200 for a member-team owner (not league owner)", async () => {
