@@ -160,6 +160,8 @@ export async function GET(
     where: { id },
     include: {
       owner: { select: { id: true, email: true, name: true } },
+      // RAU-52: the league's chosen ruleset (name only — badge on the detail hero).
+      ruleset: { select: { id: true, name: true } },
       teams: {
         where: { archivedAt: null },
         orderBy: { createdAt: "asc" },
@@ -194,11 +196,12 @@ export async function GET(
         })
       : [];
 
-  const { owner, ...rest } = league;
+  const { owner, ruleset, ...rest } = league;
   return NextResponse.json({
     ...rest,
     status: rest.status,
     ownerName: owner?.name ?? owner?.email ?? null,
+    rulesetName: ruleset?.name ?? null,
     fixtures: fixtures.map((fixture) => enrichFixture(fixture as FixtureWithMatchday)),
     rounds: buildRoundsWithCompletion(fixtures as never),
   });

@@ -56,6 +56,8 @@ describe("League lifecycle types", () => {
       isMember: false,
       turnClockEnabled: true,
       turnClockSeconds: 240,
+      rulesetId: null,
+      rulesetName: null,
     };
     expect(league.status).toBe("started");
     expect(league.seasonLength).toBe(2);
@@ -91,6 +93,8 @@ describe("League lifecycle types", () => {
       isMember: true,
       turnClockEnabled: true,
       turnClockSeconds: 240,
+      rulesetId: null,
+      rulesetName: null,
     };
     expect(league.status).toBe("finished");
     expect(league.championTeamId).toBe("t1");
@@ -112,6 +116,8 @@ describe("League lifecycle types", () => {
       isMember: false,
       turnClockEnabled: true,
       turnClockSeconds: 240,
+      rulesetId: null,
+      rulesetName: null,
       teams: [
         { id: "t1", name: "Reavers", raceId: "human", leagueId: "l1", userId: "u1", roster: [], coaching: {} },
       ],
@@ -155,6 +161,8 @@ describe("League lifecycle types", () => {
       isMember: false,
       turnClockEnabled: true,
       turnClockSeconds: 240,
+      rulesetId: null,
+      rulesetName: null,
       teams: [],
       rounds: [],
       fixtures: [
@@ -206,16 +214,18 @@ describe("createLeague", () => {
         memberCount: 0,
         turnClockEnabled: true,
         turnClockSeconds: 240,
+        rulesetId: null,
+        rulesetName: null,
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createLeague("Clock League", null);
+    await createLeague("Clock League", null, null);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "Clock League", description: null }),
+      body: JSON.stringify({ name: "Clock League", description: null, rulesetId: null }),
     });
   });
 
@@ -234,16 +244,18 @@ describe("createLeague", () => {
         memberCount: 0,
         turnClockEnabled: true,
         turnClockSeconds: 240,
+        rulesetId: null,
+        rulesetName: null,
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const league = await createLeague("No Option", "just a name");
+    const league = await createLeague("No Option", "just a name", null);
 
     expect(fetchMock).toHaveBeenCalledWith("/api/leagues", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: "No Option", description: "just a name" }),
+      body: JSON.stringify({ name: "No Option", description: "just a name", rulesetId: null }),
     });
     // The deprecated columns remain on the League type for backward compat.
     expect(league.turnClockEnabled).toBe(true);

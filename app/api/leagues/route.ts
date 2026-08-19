@@ -11,7 +11,9 @@ import { prisma } from "@/lib/prisma";
  * Each league is enriched with the owner's name (falls back to the email), a
  * server-computed member count (non-archived member teams) and an `isMember`
  * flag derived from the user's own member teams — all from the query, not a
- * per-item detail fetch (kills the N+1). 401 unauthenticated.
+ * per-item detail fetch (kills the N+1). Each item also carries its chosen
+ * ruleset's `rulesetId` + resolved `rulesetName` (RAU-52; null for legacy
+ * leagues). 401 unauthenticated.
  */
 export async function GET() {
   const session = await auth();
@@ -33,6 +35,9 @@ export async function GET() {
     orderBy: { createdAt: "asc" },
     include: {
       owner: { select: { id: true, email: true, name: true } },
+      // RAU-52: the league's chosen ruleset (name only — the create selector
+      // resolves options via /api/rulesets).
+      ruleset: { select: { id: true, name: true } },
       // Only the session user's own member teams — used to derive `isMember`.
       teams: { where: { userId: ownerId, archivedAt: null }, select: { id: true } },
       _count: {
@@ -41,11 +46,12 @@ export async function GET() {
     },
   });
   return NextResponse.json(
-    leagues.map(({ owner, _count, teams, ...league }) => ({
+    leagues.map(({ owner, _count, teams, ruleset, ...league }) => ({
       ...league,
       ownerName: owner?.name ?? owner?.email ?? null,
       memberCount: _count.teams,
       isMember: teams.length > 0,
+      rulesetName: ruleset?.name ?? null,
     })),
   );
 }
@@ -59,6 +65,11 @@ export async function GET() {
  * persisted (D15): a legacy payload may still carry them, but they are never
  * validated nor written — the columns keep their schema defaults. No update
  * path exists for them (immutable by construction).
+ *
+ * RAU-52: an optional `rulesetId` (the league's chosen ruleset) must reference
+ * an ACTIVE ruleset — an unknown or inactive id is a 400. When omitted the
+ * league is created with `rulesetId: null` (legacy default behavior); the UI
+ * always sends the pick, defaulting to the seeded Estándar BB2025.
  */
 export async function POST(req: Request) {
   const session = await auth();
@@ -70,6 +81,7 @@ export async function POST(req: Request) {
   let body: {
     name?: unknown;
     description?: unknown;
+    rulesetId?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -84,9 +96,26 @@ export async function POST(req: Request) {
   const description =
     typeof body.description === "string" ? body.description : null;
 
+  // RAU-52: validate the chosen ruleset (must exist AND be active) before the
+  // create — an unknown/inactive id is a client error, never silently ignored.
+  let rulesetId: string | null = null;
+  if (body.rulesetId !== undefined && body.rulesetId !== null) {
+    if (typeof body.rulesetId !== "string" || body.rulesetId.trim() === "") {
+      return NextResponse.json({ error: "Unknown ruleset" }, { status: 400 });
+    }
+    const ruleset = await prisma.ruleset.findFirst({
+      where: { id: body.rulesetId.trim(), active: true },
+      select: { id: true },
+    });
+    if (!ruleset) {
+      return NextResponse.json({ error: "Unknown ruleset" }, { status: 400 });
+    }
+    rulesetId = ruleset.id;
+  }
+
   try {
     const league = await prisma.league.create({
-      data: { ownerId, name, description },
+      data: { ownerId, name, description, rulesetId },
     });
     return NextResponse.json(league, { status: 201 });
   } catch (error) {

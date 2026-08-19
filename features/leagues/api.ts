@@ -105,6 +105,29 @@ export interface League {
    * @deprecated Superseded by the unified server-owned match clock.
    */
   turnClockSeconds: 120 | 240 | 360;
+  /** RAU-52: the ruleset this league plays under (picked at creation); null
+   * for legacy leagues created before rulesets existed. */
+  rulesetId: string | null;
+  /** Resolved ruleset display name (server-joined), null with `rulesetId`. */
+  rulesetName: string | null;
+}
+
+/** An ACTIVE ruleset offered in the league-creation selector (RAU-52). */
+export interface ActiveRuleset {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+/**
+ * Fetches the ACTIVE rulesets a new league may pick (`GET /api/rulesets`, any
+ * authenticated user). Falls back to an empty list when the endpoint is
+ * unreachable so anonymous/local mode still renders the create form.
+ */
+export async function listActiveRulesets(): Promise<ActiveRuleset[]> {
+  const res = await fetch("/api/rulesets");
+  if (!res.ok) return [];
+  return (await res.json()) as ActiveRuleset[];
 }
 
 /** A member team as returned inside the league detail (Prisma Team shape). */
@@ -152,17 +175,19 @@ export async function listLeagues(): Promise<League[]> {
 
 /**
  * Creates a league. The deprecated turn-clock option is GONE from the client
- * (D15): the payload carries name + description only, and the server ignores
- * any legacy clock fields (columns keep their DB defaults).
+ * (D15): the payload carries name + description + the chosen `rulesetId`
+ * (RAU-52; null keeps the legacy no-ruleset behavior) only, and the server
+ * ignores any legacy clock fields (columns keep their DB defaults).
  */
 export async function createLeague(
   name: string,
   description: string | null,
+  rulesetId: string | null,
 ): Promise<League> {
   const res = await fetch("/api/leagues", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, description }),
+    body: JSON.stringify({ name, description, rulesetId }),
   });
   return readJson<League>(res);
 }

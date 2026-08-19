@@ -7,6 +7,9 @@ const prismaMock = vi.hoisted(() => ({
     create: vi.fn(),
     update: vi.fn(),
   },
+  ruleset: {
+    findFirst: vi.fn(),
+  },
 }));
 
 vi.mock("@/auth", () => ({
@@ -167,7 +170,7 @@ describe("GET /api/leagues", () => {
     expect(prismaMock.league.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          OR: [
+           OR: [
             { status: "open" },
             { ownerId: "user-1" },
             { teams: { some: { userId: "user-1", archivedAt: null } } },
@@ -175,6 +178,50 @@ describe("GET /api/leagues", () => {
         },
       }),
     );
+  });
+
+  it("exposes the league's rulesetId and resolved rulesetName (RAU-52)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const leagues = [
+      {
+        id: "with-ruleset",
+        name: "Tier1 League",
+        ownerId: "user-1",
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        createdAt: new Date().toISOString(),
+        rulesetId: "r1",
+        ruleset: { id: "r1", name: "Liga Tier 1" },
+        teams: [],
+        _count: { teams: 1 },
+      },
+      {
+        id: "legacy",
+        name: "Legacy League",
+        ownerId: "user-1",
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        createdAt: new Date().toISOString(),
+        rulesetId: null,
+        ruleset: null,
+        teams: [],
+        _count: { teams: 2 },
+      },
+    ];
+    prismaMock.league.findMany.mockResolvedValue(leagues);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body[0].rulesetId).toBe("r1");
+    expect(body[0].rulesetName).toBe("Liga Tier 1");
+    // A legacy league without a ruleset resolves to null (today's behavior).
+    expect(body[1].rulesetId).toBeNull();
+    expect(body[1].rulesetName).toBeNull();
+    // The nested ruleset object never leaks; only the resolved name is served.
+    expect(body[0].ruleset).toBeUndefined();
   });
 });
 
@@ -372,5 +419,81 @@ describe("POST /api/leagues", () => {
     expect(prismaMock.league.update).not.toHaveBeenCalled();
     // POST still only ever creates; the deprecated option is never written.
     expect(prismaMock.league.create.mock.calls[0][0].data).not.toHaveProperty("turnClockEnabled");
+  });
+
+  it("stores a valid ACTIVE rulesetId on the created league (RAU-52)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.ruleset.findFirst.mockResolvedValue({ id: "estandar-bb2025" });
+    prismaMock.league.create.mockResolvedValue({
+      id: "league-ruleset",
+      name: "Ruleset League",
+      description: null,
+      ownerId: "user-1",
+      rulesetId: "estandar-bb2025",
+      createdAt: new Date().toISOString(),
+    });
+
+    const res = await POST(
+      new Request("http://localhost:3000/api/leagues", {
+        method: "POST",
+        body: JSON.stringify({ name: "Ruleset League", rulesetId: "estandar-bb2025" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.rulesetId).toBe("estandar-bb2025");
+    expect(prismaMock.ruleset.findFirst).toHaveBeenCalledWith({
+      where: { id: "estandar-bb2025", active: true },
+      select: { id: true },
+    });
+    expect(prismaMock.league.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ rulesetId: "estandar-bb2025" }),
+    });
+  });
+
+  it("returns 400 for an unknown or INACTIVE ruleset (never silently ignored)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    // Inactive rulesets are not selectable for new leagues.
+    prismaMock.ruleset.findFirst.mockResolvedValue(null);
+
+    const res = await POST(
+      new Request("http://localhost:3000/api/leagues", {
+        method: "POST",
+        body: JSON.stringify({ name: "Bad Ruleset", rulesetId: "inactive-or-unknown" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("Unknown ruleset");
+    expect(prismaMock.league.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a legacy league (rulesetId null) when the payload omits it", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.create.mockResolvedValue({
+      id: "league-legacy",
+      name: "Legacy League",
+      description: null,
+      ownerId: "user-1",
+      rulesetId: null,
+      createdAt: new Date().toISOString(),
+    });
+
+    const res = await POST(
+      new Request("http://localhost:3000/api/leagues", {
+        method: "POST",
+        body: JSON.stringify({ name: "Legacy League" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.ruleset.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.league.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ rulesetId: null }),
+    });
   });
 });
