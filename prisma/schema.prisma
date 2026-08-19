@@ -160,6 +160,14 @@ model LiveMatch {
   /// roll). Null until `rollMvp` runs on a finished live match; overwritten on
   /// re-roll. Additive JSON, never re-typed.
   pendingResolution Json?
+  /// RAU-51: the PER-SIDE MJP nominations (`{ home: string[] | null, away:
+  /// string[] | null }` — each side's six rosterPlayerIds, or null when that
+  /// coach has not nominated yet). Each coach nominates ONLY their own team;
+  /// the value survives reloads/SSE and `rollMvp`/`resolveMatch` require BOTH
+  /// sides before rolling. `pendingResolution` stays separate — it holds the
+  /// ROLLED result. Additive JSON, never re-typed; null until the first side
+  /// nominates.
+  mvpNominations    Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   events        LiveEvent[]

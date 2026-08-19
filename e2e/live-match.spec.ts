@@ -246,6 +246,19 @@ async function liveCommand(page: Page, leagueId: string, fixtureId: string, data
   return (await res.json()) as { view: { seq: number; status: string; turnNumber: number } };
 }
 
+/** Opens the resolution modal (auto-open tolerant) on a coach's OWN page. */
+async function openResolution(page: Page, matchUrl: string) {
+  await page.goto(matchUrl);
+  const dialog = page.getByRole("dialog", { name: "Resolver partido" });
+  try {
+    await dialog.waitFor({ state: "visible", timeout: 8_000 });
+  } catch {
+    await page.getByRole("button", { name: "Resolver partido" }).click();
+    await expect(dialog).toBeVisible();
+  }
+  return dialog;
+}
+
 /**
  * Records a live event through the REAL "+" FAB (LM-20/D26): opens the FAB,
  * clicks the given menu label and picks the player from the roster select,
@@ -510,33 +523,56 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const afterEnd = await liveCommand(admin, leagueId, fixtureId, { type: "endMatch" });
     expect(afterEnd.view.status).toBe("finished");
 
-    // RAU-49: a finished live match with no result shows the guided resolution
-    // flow (the manual result form is gone for live matches). A fresh load of
-    // the finished-unresolved match shows the persistent "Resolver partido"
-    // banner; the modal auto-opens once when the match finishes via SSE.
+    // RAU-51: a finished live match with no result shows the PER-SIDE guided
+    // resolution flow (the manual result form is gone for live matches). Each
+    // coach nominates ONLY their OWN team from their OWN page; the rival side
+    // is a read-only status (never their players); the roll is gated on BOTH
+    // sides' submissions, then the server-owned roll → resolve close the match.
     await admin.goto(matchUrl);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
-    await admin.getByRole("button", { name: "Resolver partido" }).click();
-    const dialog = admin.getByRole("dialog", { name: "Resolver partido" });
-    await expect(dialog).toBeVisible();
 
-    // Step 1 — MVP (mandatory): six DISTINCT MJP nominations per team (option
-    // index i = player i, mirroring the result modal's nomination contract).
-    for (const team of [homeTeamName, awayTeamName]) {
-      for (let i = 1; i <= 6; i++) {
-        await dialog.getByLabel(`MVP ${i} ${team}`).selectOption({ index: i });
-      }
+    // Coach A (whichever team is home) nominates their OWN six.
+    await homeCoach.goto(matchUrl);
+    const homeDialog = await openResolution(homeCoach, matchUrl);
+    for (let i = 1; i <= 6; i++) {
+      await expect(homeDialog.getByLabel(`MVP ${i} ${homeTeamName}`)).toBeVisible();
+      await expect(homeDialog.getByLabel(`MVP ${i} ${awayTeamName}`)).toHaveCount(0);
     }
-    // The SERVER owns the 1D6 MVP roll: "Tirar MVP" posts the rollMvp command
-    // (which persists the roll so the commit reuses it) and reveals the
-    // grantees + the summary (winnings → the finish-time persisted values,
-    // dedicated fans, match PE).
-    await dialog.getByRole("button", { name: "Tirar MVP" }).click();
-    await expect(dialog.getByText("Resumen de la resolución")).toBeVisible();
-    // Step 2 — "Guardar y reportar" posts resolveMatch (THE closure): the
-    // fixture closes + the MatchResult row writes + the league finishes.
-    await dialog.getByRole("button", { name: "Guardar y reportar" }).click();
-    await expect(dialog).not.toBeVisible();
+    await expect(homeDialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
+    for (let i = 1; i <= 6; i++) {
+      await homeDialog.getByLabel(`MVP ${i} ${homeTeamName}`).selectOption({ index: i });
+    }
+    await homeDialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
+    await expect(homeDialog.getByText("Nominaciones enviadas")).toBeVisible();
+    // The home coach's own modal shows the rival as a read-only status.
+    await expect(homeDialog.getByText("El rival aún no ha nominado")).toBeVisible();
+
+    // Coach B nominates their OWN six on their OWN page.
+    const awayDialog = await openResolution(awayCoach, matchUrl);
+    await expect(awayDialog.getByText("El rival nominó 6 jugadores")).toBeVisible();
+    for (let i = 1; i <= 6; i++) {
+      await expect(awayDialog.getByLabel(`MVP ${i} ${awayTeamName}`)).toBeVisible();
+      await expect(awayDialog.getByLabel(`MVP ${i} ${homeTeamName}`)).toHaveCount(0);
+    }
+    await expect(awayDialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
+    for (let i = 1; i <= 6; i++) {
+      await awayDialog.getByLabel(`MVP ${i} ${awayTeamName}`).selectOption({ index: i });
+    }
+    await awayDialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
+    await expect(awayDialog.getByText("Nominaciones enviadas")).toBeVisible();
+
+    // Both sides nominated → the SERVER-owned 1D6 MVP roll is enabled and
+    // reveals the grantees + the summary (winnings → the finish-time persisted
+    // values, dedicated fans, match PE). "Guardar y reportar" is THE closure.
+    await expect(awayDialog.getByRole("button", { name: "Tirar MVP" })).toBeEnabled();
+    await awayDialog.getByRole("button", { name: "Tirar MVP" }).click();
+    await expect(awayDialog.getByText("Resumen de la resolución")).toBeVisible();
+    await awayDialog.getByRole("button", { name: "Guardar y reportar" }).click();
+    await expect(awayDialog).not.toBeVisible();
+
+    // The admin page re-loads the RESOLVED match (whichever coach did the final
+    // save) so the feed shows the closure summary deterministically.
+    await admin.goto(matchUrl);
 
     // MVP rows (LM-mvp): once the resolve commits, the FINISHED feed on the
     // match page carries the home+away mvp rows (★4) the resolve appended.

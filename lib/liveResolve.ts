@@ -144,3 +144,29 @@ export function validateMvpNominations(
   };
   return check(rawHome, homeRosterIds) ?? check(rawAway, awayRosterIds);
 }
+
+/**
+ * RAU-51: validates ONE side's six MJP nominations — exactly 6 DISTINCT ids
+ * belonging to that side's roster — PLUS the RAU-12 availability guard: every
+ * nominee must be alive and not suspended for the next match (`availability` is
+ * the side's Player rows keyed by rosterPlayerId; a roster entry WITHOUT a lazy
+ * Player row counts as available, mirroring `mergeRosterPlayers`). Returns an
+ * error-message fragment or null when valid.
+ */
+export function validateSingleMvpNomination(
+  raw: unknown,
+  rosterIds: ReadonlySet<string>,
+  availability?: ReadonlyMap<string, { alive: boolean; missNextMatch: boolean }>,
+): string | null {
+  if (!Array.isArray(raw) || raw.length !== 6) return "mvp.six";
+  const seen = new Set<string>();
+  for (const nomination of raw) {
+    if (typeof nomination !== "string" || nomination.length === 0) return "mvp.ids";
+    if (seen.has(nomination)) return "mvp.duplicate";
+    seen.add(nomination);
+    if (!rosterIds.has(nomination)) return "mvp.foreign";
+    const player = availability?.get(nomination);
+    if (player && (!player.alive || player.missNextMatch)) return "mvp.unavailable";
+  }
+  return null;
+}

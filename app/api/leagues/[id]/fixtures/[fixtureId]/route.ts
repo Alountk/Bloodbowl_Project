@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { deriveLiveClock, isDisplayEvent } from "@/lib/liveMatch";
+import { deriveLiveClock, isDisplayEvent, parseMvpNominations } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 import type { PlayerEntry } from "@/features/teams/types";
 
@@ -43,6 +43,10 @@ export interface LiveDto {
   concedeProposedBy: "home" | "away" | null;
   /** RAU-39: the pending casualty proposal, or null when none is pending. */
   pendingCasualty: Record<string, unknown> | null;
+  /** RAU-51: the persisted per-side MJP nominations (null per side = that coach
+   * has not nominated yet) — the resolution modal renders its per-coach pickers
+   * and gates the server roll on BOTH sides. */
+  mvpNominations: { home: string[] | null; away: string[] | null };
   events: LiveEventDto[];
 }
 
@@ -66,6 +70,8 @@ interface LiveMatchRow {
   finishedAt: Date | null;
   concedeProposedBy: "home" | "away" | null;
   pendingCasualty: unknown;
+  /** RAU-51: the persisted per-side MJP nominations JSON (null = none yet). */
+  mvpNominations: unknown;
   /** RAU-44: the persisted per-team live winnings JSON (`{ home, away }`),
    * null until the match reaches `finished`. */
   winnings: unknown;
@@ -125,6 +131,7 @@ export function serializeLive(
       typeof row.pendingCasualty === "object" && row.pendingCasualty !== null && !Array.isArray(row.pendingCasualty)
         ? (row.pendingCasualty as Record<string, unknown>)
         : null,
+    mvpNominations: parseMvpNominations(row.mvpNominations),
     // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
     // `requestTurn` stay in the DB (audit/replay) and are never shown here.
     events: row.events

@@ -9,7 +9,10 @@ import {
   getMatchDetail,
   getScoutedTeam,
   listUnassignedTeams,
+  nominateMvp,
   proposeFixtureDate,
+  resolveLiveMatch,
+  rollLiveMvp,
   selfLeave,
   sendLiveCommand,
   startLeague,
@@ -600,6 +603,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+      mvpNominations: { home: null, away: null },
     };
     expect(live.status).toBe("pending");
     expect(live.homeConsented).toBe(true);
@@ -633,6 +637,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+      mvpNominations: { home: null, away: null },
     };
     expect(live.homeTurnMs).toBe(5100);
     expect(live.awayTurnMs).toBe(3000);
@@ -663,6 +668,7 @@ describe("sendLiveCommand", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+      mvpNominations: { home: null, away: null },
     };
     vi.stubGlobal(
       "fetch",
@@ -819,6 +825,7 @@ describe("LiveCommand — RAU-38 concede propose / respond", () => {
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
   };
 
   it("sends { type: 'concede' } on the wire", async () => {
@@ -859,5 +866,66 @@ describe("MatchResultRecord — createdAt surface for the report date (MVT/summa
       createdAt: "2026-01-01T00:00:00.000Z",
     };
     expect(result.createdAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+});
+
+describe("RAU-51 resolution wrappers — per-side nomination + server-owned roll/resolve (no body nominations)", () => {
+  const roll = { mvp: { home: "p1", away: "p2" }, postFf: { home: 4, away: 3 } };
+  const resolved = {
+    fixtureId: "f1",
+    status: "played" as const,
+    homeScore: 1,
+    awayScore: 0,
+    winnerId: "t1",
+    winnings: { home: 55_000, away: 45_000 },
+    postFf: { home: 4, away: 3 },
+    mvp: { home: "p1", away: "p2" },
+    resultId: "mr1",
+  };
+
+  it("nominateMvp POSTs the caller's side + six players", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ view: {} }) });
+    vi.stubGlobal("fetch", fetchMock);
+    await nominateMvp("lg-1", "f-1", "home", ["p1", "p2", "p3", "p4", "p5", "p6"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({
+        body: JSON.stringify({ type: "nominateMvp", side: "home", players: ["p1", "p2", "p3", "p4", "p5", "p6"] }),
+      }),
+    );
+  });
+
+  it("rollLiveMvp POSTs a bare rollMvp (RAU-51: no nominations — the server rolls from the persisted per-side state)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ roll }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await rollLiveMvp("lg-1", "f-1");
+    expect(out).toEqual(roll);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({ body: JSON.stringify({ type: "rollMvp" }) }),
+    );
+  });
+
+  it("resolveLiveMatch POSTs a bare resolveMatch (RAU-51)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ resolved }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await resolveLiveMatch("lg-1", "f-1");
+    expect(out.resultId).toBe("mr1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/leagues/lg-1/fixtures/f-1/live",
+      expect.objectContaining({ body: JSON.stringify({ type: "resolveMatch" }) }),
+    );
+  });
+
+  it("surfaces a nominateMvp 409 rejection with the server status", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: () => Promise.resolve({ error: "Cannot nominate MVP in current state" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      nominateMvp("lg-1", "f-1", "home", ["p1", "p2", "p3", "p4", "p5", "p6"]),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });

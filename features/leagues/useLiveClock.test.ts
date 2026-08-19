@@ -33,6 +33,7 @@ function live(overrides: Partial<LiveMatchViewState> = {}): LiveMatchViewState {
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
     ...overrides,
   };
 }
