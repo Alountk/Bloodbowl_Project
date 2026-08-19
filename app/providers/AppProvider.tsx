@@ -59,7 +59,7 @@ export function AppProvider({
 
   const addTeam = useCallback(
     async (values: CreateTeamValues) => {
-      const team: Team = { id: createId(), ...values, leagueId: null };
+      const team: Team = { id: createId(), ...values, leagueId: null, treasury: 0 };
       await store.save(team);
       setTeams((prev) => [...prev, team]);
     },

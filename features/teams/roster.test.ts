@@ -16,8 +16,9 @@ import {
   computeCoachingCost,
   computeCoachingCostItems,
   computeRosterCost,
-  countPlayers,
   computeRosterCostFromPlayers,
+  computeSpendableBalance,
+  countPlayers,
   countPlayersFromEntries,
   summarizeRosterFromEntries,
 } from "./roster";
@@ -71,6 +72,7 @@ describe("roster helpers", () => {
         raceId: "human",
         coaching: { ...DEFAULT_COACHING },
         leagueId: null,
+        treasury: 0,
         roster: [
           { id: "a", name: "Player 1", positionalKey: "lineman" },
           { id: "b", name: "Player 2", positionalKey: "lineman" },
@@ -102,6 +104,7 @@ describe("roster helpers", () => {
         raceId: "orc",
         coaching: { ...DEFAULT_COACHING },
         leagueId: null,
+        treasury: 0,
         roster: players,
       };
       expect(summarizeRosterFromEntries(team, [getRaceById("orc")!])).toBe(
@@ -164,6 +167,7 @@ describe("roster helpers", () => {
         raceId: "human",
         coaching: { ...DEFAULT_COACHING },
         leagueId: null,
+        treasury: 0,
         roster: players,
       };
       expect(summarizeRosterFromEntries(team, [human])).toBe(
@@ -179,6 +183,7 @@ describe("roster helpers", () => {
         raceId: "human",
         coaching: { ...DEFAULT_COACHING },
         leagueId: null,
+        treasury: 0,
         roster: [],
       };
       expect(summarizeRosterFromEntries(team, [human])).toBe("0 jugadores");
@@ -234,6 +239,54 @@ describe("roster helpers", () => {
       expect(byKey.rerolls).toMatchObject({ unitCost: 50_000, quantity: 2, total: 100_000 });
       expect(byKey.dedicatedFans).toMatchObject({ unitCost: 5_000, quantity: 3, total: 10_000 });
       expect(byKey.assistantCoaches).toMatchObject({ unitCost: 10_000, quantity: 0, total: 0 });
+    });
+  });
+
+  describe("computeSpendableBalance (RAU-11)", () => {
+    const human = getRaceById("human")!;
+    const threeLinemen: PlayerEntry[] = [
+      { id: "p1", name: "A", positionalKey: "lineman" },
+      { id: "p2", name: "B", positionalKey: "lineman" },
+      { id: "p3", name: "C", positionalKey: "lineman" },
+    ];
+    const team: Pick<Team, "treasury" | "roster" | "coaching"> = {
+      treasury: 0,
+      roster: threeLinemen,
+      coaching: { ...DEFAULT_COACHING },
+    };
+
+    it("is the drafting budget plus winnings minus current roster and coaching costs", () => {
+      // 1 000 000 − 150 000 (3 linemen) − 100 000 (2 rerolls) = 750 000.
+      const withCoaching = { ...team, coaching: { ...DEFAULT_COACHING, rerolls: 2 } };
+      expect(computeSpendableBalance(withCoaching, human)).toBe(750_000);
+    });
+
+    it("adds accumulated winnings to the spendable pool", () => {
+      // 1 000 000 + 200 000 (winnings) − 150 000 − 0 = 1 050 000.
+      expect(computeSpendableBalance({ ...team, treasury: 200_000 }, human)).toBe(1_050_000);
+    });
+
+    it("drops automatically as the roster grows (hiring needs no treasury write)", () => {
+      const four = [...threeLinemen, { id: "p4", name: "D", positionalKey: "blitzer" }];
+      // + 1 blitzer (85 000) → 1 000 000 − 235 000 = 765 000.
+      expect(computeSpendableBalance({ ...team, roster: four }, human)).toBe(765_000);
+    });
+
+    it("stays flat when the treasury is decremented by a fired player's cost (no refund)", () => {
+      // Before: 1 000 000 + 200 000 − 235 000 (4 players) = 965 000.
+      const before = computeSpendableBalance(
+        { ...team, treasury: 200_000, roster: [...threeLinemen, { id: "p4", name: "D", positionalKey: "blitzer" }] },
+        human,
+      );
+      // After firing the 85k blitzer the treasury is decremented by 85 000:
+      // 1 000 000 + 115 000 − 150 000 (3 linemen) = 965 000 — identical.
+      const after = computeSpendableBalance({ ...team, treasury: 200_000 - 85_000 }, human);
+      expect(after).toBe(before);
+    });
+
+    it("ignores unknown positional keys in the roster cost (0 each)", () => {
+      const unknown = [{ id: "p1", name: "A", positionalKey: "ghost" }];
+      expect(computeSpendableBalance({ ...team, roster: unknown }, human)).toBe(1_000_000);
     });
   });
 });

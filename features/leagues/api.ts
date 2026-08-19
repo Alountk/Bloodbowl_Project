@@ -412,6 +412,7 @@ export interface ScoutedTeamDetail {
   roster: unknown;
   coaching: unknown;
   leagueId: string | null;
+  treasury: number;
 }
 
 /** A round (jornada) with its fixtures and whether every match is played. */

@@ -14,6 +14,7 @@ const baseTeam: Team = {
   leagueId: null,
   coaching: { ...DEFAULT_COACHING },
   roster: [],
+  treasury: 0,
 };
 
 /** Locates the coaching table and the row identified by its first (Concepto) cell. */
@@ -252,6 +253,25 @@ describe("TeamDetailView", () => {
 
     const restante = treasuryCard("Tesorería restante");
     expect(within(restante).getByText("700 000")).toBeTruthy();
+  });
+
+  it("adds accumulated winnings (Team.treasury) to the spendable balance", () => {
+    // 3 linemen (150 000) + default coaching (0) + 200 000 winnings in the DB
+    // treasury → balance = 1 000 000 + 200 000 − 150 000 = 1 050 000.
+    const team: Team = {
+      ...baseTeam,
+      roster: [
+        { id: "p1", name: "A", positionalKey: "lineman" },
+        { id: "p2", name: "B", positionalKey: "lineman" },
+        { id: "p3", name: "C", positionalKey: "lineman" },
+      ],
+      treasury: 200_000,
+    };
+    render(<TeamDetailView team={team} race={humanRace} />);
+
+    expect(screen.getAllByText("Tesorería: 1 050 000").length).toBeGreaterThanOrEqual(1);
+    const restante = treasuryCard("Tesorería restante");
+    expect(within(restante).getByText("1 050 000")).toBeTruthy();
   });
 
   describe("coaching table horizontal scroll", () => {

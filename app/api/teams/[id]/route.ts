@@ -34,8 +34,9 @@ export function canViewScoutedTeam(opts: {
 /**
  * GET /api/teams/[id]
  * Read-only scouting detail for a team: id, name, raceId, roster, coaching,
- * leagueId. No mutation affordances. Visibility follows `canViewScoutedTeam`;
- * every denied or archived caller receives 404 (no existence leak), 401 unauth.
+ * leagueId, treasury. No mutation affordances. Visibility follows
+ * `canViewScoutedTeam`; every denied or archived caller receives 404 (no
+ * existence leak), 401 unauth.
  */
 export async function GET(
   _req: Request,
@@ -85,6 +86,7 @@ export async function GET(
     roster: team.roster,
     coaching: team.coaching,
     leagueId: team.leagueId,
+    treasury: team.treasury,
   });
 }
 
