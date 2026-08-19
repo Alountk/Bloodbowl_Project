@@ -11,6 +11,7 @@ import {
   updateRuleset,
   type Ruleset,
 } from "./api";
+import { RulesetCarousel } from "./RulesetCarousel";
 import { RulesetEditor, type RulesetEditorTarget } from "./RulesetEditor";
 
 type EditorState = { kind: "create" } | { kind: "edit"; ruleset: Ruleset } | null;
@@ -251,7 +252,7 @@ export function RulesetManager() {
           </button>
         </div>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <RulesetCarousel count={rulesets.length}>
           {rulesets.map((ruleset) => (
             <RulesetCard
               key={ruleset.id}
@@ -260,7 +261,7 @@ export function RulesetManager() {
               onChanged={refresh}
             />
           ))}
-        </ul>
+        </RulesetCarousel>
       )}
 
       {editor ? (
