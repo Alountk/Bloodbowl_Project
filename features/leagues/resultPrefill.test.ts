@@ -29,6 +29,7 @@ function finishedLive(): LiveMatchView {
     finishedAt: 5000,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
     events: [
       { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
       { seq: 2, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 2, payload: {}, at: 2000 },

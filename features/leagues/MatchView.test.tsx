@@ -416,6 +416,7 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
@@ -478,6 +479,7 @@ function finishedLiveDetail(): MatchDetail {
       finishedAt: 5000,
       concedeProposedBy: null,
       pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -909,6 +911,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
       events: [],
     };
     stubMatch(detail);
@@ -941,6 +944,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
       events: [],
     };
     stubMatch(detail);
@@ -972,6 +976,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
       events: [],
     };
     const fetchMock = vi.fn((url: string) =>
@@ -1744,6 +1749,7 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
       finishedAt: 9000,
       concedeProposedBy: null,
       pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 6, kind: "concede", side: "home", playerRosterId: null, half: 1, turnNumber: 3, payload: { winnerSide: "away" }, at: 9000 },
@@ -1844,10 +1850,13 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
     detail.fixture.awayScore = null;
     detail.fixture.winnerId = null;
     detail.liveWinnings = { home: 55_000, away: 45_000 };
+    // RAU-51: the per-viewer side drives the modal — the home coach sees their
+    // OWN side's pickers only.
+    detail.live = { ...detail.live!, viewerSide: "home" };
     return detail;
   }
 
-  it("shows the 'Resolver partido' banner and opens the resolution modal for a finished-unresolved match", async () => {
+  it("shows the 'Resolver partido' banner and opens the per-side resolution modal for a finished-unresolved match", async () => {
     stubMatch(unresolvedFinishedDetail());
     renderPlayed();
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
@@ -1858,9 +1867,12 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
 
     fireEvent.click(resolveButton);
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // The MVP step renders the six numbered pickers per team.
+    // RAU-51: the viewer's OWN side renders the six pickers; the rival is a
+    // read-only status (no pickers). The roll stays gated on BOTH sides.
     expect(within(dialog).getByLabelText("MVP 1 Reavers")).toBeTruthy();
-    expect(within(dialog).getByLabelText("MVP 6 Dwarves")).toBeTruthy();
+    expect(within(dialog).getByLabelText("MVP 6 Reavers")).toBeTruthy();
+    expect(within(dialog).queryByLabelText("MVP 6 Dwarves")).toBeNull();
+    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });
 
