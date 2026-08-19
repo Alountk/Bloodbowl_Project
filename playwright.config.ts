@@ -29,6 +29,7 @@ export default defineConfig({
         "**/match-view.spec.ts",
         "**/live-match.spec.ts",
         "**/live-resolution.spec.ts",
+        "**/rulesets.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
