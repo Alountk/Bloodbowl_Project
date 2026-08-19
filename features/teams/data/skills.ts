@@ -389,6 +389,7 @@ const SKILL_DEFS = [
   { id: "trickster", name: "Trickster", category: "trait", translations: [{ id: "es", translation: "Embustero" }] },
   { id: "troll-hatred", name: "Troll Hatred", category: "trait" },
   { id: "unchannelled-fury", name: "Unchannelled Fury", category: "trait", translations: [{ id: "es", translation: "Ira descontrolada" }] },
+  { id: "very-long-legs", name: "Very Long Legs", category: "trait" },
   { id: "wrestle", name: "Wrestle", category: "general", translations: [{ id: "es", translation: "Forcejear" }] },
 ] as const satisfies readonly RawSkillDef[];
 

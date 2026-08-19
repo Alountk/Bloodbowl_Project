@@ -1,7 +1,7 @@
 import type { Race } from "../types";
 import { getSkillById, getSkillByName } from "./skills";
 
-const EXPECTED_RACE_COUNT = 30;
+const EXPECTED_RACE_COUNT = 31;
 const VALID_ACCESS_LETTERS = new Set(["A", "F", "G", "M", "P", "T"]);
 const VALID_AG = new Set(["2+", "3+", "4+", "5+"]);
 const VALID_PA = new Set(["2+", "3+", "4+", "5+", "6+", "—"]);
