@@ -51,6 +51,7 @@ function fakeRow(): LiveMatchState {
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: { home: null, away: null },
     events: [],
   };
 }
@@ -147,6 +148,7 @@ describe("liveMatchRowToState", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
+      mvpNominations: null,
     });
     expect(state.status).toBe("ready");
     expect(state.homeConsented).toBe(true);
@@ -178,6 +180,7 @@ describe("liveMatchRowToState", () => {
       finishedAt: null,
       concedeProposedBy: "home",
       pendingCasualty: null,
+      mvpNominations: null,
     });
     expect(state.concedeProposedBy).toBe("home");
   });
@@ -202,6 +205,7 @@ describe("liveMatchRowToState", () => {
       clockStartedAt: null,
       finishedAt: null,
       concedeProposedBy: null,
+      mvpNominations: null,
     } as const;
     const parsed = liveMatchRowToState({
       ...base,
@@ -219,6 +223,44 @@ describe("liveMatchRowToState", () => {
     expect(liveMatchRowToState({ ...base, pendingCasualty: "garbage" }).pendingCasualty).toBeNull();
     expect(liveMatchRowToState({ ...base, pendingCasualty: { proposerSide: "nope", victimRosterId: 1 } }).pendingCasualty).toBeNull();
     expect(liveMatchRowToState({ ...base, pendingCasualty: null }).pendingCasualty).toBeNull();
+  });
+
+  it("maps the persisted per-side mvpNominations JSON onto the pure state (RAU-51)", () => {
+    const parsed = liveMatchRowToState({
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "finished",
+      half: 2,
+      turnNumber: 8,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 1,
+      awayScore: 0,
+      seq: 9,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: new Date(5000),
+      concedeProposedBy: null,
+      pendingCasualty: null,
+      mvpNominations: { home: ["h1", "h2", "h3", "h4", "h5", "h6"], away: null },
+    });
+    expect(parsed.mvpNominations).toEqual({ home: ["h1", "h2", "h3", "h4", "h5", "h6"], away: null });
+    // A null/absent/foreign column parses to both sides "not nominated".
+    expect(liveMatchRowToState({ id: "lm-1", mvpNominations: null } as never).mvpNominations).toEqual({
+      home: null,
+      away: null,
+    });
+    expect(liveMatchRowToState({ id: "lm-1", mvpNominations: "garbage" } as never).mvpNominations).toEqual({
+      home: null,
+      away: null,
+    });
+    expect(
+      liveMatchRowToState({ id: "lm-1", mvpNominations: { home: 1, away: [{ x: 1 }] } } as never).mvpNominations,
+    ).toEqual({ home: null, away: null });
   });
 });
 
@@ -1291,7 +1333,7 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
         raceId: true,
         roster: true,
         coaching: true,
-        players: { select: { rosterPlayerId: true, valueBonus: true } },
+        players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
       },
     });
   });
