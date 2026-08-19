@@ -54,6 +54,7 @@ describe("RulesetManager", () => {
 
     await waitFor(() => expect(screen.getByText("Estándar BB2025")).toBeTruthy());
     expect(screen.getByRole("heading", { name: /Tipos de reglas/ })).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Tipos de reglas" })).toBeTruthy();
     expect(screen.getByText("Reglamento completo.")).toBeTruthy();
     // Summary chips: races 3/31, treasury 1M, TV ∞, 11–16 jug., Activo.
     expect(screen.getAllByText("3/31")[0]).toBeTruthy();

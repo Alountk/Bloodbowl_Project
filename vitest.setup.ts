@@ -17,4 +17,17 @@ class NoopEventSource {
   removeEventListener(): void {}
   close(): void {}
 }
-Object.assign(globalThis, { EventSource: NoopEventSource });
+Object.assign(globalThis, {
+  EventSource: NoopEventSource,
+});
+
+/**
+ * jsdom does not implement Element.scrollBy. Provide a harmless no-op so
+ * carousel code that scrolls a row does not throw in unit tests; tests that
+ * assert scroll behavior spy on it via vi.spyOn(Element.prototype, "scrollBy").
+ */
+if (typeof Element !== "undefined" && typeof Element.prototype.scrollBy !== "function") {
+  Object.assign(Element.prototype, {
+    scrollBy(): void {},
+  });
+}
