@@ -12,6 +12,7 @@ const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   roster: [],
   coaching: { ...DEFAULT_COACHING },
   leagueId: null,
+  treasury: 0,
 });
 
 /** Returns a minimal localStorage stub without touching real jsdom localStorage. */
@@ -53,6 +54,7 @@ describe("LocalStorageTeamStore", () => {
         ...legacy[0],
         coaching: { ...DEFAULT_COACHING },
         leagueId: null,
+        treasury: 0,
       },
     ]);
   });

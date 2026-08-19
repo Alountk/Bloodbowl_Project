@@ -4,13 +4,15 @@ import {
   computeRosterCostFromPlayers,
   computeCoachingCostItems,
   computeCoachingCost,
+  computeSpendableBalance,
   APOTHECARY_COST,
-  STARTING_TREASURY,
 } from "../roster";
 import { formatRulebookCost } from "../format";
 import { TeamRosterTable } from "./TeamRosterTable";
+import { HirePlayerDialog } from "./HirePlayerDialog";
 import type { ImproveBody } from "@/lib/progression";
 import { useI18n } from "@/lib/i18n";
+import { useState } from "react";
 
 const COACHING_LABELS: Record<string, string> = {
   rerolls: "coaching.rerolls",
@@ -49,14 +51,23 @@ export interface TeamDetailViewProps {
   onReorder?: (rosterPlayerIds: string[]) => Promise<Record<string, unknown>>;
   /** Reorder failure surfaced by the caller (shown under the roster table). */
   reorderError?: string | null;
+  /** Hire-route client (RAU-11, positionalKey); absent = no Contratar action. */
+  onHire?: (positionalKey: string) => Promise<Record<string, unknown>>;
+  /** Fire-route client (RAU-10, rosterPlayerId); absent = no Despedir action. */
+  onFire?: (rosterPlayerId: string) => Promise<Record<string, unknown>>;
 }
 
-export function TeamDetailView({ team, race, leagueName, progression, onImprove, onRename, onReorder, reorderError }: TeamDetailViewProps) {
+export function TeamDetailView({ team, race, leagueName, progression, onImprove, onRename, onReorder, reorderError, onHire, onFire }: TeamDetailViewProps) {
   const isDesktop = useIsDesktop();
   const { t } = useI18n();
+  const [hiring, setHiring] = useState(false);
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
   const coachingCost = computeCoachingCost(race, team.coaching);
-  const treasury = STARTING_TREASURY - rosterCost - coachingCost;
+  // RAU-11: the spendable balance includes accumulated winnings: drafting
+  // budget + Team.treasury − current roster − coaching. Hiring lowers it via
+  // the roster cost growth; firing keeps it flat (the treasury is decremented,
+  // BB2025 gives no refund).
+  const treasury = computeSpendableBalance(team, race);
   const coachingItems = computeCoachingCostItems(race, team.coaching);
   const leagueLabel = team.leagueId ? (leagueName ?? t("detail.sinLiga")) : t("detail.sinLiga");
 
@@ -81,12 +92,21 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
       <div className="px-6 py-[18px]">
         {/* Plantilla (TourPlay-style roster with progression in the table) */}
         <section aria-labelledby="plantilla-heading">
-          <h2
-            id="plantilla-heading"
-            className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
-          >
-            {t("detail.plantilla")}
-          </h2>
+          <div className="mb-3 flex items-center justify-between gap-3 border-b-[3px] border-[#d11938] pb-1.5">
+            <h2 id="plantilla-heading" className="text-[16px] text-[#12225a]">
+              {t("detail.plantilla")}
+            </h2>
+            {onHire ? (
+              <button
+                type="button"
+                data-testid="open-hire-dialog"
+                onClick={() => setHiring(true)}
+                className="rounded bg-[#12225a] px-3 py-1 text-[12.5px] font-bold text-white"
+              >
+                {t("detail.hire")}
+              </button>
+            ) : null}
+          </div>
           <div className="mx-auto max-w-[860px]">
             <TeamRosterTable
               team={team}
@@ -95,6 +115,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
               onRename={onRename}
               onImprove={onImprove}
               onReorder={onReorder}
+              onFire={onFire}
               reorderError={reorderError}
             />
           </div>
@@ -236,6 +257,16 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
           </div>
         </section>
       </div>
+
+      {hiring && onHire ? (
+        <HirePlayerDialog
+          race={race}
+          roster={team.roster}
+          balance={treasury}
+          onHire={onHire}
+          onClose={() => setHiring(false)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -28,6 +28,7 @@ const fixtureTeam: Team = {
   leagueId: null,
   coaching: { ...DEFAULT_COACHING },
   roster: [],
+  treasury: 0,
 };
 
 function deferred<T>() {

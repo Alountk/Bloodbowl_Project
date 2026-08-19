@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, within, fireEvent } from "@testing-library/react";
 import type { Race, Team } from "../types";
 import { DEFAULT_COACHING } from "../types";
@@ -14,6 +14,7 @@ const baseTeam: Team = {
   leagueId: null,
   coaching: { ...DEFAULT_COACHING },
   roster: [],
+  treasury: 0,
 };
 
 /** Locates the coaching table and the row identified by its first (Concepto) cell. */
@@ -254,6 +255,25 @@ describe("TeamDetailView", () => {
     expect(within(restante).getByText("700 000")).toBeTruthy();
   });
 
+  it("adds accumulated winnings (Team.treasury) to the spendable balance", () => {
+    // 3 linemen (150 000) + default coaching (0) + 200 000 winnings in the DB
+    // treasury → balance = 1 000 000 + 200 000 − 150 000 = 1 050 000.
+    const team: Team = {
+      ...baseTeam,
+      roster: [
+        { id: "p1", name: "A", positionalKey: "lineman" },
+        { id: "p2", name: "B", positionalKey: "lineman" },
+        { id: "p3", name: "C", positionalKey: "lineman" },
+      ],
+      treasury: 200_000,
+    };
+    render(<TeamDetailView team={team} race={humanRace} />);
+
+    expect(screen.getAllByText("Tesorería: 1 050 000").length).toBeGreaterThanOrEqual(1);
+    const restante = treasuryCard("Tesorería restante");
+    expect(within(restante).getByText("1 050 000")).toBeTruthy();
+  });
+
   describe("coaching table horizontal scroll", () => {
     it("wraps the coaching table in an overflow-x-auto wrapper and min-width panel", () => {
       render(<TeamDetailView team={baseTeam} race={humanRace} />);
@@ -262,6 +282,21 @@ describe("TeamDetailView", () => {
       expect(panel?.className).toContain("min-w-[640px]");
       const wrapper = panel?.parentElement;
       expect(wrapper?.className).toContain("overflow-x-auto");
+    });
+  });
+
+  describe("hire action (RAU-11)", () => {
+    it("shows a Contratar button and opens the hire dialog when onHire is present", () => {
+      const onHire = vi.fn(async () => ({}));
+      render(<TeamDetailView team={baseTeam} race={humanRace} onHire={onHire} />);
+
+      fireEvent.click(screen.getByTestId("open-hire-dialog"));
+      expect(screen.getByRole("dialog", { name: "Contratar jugadores" })).toBeTruthy();
+    });
+
+    it("never shows the Contratar action for a read-only (rival) view", () => {
+      render(<TeamDetailView team={baseTeam} race={humanRace} />);
+      expect(screen.queryByTestId("open-hire-dialog")).toBeNull();
     });
   });
 

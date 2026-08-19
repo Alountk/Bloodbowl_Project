@@ -120,6 +120,12 @@ export interface Team {
   coaching: CoachingStaff;
   /** The league this team belongs to, or null when unassigned. */
   leagueId: string | null;
+  /**
+   * Post-match winnings balance in gold coins, accumulated on `Team.treasury`
+   * (0 for a fresh team). The spendable balance is
+   * `STARTING_TREASURY + treasury - rosterCost - coachingCost`.
+   */
+  treasury: number;
 }
 
 /** A user-owned group of teams, scoped via `ownerId`. */

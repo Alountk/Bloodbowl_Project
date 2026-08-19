@@ -14,6 +14,7 @@ const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   roster: [],
   coaching: { ...DEFAULT_COACHING },
   leagueId: null,
+  treasury: 0,
 });
 
 const makeValues = (name = "New Team"): CreateTeamValues => ({

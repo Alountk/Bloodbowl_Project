@@ -18,6 +18,8 @@ export class InMemoryTeamStore implements TeamStore {
       ...team,
       leagueId: team.leagueId ?? null,
       coaching: { ...DEFAULT_COACHING, ...coaching },
+      // Legacy local teams never earned winnings; a missing field defaults to 0.
+      treasury: team.treasury ?? 0,
     };
   }
 
