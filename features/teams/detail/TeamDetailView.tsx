@@ -4,8 +4,8 @@ import {
   computeRosterCostFromPlayers,
   computeCoachingCostItems,
   computeCoachingCost,
+  computeSpendableBalance,
   APOTHECARY_COST,
-  STARTING_TREASURY,
 } from "../roster";
 import { formatRulebookCost } from "../format";
 import { TeamRosterTable } from "./TeamRosterTable";
@@ -56,7 +56,11 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
   const { t } = useI18n();
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
   const coachingCost = computeCoachingCost(race, team.coaching);
-  const treasury = STARTING_TREASURY - rosterCost - coachingCost;
+  // RAU-11: the spendable balance includes accumulated winnings: drafting
+  // budget + Team.treasury − current roster − coaching. Hiring lowers it via
+  // the roster cost growth; firing keeps it flat (the treasury is decremented,
+  // BB2025 gives no refund).
+  const treasury = computeSpendableBalance(team, race);
   const coachingItems = computeCoachingCostItems(race, team.coaching);
   const leagueLabel = team.leagueId ? (leagueName ?? t("detail.sinLiga")) : t("detail.sinLiga");
 

@@ -10,6 +10,7 @@ const makeTeam = (id: string, name = `Team ${id}`): Team => ({
   roster: [],
   coaching: { ...DEFAULT_COACHING },
   leagueId: null,
+  treasury: 0,
 });
 
 describe("InMemoryTeamStore", () => {
@@ -48,15 +49,20 @@ describe("InMemoryTeamStore", () => {
     const saved = await store.save(team);
     expect(saved.coaching).toEqual(DEFAULT_COACHING);
     expect(saved.leagueId).toBeNull();
+    expect(saved.treasury).toBe(0);
     const listed = await store.list();
-    expect(listed).toEqual([{ ...team, coaching: DEFAULT_COACHING, leagueId: null }]);
+    expect(listed).toEqual([
+      { ...team, coaching: DEFAULT_COACHING, leagueId: null, treasury: 0 },
+    ]);
   });
 
   it("normalizes legacy seeded teams on construction", async () => {
     const legacy = ({ id: "seed-1", name: "Seed", raceId: "orc", roster: [] } as Partial<Team>) as Team;
     store = new InMemoryTeamStore([legacy]);
     const listed = await store.list();
-    expect(listed).toEqual([{ ...legacy, coaching: { ...DEFAULT_COACHING }, leagueId: null }]);
+    expect(listed).toEqual([
+      { ...legacy, coaching: { ...DEFAULT_COACHING }, leagueId: null, treasury: 0 },
+    ]);
   });
 
   it("save() upserts an existing team by id", async () => {

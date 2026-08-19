@@ -16,6 +16,7 @@ const baseTeam: Team = {
   leagueId: null,
   coaching: { ...DEFAULT_COACHING },
   roster: [{ id: "p1", name: "John", positionalKey: "lineman" }],
+  treasury: 0,
 };
 
 /** A three-player roster so reorder arrows have first/middle/last rows. */

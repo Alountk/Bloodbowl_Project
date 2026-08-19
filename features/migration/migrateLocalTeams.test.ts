@@ -13,6 +13,7 @@ const makeLegacyTeam = (id: string, name: string): Team => ({
   roster: [],
   coaching: { ...DEFAULT_COACHING },
   leagueId: null,
+  treasury: 0,
 });
 
 /** In-memory Storage that records the exact sequence of writes (for flag assertions). */

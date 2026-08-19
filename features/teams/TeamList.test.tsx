@@ -36,6 +36,7 @@ const fixtureTeams: Team[] = [
     raceId: "human",
     coaching: { ...DEFAULT_COACHING },
     leagueId: null,
+    treasury: 0,
     roster: [
       { id: "p1", name: "Player 1", positionalKey: "lineman" },
       { id: "p2", name: "Player 2", positionalKey: "lineman" },
@@ -56,6 +57,7 @@ const fixtureTeams: Team[] = [
     raceId: "orc",
     coaching: { ...DEFAULT_COACHING },
     leagueId: null,
+    treasury: 0,
     roster: Array.from({ length: 11 }, (_, i) => ({
       id: `op${i}`,
       name: `Player ${i + 1}`,
@@ -273,6 +275,7 @@ describe("TeamList — archive-guard (409) surface", () => {
       raceId: "human",
       coaching: { ...DEFAULT_COACHING },
       leagueId: "league-42",
+      treasury: 0,
       roster: Array.from({ length: 11 }, (_, i) => ({
         id: `m${i}`,
         name: `Player ${i + 1}`,
@@ -285,6 +288,7 @@ describe("TeamList — archive-guard (409) surface", () => {
       raceId: "orc",
       coaching: { ...DEFAULT_COACHING },
       leagueId: null,
+      treasury: 0,
       roster: Array.from({ length: 11 }, (_, i) => ({
         id: `o${i}`,
         name: `Player ${i + 1}`,

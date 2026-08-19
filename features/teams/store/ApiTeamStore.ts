@@ -22,6 +22,7 @@ interface ApiTeam {
   leagueId: string | null;
   roster: unknown;
   coaching: unknown;
+  treasury: number;
 }
 
 /**
@@ -46,6 +47,8 @@ export class ApiTeamStore implements TeamStore {
       leagueId: team.leagueId ?? null,
       roster: Array.isArray(team.roster) ? (team.roster as Team["roster"]) : [],
       coaching: { ...DEFAULT_COACHING, ...coaching },
+      // Legacy API responses without the field default to 0 (no winnings yet).
+      treasury: team.treasury ?? 0,
     };
   }
 

@@ -11,6 +11,7 @@ const makeApiTeam = (id: string, name: string) => ({
   leagueId: null,
   roster: [],
   coaching: { ...DEFAULT_COACHING },
+  treasury: 0,
   createdAt: new Date().toISOString(),
 });
 
@@ -35,6 +36,24 @@ describe("ApiTeamStore", () => {
     expect(result[1].name).toBe("B");
   });
 
+  it("maps the API treasury into the client team", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify([{ ...makeApiTeam("t1", "A"), treasury: 200_000 }])),
+    );
+    const result = await store.list();
+    expect(result[0].treasury).toBe(200_000);
+  });
+
+  it("defaults a missing API treasury to 0 (legacy responses)", async () => {
+    const legacyResponse = {
+      ...makeApiTeam("t1", "A"),
+      treasury: undefined,
+    };
+    fetchMock.mockResolvedValue(new Response(JSON.stringify([legacyResponse])));
+    const result = await store.list();
+    expect(result[0].treasury).toBe(0);
+  });
+
   it("save POSTs the team and returns the API-returned team", async () => {
     const team: Team = {
       id: "team-1",
@@ -43,6 +62,7 @@ describe("ApiTeamStore", () => {
       leagueId: null,
       roster: [],
       coaching: { ...DEFAULT_COACHING },
+      treasury: 0,
     };
     fetchMock.mockResolvedValue(new Response(JSON.stringify(makeApiTeam("team-1", "Reavers"))));
 
@@ -74,6 +94,7 @@ describe("ApiTeamStore", () => {
         leagueId: null,
         roster: [],
         coaching: { ...DEFAULT_COACHING },
+        treasury: 0,
       }),
     ).rejects.toThrow();
   });
