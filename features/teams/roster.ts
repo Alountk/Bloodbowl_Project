@@ -82,6 +82,26 @@ export function computeRosterCostFromPlayers(race: Race, players: PlayerEntry[])
   }, 0);
 }
 
+/**
+ * The team's CURRENT spendable gold: the drafting budget plus accumulated
+ * winnings (`Team.treasury`), minus the current roster and coaching costs.
+ *
+ * Hiring lowers the balance automatically via the `rosterCost` growth (the
+ * treasury is never touched). Firing decrements the DB treasury by the fired
+ * player's cost (BB2025: no refund), so this formula stays flat across a fire.
+ */
+export function computeSpendableBalance(
+  team: Pick<Team, "treasury" | "roster" | "coaching">,
+  race: Race,
+): number {
+  return (
+    STARTING_TREASURY +
+    team.treasury -
+    computeRosterCostFromPlayers(race, team.roster) -
+    computeCoachingCost(race, team.coaching)
+  );
+}
+
 export function countPlayersFromEntries(players: PlayerEntry[]): number {
   return players.length;
 }

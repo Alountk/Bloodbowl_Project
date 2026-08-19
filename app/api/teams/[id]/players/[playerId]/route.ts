@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { PlayerEntry } from "@/features/teams/types";
+import { getRaceById } from "@/features/teams/data/races";
+import { MIN_PLAYERS } from "@/features/teams/roster";
 
 const MAX_NAME_LENGTH = 50;
 
@@ -79,4 +81,73 @@ export async function PATCH(
   ]);
 
   return NextResponse.json({ name: trimmed });
+}
+
+/**
+ * DELETE /api/teams/[teamId]/players/[playerId]
+ * Fires/retires a roster player (RAU-10). BB2025 rule: firing gives NO refund —
+ * the positional's catalog cost is lost, so the spendable balance
+ * (`STARTING_TREASURY + treasury − roster − coaching`) must stay FLAT. This is
+ * achieved by decrementing `Team.treasury` by that cost in the SAME
+ * transaction as the roster removal.
+ *
+ * Guards: 401 unauthenticated; 404 foreign/archived team (no existence leak);
+ * 409 when the `rosterPlayerId` is not on the roster; 409 when firing would
+ * drop the roster below the BB2025 minimum (MIN_PLAYERS). Effect in ONE
+ * transaction: the entry is removed from the roster JSON, the treasury is
+ * decremented by the positional's cost, and the `Player` row for that
+ * `rosterPlayerId` is deleted (cascading any `PlayerPendingRoll`).
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string; playerId: string }> },
+) {
+  const { id: teamId, playerId } = await params;
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const team = await prisma.team.findFirst({
+    where: { id: teamId, userId, archivedAt: null },
+    select: { id: true, raceId: true, roster: true, treasury: true },
+  });
+  if (!team) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
+  const entry = roster.find((candidate) => candidate.id === playerId);
+  if (!entry) {
+    return NextResponse.json(
+      { error: "This player is not on the team's roster" },
+      { status: 409 },
+    );
+  }
+  if (roster.length - 1 < MIN_PLAYERS) {
+    return NextResponse.json(
+      { error: `A team cannot drop below ${MIN_PLAYERS} players` },
+      { status: 409 },
+    );
+  }
+
+  const race = getRaceById(team.raceId);
+  const cost = race?.positionals.find((p) => p.key === entry.positionalKey)?.cost ?? 0;
+  const nextRoster = roster.filter((candidate) => candidate.id !== playerId);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const teamRow = await tx.team.update({
+      where: { id: teamId },
+      data: { roster: nextRoster as never, treasury: { decrement: cost } },
+    });
+    // deleteMany (not delete) because a fresh hire has no Player row until the
+    // next result backfills it via ensurePlayersForTeam. PendingRolls cascade.
+    await tx.player.deleteMany({
+      where: { teamId, rosterPlayerId: playerId },
+    });
+    return teamRow;
+  });
+
+  return NextResponse.json({ roster: updated.roster, treasury: updated.treasury });
 }

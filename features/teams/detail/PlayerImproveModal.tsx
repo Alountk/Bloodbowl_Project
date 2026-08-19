@@ -69,6 +69,8 @@ export interface PlayerImproveModalProps {
   /** Optional: absent = name stays read-only (read-only rival view never opens the modal). */
   onRename?: (name: string) => Promise<Record<string, unknown>>;
   onImprove: (body: ImproveBody) => Promise<Record<string, unknown>>;
+  /** Fire-route client (RAU-10); absent = no Despedir action. Bound to THIS player. */
+  onFire?: () => Promise<Record<string, unknown>>;
   onClose: () => void;
 }
 
@@ -95,6 +97,7 @@ export function PlayerImproveModal({
   otherNames,
   onRename,
   onImprove,
+  onFire,
   onClose,
 }: PlayerImproveModalProps) {
   const { t } = useI18n();
@@ -106,6 +109,12 @@ export function PlayerImproveModal({
   const [randomCategory, setRandomCategory] = useState<SkillColumn | null>(null);
   const [candidates, setCandidates] = useState<string[]>([]);
   const [attrPlus, setAttrPlus] = useState<Partial<Record<PlayerAttribute, boolean>>>({});
+  const [confirmingFire, setConfirmingFire] = useState(false);
+  // Guards the backdrop-close against a click whose mousedown started on an
+  // inner control that was re-rendered away mid-click (React retargets the
+  // click to the overlay, which would otherwise read as a backdrop click and
+  // close the modal while the owner is still interacting with it).
+  const pointerDownOnBackdrop = useRef(false);
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -220,14 +229,32 @@ export function PlayerImproveModal({
     setBusy(false);
   }
 
+  async function handleFire() {
+    if (!onFire) return;
+    setBusy(true);
+    setError(null);
+    const res = await onFire();
+    if (typeof res.error === "string") {
+      setError(res.error);
+      setConfirmingFire(false);
+      setBusy(false);
+      return;
+    }
+    onClose();
+  }
+
   const primaryAccessLabel = player.accessPrimary.join(" · ");
   const secondaryAccessLabel = player.accessSecondary.join(" · ");
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/55 p-4"
+      onMouseDown={(e) => {
+        pointerDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (pointerDownOnBackdrop.current && e.target === e.currentTarget) onClose();
+        pointerDownOnBackdrop.current = false;
       }}
     >
       <div
@@ -475,24 +502,63 @@ export function PlayerImproveModal({
             </p>
           ) : null}
 
-          <div className="mt-4 flex justify-end gap-2.5 border-t border-[#e2e8f0] pt-3.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded bg-[#f1f5f9] px-4 py-2 text-[13px] font-bold text-[#334155]"
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void handleAccept()}
-              data-testid="modal-accept"
-              className="rounded bg-[#d11938] px-5 py-2 text-[13px] font-bold text-white disabled:opacity-50"
-            >
-              {t("detail.modal.accept")}
-            </button>
-          </div>
+          {confirmingFire ? (
+            <div className="mt-4 border-t border-[#e2e8f0] pt-3.5">
+              <p className="text-[13px] font-semibold text-[#1a1a1a]">
+                {t("detail.modal.fireConfirmTitle", { name: player.name })}
+              </p>
+              <p className="mt-0.5 text-[12px] text-[#64748b]">{t("detail.modal.fireConfirmBody")}</p>
+              <div className="mt-3 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setConfirmingFire(false)}
+                  className="rounded bg-[#f1f5f9] px-4 py-2 text-[13px] font-bold text-[#334155]"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  data-testid="modal-fire-confirm"
+                  onClick={() => void handleFire()}
+                  className="rounded bg-[#d11938] px-5 py-2 text-[13px] font-bold text-white disabled:opacity-50"
+                >
+                  {t("detail.modal.fireConfirm")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex justify-end gap-2.5 border-t border-[#e2e8f0] pt-3.5">
+              {onFire ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  data-testid="modal-fire"
+                  onClick={() => setConfirmingFire(true)}
+                  className="mr-auto rounded bg-[#fef2f2] px-4 py-2 text-[13px] font-bold text-[#d11938]"
+                >
+                  {t("detail.modal.fire")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded bg-[#f1f5f9] px-4 py-2 text-[13px] font-bold text-[#334155]"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleAccept()}
+                data-testid="modal-accept"
+                className="rounded bg-[#d11938] px-5 py-2 text-[13px] font-bold text-white disabled:opacity-50"
+              >
+                {t("detail.modal.accept")}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

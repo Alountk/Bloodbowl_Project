@@ -12,6 +12,7 @@ const legacyTeam = (id: string, name: string): Team => ({
   roster: [],
   coaching: { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
   leagueId: null,
+  treasury: 0,
 });
 
 // The hook must POST through /api/teams; assert the real fetch call.

@@ -8,7 +8,14 @@ import { getRaceById } from "@/features/teams/data/races";
 import { TeamDetailView } from "@/features/teams/detail/TeamDetailView";
 import { useLeagueName } from "@/features/leagues/useLeagueName";
 import { getScoutedTeam, type ScoutedTeamDetail } from "@/features/leagues/api";
-import { fetchTeamProgression, improvePlayer, renamePlayer, reorderRoster } from "@/features/teams/api";
+import {
+  fetchTeamProgression,
+  improvePlayer,
+  renamePlayer,
+  reorderRoster,
+  hirePlayer,
+  firePlayer,
+} from "@/features/teams/api";
 import type { PlayerEntry, PlayerProgressionCore } from "@/features/teams/types";
 import type { Race, Team } from "@/features/teams/types";
 import type { ImproveBody } from "@/lib/progression";
@@ -26,7 +33,7 @@ interface TeamDetailPageProps {
  */
 export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   const { teamId } = use(params);
-  const { teams, isHydrated } = useApp();
+  const { teams, isHydrated, refreshTeams } = useApp();
   const localTeam = teams.find((t) => t.id === teamId);
 
   // Rival-scouting fallback state: a foreign team fetched read-only from the API.
@@ -203,6 +210,34 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
         return result;
       }
     : undefined;
+  // RAU-11: the hire dialog's client. On success the team is re-listed from
+  // the store so the new roster AND the dropped balance render instantly.
+  const onHire = isOwner
+    ? async (positionalKey: string): Promise<Record<string, unknown>> => {
+        const result = await hirePlayer(teamId, positionalKey).catch(
+          // keep signature: resolve `{ error }` so the dialog surfaces it verbatim
+          (e: Error) => ({ error: e.message }),
+        );
+        if (!("error" in result)) {
+          await refreshTeams();
+        }
+        return result;
+      }
+    : undefined;
+  // RAU-10: the improve modal's Despedir client. On success the team is
+  // re-listed so the smaller roster AND the no-refund treasury render.
+  const onFire = isOwner
+    ? async (rosterPlayerId: string): Promise<Record<string, unknown>> => {
+        const result = await firePlayer(teamId, rosterPlayerId).catch(
+          // keep signature: resolve `{ error }` so the modal surfaces it verbatim
+          (e: Error) => ({ error: e.message }),
+        );
+        if (!("error" in result)) {
+          await refreshTeams();
+        }
+        return result;
+      }
+    : undefined;
 
   return (
     <TeamDetailView
@@ -213,6 +248,8 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
       onImprove={onImprove}
       onRename={onRename}
       onReorder={onReorder}
+      onHire={onHire}
+      onFire={onFire}
       reorderError={reorderError}
     />
   );
