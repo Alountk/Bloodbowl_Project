@@ -27,6 +27,7 @@ function progressionFor(overrides: Partial<PlayerProgressionCore> = {}): Record<
       improvements: 0,
       valueBonus: 20_000,
       alive: true,
+      missNextMatch: false,
       injuries: ["cabeza rota"],
       attributeIncreases: { st: 1 },
       stats: { casualties: 2, mvp: 1 },
@@ -88,6 +89,31 @@ describe("TeamRosterTable", () => {
     expect(screen.getByTestId("ni-p1").textContent).toContain("🩹x2");
     expect(screen.getByTestId("roster-row-p1").className).toContain("opacity-60");
     expect(screen.getByText("🏥")).toBeTruthy();
+  });
+
+  it("RAU-12: renders a 'Baja la próxima' marker for a player missing the next match", () => {
+    render(
+      <TeamRosterTable
+        team={baseTeam}
+        race={humanRace}
+        progression={progressionFor({ missNextMatch: true })}
+      />,
+    );
+    const row = screen.getByTestId("roster-row-p1");
+    expect(row.textContent).toContain("Baja la próxima");
+    // The marker is distinct from the dead emoji — the player is alive.
+    expect(row.textContent).not.toContain("💀");
+  });
+
+  it("RAU-12: renders no next-match marker when the player is available", () => {
+    render(
+      <TeamRosterTable
+        team={baseTeam}
+        race={humanRace}
+        progression={progressionFor({ missNextMatch: false })}
+      />,
+    );
+    expect(screen.queryByText("Baja la próxima")).toBeNull();
   });
 
   it("renders CAS and MVP from career stats and '·' for zero", () => {
