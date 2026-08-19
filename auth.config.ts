@@ -28,11 +28,20 @@ export const authConfig = {
         // Keep `sub` stable (the AuthorizationId) alongside the app id.
         token.sub = user.id;
       }
+      // RAU-52: role rides the JWT so the client nav can show/hide the dev
+      // section. Snapshot at sign-in (promotion needs re-login for the nav);
+      // the dev API routes always re-check the DB role.
+      if (user && "role" in user && typeof (user as { role?: unknown }).role === "string") {
+        token.role = (user as { role: string }).role;
+      }
       return token;
     },
     session({ session, token }) {
       if (token.id) {
         session.user = { ...session.user, id: token.id as string };
+      }
+      if (typeof token.role === "string") {
+        session.user = { ...session.user, role: token.role };
       }
       return session;
     },
