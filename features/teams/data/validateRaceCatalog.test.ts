@@ -80,6 +80,6 @@ describe("validateRaceCatalog", () => {
 
   it("flags a wrong race count", () => {
     const violations = validateRaceCatalog([fakeRace()]);
-    expect(violations.join("\n")).toMatch(/must contain exactly 30 races, got 1/);
+    expect(violations.join("\n")).toMatch(/must contain exactly 31 races, got 1/);
   });
 });

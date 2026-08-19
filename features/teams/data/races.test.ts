@@ -10,8 +10,8 @@ function skillRefToId(ref: string): string {
 }
 
 describe("race dataset", () => {
-  it("contains the 30 BB2025 races", () => {
-    expect(RACES).toHaveLength(30);
+  it("contains the 31 BB2025 races", () => {
+    expect(RACES).toHaveLength(31);
   });
 
   it("uses unique race ids", () => {
@@ -217,13 +217,14 @@ describe("REQ-RACE-01: BB2025 reference table availability", () => {
 // REQ-RACE-02: Preserve Unlisted Keys — exact race ID set and positional key inventory
 // ---------------------------------------------------------------------------
 describe("REQ-RACE-02: Exact post-migration race ID set and positional key inventory", () => {
-  // Authoritative BB2025 race ID list (30 races)
+  // Authoritative BB2025 race ID list (31 races)
   const EXPECTED_RACE_IDS = new Set([
     "human", "orc", "dwarf", "elven-union", "skaven", "dark-elf",
     "shambling-undead", "chaos-chosen", "chaos-dwarf", "amazon", "chaos-renegade",
     "halfling", "high-elf", "bretonnian", "gnome", "imperial-nobility", "khorne", "lizardmen",
     "necromantic-horror", "norse", "nurgle", "old-world-alliance", "snotling",
     "ogre", "tomb-kings", "underworld-denizens", "vampire", "black-orc", "goblin", "wood-elf",
+    "slann",
   ]);
 
   // Approved positional key inventory per race (approved delta applied)
@@ -262,9 +263,10 @@ describe("REQ-RACE-02: Exact post-migration race ID set and positional key inven
     "black-orc":           ["goblin-bruiser", "black-orc-blocker", "trained-troll"],
     "goblin":              ["goblin-lineman", "fanatic", "loony", "pogoer", "bombardier", "ooligan", "doom-diver", "trained-troll"],
     "wood-elf":            ["lineman", "thrower", "catcher", "wardancer", "treeman"],
+    "slann":               ["slann-lineman", "slann-catcher", "slann-blitzer", "kroxigor"],
   };
 
-  it("exact post-migration race ID set equals the approved 30-race BB2025 roster", () => {
+  it("exact post-migration race ID set equals the approved 31-race BB2025 roster", () => {
     const actualIds = new Set(RACES.map((r) => r.id));
     expect(actualIds).toEqual(EXPECTED_RACE_IDS);
   });
@@ -319,6 +321,7 @@ describe("REQ-RACE-04: Exact reroll costs from verified BB2025 reference table",
     "black-orc":           60_000,
     "goblin":              60_000,
     "wood-elf":            50_000,
+    "slann":               50_000,
   };
 
   for (const [raceId, expectedCost] of Object.entries(EXPECTED_REROLL_COSTS)) {

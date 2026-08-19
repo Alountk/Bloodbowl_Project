@@ -424,6 +424,20 @@ export const TEAM_NAME_BANKS: Record<string, string[]> = {
     "Canto de Pájaro",
     "Raíz Antigua",
   ],
+  slann: [
+    "Los Sapos del Pantano",
+    "Ranas de la Marisma",
+    "Hijos de la Laguna",
+    "Los Saltarines del Lodo",
+    "La Ribera Verde",
+    "Croares de Medianoche",
+    "Los Renacuajos Guerreros",
+    "El Canto del Estanque",
+    "Lenguas de la Orilla",
+    "Los Vigías del Juncal",
+    "Charco de Sangre",
+    "La Gran Rana del Norte",
+  ],
 };
 
 /** Returns the static team-name bank for a race, or undefined for an unknown id. */
