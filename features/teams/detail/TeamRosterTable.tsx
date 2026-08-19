@@ -41,6 +41,15 @@ export interface TeamRosterTableProps {
   onRename?: (rosterPlayerId: string, name: string) => Promise<Record<string, unknown>>;
   /** Improve-route client (rosterPlayerId + body); absent = read-only. */
   onImprove?: (rosterPlayerId: string, body: ImproveBody) => Promise<Record<string, unknown>>;
+  /**
+   * Reorder-route client (RAU-9): receives the full roster id sequence in the
+   * NEW order; the parent optimistically applies it and reverts on failure.
+   * Absent = read-only (no arrows). The dorsal follows the roster order, so
+   * reordering renumbers the squad.
+   */
+  onReorder?: (rosterPlayerIds: string[]) => Promise<Record<string, unknown>>;
+  /** A reorder failure surfaced by the parent (shown under the table). */
+  reorderError?: string | null;
 }
 
 /** The cost of the player's NEXT random (cheapest) improvement — SPP bar target. */
@@ -87,11 +96,14 @@ export function TeamRosterTable({
   progression,
   onRename,
   onImprove,
+  onReorder,
+  reorderError,
 }: TeamRosterTableProps) {
   const { t } = useI18n();
   const [selected, setSelected] = useState<ModalPlayer | null>(null);
 
   const interactive = progression != null && onImprove != null;
+  const canReorder = interactive && onReorder != null;
   const otherNames = useMemo(
     () => team.roster.map((entry) => entry.name),
     [team.roster],
@@ -100,6 +112,18 @@ export function TeamRosterTable({
   if (team.roster.length === 0) {
     return <p className="text-sm text-slate-400">{t("roster.empty")}</p>;
   }
+
+  // RAU-9: swaps a row with its neighbor (direction -1/1) and hands the FULL
+  // new id sequence to the parent's reorder client. The parent applies it
+  // optimistically (the dorsal re-renders instantly) and reverts on failure.
+  const movePlayer = (index: number, direction: -1 | 1) => {
+    if (!canReorder) return;
+    const target = index + direction;
+    if (target < 0 || target >= team.roster.length) return;
+    const next = [...team.roster];
+    [next[index], next[target]] = [next[target], next[index]];
+    void onReorder!(next.map((entry) => entry.id));
+  };
 
   const openPlayer = (entry: PlayerEntry, index: number) => {
     if (!interactive) return;
@@ -139,6 +163,7 @@ export function TeamRosterTable({
         <table className="w-full min-w-[900px] border-collapse text-[12.5px]" data-testid="team-roster-table">
           <thead>
             <tr className="bg-[#12225a] text-white">
+              {canReorder ? <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-1 py-2" /> : null}
               <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.number")}
               </th>
@@ -198,8 +223,45 @@ export function TeamRosterTable({
                     clickable ? "cursor-pointer hover:bg-[#eef2ff]" : ""
                   }`}
                 >
+                  {canReorder ? (
+                    <td className="px-1 py-1.5 text-center align-middle">
+                      <div className="flex flex-col items-center gap-0.5">
+                        {index > 0 ? (
+                          <button
+                            type="button"
+                            data-testid={`reorder-up-${entry.id}`}
+                            aria-label={t("detail.tbl.reorderUp", { name: entry.name })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              movePlayer(index, -1);
+                            }}
+                            className="grid h-5 w-6 place-items-center rounded-sm text-[11px] leading-none text-[#12225a] hover:bg-[#eef2ff]"
+                          >
+                            ▲
+                          </button>
+                        ) : null}
+                        {index < team.roster.length - 1 ? (
+                          <button
+                            type="button"
+                            data-testid={`reorder-down-${entry.id}`}
+                            aria-label={t("detail.tbl.reorderDown", { name: entry.name })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              movePlayer(index, 1);
+                            }}
+                            className="grid h-5 w-6 place-items-center rounded-sm text-[11px] leading-none text-[#12225a] hover:bg-[#eef2ff]"
+                          >
+                            ▼
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  ) : null}
                   <td className="px-2 py-1.5 text-center">
-                    <span className="inline-grid h-[30px] w-[30px] place-items-center rounded-lg bg-[#12225a] text-[12px] font-black text-white">
+                    <span
+                      className="inline-grid h-[30px] w-[30px] place-items-center rounded-lg bg-[#12225a] text-[12px] font-black text-white"
+                      data-testid={`roster-number-${entry.id}`}
+                    >
                       {index + 1}
                     </span>
                   </td>
@@ -343,6 +405,12 @@ export function TeamRosterTable({
           </tbody>
         </table>
       </div>
+
+      {reorderError ? (
+        <p className="mt-2 text-sm text-[#d11938]" data-testid="roster-reorder-error">
+          {reorderError}
+        </p>
+      ) : null}
 
       {selected ? (
         <PlayerImproveModal

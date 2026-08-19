@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import type { PlayerProgressionCore, Race, Team } from "../types";
 import { DEFAULT_COACHING } from "../types";
@@ -15,6 +16,16 @@ const baseTeam: Team = {
   leagueId: null,
   coaching: { ...DEFAULT_COACHING },
   roster: [{ id: "p1", name: "John", positionalKey: "lineman" }],
+};
+
+/** A three-player roster so reorder arrows have first/middle/last rows. */
+const threePlayerTeam: Team = {
+  ...baseTeam,
+  roster: [
+    { id: "p1", name: "John", positionalKey: "lineman" },
+    { id: "p2", name: "Jane", positionalKey: "lineman" },
+    { id: "p3", name: "Dunk", positionalKey: "blitzer" },
+  ],
 };
 
 /** A progression row with the RAU-46 additions (injuries, stats, attributes). */
@@ -34,6 +45,54 @@ function progressionFor(overrides: Partial<PlayerProgressionCore> = {}): Record<
       ...overrides,
     },
   };
+}
+
+/** Progression rows for the three-player roster (p1/p2/p3). */
+function progressionFor3(): Record<string, PlayerProgressionCore> {
+  const base = (rosterPlayerId: string): PlayerProgressionCore => ({
+    rosterPlayerId,
+    pe: 3,
+    skills: [],
+    improvements: 0,
+    valueBonus: 0,
+    alive: true,
+    missNextMatch: false,
+  });
+  return { p1: base("p1"), p2: base("p2"), p3: base("p3") };
+}
+
+/**
+ * Harness mirroring the team detail page's RAU-9 wiring: holds the committed
+ * roster order, applies the reorder optimistically, and reverts + surfaces the
+ * error on failure (same contract as the page's onReorder handler).
+ */
+function ReorderHarness({ fail = false }: { fail?: boolean }) {
+  const [order, setOrder] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const onReorder = async (next: string[]) => {
+    const prev = order;
+    setOrder(next);
+    if (fail) {
+      setOrder(prev);
+      setError("No se pudo reordenar la plantilla");
+      return { error: "boom" };
+    }
+    return {};
+  };
+  const roster =
+    order == null
+      ? threePlayerTeam.roster
+      : order.map((id) => threePlayerTeam.roster.find((e) => e.id === id)!);
+  return (
+    <TeamRosterTable
+      team={{ ...threePlayerTeam, roster }}
+      race={humanRace}
+      progression={progressionFor3()}
+      onImprove={vi.fn(async () => ({}))}
+      onReorder={onReorder}
+      reorderError={error}
+    />
+  );
 }
 
 describe("TeamRosterTable", () => {
@@ -209,5 +268,83 @@ describe("TeamRosterTable", () => {
     expect(screen.queryByTestId("spp-pe-p1")).toBeNull();
     fireEvent.click(screen.getByTestId("roster-row-p1"));
     expect(screen.queryByTestId("improve-modal")).toBeNull();
+  });
+
+  it("RAU-9: renders reorder arrows per row, hiding the impossible move (first/last)", () => {
+    render(
+      <TeamRosterTable
+        team={threePlayerTeam}
+        race={humanRace}
+        progression={progressionFor3()}
+        onImprove={vi.fn(async () => ({}))}
+        onReorder={vi.fn(async () => ({}))}
+      />,
+    );
+    // First row: no up (nothing above); middle row: both; last row: no down.
+    expect(screen.queryByTestId("reorder-up-p1")).toBeNull();
+    expect(screen.getByTestId("reorder-down-p1")).toBeTruthy();
+    expect(screen.getByTestId("reorder-up-p2")).toBeTruthy();
+    expect(screen.getByTestId("reorder-down-p2")).toBeTruthy();
+    expect(screen.getByTestId("reorder-up-p3")).toBeTruthy();
+    expect(screen.queryByTestId("reorder-down-p3")).toBeNull();
+    // The dorsal badge carries a stable per-player test id for assertions.
+    expect(screen.getByTestId("roster-number-p1").textContent).toBe("1");
+    expect(screen.getByTestId("roster-number-p3").textContent).toBe("3");
+  });
+
+  it("RAU-9: no reorder arrows in the read-only (rival scouting) view", () => {
+    render(<TeamRosterTable team={threePlayerTeam} race={humanRace} />);
+    expect(screen.queryByTestId("reorder-down-p1")).toBeNull();
+    expect(screen.queryByTestId("reorder-up-p2")).toBeNull();
+  });
+
+  it("RAU-9: clicking down on the first row hands the swapped order to onReorder and does not open the modal", () => {
+    const onReorder = vi.fn(async () => ({}));
+    render(
+      <TeamRosterTable
+        team={threePlayerTeam}
+        race={humanRace}
+        progression={progressionFor3()}
+        onImprove={vi.fn(async () => ({}))}
+        onReorder={onReorder}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("reorder-down-p1"));
+    expect(onReorder).toHaveBeenCalledWith(["p2", "p1", "p3"]);
+    // The arrow click must NOT bubble into the row's open-modal handler.
+    expect(screen.queryByTestId("improve-modal")).toBeNull();
+  });
+
+  it("RAU-9: clicking up on the last row hands the swapped order to onReorder", () => {
+    const onReorder = vi.fn(async () => ({}));
+    render(
+      <TeamRosterTable
+        team={threePlayerTeam}
+        race={humanRace}
+        progression={progressionFor3()}
+        onImprove={vi.fn(async () => ({}))}
+        onReorder={onReorder}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("reorder-up-p3"));
+    expect(onReorder).toHaveBeenCalledWith(["p1", "p3", "p2"]);
+  });
+
+  it("RAU-9: a successful reorder flips the dorsal optimistically", () => {
+    render(<ReorderHarness />);
+    expect(screen.getByTestId("roster-number-p1").textContent).toBe("1");
+    fireEvent.click(screen.getByTestId("reorder-down-p1"));
+    expect(screen.getByTestId("roster-number-p2").textContent).toBe("1");
+    expect(screen.getByTestId("roster-number-p1").textContent).toBe("2");
+    expect(screen.queryByTestId("roster-reorder-error")).toBeNull();
+  });
+
+  it("RAU-9: a failed reorder reverts the order and surfaces the error", () => {
+    render(<ReorderHarness fail />);
+    fireEvent.click(screen.getByTestId("reorder-down-p1"));
+    // The dorsal reverts to the pre-click order.
+    expect(screen.getByTestId("roster-number-p1").textContent).toBe("1");
+    expect(screen.getByTestId("roster-number-p2").textContent).toBe("2");
+    expect(screen.getByTestId("roster-reorder-error").textContent).toContain("No se pudo reordenar");
   });
 });

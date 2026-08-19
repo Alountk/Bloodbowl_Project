@@ -70,3 +70,22 @@ export async function renamePlayer(
   );
   return readJson<{ name: string }>(res);
 }
+
+/**
+ * Reorders the team's roster (`PATCH /api/teams/[teamId]/roster-order`).
+ * The dorsal is derived from the roster order, so a reorder renumbers the
+ * squad. Resolves with `{ roster }` (the persisted `PlayerEntry[]` in the new
+ * order); a non-exact id set resolves 400, a foreign/archived team 404, a
+ * missing session 401 — failures are thrown with the server's `error` verbatim.
+ */
+export async function reorderRoster(
+  teamId: string,
+  order: string[],
+): Promise<{ roster: { id: string; name: string; positionalKey: string }[] }> {
+  const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}/roster-order`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ order }),
+  });
+  return readJson<{ roster: { id: string; name: string; positionalKey: string }[] }>(res);
+}
