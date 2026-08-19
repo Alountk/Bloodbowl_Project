@@ -3,10 +3,13 @@ import { execFileSync } from "node:child_process";
 test.use({ locale: "es-ES" });
 
 /**
- * RAU-52 developer-only "Tipos de reglas" behavior E2E (run via
+ * RAU-52b developer-only "Tipos de reglas" behavior E2E (run via
  * `pnpm run test:e2e:auth` with AUTH_MODE=auth + Postgres). Verifies:
- * - a DEVELOPER creates a ruleset through the 4-step wizard → the cards grid
- *   updates and the ruleset persists on reload (then edits it);
+ * - a DEVELOPER creates a ruleset through the inline tabbed editor
+ *   (Siguiente → ... → Crear tipo de reglas) → the card appears and persists;
+ * - EDITING a card loads it into the editor, a dirty field switch surfaces the
+ *   unsaved-changes guard, Descartar navigates (restoring the field), and
+ *   Guardar from the guard persists the whole ruleset (survives reload);
  * - a NON-developer gets a 403 panel on /dev/rulesets, no nav link, and the
  *   /api/dev/rulesets routes answer 403;
  * - league creation picks the chosen ruleset and the league card/detail show
@@ -65,7 +68,7 @@ async function signupAsDeveloper(page: Page): Promise<string> {
   return email;
 }
 
-test("developer creates a ruleset via the wizard, persists on reload, edits it, and a league picks it (badge)", async ({
+test("developer creates a ruleset via the inline tabs, the unsaved guard protects edits, and a league picks it (badge)", async ({
   page,
 }) => {
   await signupAsDeveloper(page);
@@ -80,27 +83,33 @@ test("developer creates a ruleset via the wizard, persists on reload, edits it, 
   await expect(page.getByText("Estándar BB2025")).toBeVisible();
   await expect(page.getByText("Activo").first()).toBeVisible();
 
-  // Create a new ruleset through the 4-step wizard.
+  // Create a new ruleset through the inline tabbed editor.
   const rulesetName = `Liga Tier 1 ${Date.now()}`;
   await page.getByRole("button", { name: "+ Nuevo tipo" }).click();
-  await expect(page.getByRole("dialog", { name: "Nuevo tipo de reglas" })).toBeVisible();
+  await expect(
+    page.getByRole("tablist", { name: "Configuración del tipo de reglas" }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { name: "1 · Información" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByLabel("Nombre").fill(rulesetName);
   await page.getByRole("button", { name: "Siguiente →" }).click();
 
-  // Step 2 · Razas: 31 checkboxes, apply the Tier 1 preset.
+  // Tab 2 · Razas: 31 checkboxes, apply the Tier 1 preset.
   await expect(page.getByRole("checkbox")).toHaveCount(31);
   await page.getByRole("button", { name: "Tier 1", exact: true }).click();
   await page.getByRole("button", { name: "Siguiente →" }).click();
 
-  // Step 3 · Economía y plantilla: defaults pre-filled.
+  // Tab 3 · Economía y plantilla: defaults pre-filled.
   await expect(page.getByLabel("Tesorería inicial")).toHaveValue("1000000");
   await expect(page.getByLabel("Mínimo de jugadores")).toHaveValue("11");
   await expect(page.getByLabel("Máximo de jugadores")).toHaveValue("16");
   await page.getByRole("button", { name: "Siguiente →" }).click();
 
-  // Step 4 · Gestión y reglas: save.
+  // Tab 4 · Gestión y reglas: create.
   await expect(page.getByText("Contratar / despedir")).toBeVisible();
-  await page.getByRole("button", { name: "Guardar tipo de reglas" }).click();
+  await page.getByRole("button", { name: "Crear tipo de reglas" }).click();
 
   // The cards grid updates with the new card.
   await expect(page.getByText(rulesetName)).toBeVisible();
@@ -109,17 +118,42 @@ test("developer creates a ruleset via the wizard, persists on reload, edits it, 
   await page.reload();
   await expect(page.getByText(rulesetName)).toBeVisible();
 
-  // Edit: the wizard opens pre-filled and the rename lands on the card.
+  // Edit: the card loads into the editor, and a dirty field switch warns.
   const editedName = `Copa ${Date.now()}`;
   const card = page.locator("li").filter({ hasText: rulesetName });
   await card.getByRole("button", { name: "Editar" }).click();
-  await expect(page.getByRole("dialog", { name: "Nuevo tipo de reglas" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "1 · Información" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(page.getByLabel("Nombre")).toHaveValue(rulesetName);
+
+  // Modify a field and switch tabs → the unsaved-changes guard appears.
   await page.getByLabel("Nombre").fill(editedName);
-  await page.getByRole("button", { name: "Siguiente →" }).click();
-  await page.getByRole("button", { name: "Siguiente →" }).click();
-  await page.getByRole("button", { name: "Siguiente →" }).click();
-  await page.getByRole("button", { name: "Guardar tipo de reglas" }).click();
+  await page.getByRole("tab", { name: "2 · Razas" }).click();
+  const guardDialog = page.getByRole("alertdialog", {
+    name: "No has guardado los cambios de esta pestaña",
+  });
+  await expect(guardDialog).toBeVisible();
+
+  // Descartar navigates to the requested tab and restores the field.
+  await guardDialog.getByRole("button", { name: "Descartar cambios" }).click();
+  await expect(guardDialog).toBeHidden();
+  await expect(page.getByRole("checkbox").first()).toBeVisible();
+  await page.getByRole("tab", { name: "1 · Información" }).click();
+  await expect(page.getByLabel("Nombre")).toHaveValue(rulesetName);
+
+  // Modify again and Guardar from the guard persists the whole ruleset.
+  await page.getByLabel("Nombre").fill(editedName);
+  await page.getByRole("tab", { name: "3 · Economía y plantilla" }).click();
+  await expect(guardDialog).toBeVisible();
+  await guardDialog.getByRole("button", { name: "Guardar" }).click();
+  await expect(guardDialog).toBeHidden();
+  await expect(page.getByLabel("Tesorería inicial")).toBeVisible();
+  await expect(page.getByText(editedName)).toBeVisible();
+
+  // The saved edit survives a reload.
+  await page.reload();
   await expect(page.getByText(editedName)).toBeVisible();
 
   // Create a league and pick the edited ruleset: the badge shows on the card
