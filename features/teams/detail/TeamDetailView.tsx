@@ -45,9 +45,13 @@ export interface TeamDetailViewProps {
   onImprove?: (rosterPlayerId: string, body: ImproveBody) => Promise<Record<string, unknown>>;
   /** Rename-route client (rosterPlayerId + name); absent = read-only. */
   onRename?: (rosterPlayerId: string, name: string) => Promise<Record<string, unknown>>;
+  /** Reorder-route client (RAU-9) — full new roster id sequence; absent = read-only. */
+  onReorder?: (rosterPlayerIds: string[]) => Promise<Record<string, unknown>>;
+  /** Reorder failure surfaced by the caller (shown under the roster table). */
+  reorderError?: string | null;
 }
 
-export function TeamDetailView({ team, race, leagueName, progression, onImprove, onRename }: TeamDetailViewProps) {
+export function TeamDetailView({ team, race, leagueName, progression, onImprove, onRename, onReorder, reorderError }: TeamDetailViewProps) {
   const isDesktop = useIsDesktop();
   const { t } = useI18n();
   const rosterCost = computeRosterCostFromPlayers(race, team.roster);
@@ -90,6 +94,8 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
               progression={progression}
               onRename={onRename}
               onImprove={onImprove}
+              onReorder={onReorder}
+              reorderError={reorderError}
             />
           </div>
         </section>

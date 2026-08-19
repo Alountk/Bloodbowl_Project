@@ -199,16 +199,75 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.homeTeam.players[1]).toMatchObject({ missNextMatch: false });
   });
 
-  it("fetches both teams' players with orderBy id asc so dorsal = roster index+1 (D21)", async () => {
+  it("fetches both teams' players with orderBy id asc as the raw overlay/fallback source (D21)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
     await callGet();
     const queryArg = prismaMock.fixture.findFirst.mock.calls[0][0];
-    // The served `players` array must be deterministically ordered for the
-    // Design-A dorsal map (roster index + 1); without orderBy the DB order is
-    // unspecified and the dorsal would drift across loads.
+    // The raw `players` rows are fetched id-asc: a deterministic source for the
+    // merge overlay map AND the fallback when the roster JSON is missing. The
+    // SERVED order itself is the roster JSON order (RAU-9) — asserted below.
     expect(queryArg.include.homeTeam.select.players.orderBy).toEqual({ id: "asc" });
     expect(queryArg.include.awayTeam.select.players.orderBy).toEqual({ id: "asc" });
+  });
+
+  it("RAU-9: serves each team's players in the Team.roster JSON order (dorsal = roster index+1)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          // Roster order differs from the raw id-asc Player row order.
+          roster: [
+            { id: "p2", name: "Lineman", positionalKey: "lineman" },
+            { id: "p1", name: "Blitzer", positionalKey: "blitzer" },
+          ],
+          players: [
+            { rosterPlayerId: "p1", name: "Blitzer", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+            { rosterPlayerId: "p2", name: "Lineman", positionalKey: "lineman", pe: 3, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+          ],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The served order follows the ROSTER JSON (p2 first), NOT the Player row
+    // id-asc order (p1 first) — reordering the roster renumbers the dorsal.
+    expect(body.homeTeam.players.map((p: { rosterPlayerId: string }) => p.rosterPlayerId)).toEqual(["p2", "p1"]);
+    expect(body.homeTeam.players[0]).toMatchObject({ rosterPlayerId: "p2", name: "Lineman", pe: 3 });
+    expect(body.homeTeam.players[1]).toMatchObject({ rosterPlayerId: "p1", name: "Blitzer", pe: 7 });
+  });
+
+  it("RAU-9: falls back to the id-asc Player rows when the roster JSON is missing/unparseable", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster: null,
+          players: [
+            { rosterPlayerId: "p1", name: "Blitzer", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+            { rosterPlayerId: "p2", name: "Lineman", positionalKey: "lineman", pe: 3, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+          ],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Defensive: without a roster the dorsal still resolves from the raw rows.
+    expect(body.homeTeam.players.map((p: { rosterPlayerId: string }) => p.rosterPlayerId)).toEqual(["p1", "p2"]);
   });
 
   it("serializes an active LiveMatch into the unified-clock live DTO + viewer's side (D19)", async () => {

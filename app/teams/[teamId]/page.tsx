@@ -8,8 +8,8 @@ import { getRaceById } from "@/features/teams/data/races";
 import { TeamDetailView } from "@/features/teams/detail/TeamDetailView";
 import { useLeagueName } from "@/features/leagues/useLeagueName";
 import { getScoutedTeam, type ScoutedTeamDetail } from "@/features/leagues/api";
-import { fetchTeamProgression, improvePlayer, renamePlayer } from "@/features/teams/api";
-import type { PlayerProgressionCore } from "@/features/teams/types";
+import { fetchTeamProgression, improvePlayer, renamePlayer, reorderRoster } from "@/features/teams/api";
+import type { PlayerEntry, PlayerProgressionCore } from "@/features/teams/types";
 import type { Race, Team } from "@/features/teams/types";
 import type { ImproveBody } from "@/lib/progression";
 
@@ -42,6 +42,12 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   // reflects the change without a full team refetch (the PATCH route persists
   // the name on both the Player row and the roster JSON).
   const [renamedNames, setRenamedNames] = useState<Record<string, string>>({});
+  // RAU-9: the roster order committed by the owner via the reorder arrows
+  // (null = the store's original order). The optimistic flip happens here
+  // BEFORE the route round-trip; on failure the order reverts and the error is
+  // surfaced under the table.
+  const [rosterOrder, setRosterOrder] = useState<string[] | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isHydrated || scouted) return;
@@ -129,12 +135,21 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   };
 
   // Reflect a successful rename in the rendered roster without a refetch: apply
-  // the latest name per rosterPlayerId over the team's roster entries.
+  // the latest name per rosterPlayerId over the team's roster entries. RAU-9:
+  // a committed reorder sequence is applied on top (the route only persists on
+  // success, so a failed reorder reverts to the previous sequence).
   const roster = resolvedTeam.roster.map((entry) => ({
     ...entry,
     name: renamedNames[entry.id] ?? entry.name,
   }));
-  const teamForView: Team = { ...resolvedTeam, roster };
+  const rosterById = new Map(roster.map((entry) => [entry.id, entry]));
+  const orderedRoster =
+    rosterOrder == null
+      ? roster
+      : rosterOrder
+          .map((id) => rosterById.get(id))
+          .filter((entry): entry is PlayerEntry => entry != null);
+  const teamForView: Team = { ...resolvedTeam, roster: orderedRoster };
 
   // Owner teams wire the Progresión controls: `onImprove` fires the improve route
   // for the targeted roster player and refreshes the progression rows so the
@@ -169,6 +184,25 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
         return result;
       }
     : undefined;
+  // RAU-9: the reorder arrows' client. Applies the new sequence optimistically
+  // (the dorsal column flips instantly); on failure the previous committed
+  // sequence is restored and the server error is shown under the table.
+  const onReorder = isOwner
+    ? async (order: string[]): Promise<Record<string, unknown>> => {
+        const prev = rosterOrder;
+        setRosterOrder(order);
+        setReorderError(null);
+        const result = await reorderRoster(teamId, order).catch(
+          // keep signature: resolve `{ error }` so the table surfaces it verbatim
+          (e: Error) => ({ error: e.message }),
+        );
+        if ("error" in result) {
+          setRosterOrder(prev);
+          setReorderError(result.error);
+        }
+        return result;
+      }
+    : undefined;
 
   return (
     <TeamDetailView
@@ -178,6 +212,8 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
       progression={isOwner && !progressionFailed && progression != null ? progression : undefined}
       onImprove={onImprove}
       onRename={onRename}
+      onReorder={onReorder}
+      reorderError={reorderError}
     />
   );
 }
