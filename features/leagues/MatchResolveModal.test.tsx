@@ -13,7 +13,7 @@ import type { LiveMatchView, MatchDetail } from "./api";
  */
 
 function player(rosterPlayerId: string, name: string) {
-  return { rosterPlayerId, name, positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 };
+  return { rosterPlayerId, name, positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 };
 }
 
 function sixRoster(prefix: string, namePrefix: string) {

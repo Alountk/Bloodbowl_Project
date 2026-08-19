@@ -276,6 +276,8 @@ model Player {
   /// Recorded injury outcomes (`string[]` as JSON).
   injuries           Json
   alive              Boolean            @default(true)
+  /// Lasting-band victims are unavailable for the team's NEXT match (RAU-12).
+  missNextMatch      Boolean            @default(false)
   /// Value added by acquired skills (+10.000 normal, +20.000 élite).
   valueBonus         Int                @default(0)
   /// Improvement history (cost table rows applied, `Json[]` as JSON).

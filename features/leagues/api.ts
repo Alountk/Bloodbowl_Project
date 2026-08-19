@@ -441,6 +441,8 @@ export interface MatchPlayer {
   skills: unknown;
   injuries: unknown;
   alive: boolean;
+  /** RAU-12: unavailable for this match — a lasting-band casualty of the team's previous match. */
+  missNextMatch: boolean;
   valueBonus: number;
 }
 

@@ -11,7 +11,7 @@ import type { LiveMatchView, MatchTeamDetail, LiveMatchEventDto } from "./api";
  */
 
 function player(id: string, name: string, positionalKey = "blitzer", valueBonus = 0) {
-  return { rosterPlayerId: id, name, positionalKey, pe: 0, skills: {}, injuries: {}, alive: true, valueBonus };
+  return { rosterPlayerId: id, name, positionalKey, pe: 0, skills: {}, injuries: {}, alive: true, missNextMatch: false, valueBonus };
 }
 
 const homeTeam: MatchTeamDetail = {

@@ -100,6 +100,7 @@ export async function GET(
         injuries: true,
         valueBonus: true,
         alive: true,
+        missNextMatch: true,
         improvements: true,
         attributeIncreases: true,
       },
@@ -126,6 +127,7 @@ export async function GET(
         : {},
     valueBonus: p.valueBonus,
     alive: p.alive,
+    missNextMatch: p.missNextMatch,
     improvements: Array.isArray(p.improvements) ? p.improvements.length : 0,
     stats: careerStats.get(p.rosterPlayerId) ?? { casualties: 0, mvp: 0 },
   }));

@@ -110,8 +110,8 @@ function playedDetail(): MatchDetail {
       raceId: "human",
       user: { id: "u1", name: "Coach A", email: "a@x", avatar: null },
       players: [
-        { rosterPlayerId: "p1", name: "Blitzer A", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, valueBonus: 0 },
-        { rosterPlayerId: "p2", name: "Thrower A", positionalKey: "thrower", pe: 3, skills: [], injuries: [], alive: true, valueBonus: 0 },
+        { rosterPlayerId: "p1", name: "Blitzer A", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+        { rosterPlayerId: "p2", name: "Thrower A", positionalKey: "thrower", pe: 3, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
       ],
     },
     awayTeam: {
@@ -120,7 +120,7 @@ function playedDetail(): MatchDetail {
       raceId: "dwarf",
       user: { id: "u2", name: "Coach B", email: "b@x", avatar: null },
       players: [
-        { rosterPlayerId: "p3", name: "Blitzer B", positionalKey: "blitzer", pe: 3, skills: [], injuries: [], alive: true, valueBonus: 0 },
+        { rosterPlayerId: "p3", name: "Blitzer B", positionalKey: "blitzer", pe: 3, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
       ],
     },
     live: null,

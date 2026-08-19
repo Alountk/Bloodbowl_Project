@@ -200,6 +200,43 @@ const resolveInput = {
 };
 
 describe("resolveLiveMatch", () => {
+  it("RAU-12: clears both teams' served suspensions then flags the lasting-band casualty victims", async () => {
+    const { deps, playerUpdateMany } = makeResolveDeps({
+      rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
+      // h3 carries a PREVIOUS lasting injury (band apaleado in the events) and
+      // an already-flag from the match before — the resolution serves it.
+      playerRows: [
+        { teamId: "home-t", rosterPlayerId: "h3", injuries: [{ kind: "apaleado" }], alive: true },
+        { teamId: "away-t", rosterPlayerId: "a1", injuries: [], alive: true },
+      ],
+    });
+
+    await resolveLiveMatch(resolveInput, deps);
+
+    const calls = playerUpdateMany.mock.calls.map((c) => c[0]);
+    // Clear FIRST: every player of both teams becomes available again.
+    expect(
+      calls.some(
+        (c) =>
+          c.data.missNextMatch === false &&
+          c.data.injuries === undefined &&
+          JSON.stringify(c.where.teamId) === JSON.stringify({ in: ["home-t", "away-t"] }),
+      ),
+    ).toBe(true);
+    // Set AFTER the clear: h3 (the apaleado victim of THIS match) is flagged
+    // unavailable for the NEXT match.
+    const h3 = calls.find(
+      (c) => c.where.rosterPlayerId === "h3" && c.data.injuries !== undefined,
+    );
+    expect(h3?.data).toEqual(expect.objectContaining({ missNextMatch: true, alive: true }));
+    const clearIndex = calls.findIndex(
+      (c) => c.data.missNextMatch === false && c.data.injuries === undefined,
+    );
+    const setIndex = calls.indexOf(h3!);
+    expect(clearIndex).toBeGreaterThanOrEqual(0);
+    expect(clearIndex).toBeLessThan(setIndex);
+  });
+
   it("resolves a normally-finished live match: MVP roll, PE, treasury, FF, closure, MatchResult, league close", async () => {
     // Rolls (call order): preFF home 1D3=1, preFF away 1D3=2, postFF home 1D6=3,
     // postFF away 1D6=4, MVP home 1D6=5, MVP away 1D6=6.

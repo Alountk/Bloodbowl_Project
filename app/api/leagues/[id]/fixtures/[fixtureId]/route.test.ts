@@ -165,6 +165,40 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.awayTeam).not.toHaveProperty("awayTeam");
   });
 
+  it("RAU-12: serves missNextMatch overlaid from the Player row, defaulting to false", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster: [
+            { id: "p1", name: "Blitzer", positionalKey: "blitzer" },
+            { id: "p2", name: "Lineman", positionalKey: "lineman" },
+          ],
+          players: [
+            { rosterPlayerId: "p1", name: "Blitzer", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, missNextMatch: true, valueBonus: 0 },
+            { rosterPlayerId: "p2", name: "Lineman", positionalKey: "lineman", pe: 3, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+          ],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // A flagged Player row serves the suspension; a roster entry without a
+    // Player row (or an unflagged one) serves false.
+    expect(body.homeTeam.players[0]).toMatchObject({
+      rosterPlayerId: "p1",
+      missNextMatch: true,
+    });
+    expect(body.homeTeam.players[1]).toMatchObject({ missNextMatch: false });
+  });
+
   it("fetches both teams' players with orderBy id asc so dorsal = roster index+1 (D21)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
