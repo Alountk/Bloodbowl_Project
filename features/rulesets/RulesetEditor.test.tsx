@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RulesetEditor } from "./RulesetEditor";
 import type { Ruleset } from "./api";
 
 const onClose = vi.fn();
 const onSaved = vi.fn();
+const onResolvePending = vi.fn();
+const onCancelPending = vi.fn();
 
 const r1: Ruleset = {
   id: "r1",
@@ -23,6 +25,12 @@ const r1: Ruleset = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const r2: Ruleset = {
+  ...r1,
+  id: "r2",
+  name: "Segunda Liga",
+};
+
 function savedResponse(overrides: Partial<Ruleset> = {}) {
   return Promise.resolve({
     ok: true,
@@ -32,7 +40,16 @@ function savedResponse(overrides: Partial<Ruleset> = {}) {
 }
 
 function renderEditor(editing: Ruleset | null) {
-  return render(<RulesetEditor editing={editing} onSaved={onSaved} onClose={onClose} />);
+  return render(
+    <RulesetEditor
+      editing={editing}
+      pending={null}
+      onSaved={onSaved}
+      onClose={onClose}
+      onResolvePending={onResolvePending}
+      onCancelPending={onCancelPending}
+    />,
+  );
 }
 
 afterEach(() => {
@@ -40,6 +57,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   onClose.mockClear();
   onSaved.mockClear();
+  onResolvePending.mockClear();
+  onCancelPending.mockClear();
 });
 
 describe("RulesetEditor", () => {
@@ -133,5 +152,124 @@ describe("RulesetEditor", () => {
     const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
     expect(calls[0][0]).toBe("/api/dev/rulesets/r1");
     expect(calls[0][1].method).toBe("PATCH");
+  });
+
+  it("warns when leaving a modified tab and Continuar editando stays put", () => {
+    renderEditor(r1);
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cambiado" } });
+    fireEvent.click(screen.getByRole("tab", { name: "2 · Razas" }));
+
+    const dialog = screen.getByRole("alertdialog", { name: "No has guardado los cambios de esta pestaña" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Continuar editando" }));
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect((screen.getByLabelText("Nombre") as HTMLInputElement).value).toBe("Cambiado");
+    expect(screen.queryByLabelText("Human")).toBeNull();
+  });
+
+  it("Descartar cambios resets the leaving tab's fields and navigates", () => {
+    renderEditor(r1);
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cambiado" } });
+    fireEvent.click(screen.getByRole("tab", { name: "2 · Razas" }));
+
+    const dialog = screen.getByRole("alertdialog", { name: "No has guardado los cambios de esta pestaña" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Descartar cambios" }));
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByLabelText("Human")).toBeTruthy();
+    // Back on the discarded tab the field is restored from the card.
+    fireEvent.click(screen.getByRole("tab", { name: "1 · Información" }));
+    expect((screen.getByLabelText("Nombre") as HTMLInputElement).value).toBe("Copa de Invierno");
+  });
+
+  it("Guardar from the guard persists the whole ruleset and then navigates", async () => {
+    const fetchMock = vi.fn(() => savedResponse({ name: "Copa de Invierno", description: "Desc editada" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderEditor(r1);
+    fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "Desc editada" } });
+    fireEvent.click(screen.getByRole("tab", { name: "3 · Economía y plantilla" }));
+
+    const dialog = screen.getByRole("alertdialog", { name: "No has guardado los cambios de esta pestaña" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls[0][0]).toBe("/api/dev/rulesets/r1");
+    expect(calls[0][1].method).toBe("PATCH");
+    // Navigated to the requested tab.
+    expect(screen.getByLabelText("Tesorería inicial")).toBeTruthy();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("cancel with dirty state warns before closing", () => {
+    renderEditor(r1);
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cambiado" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    const dialog = screen.getByRole("alertdialog", { name: "No has guardado los cambios de esta pestaña" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Descartar cambios" }));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("guards a card switch requested via pending while dirty", () => {
+    const { rerender } = renderEditor(r1);
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cambiado" } });
+
+    rerender(
+      <RulesetEditor
+        editing={r1}
+        pending={{ kind: "edit", ruleset: r2 }}
+        onSaved={onSaved}
+        onClose={onClose}
+        onResolvePending={onResolvePending}
+        onCancelPending={onCancelPending}
+      />,
+    );
+    expect(screen.getByRole("alertdialog", { name: "No has guardado los cambios de esta pestaña" })).toBeTruthy();
+
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Descartar cambios" }),
+    );
+    expect(onResolvePending).toHaveBeenCalled();
+  });
+
+  it("resolves a same-card request without guarding (no-op)", () => {
+    const { rerender } = renderEditor(r1);
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cambiado" } });
+
+    rerender(
+      <RulesetEditor
+        editing={r1}
+        pending={{ kind: "edit", ruleset: r1 }}
+        onSaved={onSaved}
+        onClose={onClose}
+        onResolvePending={onResolvePending}
+        onCancelPending={onCancelPending}
+      />,
+    );
+    expect(onCancelPending).toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("registers beforeunload while dirty and clears it after a successful save", async () => {
+    const addSpy = vi.spyOn(window, "addEventListener");
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+    const fetchMock = vi.fn(() => savedResponse({ name: "Cambiado" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderEditor(r1);
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cambiado" } });
+
+    const added = addSpy.mock.calls.filter(([type]) => type === "beforeunload");
+    expect(added).toHaveLength(1);
+    const handler = added[0][1] as (event: BeforeUnloadEvent) => void;
+    const event = { preventDefault: vi.fn(), returnValue: "" } as unknown as BeforeUnloadEvent;
+    handler(event);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect((event as { returnValue: string }).returnValue).toBe("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith("beforeunload", handler));
   });
 });

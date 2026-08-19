@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { RACES } from "@/features/teams/data/races";
 import { RACE_PRESETS, presetTodas } from "./presets";
@@ -13,11 +13,20 @@ import {
 
 export type RulesetTab = "info" | "races" | "economy" | "management";
 
+/** What the editor switches to once a pending (dirty-guarded) request resolves. */
+export type RulesetEditorTarget =
+  | { kind: "create" }
+  | { kind: "edit"; ruleset: Ruleset };
+
 interface RulesetEditorProps {
   /** When null the editor runs the create (sequential) flow. */
   editing: Ruleset | null;
+  /** A card/create requested while the editor is dirty — resolved through the guard. */
+  pending: RulesetEditorTarget | null;
   onSaved: (ruleset: Ruleset) => void;
   onClose: () => void;
+  onResolvePending: () => void;
+  onCancelPending: () => void;
 }
 
 const TABS: ReadonlyArray<{ key: RulesetTab; n: number }> = [
@@ -79,6 +88,34 @@ function parsePositiveInt(value: string): number | null {
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
+function sameStringArray(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+/** Per-tab dirty check: only the fields owned by `tab` are compared. */
+function isTabDirty(draft: EditorDraft, baseline: EditorDraft, tab: RulesetTab): boolean {
+  switch (tab) {
+    case "info":
+      return draft.name !== baseline.name || draft.description !== baseline.description;
+    case "races":
+      return !sameStringArray(draft.races, baseline.races);
+    case "economy":
+      return (
+        draft.startingTreasury !== baseline.startingTreasury ||
+        draft.tvCap !== baseline.tvCap ||
+        draft.minPlayers !== baseline.minPlayers ||
+        draft.maxPlayers !== baseline.maxPlayers
+      );
+    case "management":
+      return (
+        draft.hireFire !== baseline.hireFire ||
+        draft.seasonReform !== baseline.seasonReform ||
+        draft.mercenaries !== baseline.mercenaries ||
+        draft.active !== baseline.active
+      );
+  }
+}
+
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 function validateTab(tab: RulesetTab, draft: EditorDraft, t: Translate): string | null {
@@ -121,19 +158,39 @@ function tabIndex(tab: RulesetTab): number {
   return TABS.findIndex(({ key }) => key === tab);
 }
 
+type Guard =
+  | { kind: "tab"; to: RulesetTab }
+  | { kind: "close" }
+  | { kind: "card" };
+
 /**
  * RAU-52b inline ruleset editor (developer-only section): the bottom half of
  * the page under the cards grid. Create mode walks the 4 tabs sequentially
  * ("Siguiente →" ... "Crear tipo de reglas" POSTs). Edit mode loads a card and
- * allows free tab navigation. Nothing persists until an explicit save.
+ * allows free tab navigation, with a dirty guard — leaving a modified tab,
+ * switching to another card, closing the editor or unloading the page surfaces
+ * "No has guardado los cambios de esta pestaña" (Continuar editando / Descartar
+ * cambios / Guardar). Nothing persists until an explicit save.
  */
-export function RulesetEditor({ editing, onSaved, onClose }: RulesetEditorProps) {
+export function RulesetEditor({
+  editing,
+  pending,
+  onSaved,
+  onClose,
+  onResolvePending,
+  onCancelPending,
+}: RulesetEditorProps) {
   const { t } = useI18n();
   const createMode = editing === null;
   const [activeTab, setActiveTab] = useState<RulesetTab>("info");
   const [draft, setDraft] = useState<EditorDraft>(() => draftFrom(editing));
+  const [baseline, setBaseline] = useState<EditorDraft>(() => draftFrom(editing));
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [guard, setGuard] = useState<Guard | null>(null);
+
+  const currentTabDirty = isTabDirty(draft, baseline, activeTab);
+  const anyDirty = TABS.some(({ key }) => isTabDirty(draft, baseline, key));
 
   const setField = <K extends keyof EditorDraft>(field: K, value: EditorDraft[K]) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -145,9 +202,76 @@ export function RulesetEditor({ editing, onSaved, onClose }: RulesetEditorProps)
     setStepError(null);
   };
 
-  const requestTab = (tab: RulesetTab) => {
-    if (tab !== activeTab) go(tab);
+  const discardTab = (tab: RulesetTab) => {
+    setDraft((current) => {
+      switch (tab) {
+        case "info":
+          return { ...current, name: baseline.name, description: baseline.description };
+        case "races":
+          return { ...current, races: [...baseline.races] };
+        case "economy":
+          return {
+            ...current,
+            startingTreasury: baseline.startingTreasury,
+            tvCap: baseline.tvCap,
+            minPlayers: baseline.minPlayers,
+            maxPlayers: baseline.maxPlayers,
+          };
+        case "management":
+          return {
+            ...current,
+            hireFire: baseline.hireFire,
+            seasonReform: baseline.seasonReform,
+            mercenaries: baseline.mercenaries,
+            active: baseline.active,
+          };
+      }
+    });
   };
+
+  const requestTab = (tab: RulesetTab) => {
+    if (tab === activeTab) return;
+    if (currentTabDirty) setGuard({ kind: "tab", to: tab });
+    else go(tab);
+  };
+
+  const requestClose = () => {
+    if (anyDirty) setGuard({ kind: "close" });
+    else onClose();
+  };
+
+  // A card/create requested while the editor is dirty surfaces the guard dialog
+  // (derived during render, not via effect state). Same-card loads are no-ops.
+  const cardGuard = useMemo<Guard | null>(() => {
+    if (!pending) return null;
+    if (pending.kind === "edit" && pending.ruleset.id === editing?.id) return null;
+    return anyDirty ? { kind: "card" } : null;
+  }, [pending, editing, anyDirty]);
+
+  // A card/create requested while the editor is clean resolves immediately.
+  useEffect(() => {
+    if (!pending) return;
+    if (pending.kind === "edit" && pending.ruleset.id === editing?.id) {
+      onCancelPending();
+      return;
+    }
+    if (!anyDirty) onResolvePending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending]);
+
+  const effectiveGuard = guard ?? cardGuard;
+
+  // beforeunload-style warning: a full page unload with dirty state prompts the
+  // browser dialog. (Client-side Next router navigation does not fire it.)
+  useEffect(() => {
+    if (!anyDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [anyDirty]);
 
   const payload = (): RulesetDraft => ({
     name: draft.name.trim(),
@@ -177,6 +301,7 @@ export function RulesetEditor({ editing, onSaved, onClose }: RulesetEditorProps)
       const saved = editing
         ? await updateRuleset(editing.id, payload())
         : await createRuleset(payload());
+      setBaseline(draftFrom(saved));
       onSaved(saved);
       return true;
     } catch (e) {
@@ -208,6 +333,35 @@ export function RulesetEditor({ editing, onSaved, onClose }: RulesetEditorProps)
 
   const save = async () => {
     await persist();
+  };
+
+  const guardDiscard = () => {
+    const intent = effectiveGuard;
+    setGuard(null);
+    if (!intent) return;
+    if (intent.kind === "tab") {
+      discardTab(activeTab);
+      go(intent.to);
+    } else if (intent.kind === "close") {
+      setDraft({ ...baseline, races: [...baseline.races] });
+      onClose();
+    } else {
+      onResolvePending();
+    }
+  };
+
+  const guardSave = async () => {
+    const intent = effectiveGuard;
+    const ok = await persist();
+    if (!ok) {
+      setGuard(null);
+      return;
+    }
+    setGuard(null);
+    if (!intent) return;
+    if (intent.kind === "tab") go(intent.to);
+    else if (intent.kind === "close") onClose();
+    else onResolvePending();
   };
 
   const inputClass =
@@ -445,7 +599,7 @@ export function RulesetEditor({ editing, onSaved, onClose }: RulesetEditorProps)
         <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3">
           <button
             type="button"
-            onClick={createMode && stepNumber > 1 ? back : onClose}
+            onClick={createMode && stepNumber > 1 ? back : requestClose}
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-[#12225a] hover:text-[#12225a]"
           >
             {createMode
@@ -485,6 +639,59 @@ export function RulesetEditor({ editing, onSaved, onClose }: RulesetEditorProps)
           )}
         </div>
       </div>
+
+      {/* Dirty/unsaved guard */}
+      {effectiveGuard ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label={t("rulesets.editor.closeAria")}
+            onClick={() => {
+              if (effectiveGuard.kind === "card") onCancelPending();
+              else setGuard(null);
+            }}
+            className="fixed inset-0 bg-slate-900/60"
+          />
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-label={t("rulesets.editor.unsaved")}
+            className="relative z-10 w-full max-w-sm border border-slate-200 bg-white p-5 shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
+          >
+            <p className="text-sm font-bold text-[#12225a]">{t("rulesets.editor.unsaved")}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {t("rulesets.editor.keepEditing")} · {t("rulesets.editor.discard")} · {t("rulesets.editor.save")}
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (effectiveGuard.kind === "card") onCancelPending();
+                  else setGuard(null);
+                }}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-[#12225a] hover:text-[#12225a]"
+              >
+                {t("rulesets.editor.keepEditing")}
+              </button>
+              <button
+                type="button"
+                onClick={guardDiscard}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-[#d11938] hover:text-[#d11938]"
+              >
+                {t("rulesets.editor.discard")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void guardSave()}
+                disabled={submitting}
+                className="rounded-md bg-[#12225a] px-3 py-1.5 text-sm font-bold text-white hover:bg-[#0f1d48] disabled:opacity-60"
+              >
+                {submitting ? t("rulesets.wizard.saving") : t("rulesets.editor.save")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
