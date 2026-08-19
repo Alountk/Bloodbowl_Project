@@ -23,6 +23,7 @@ export default defineConfig({
     "**/match-report.spec.ts",
     "**/full-league-flow.spec.ts",
     "**/roster-table.spec.ts",
+    "**/hire-fire.spec.ts",
     "**/match-view.spec.ts",
     "**/live-match.spec.ts",
     "**/live-resolution.spec.ts",

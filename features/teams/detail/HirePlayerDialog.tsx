@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { PlayerEntry, Race } from "../types";
 import { MAX_PLAYERS } from "../roster";
 import { formatRulebookCost } from "../format";
@@ -35,6 +35,9 @@ export function HirePlayerDialog({
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Guards the backdrop-close against a click retargeted from a re-rendered
+  // hire button (see PlayerImproveModal — same race guard).
+  const pointerDownOnBackdrop = useRef(false);
 
   const countFor = (positionalKey: string): number =>
     roster.filter((player) => player.positionalKey === positionalKey).length;
@@ -72,8 +75,12 @@ export function HirePlayerDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/55 p-4"
+      onMouseDown={(e) => {
+        pointerDownOnBackdrop.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (pointerDownOnBackdrop.current && e.target === e.currentTarget) onClose();
+        pointerDownOnBackdrop.current = false;
       }}
     >
       <div
