@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RulesetManager } from "./RulesetManager";
 
 const r1 = {
@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe("RulesetManager", () => {
-  it("renders the cards grid with summary chips from the dev API", async () => {
+  it("renders the cards carousel with summary chips from the dev API", async () => {
     stubFetch();
     render(<RulesetManager />);
 
@@ -97,6 +97,25 @@ describe("RulesetManager", () => {
     await waitFor(() => expect(screen.getByRole("tablist")).toBeTruthy());
     // Edit mode pre-fills the name from the clicked card.
     expect((screen.getByLabelText("Nombre") as HTMLInputElement).value).toBe("Estándar BB2025");
+  });
+
+  it("switching to another card while dirty shows the guard and Descartar loads the new card", async () => {
+    stubFetch();
+    render(<RulesetManager />);
+
+    await waitFor(() => expect(screen.getByText("Estándar BB2025")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: "Editar" })[0]);
+    await waitFor(() => expect(screen.getByRole("tablist")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Cambiado" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Editar" })[1]);
+
+    const dialog = screen.getByRole("alertdialog", { name: "No has guardado los cambios de esta pestaña" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Descartar cambios" }));
+
+    await waitFor(() =>
+      expect((screen.getByLabelText("Nombre") as HTMLInputElement).value).toBe("Liga Tier 1"),
+    );
   });
 
   it("shows the empty-state CTA when there are no rulesets", async () => {
