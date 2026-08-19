@@ -394,6 +394,130 @@ test("auto-finish (TD in half-2 turn 8) → the resolve closure still runs", asy
   }
 });
 
+test("RAU-12: a lasting casualty suspends the victim for the next match until it resolves; a bruise never blocks", async ({ browser }) => {
+  // A 3-member, 2-jornada league: the pivot team plays BOTH rounds, so a
+  // round-1 lasting casualty can be asserted as UNAVAILABLE in round 2's FAB,
+  // and available again once round 2 resolves (served flag clears).
+  const tag = Date.now().toString(36);
+  const league = await buildLeague(browser, tag, 2, 3);
+  try {
+    const { admin, leagueId, teams } = league;
+    const r1 = await roundOne(admin, leagueId, teams);
+
+    // Resolve both fixtures + the pivot team (the one present in BOTH rounds).
+    const detail = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(detail.status()).toBe(200);
+    const body = (await detail.json()) as {
+      fixtures: { id: string; round: number; homeTeamId: string; awayTeamId: string }[];
+      teams: { id: string; name: string; roster: { id: string; name: string }[] }[];
+    };
+    const r1Fixture = body.fixtures.find((f) => f.round === 1)!;
+    const r2Fixture = body.fixtures.find((f) => f.round === 2)!;
+    const pivotTeamId = [r1Fixture.homeTeamId, r1Fixture.awayTeamId].find(
+      (id) => id === r2Fixture.homeTeamId || id === r2Fixture.awayTeamId,
+    )!;
+    const pivotTeam = body.teams.find((t) => t.id === pivotTeamId)!;
+    const pivotPage = teams[pivotTeam.name];
+    const lastingVictimId = pivotTeam.roster[0].id;
+    const lastingVictimName = pivotTeam.roster[0].name;
+    const bruiseVictimId = pivotTeam.roster[1].id;
+    const bruiseVictimName = pivotTeam.roster[1].name;
+    // Round 1's proposer is the coach on the side OPPOSITE the pivot.
+    const proposerSide: "home" | "away" = r1Fixture.homeTeamId === pivotTeamId ? "away" : "home";
+    const proposerPage = proposerSide === "home" ? r1.homePage : r1.awayPage;
+    const proposerTeamId = proposerSide === "home" ? r1Fixture.homeTeamId : r1Fixture.awayTeamId;
+    const proposerTeam = body.teams.find((t) => t.id === proposerTeamId)!;
+    const causerId = proposerTeam.roster[0].id;
+
+    // --- Match 1: consent + begin, drive to the proposer's turn, then record a
+    // lasting casualty (1D16 9 → apaleado) AND a bruise (1D16 2) on pivot players.
+    await liveCommand(r1.homePage, leagueId, r1.fixtureId, { type: "consent", side: "home" });
+    await liveCommand(r1.awayPage, leagueId, r1.fixtureId, { type: "consent", side: "away" });
+    let view = await liveCommand(r1.homePage, leagueId, r1.fixtureId, { type: "begin" });
+    while (view.activeSide !== proposerSide) {
+      const activePage = view.activeSide === "home" ? r1.homePage : r1.awayPage;
+      view = await liveCommand(activePage, leagueId, r1.fixtureId, { type: "endTurn", side: view.activeSide });
+    }
+    expect(view.activeSide).toBe(proposerSide);
+
+    await liveCommand(proposerPage, leagueId, r1.fixtureId, {
+      type: "proposeCasualty", victimRosterId: lastingVictimId, causerRosterId: causerId, cause: "blitz", roll16: 9,
+    });
+    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
+    await liveCommand(proposerPage, leagueId, r1.fixtureId, {
+      type: "proposeCasualty", victimRosterId: bruiseVictimId, causerRosterId: causerId, cause: "blitz", roll16: 2,
+    });
+    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
+
+    // Resolve match 1 → the lasting victim is flagged, the bruise is not.
+    const afterEnd = await liveCommand(admin, leagueId, r1.fixtureId, { type: "endMatch" });
+    expect(afterEnd.status).toBe("finished");
+    await admin.goto(`/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
+    await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
+    await openAndResolve(admin, r1.homeTeamName, r1.awayTeamName);
+    await waitFixturePlayed(admin, leagueId, r1.fixtureId, 1);
+
+    const after1 = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
+    expect(after1.status()).toBe(200);
+    const b1 = (await after1.json()) as {
+      homeTeam: { players: { rosterPlayerId: string; missNextMatch: boolean }[] };
+      awayTeam: { players: { rosterPlayerId: string; missNextMatch: boolean }[] };
+    };
+    const pivotSide1 = r1Fixture.homeTeamId === pivotTeamId ? b1.homeTeam : b1.awayTeam;
+    expect(pivotSide1.players.find((p) => p.rosterPlayerId === lastingVictimId)!.missNextMatch).toBe(true);
+    expect(pivotSide1.players.find((p) => p.rosterPlayerId === bruiseVictimId)!.missNextMatch).toBe(false);
+
+    // --- Match 2 (the pivot team plays again): consent + begin, drive to the
+    // pivot's turn, then assert the FAB pools from the pivot coach's page.
+    const home2Name = body.teams.find((t) => t.id === r2Fixture.homeTeamId)!.name;
+    const away2Name = body.teams.find((t) => t.id === r2Fixture.awayTeamId)!.name;
+    const home2Page = teams[home2Name];
+    const away2Page = teams[away2Name];
+    const pivotSide2: "home" | "away" = r2Fixture.homeTeamId === pivotTeamId ? "home" : "away";
+
+    await liveCommand(home2Page, leagueId, r2Fixture.id, { type: "consent", side: "home" });
+    await liveCommand(away2Page, leagueId, r2Fixture.id, { type: "consent", side: "away" });
+    view = await liveCommand(home2Page, leagueId, r2Fixture.id, { type: "begin" });
+    while (view.activeSide !== pivotSide2) {
+      const activePage = view.activeSide === "home" ? home2Page : away2Page;
+      view = await liveCommand(activePage, leagueId, r2Fixture.id, { type: "endTurn", side: view.activeSide });
+    }
+    expect(view.activeSide).toBe(pivotSide2);
+
+    await pivotPage.goto(`/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    await expect(pivotPage.getByRole("button", { name: "+" })).toBeVisible();
+    await pivotPage.getByRole("button", { name: "+" }).click();
+    await pivotPage.getByRole("button", { name: /Touchdown/i }).click();
+    const tdOptions = await pivotPage
+      .getByLabel("Jugador", { exact: true })
+      .locator("option")
+      .allTextContents();
+    // The suspended victim is NOT selectable; the bruised one IS.
+    expect(tdOptions.some((o) => o.includes(lastingVictimName))).toBe(false);
+    expect(tdOptions.some((o) => o.includes(bruiseVictimName))).toBe(true);
+
+    // Resolve match 2 → the suspension is SERVED: both players are available again.
+    const afterEnd2 = await liveCommand(admin, leagueId, r2Fixture.id, { type: "endMatch" });
+    expect(afterEnd2.status).toBe("finished");
+    await admin.goto(`/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
+    await openAndResolve(admin, home2Name, away2Name);
+    await waitFixturePlayed(admin, leagueId, r2Fixture.id, 2);
+
+    const after2 = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    expect(after2.status()).toBe(200);
+    const b2 = (await after2.json()) as {
+      homeTeam: { players: { rosterPlayerId: string; missNextMatch: boolean }[] };
+      awayTeam: { players: { rosterPlayerId: string; missNextMatch: boolean }[] };
+    };
+    const pivotSide2Served = r2Fixture.homeTeamId === pivotTeamId ? b2.homeTeam : b2.awayTeam;
+    expect(pivotSide2Served.players.find((p) => p.rosterPlayerId === lastingVictimId)!.missNextMatch).toBe(false);
+    expect(pivotSide2Served.players.find((p) => p.rosterPlayerId === bruiseVictimId)!.missNextMatch).toBe(false);
+  } finally {
+    await league.close();
+  }
+});
+
 test("concede → the resolution still runs (awards + MatchResult) though the fixture was already closed", async ({ browser }) => {
   const tag = Date.now().toString(36);
   // A 3-member, 2-jornada league: conceding round 1's fixture leaves the
