@@ -11,7 +11,10 @@ import {
   updateRuleset,
   type Ruleset,
 } from "./api";
-import { RulesetWizard } from "./RulesetWizard";
+import { RulesetCarousel } from "./RulesetCarousel";
+import { RulesetEditor, type RulesetEditorTarget } from "./RulesetEditor";
+
+type EditorState = { kind: "create" } | { kind: "edit"; ruleset: Ruleset } | null;
 
 /** The Option-B card summary chip (razas / tesorería / TV / plantilla / estado). */
 function RulesetCard({
@@ -45,9 +48,15 @@ function RulesetCard({
   };
 
   return (
-    <li className="relative flex flex-col rounded-xl border-[1.5px] border-slate-200 bg-white p-3.5 transition-colors hover:border-[#12225a]">
+    <li className="relative flex min-w-[260px] flex-1 snap-start flex-col rounded-xl border-[1.5px] border-slate-200 bg-white p-3.5 transition-colors hover:border-[#12225a]">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-[15px] font-black text-[#12225a]">{ruleset.name}</h3>
+        <button
+          type="button"
+          onClick={() => onEdit(ruleset)}
+          className="text-left text-[15px] font-black text-[#12225a] hover:underline"
+        >
+          {ruleset.name}
+        </button>
         <button
           type="button"
           onClick={() => onEdit(ruleset)}
@@ -123,23 +132,30 @@ function RulesetCard({
 }
 
 /**
- * The RAU-52 developer-only "Tipos de reglas" section (Option B): a cards grid
- * (name, description, summary chips) + "+ Nuevo tipo" opening the 4-step wizard
- * and per-card "Editar". The parent page already gate-kept the section to
- * developers; every mutation here hits the developer-only API.
+ * The RAU-52b developer-only "Tipos de reglas" section (inline layout): the
+ * cards grid with a carousel on top and the tabbed RulesetEditor on the bottom.
+ * The parent page already gate-kept the section to developers; every mutation
+ * here hits the developer-only API. "+ Nuevo tipo" and per-card "Editar" load
+ * the editor below; a dirty editor guards card switches through the editor.
  */
 export function RulesetManager() {
   const { t } = useI18n();
   const [rulesets, setRulesets] = useState<Ruleset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [editing, setEditing] = useState<Ruleset | null>(null);
+  const [editor, setEditor] = useState<EditorState>(null);
+  const [pending, setPending] = useState<RulesetEditorTarget | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const list = await listRulesets();
       setRulesets(list);
+      // A ruleset that no longer exists (deleted) closes its editor.
+      setEditor((current) =>
+        current?.kind === "edit" && !list.some((ruleset) => ruleset.id === current.ruleset.id)
+          ? null
+          : current,
+      );
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("rulesets.loadError"));
@@ -167,13 +183,36 @@ export function RulesetManager() {
   }, []);
 
   const openCreate = () => {
-    setEditing(null);
-    setWizardOpen(true);
+    if (editor === null) {
+      setEditor({ kind: "create" });
+      return;
+    }
+    // The editor decides whether the dirty guard intercepts the switch.
+    setPending({ kind: "create" });
   };
 
   const openEdit = (ruleset: Ruleset) => {
-    setEditing(ruleset);
-    setWizardOpen(true);
+    if (editor === null) {
+      setEditor({ kind: "edit", ruleset });
+      return;
+    }
+    setPending({ kind: "edit", ruleset });
+  };
+
+  const resolvePending = () => {
+    setPending((current) => {
+      if (current) setEditor(current);
+      return null;
+    });
+  };
+
+  const cancelPending = () => {
+    setPending(null);
+  };
+
+  const closeEditor = () => {
+    setEditor(null);
+    setPending(null);
   };
 
   return (
@@ -213,7 +252,7 @@ export function RulesetManager() {
           </button>
         </div>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <RulesetCarousel count={rulesets.length}>
           {rulesets.map((ruleset) => (
             <RulesetCard
               key={ruleset.id}
@@ -222,16 +261,24 @@ export function RulesetManager() {
               onChanged={refresh}
             />
           ))}
-        </ul>
+        </RulesetCarousel>
       )}
 
-      {wizardOpen ? (
-        <RulesetWizard
-          editing={editing}
-          onClose={() => setWizardOpen(false)}
+      {editor ? (
+        <RulesetEditor
+          key={editor.kind === "edit" ? editor.ruleset.id : "create"}
+          editing={editor.kind === "edit" ? editor.ruleset : null}
+          pending={pending}
           onSaved={refresh}
+          onClose={closeEditor}
+          onResolvePending={resolvePending}
+          onCancelPending={cancelPending}
         />
-      ) : null}
+      ) : (
+        <div className="mt-8 border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+          <p className="text-sm text-slate-500">{t("rulesets.editor.placeholder")}</p>
+        </div>
+      )}
     </section>
   );
 }
