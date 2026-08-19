@@ -35,8 +35,11 @@ import {
   confirmCasualty,
   toLiveViewState,
   isStartableFixture,
+  parseMvpNominations,
+  EMPTY_MVP_NOMINATIONS,
   type FixtureStartState,
   type LiveMatchState,
+  type MvpNominations,
   type PendingCasualty,
   type TeamSide,
 } from "./liveMatch";
@@ -57,6 +60,7 @@ import {
   casualtyVictimsFromEvents,
   deriveLivePeAwards,
   validateMvpNominations,
+  validateSingleMvpNomination,
   type ResolveEventLike,
 } from "./liveResolve";
 import { DEFAULT_COACHING, isCoachingStaff, type PlayerEntry } from "@/features/teams/types";
@@ -90,8 +94,10 @@ export interface StoreTx {
     /** RAU-44: reads each side's `coaching` JSON to derive its roster
      * dedicated-fans characteristic for the finish-time winnings formula. The
      * RAU-49 resolve widens the read to the roster/race/players (roster
-     * validation, dedicated fans, petty-cash TV) — both callers pass the FULL
-     * select so one concrete signature serves both. */
+     * validation, dedicated fans, petty-cash TV) and RAU-51 adds each player's
+     * `alive`/`missNextMatch` so `nominateMvp` can reject dead/suspended
+     * nominees — all callers pass the FULL select so one concrete signature
+     * serves every read. */
     findMany(args: {
       where: { id: { in: string[] } };
       select: {
@@ -99,7 +105,9 @@ export interface StoreTx {
         raceId: true;
         roster: true;
         coaching: true;
-        players: { select: { rosterPlayerId: true; valueBonus: true } };
+        players: {
+          select: { rosterPlayerId: true; valueBonus: true; alive: true; missNextMatch: true };
+        };
       };
     }): Promise<
       {
@@ -107,7 +115,7 @@ export interface StoreTx {
         raceId: string;
         roster: Prisma.JsonValue | null;
         coaching: Prisma.JsonValue | null;
-        players: { rosterPlayerId: string; valueBonus: number }[];
+        players: { rosterPlayerId: string; valueBonus: number; alive: boolean; missNextMatch: boolean }[];
       }[]
     >;
   };
@@ -212,6 +220,9 @@ interface LiveMatchRowFields {
   concedeProposedBy: TeamSide | null;
   /** RAU-39: the pending casualty proposal JSON (null until proposed/confirmed). */
   pendingCasualty: Prisma.JsonValue | null;
+  /** RAU-51: the persisted per-side MJP nominations JSON (`{ home, away }`,
+   * null per side = that coach has not nominated yet). */
+  mvpNominations: Prisma.JsonValue | null;
 }
 
 /** Defensively parses a persisted `pendingCasualty` JSON value into the pure
@@ -264,6 +275,7 @@ export function liveMatchRowToState(
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
     concedeProposedBy: row.concedeProposedBy,
     pendingCasualty: toPendingCasualty(row.pendingCasualty ?? null),
+    mvpNominations: parseMvpNominations(row.mvpNominations ?? null),
     events: [],
   };
 }
@@ -289,6 +301,9 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
     // type omits bare `null`, so the value is cast — the runtime JSON write is
     // exactly the object, or SQL NULL when cleared).
     pendingCasualty: next.pendingCasualty as unknown as
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue,
+    mvpNominations: next.mvpNominations as unknown as
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue,
   };
@@ -346,7 +361,7 @@ async function computeLiveWinnings(
       raceId: true,
       roster: true,
       coaching: true,
-      players: { select: { rosterPlayerId: true, valueBonus: true } },
+      players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
     },
   });
   const byId = new Map(teams.map((team) => [team.id, team]));
@@ -549,6 +564,7 @@ async function createFirstConsent(
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
+    mvpNominations: EMPTY_MVP_NOMINATIONS,
     events: [],
   };
 
@@ -1061,18 +1077,108 @@ export interface RollLiveMvpInput {
   fixtureId: string;
   homeTeamId: string;
   awayTeamId: string;
-  nominations: { home: string[]; away: string[] };
   now: number;
 }
 
-/** The server-owned preview roll for the resolution modal (RAU-49): validates
- * the 6-per-team MJP nominations, rolls the MVP 1D6 + the post-match FF dice
- * and PERSISTS the result as `pendingResolution` on the LiveMatch row (in the
- * SAME transaction) — the `resolveMatch` command then reuses those EXACT rolls
- * at commit, so what the modal previewed is what gets reported (never a second
- * independent roll). Overwriting a previous preview on re-roll is fine; 400 on
- * invalid nominations, 404 when the live row or a team is missing, 409 when
- * the live match is not finished or already resolved. */
+/**
+ * RAU-51 nominate: a coach submits THEIR OWN side's six MJP nominations. The
+ * persisted per-side `mvpNominations` JSON is replaced for that side (re-submit
+ * allowed) under the optimistic `seq` guard, then the new view is published.
+ * Guards: 404 no live row/team, 409 not-finished / already-resolved / seq
+ * conflict, 400 when the six are not DISTINCT roster ids of that side's team or
+ * a nominee is dead / suspended for the next match (RAU-12). The route enforces
+ * the caller-side ownership (only the OWNER of that side's team may nominate).
+ */
+export async function nominateMvpLiveMatch(
+  input: NominateMvpInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = liveMatchRowToState(row);
+
+  await deps.prisma.$transaction(async (tx) => {
+    // Same guard as `resolveLiveMatch`: a match already resolved (or in the
+    // middle of it) must not accept a nomination.
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+
+    const teams = await tx.team.findMany({
+      where: { id: { in: [input.teamId] } },
+      select: {
+        id: true,
+        raceId: true,
+        roster: true,
+        coaching: true,
+        players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
+      },
+    });
+    const team = teams[0];
+    if (!team) throw Object.assign(new Error("not found"), { status: 404 });
+
+    const rosterIds = new Set(
+      (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
+    );
+    const availability = new Map(
+      team.players.map((p) => [p.rosterPlayerId, { alive: p.alive, missNextMatch: p.missNextMatch }]),
+    );
+    const invalid = validateSingleMvpNomination(input.players, rosterIds, availability);
+    if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
+
+    const nextNominations: MvpNominations = {
+      ...parseMvpNominations(row.mvpNominations),
+      [input.side]: input.players,
+    };
+    const updated = await tx.liveMatch.updateMany({
+      where: { id: row.id, seq: row.seq },
+      data: {
+        mvpNominations: nextNominations as unknown as Prisma.InputJsonValue,
+        seq: row.seq + 1,
+      },
+    });
+    if (updated.count === 0) {
+      throw Object.assign(new Error("seq conflict"), { status: 409 });
+    }
+  });
+
+  const next = {
+    ...current,
+    seq: row.seq + 1,
+    mvpNominations: {
+      ...parseMvpNominations(row.mvpNominations),
+      [input.side]: input.players,
+    } as MvpNominations,
+  };
+  const view = toLiveViewState(next, input.now, { viewerSide: input.side });
+  // Fan out the new nomination state (no timeline event — the delta events list
+  // is empty; a connected rival's modal/conso adjusts from the view frame).
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: next.seq, view };
+}
+
+/** RAU-51: the side a coach nominates for + their own side's team id. */
+export interface NominateMvpInput {
+  fixtureId: string;
+  /** The OWNER-side team id (the route resolves it from the session). */
+  teamId: string;
+  side: TeamSide;
+  players: string[];
+  now: number;
+}
+
+/** The server-owned preview roll for the resolution modal (RAU-49): rolls the
+ * MVP 1D6 + the post-match FF dice over the PERSISTED per-side nominations
+ * (RAU-51 — the body no longer carries them) and PERSISTS the result as
+ * `pendingResolution` on the LiveMatch row (in the SAME transaction) — the
+ * `resolveMatch` command then reuses those EXACT rolls at commit, so what the
+ * modal previewed is what gets reported (never a second independent roll).
+ * Overwriting a previous preview on re-roll is fine; 400 on invalid persisted
+ * nominations, 404 when the live row or a team is missing, 409 when the live
+ * match is not finished, already resolved, or BOTH sides have not nominated
+ * yet (RAU-51: the roll is gated on both sides' `mvpNominations`). */
 export async function rollLiveMvp(
   input: RollLiveMvpInput,
   deps: StoreDeps,
@@ -1082,6 +1188,12 @@ export async function rollLiveMvp(
   if (row.status !== "finished") {
     throw Object.assign(new Error("match not finished"), { status: 409 });
   }
+  const nominations = parseMvpNominations(row.mvpNominations);
+  if (!nominations.home || !nominations.away) {
+    throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
+  }
+  const homeNom = nominations.home;
+  const awayNom = nominations.away;
 
   const roll6 = deps.rollD6 ?? rollD6;
   const roll3 = deps.rollD3 ?? rollD3;
@@ -1099,7 +1211,7 @@ export async function rollLiveMvp(
         raceId: true,
         roster: true,
         coaching: true,
-        players: { select: { rosterPlayerId: true, valueBonus: true } },
+        players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
       },
     });
     const byTeamId = new Map(teams.map((team) => [team.id, team]));
@@ -1112,15 +1224,15 @@ export async function rollLiveMvp(
         (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
       );
     const invalid = validateMvpNominations(
-      input.nominations.home,
-      input.nominations.away,
+      homeNom,
+      awayNom,
       rosterIdsOf(homeTeam),
       rosterIdsOf(awayTeam),
     );
     if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
 
-    const homeMvp = computeMvpGrantee(input.nominations.home, roll6());
-    const awayMvp = computeMvpGrantee(input.nominations.away, roll6());
+    const homeMvp = computeMvpGrantee(homeNom, roll6());
+    const awayMvp = computeMvpGrantee(awayNom, roll6());
 
     // The preview mirrors the resolve's FF derivation (a concede walkover's
     // fixture scores win over the live state's own scoreboard).
@@ -1169,7 +1281,6 @@ export interface ResolveLiveMatchInput {
   leagueId: string;
   homeTeamId: string;
   awayTeamId: string;
-  nominations: { home: string[]; away: string[] };
   /** The resolving user (fixture coach or league admin) — the MatchResult
    * `loadedBy` audit (result-route parity). */
   loadedBy: string;
@@ -1192,7 +1303,8 @@ export interface ResolveLiveOutcome {
 /**
  * RAU-49: the end-of-match RESOLUTION — the closure of a finished live match.
  * In ONE transaction, mirroring the result route:
- *  - rolls the server-owned MJP 1D6 per team over the 6 nominations;
+ *  - rolls the server-owned MJP 1D6 per team over the persisted per-side
+ *    nominations (RAU-51) — or reuses the `rollMvp` preview;
  *  - derives the PE awards from the persisted live events (TD/completion/
  *    lasting-casualty) + the MVP +4, applied to the lazy Player rows;
  *  - applies the finish-time `LiveMatch.winnings` to the treasuries (never
@@ -1205,9 +1317,11 @@ export interface ResolveLiveOutcome {
  *  - the never-closed normally-finished live match; the fixture played +
  *    MatchResult presence are the terminal guard.
  * Guards: 404 no live row/team, 409 not-finished / already-resolved /
- * already-played-with-result, 400 invalid MVP nominations. A conceded match
- * (fixture closed by `acceptConcedeLiveMatch`, no MatchResult yet) is ALLOWED:
- * the fixture-close part is skipped, the awards + report still write.
+ * already-played-with-result / BOTH sides have not nominated yet (RAU-51: the
+ * resolve rolls from the persisted per-side `mvpNominations`), 400 invalid
+ * persisted nominations. A conceded match (fixture closed by
+ * `acceptConcedeLiveMatch`, no MatchResult yet) is ALLOWED: the fixture-close
+ * part is skipped, the awards + report still write.
  */
 export async function resolveLiveMatch(
   input: ResolveLiveMatchInput,
@@ -1221,6 +1335,12 @@ export async function resolveLiveMatch(
   if (row.status !== "finished") {
     throw Object.assign(new Error("match not finished"), { status: 409 });
   }
+  const nominations = parseMvpNominations(row.mvpNominations);
+  if (!nominations.home || !nominations.away) {
+    throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
+  }
+  const homeNom = nominations.home;
+  const awayNom = nominations.away;
 
   const roll6 = deps.rollD6 ?? rollD6;
   const roll3 = deps.rollD3 ?? rollD3;
@@ -1242,7 +1362,7 @@ export async function resolveLiveMatch(
         raceId: true,
         roster: true,
         coaching: true,
-        players: { select: { rosterPlayerId: true, valueBonus: true } },
+        players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
       },
     });
     const byTeamId = new Map(teams.map((team) => [team.id, team]));
@@ -1255,8 +1375,8 @@ export async function resolveLiveMatch(
         (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
       );
     const invalid = validateMvpNominations(
-      input.nominations.home,
-      input.nominations.away,
+      homeNom,
+      awayNom,
       rosterIdsOf(homeTeam),
       rosterIdsOf(awayTeam),
     );
@@ -1306,9 +1426,9 @@ export async function resolveLiveMatch(
       postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
       postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
 
-      // MVP: server-owned 1D6 per team over the six nominations.
-      homeMvp = computeMvpGrantee(input.nominations.home, roll6());
-      awayMvp = computeMvpGrantee(input.nominations.away, roll6());
+      // MVP: server-owned 1D6 per team over the persisted per-side nominations.
+      homeMvp = computeMvpGrantee(homeNom, roll6());
+      awayMvp = computeMvpGrantee(awayNom, roll6());
     }
 
     // Winnings: the RAU-44 finish-time values — applied, never recomputed.

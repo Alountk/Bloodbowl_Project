@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveLiveMatch, rollLiveMvp, type StoreDeps } from "./liveStore";
+import {
+  nominateMvpLiveMatch,
+  resolveLiveMatch,
+  rollLiveMvp,
+  type StoreDeps,
+} from "./liveStore";
 import type { LiveMatch, LiveEvent, Prisma } from "@prisma/client";
 
 /**
@@ -35,6 +40,7 @@ interface ResolveDeps {
   playerUpdateMany: ReturnType<typeof vi.fn>;
   leagueFindUnique: ReturnType<typeof vi.fn>;
   leagueUpdate: ReturnType<typeof vi.fn>;
+  publish: ReturnType<typeof vi.fn>;
 }
 
 const homeRoster = ["h1", "h2", "h3", "h4", "h5", "h6"].map((id, i) => ({
@@ -57,7 +63,12 @@ function teamRow(side: "home" | "away") {
     raceId: "human",
     roster: side === "home" ? homeRoster : awayRoster,
     coaching: side === "home" ? coaching : { ...coaching, dedicatedFans: 1 },
-    players: ids.map((rosterPlayerId) => ({ rosterPlayerId, valueBonus: 0 })),
+    players: ids.map((rosterPlayerId) => ({
+      rosterPlayerId,
+      valueBonus: 0,
+      alive: true,
+      missNextMatch: false,
+    })),
   };
 }
 
@@ -87,6 +98,13 @@ function finishedRow(overrides: Partial<LiveMatch> = {}): LiveMatch & { events: 
     pendingCasualty: null,
     winnings: { home: 55000, away: 45000 },
     pendingResolution: null,
+    // RAU-51: the default finished row carries BOTH sides' nominations so the
+    // resolve/roll tests exercise the roll path; the both-sides guard tests
+    // override one side to null.
+    mvpNominations: {
+      home: ["h1", "h2", "h3", "h4", "h5", "h6"],
+      away: ["a1", "a2", "a3", "a4", "a5", "a6"],
+    },
     createdAt: new Date(0),
     updatedAt: new Date(0),
     events: [
@@ -146,6 +164,7 @@ function makeResolveDeps(opts: {
   const playerUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const leagueFindUnique = vi.fn().mockResolvedValue({ status: leagueStatus });
   const leagueUpdate = vi.fn().mockResolvedValue({});
+  const publish = vi.fn();
 
   const tx = {
     liveMatch: { updateMany: liveMatchUpdateMany, create: vi.fn(), findUnique: vi.fn().mockResolvedValue({ winnings: null }) },
@@ -164,7 +183,7 @@ function makeResolveDeps(opts: {
       $transaction,
       liveMatch: { create: vi.fn(), findFirst: liveMatchFindFirst },
     },
-    hub: { publish: vi.fn() },
+    hub: { publish },
     ...(rolls.d3 ? { rollD3: fixedRolls(rolls.d3) } : {}),
     ...(rolls.d6 ? { rollD6: fixedRolls(rolls.d6) } : {}),
   };
@@ -186,6 +205,7 @@ function makeResolveDeps(opts: {
     playerUpdateMany,
     leagueFindUnique,
     leagueUpdate,
+    publish,
   };
 }
 
@@ -194,7 +214,6 @@ const resolveInput = {
   leagueId: "l-1",
   homeTeamId: "home-t",
   awayTeamId: "away-t",
-  nominations: { home: homeNom, away: awayNom },
   loadedBy: "user-1",
   now: 6000,
 };
@@ -414,21 +433,27 @@ describe("resolveLiveMatch", () => {
     await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 409 });
   });
 
-  it("rejects with 400 when a team nominates fewer than six distinct players", async () => {
-    const { deps } = makeResolveDeps();
-    await expect(
-      resolveLiveMatch({ ...resolveInput, nominations: { home: ["h1"], away: awayNom } }, deps),
-    ).rejects.toMatchObject({ status: 400 });
+  it("rejects with 400 when a team nominated fewer than six distinct players", async () => {
+    const { deps } = makeResolveDeps({
+      row: finishedRow({ mvpNominations: { home: ["h1"], away: awayNom } }),
+    });
+    await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 400 });
   });
 
   it("rejects with 400 when a nomination is not in that team's roster", async () => {
-    const { deps } = makeResolveDeps();
-    await expect(
-      resolveLiveMatch(
-        { ...resolveInput, nominations: { home: ["h1", "h2", "h3", "h4", "h5", "x9"], away: awayNom } },
-        deps,
-      ),
-    ).rejects.toMatchObject({ status: 400 });
+    const { deps } = makeResolveDeps({
+      row: finishedRow({
+        mvpNominations: { home: ["h1", "h2", "h3", "h4", "h5", "x9"], away: awayNom },
+      }),
+    });
+    await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("rejects with 409 when a side has not nominated yet (RAU-51 both-sides gate)", async () => {
+    const { deps } = makeResolveDeps({
+      row: finishedRow({ mvpNominations: { home: homeNom, away: null } }),
+    });
+    await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 409 });
   });
 
   it("rejects with 404 when no live row exists for the fixture", async () => {
@@ -473,13 +498,13 @@ describe("resolveLiveMatch", () => {
 });
 
 describe("rollLiveMvp", () => {
-  it("returns the server-rolled MVP grantees + post-match FF and PERSISTS them as pendingResolution (same tx)", async () => {
+  it("returns the server-rolled MVP grantees + post-match FF over the PERSISTED per-side nominations (RAU-51) and PERSISTS them as pendingResolution (same tx)", async () => {
     const { deps, liveMatchUpdateMany, matchResultCreate, fixtureUpdate, teamUpdateMany } =
       makeResolveDeps({
         rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
       });
     const roll = await rollLiveMvp(
-      { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", nominations: { home: homeNom, away: awayNom }, now: 6000 },
+      { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", now: 6000 },
       deps,
     );
     // rollLiveMvp rolls MVP FIRST (1D6=3 → home nom[2] = h3, 1D6=4 → away
@@ -507,17 +532,31 @@ describe("rollLiveMvp", () => {
     const { deps } = makeResolveDeps({ matchResult: { id: "mr-x" } });
     await expect(
       rollLiveMvp(
-        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", nominations: { home: homeNom, away: awayNom }, now: 6000 },
+        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", now: 6000 },
         deps,
       ),
     ).rejects.toMatchObject({ status: 409 });
   });
 
-  it("rejects invalid nominations with 400 and a not-finished match with 409", async () => {
-    const invalid = makeResolveDeps();
+  it("rejects with 409 until BOTH sides have nominated (RAU-51 roll gate)", async () => {
+    const { deps } = makeResolveDeps({
+      row: finishedRow({ mvpNominations: { home: homeNom, away: null } }),
+    });
     await expect(
       rollLiveMvp(
-        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", nominations: { home: ["h1"], away: awayNom }, now: 6000 },
+        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", now: 6000 },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 409, message: "both sides must nominate first" });
+  });
+
+  it("rejects invalid persisted nominations with 400 and a not-finished match with 409", async () => {
+    const invalid = makeResolveDeps({
+      row: finishedRow({ mvpNominations: { home: ["h1"], away: awayNom } }),
+    });
+    await expect(
+      rollLiveMvp(
+        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", now: 6000 },
         invalid.deps,
       ),
     ).rejects.toMatchObject({ status: 400 });
@@ -525,9 +564,119 @@ describe("rollLiveMvp", () => {
     const unfinished = makeResolveDeps({ row: finishedRow({ status: "live" as const }) });
     await expect(
       rollLiveMvp(
-        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", nominations: { home: homeNom, away: awayNom }, now: 6000 },
+        { fixtureId: "f-1", homeTeamId: "home-t", awayTeamId: "away-t", now: 6000 },
         unfinished.deps,
       ),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("nominateMvpLiveMatch", () => {
+  const nominateInput = {
+    fixtureId: "f-1",
+    teamId: "home-t",
+    side: "home" as const,
+    players: homeNom,
+    now: 6000,
+  };
+
+  it("persists the side's six nominations (replacing a previous submission) with a seq bump and publishes the new view", async () => {
+    const { deps, liveMatchUpdateMany, publish } = makeResolveDeps({
+      row: finishedRow({ mvpNominations: { home: ["h6", "h5", "h4", "h3", "h2", "h1"], away: awayNom } }),
+    });
+
+    const result = await nominateMvpLiveMatch(nominateInput, deps);
+
+    // Replace-on-resubmit: the AWAY side is preserved, the HOME side overwritten.
+    expect(liveMatchUpdateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 12 },
+      data: { mvpNominations: { home: homeNom, away: awayNom }, seq: 13 },
+    });
+    // The optimistic guard bump + the published view carry the new nominations.
+    expect(result.seq).toBe(13);
+    expect(result.view.mvpNominations).toEqual({ home: homeNom, away: awayNom });
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({ seq: 13, mvpNominations: { home: homeNom, away: awayNom }, events: [] }),
+    );
+  });
+
+  it("rejects with 404 when no live row exists for the fixture", async () => {
+    const { deps, liveMatchFindFirst } = makeResolveDeps();
+    liveMatchFindFirst.mockResolvedValue(null);
+    await expect(nominateMvpLiveMatch(nominateInput, deps)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("rejects with 409 when the live match is not finished", async () => {
+    const { deps } = makeResolveDeps({ row: finishedRow({ status: "live" as const }) });
+    await expect(nominateMvpLiveMatch(nominateInput, deps)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("rejects with 409 when a MatchResult already exists (already resolved)", async () => {
+    const { deps } = makeResolveDeps({ matchResult: { id: "mr-x" } });
+    await expect(nominateMvpLiveMatch(nominateInput, deps)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("rejects with 400 when the six are not distinct roster ids of that side's team", async () => {
+    const dup = makeResolveDeps();
+    await expect(
+      nominateMvpLiveMatch(
+        { ...nominateInput, players: ["h1", "h1", "h2", "h3", "h4", "h5"] },
+        dup.deps,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+
+    const foreign = makeResolveDeps();
+    await expect(
+      nominateMvpLiveMatch(
+        { ...nominateInput, players: ["h1", "h2", "h3", "h4", "h5", "x9"] },
+        foreign.deps,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+
+    const short = makeResolveDeps();
+    await expect(
+      nominateMvpLiveMatch({ ...nominateInput, players: ["h1"] }, short.deps),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("rejects with 400 a DEAD nominee (RAU-12 availability guard)", async () => {
+    const { deps, teamFindMany } = makeResolveDeps();
+    teamFindMany.mockResolvedValue([
+      {
+        ...teamRow("home"),
+        players: [
+          { rosterPlayerId: "h1", valueBonus: 0, alive: false, missNextMatch: false },
+          ...teamRow("home").players.slice(1).map((p) => ({ ...p, alive: true, missNextMatch: false })),
+        ],
+      },
+      teamRow("away"),
+    ]);
+    await expect(
+      nominateMvpLiveMatch(
+        { ...nominateInput, players: ["h1", "h2", "h3", "h4", "h5", "h6"] },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("rejects with 400 a SUSPENDED nominee (RAU-12 missNextMatch guard)", async () => {
+    const { deps, teamFindMany } = makeResolveDeps();
+    teamFindMany.mockResolvedValue([
+      {
+        ...teamRow("home"),
+        players: [
+          { rosterPlayerId: "h1", valueBonus: 0, alive: true, missNextMatch: true },
+          ...teamRow("home").players.slice(1).map((p) => ({ ...p, alive: true, missNextMatch: false })),
+        ],
+      },
+      teamRow("away"),
+    ]);
+    await expect(
+      nominateMvpLiveMatch(
+        { ...nominateInput, players: ["h1", "h2", "h3", "h4", "h5", "h6"] },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });
