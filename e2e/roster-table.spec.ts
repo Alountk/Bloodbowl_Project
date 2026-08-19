@@ -448,7 +448,88 @@ test("a rival member views the roster read-only: no modal on row click", async (
     // Read-only rows have no click handler: clicking opens no improve modal.
     await table.locator("tbody tr").first().click();
     await expect(league.rival.getByTestId("improve-modal")).toHaveCount(0);
+    // RAU-9: the read-only view exposes no reorder arrows either.
+    await expect(table.locator('[data-testid^="reorder-"]')).toHaveCount(0);
   } finally {
     await league.close();
+  }
+});
+
+// --- Journey 6: RAU-9 reorder arrows move a player; the dorsal persists --------
+test("RAU-9: the owner reorder arrows move a player and the dorsal persists", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ locale: "es-ES" });
+  try {
+    const page = await context.newPage();
+    await signup(page, uniqueEmail("rt-reorder"));
+    const teamName = `RT Reorder ${Date.now()}`;
+    await createTeam(page, teamName);
+
+    // Resolve the owned team id + roster (creation order = Player 1..11).
+    const res = await page.request.get("/api/teams");
+    expect(res.status()).toBe(200);
+    const teams = (await res.json()) as {
+      id: string;
+      name: string;
+      roster: { id: string; name: string }[];
+    }[];
+    const team = teams.find((t) => t.name === teamName);
+    expect(team, `owned team "${teamName}"`).toBeDefined();
+    const teamId = team!.id;
+    const roster = team!.roster;
+    const p1 = roster[0].id;
+    const p2 = roster[1].id;
+
+    await page.goto(`/teams/${teamId}`);
+    const table = page.getByTestId("team-roster-table");
+    await expect(table).toBeVisible();
+    // The owner view renders the reorder arrows; the first row has no "up".
+    const down = page.getByTestId(`reorder-down-${p1}`);
+    await expect(down).toBeVisible();
+    await expect(page.getByTestId(`reorder-up-${p1}`)).toHaveCount(0);
+    await expect(page.getByTestId(`roster-number-${p1}`)).toHaveText("1");
+    await expect(table.locator("tbody tr").first()).toContainText("Player 1");
+
+    // Move Player 1 down one slot: the dorsal column flips immediately.
+    await down.click();
+    await expect(page.getByTestId(`roster-number-${p2}`)).toHaveText("1");
+    await expect(page.getByTestId(`roster-number-${p1}`)).toHaveText("2");
+    await expect(table.locator("tbody tr").first()).toContainText("Player 2");
+
+    // The optimistic flip is instant; wait for the PATCH to be COMMITTED
+    // server-side before reloading (a premature reload would abort the write).
+    const expectedOrder = [p2, p1, ...roster.slice(2).map((r) => r.id)];
+    await expect
+      .poll(
+        async () => {
+          const res = await page.request.get("/api/teams");
+          if (res.status() !== 200) return null;
+          const teams = (await res.json()) as { id: string; roster: { id: string }[] }[];
+          const t = teams.find((team) => team.id === teamId);
+          return t?.roster.map((r) => r.id).join(",") ?? null;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(expectedOrder.join(","));
+
+    // The new order survives a reload (the roster JSON is the source of truth).
+    await page.reload();
+    await expect(page.getByTestId("team-roster-table")).toBeVisible();
+    await expect(page.getByTestId(`roster-number-${p2}`)).toHaveText("1");
+    await expect(page.getByTestId(`roster-number-${p1}`)).toHaveText("2");
+    await expect(table.locator("tbody tr").first()).toContainText("Player 2");
+
+    // The API persisted the same sequence.
+    const after = await page.request.get("/api/teams");
+    const teamsAfter = (await after.json()) as { id: string; roster: { id: string }[] }[];
+    const teamAfter = teamsAfter.find((t) => t.id === teamId);
+    expect(teamAfter?.roster.map((r) => r.id)).toEqual([
+      p2,
+      p1,
+      ...roster.slice(2).map((r) => r.id),
+    ]);
+  } finally {
+    await context.close();
   }
 });
