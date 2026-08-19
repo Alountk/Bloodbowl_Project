@@ -14,14 +14,14 @@ import type { LiveCommand } from "./api";
  */
 
 const aliveRoster = [
-  { rosterPlayerId: "p1", name: "Blitzer A", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
-  { rosterPlayerId: "p2", name: "Thrower A", positionalKey: "thrower", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
-  { rosterPlayerId: "p3", name: "Dead B", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: false, valueBonus: 0 },
+  { rosterPlayerId: "p1", name: "Blitzer A", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+  { rosterPlayerId: "p2", name: "Thrower A", positionalKey: "thrower", pe: 0, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+  { rosterPlayerId: "p3", name: "Dead B", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: false, missNextMatch: false, valueBonus: 0 },
 ];
 
 const opponentRoster = [
-  { rosterPlayerId: "o1", name: "Blitzer Rival", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
-  { rosterPlayerId: "o2", name: "Thrower Rival", positionalKey: "thrower", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+  { rosterPlayerId: "o1", name: "Blitzer Rival", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+  { rosterPlayerId: "o2", name: "Thrower Rival", positionalKey: "thrower", pe: 0, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
 ];
 
 function renderControls(props: Partial<Parameters<typeof EventControls>[0]> = {}) {
@@ -81,6 +81,62 @@ describe("EventControls — role-aware menu (D26, LM-20)", () => {
 });
 
 describe("EventControls — mini-form player + roll selects (LM-20, RAU-39)", () => {
+  it("RAU-12: excludes a missNextMatch player from every selectable pool", () => {
+    // p2 is unavailable for this match (lasting-band casualty of the previous
+    // one) — they must disappear from scorer/causer and the opponent victim
+    // pools even though they are alive.
+    const suspendedRoster = [
+      ...aliveRoster,
+      { rosterPlayerId: "p9", name: "Suspended B", positionalKey: "blitzer", pe: 0, skills: [], injuries: [{ kind: "apaleado" }], alive: true, missNextMatch: true, valueBonus: 0 },
+    ];
+    const suspendedOpponent = [
+      ...opponentRoster,
+      { rosterPlayerId: "o9", name: "Suspended Rival", positionalKey: "blitzer", pe: 0, skills: [], injuries: [{ kind: "grave" }], alive: true, missNextMatch: true, valueBonus: 0 },
+    ];
+    renderControls({ roster: suspendedRoster, opponentRoster: suspendedOpponent });
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+
+    // TD player select (own pool).
+    fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
+    const tdSelect = screen.getByLabelText(/Jugador/i) as HTMLSelectElement;
+    const tdLabels = Array.from(tdSelect.options).map((o) => o.textContent ?? "");
+    expect(tdLabels.some((l) => l.includes("Suspended B"))).toBe(false);
+    expect(tdLabels.some((l) => l.includes("Blitzer A"))).toBe(true);
+
+    // Casualty victim + causer selects (active coach).
+    fireEvent.click(screen.getByRole("button", { name: /Cancelar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
+    const victimLabels = Array.from(victim.options).map((o) => o.textContent ?? "");
+    expect(victimLabels.some((l) => l.includes("Suspended Rival"))).toBe(false);
+    expect(victimLabels.some((l) => l.includes("Blitzer Rival"))).toBe(true);
+    const causer = screen.getByLabelText(/Autor de la lesión/i) as HTMLSelectElement;
+    const causerLabels = Array.from(causer.options).map((o) => o.textContent ?? "");
+    expect(causerLabels.some((l) => l.includes("Suspended B"))).toBe(false);
+
+    // Foul victim select (opponent pool).
+    fireEvent.click(screen.getByRole("button", { name: /Cancelar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
+    const foulVictim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
+    const foulLabels = Array.from(foulVictim.options).map((o) => o.textContent ?? "");
+    expect(foulLabels.some((l) => l.includes("Suspended Rival"))).toBe(false);
+    expect(foulLabels.some((l) => l.includes("Thrower Rival"))).toBe(true);
+  });
+
+  it("RAU-12: excludes a missNextMatch player from the NON-active self-inflicted victim pool", () => {
+    const suspendedRoster = [
+      ...aliveRoster,
+      { rosterPlayerId: "p9", name: "Suspended B", positionalKey: "blitzer", pe: 0, skills: [], injuries: [{ kind: "apaleado" }], alive: true, missNextMatch: true, valueBonus: 0 },
+    ];
+    renderControls({ activeSide: "away", roster: suspendedRoster });
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
+    const labels = Array.from(victim.options).map((o) => o.textContent ?? "");
+    expect(labels.some((l) => l.includes("Suspended B"))).toBe(false);
+    expect(labels.some((l) => l.includes("Blitzer A"))).toBe(true);
+  });
+
   it("shows only ALIVE players from the viewer's roster in the player select", () => {
     renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));

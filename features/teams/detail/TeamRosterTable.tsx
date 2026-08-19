@@ -177,6 +177,9 @@ export function TeamRosterTable({
               const bonus = core?.valueBonus ?? 0;
               const dead = core != null && !core.alive;
               const injured = (core?.injuries?.length ?? 0) > 0 && !dead;
+              // RAU-12: a lasting-band casualty keeps the player out of the NEXT
+              // match — distinct from the dead row (they WILL come back).
+              const missNext = core?.missNextMatch ?? false;
               const refs = skillRefs(positional, core?.skills ?? []);
               const nextCost = nextImprovementCost(core?.improvements ?? 0);
               const pe = core?.pe ?? 0;
@@ -213,6 +216,14 @@ export function TeamRosterTable({
                       {entry.name}
                       {dead ? <span className="ml-1">💀</span> : null}
                       {injured ? <span className="ml-1">🏥</span> : null}
+                      {missNext ? (
+                        <span
+                          className="ml-1 rounded bg-[#fef2f2] px-1 py-0.5 align-middle text-[9.5px] font-black tracking-wide text-[#d11938] uppercase"
+                          title={t("detail.tbl.missNextMatchTitle")}
+                        >
+                          {t("detail.tbl.missNextMatch")}
+                        </span>
+                      ) : null}
                     </p>
                     <p className="text-[11px] text-[#64748b]">{positional?.name ?? t("roster.playerFallback")}</p>
                     <p className="text-[10px] italic text-[#94a3b8]">

@@ -133,8 +133,11 @@ export function EventControls({
 
   const isActive = viewerSide === activeSide;
   const menuItems = isActive ? ACTIVE_MENU : NON_ACTIVE_MENU;
-  const alivePlayers = roster.filter((p) => p.alive);
-  const aliveOpponentPlayers = opponentRoster.filter((p) => p.alive);
+  // RAU-12: a lasting-band casualty makes the victim unavailable for THIS match
+  // — the pools exclude them (in addition to the dead), so a suspended player
+  // can never be a scorer/causer/victim/foul-target until the team plays again.
+  const alivePlayers = roster.filter((p) => p.alive && !p.missNextMatch);
+  const aliveOpponentPlayers = opponentRoster.filter((p) => p.alive && !p.missNextMatch);
   // RAU-39 role-aware pools: the ACTIVE coach proposes the injury THEY inflicted
   // (victim from the rival, causer from their OWN roster); the NON-active coach
   // records a SELF-INFLICTED wound on their OWN player (victim own, no causer).
@@ -401,7 +404,7 @@ export function EventControls({
                 <option value="" disabled>
                   {t("match.controls.select")}
                 </option>
-                {opponentRoster.map((p) => (
+                {aliveOpponentPlayers.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
                     {playerOptionLabel(p, opponentRaceId)}
                   </option>

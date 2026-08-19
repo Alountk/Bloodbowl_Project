@@ -521,7 +521,7 @@ describe("getMatchDetail", () => {
         raceId: "human",
         user: { id: "u1", name: "Coach A", email: "a@x", avatar: null },
         players: [
-          { rosterPlayerId: "p1", name: "Blitzer", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, valueBonus: 0 },
+          { rosterPlayerId: "p1", name: "Blitzer", positionalKey: "blitzer", pe: 7, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
         ],
       },
       awayTeam: {

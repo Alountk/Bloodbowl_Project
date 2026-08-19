@@ -45,6 +45,7 @@ import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
 import { computeWinnings, preMatchFanFactor, postMatchFanFactor, type MatchOutcome } from "@/lib/rules";
 import { rollD3, rollD6 } from "@/lib/random";
+import { clearSuspensionUpdate, injurySuspensionUpdate } from "@/lib/playerInjuries";
 import {
   computeMvpGrantee,
   computePettyCash,
@@ -1440,6 +1441,15 @@ export async function resolveLiveMatch(
       });
     }
 
+    // RAU-12 clear-then-set: this resolution IS an applied match — suspensions
+    // from BEFORE it are served (cleared for every player of both teams) and
+    // the new lasting victims are re-flagged so a player injured in THIS match
+    // starts their suspension after it, not during.
+    await tx.player.updateMany({
+      where: { teamId: { in: [input.homeTeamId, input.awayTeamId] } },
+      data: clearSuspensionUpdate(),
+    });
+
     // Casualty injuries: append each victim's persisted band (skip unknown rows
     // and already-dead players — result-route semantics).
     await persistResolveCasualties(tx, input.homeTeamId, input.awayTeamId, casualties);
@@ -1460,9 +1470,11 @@ export async function resolveLiveMatch(
 
 /**
  * Appends each casualty victim's persisted band to their Player row, marking a
- * `dead` victim not alive (mirrors the result route's `persistCasualtyOutcomes`:
+ * `dead` victim not alive and flagging a lasting band as unavailable for the
+ * NEXT match (RAU-12). Mirrors the result route's `persistCasualtyOutcomes`:
  * an unknown roster id — no backfilled Player row — is skipped, an already-dead
- * Player is skipped, and duplicate victims apply once).
+ * Player is skipped, and duplicate victims apply once. The caller CLEARS both
+ * teams' pre-existing suspension flags BEFORE invoking this.
  */
 async function persistResolveCasualties(
   tx: StoreTx,
@@ -1493,7 +1505,7 @@ async function persistResolveCasualties(
       where: { teamId, rosterPlayerId: c.rosterPlayerId },
       data: {
         injuries: [...injuries, { kind: c.band }] as never,
-        alive: c.band === "dead" ? false : row.alive,
+        ...injurySuspensionUpdate(c.band, row.alive),
       },
     });
   }

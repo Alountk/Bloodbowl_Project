@@ -34,6 +34,7 @@ function buildPlayer(overrides: Record<string, unknown> = {}) {
     skills: ["block"],
     injuries: ["cabeza rota"],
     alive: true,
+    missNextMatch: false,
     valueBonus: 10000,
     improvements: [{ kind: "primary", skill: "block", cost: 6 }],
     attributeIncreases: { st: 1 },
@@ -71,6 +72,7 @@ describe("GET /api/teams/[teamId]/progression", () => {
       attributeIncreases: { st: 1 },
       valueBonus: 10000,
       alive: true,
+      missNextMatch: false,
       improvements: 1,
       stats: { casualties: 0, mvp: 0 },
     });

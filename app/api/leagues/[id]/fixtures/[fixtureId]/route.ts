@@ -180,6 +180,9 @@ function mergeRosterPlayers(
       skills: row?.skills ?? [],
       injuries: row?.injuries ?? [],
       alive: row?.alive ?? true,
+      // RAU-12: the suspension flag only exists on a Player row; a roster entry
+      // without one is available.
+      missNextMatch: row?.missNextMatch ?? false,
       valueBonus: row?.valueBonus ?? 0,
     };
   });
@@ -194,6 +197,7 @@ interface MatchPlayerRow {
   skills: unknown;
   injuries: unknown;
   alive: boolean;
+  missNextMatch: boolean;
   valueBonus: number;
 }
 
@@ -258,6 +262,7 @@ export async function GET(
               skills: true,
               injuries: true,
               alive: true,
+              missNextMatch: true,
               valueBonus: true,
             },
           },
@@ -281,6 +286,7 @@ export async function GET(
               skills: true,
               injuries: true,
               alive: true,
+              missNextMatch: true,
               valueBonus: true,
             },
           },
