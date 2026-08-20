@@ -239,7 +239,13 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     const body = await res.json();
     // The served order follows the ROSTER JSON (p2 first), NOT the Player row
     // id-asc order (p1 first) — reordering the roster renumbers the dorsal.
-    expect(body.homeTeam.players.map((p: { rosterPlayerId: string }) => p.rosterPlayerId)).toEqual(["p2", "p1"]);
+    // RAU-13: this unplayed fixture has only 2 available players, so 9
+    // Journeymen append AFTER the roster (the real players keep the lead).
+    const realIds = body.homeTeam.players
+      .filter((p: { journeyman?: boolean }) => !p.journeyman)
+      .map((p: { rosterPlayerId: string }) => p.rosterPlayerId);
+    expect(realIds).toEqual(["p2", "p1"]);
+    expect(body.homeTeam.players.filter((p: { journeyman?: boolean }) => p.journeyman)).toHaveLength(9);
     expect(body.homeTeam.players[0]).toMatchObject({ rosterPlayerId: "p2", name: "Lineman", pe: 3 });
     expect(body.homeTeam.players[1]).toMatchObject({ rosterPlayerId: "p1", name: "Blitzer", pe: 7 });
   });
@@ -267,7 +273,12 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     // Defensive: without a roster the dorsal still resolves from the raw rows.
-    expect(body.homeTeam.players.map((p: { rosterPlayerId: string }) => p.rosterPlayerId)).toEqual(["p1", "p2"]);
+    // RAU-13: only 2 players are available here, so 9 Journeymen follow.
+    const realIds = body.homeTeam.players
+      .filter((p: { journeyman?: boolean }) => !p.journeyman)
+      .map((p: { rosterPlayerId: string }) => p.rosterPlayerId);
+    expect(realIds).toEqual(["p1", "p2"]);
+    expect(body.homeTeam.players.filter((p: { journeyman?: boolean }) => p.journeyman)).toHaveLength(9);
   });
 
   it("serializes an active LiveMatch into the unified-clock live DTO + viewer's side (D19)", async () => {
@@ -566,5 +577,216 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     const body = await res.json();
     expect(body.live.status).toBe("finished");
     expect(body.liveWinnings).toBeNull();
+  });
+
+  it("RAU-13: appends 11 - available Journeymen for an unplayed fixture (synthetic ids + flag + race lineman)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    // 10 alive roster players, no Player rows → 1 journeyman completes the lineup.
+    const roster = Array.from({ length: 10 }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Lineman ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const players = body.homeTeam.players as {
+      rosterPlayerId: string;
+      name: string;
+      positionalKey: string;
+      journeyman: boolean;
+    }[];
+    expect(players).toHaveLength(11);
+    // The 10 roster players are served first, flagged NOT journeyman.
+    expect(players.filter((p) => !p.journeyman)).toHaveLength(10);
+    expect(players.slice(0, 10).every((p) => p.journeyman === false)).toBe(true);
+    // The single journeyman: synthetic id, Novato name, the race's lineman key.
+    expect(players[10]).toMatchObject({
+      rosterPlayerId: "journeyman-t1-1",
+      name: "Novato 1",
+      positionalKey: "lineman",
+      pe: 0,
+      alive: true,
+      missNextMatch: false,
+      valueBonus: 0,
+      journeyman: true,
+    });
+  });
+
+  it("RAU-13: uses the race's Lineman positional key (amazon → linewoman)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const roster = Array.from({ length: 10 }, (_, i) => ({
+      id: `a${i + 1}`,
+      name: `Linewoman ${i + 1}`,
+      positionalKey: "linewoman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Eagle Warriors",
+          raceId: "amazon",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    const body = await res.json();
+    const jrny = body.homeTeam.players.find((p: { journeyman: boolean }) => p.journeyman);
+    expect(jrny).toMatchObject({ rosterPlayerId: "journeyman-t1-1", name: "Novato 1", positionalKey: "linewoman" });
+  });
+
+  it("RAU-13: does NOT append journeymen when 11+ players are available", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const roster = Array.from({ length: 12 }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Lineman ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    const body = await res.json();
+    expect(body.homeTeam.players).toHaveLength(12);
+    expect(body.homeTeam.players.some((p: { journeyman: boolean }) => p.journeyman)).toBe(false);
+  });
+
+  it("RAU-13: a missNextMatch (RAU-12) player counts as unavailable for the journeymen count", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const roster = Array.from({ length: 11 }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Lineman ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [
+            { rosterPlayerId: "p1", name: "Lineman 1", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, missNextMatch: true, valueBonus: 0 },
+          ],
+        },
+      }),
+    );
+    const res = await callGet();
+    const body = await res.json();
+    // 10 available (p1 suspended) → exactly 1 journeyman.
+    expect(body.homeTeam.players.filter((p: { journeyman: boolean }) => p.journeyman)).toHaveLength(1);
+  });
+
+  it("RAU-13: does NOT append journeymen for a played fixture with no live match (manual result / walkover)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const roster = Array.from({ length: 10 }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Lineman ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeScore: 2,
+        awayScore: 1,
+        winnerId: "t1",
+        result: { id: "mr1", fixtureId: "f1", weather: null, scores: {}, pettyCash: 0, loadedBy: "user-admin" },
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    const body = await res.json();
+    // Played WITHOUT a live match → no journeymen existed for that flow.
+    expect(body.homeTeam.players).toHaveLength(10);
+    expect(body.homeTeam.players.some((p: { journeyman: boolean }) => p.journeyman)).toBe(false);
+  });
+
+  it("RAU-13: appends journeymen for a FINISHED live match (they played the match)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const roster = Array.from({ length: 10 }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Lineman ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [],
+        },
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "finished",
+          half: 2,
+          turnNumber: 8,
+          activeSide: "away",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 1,
+          awayScore: 0,
+          seq: 9,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: new Date("2026-03-01T21:00:00"),
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: { home: 55000, away: 45000 },
+          events: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.homeTeam.players.filter((p: { journeyman: boolean }) => p.journeyman)).toHaveLength(1);
+    expect(body.homeTeam.players.find((p: { journeyman: boolean }) => p.journeyman)?.rosterPlayerId).toBe(
+      "journeyman-t1-1",
+    );
   });
 });

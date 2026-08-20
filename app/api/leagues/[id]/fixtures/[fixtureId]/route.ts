@@ -3,7 +3,10 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { deriveLiveClock, isDisplayEvent, parseMvpNominations } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
-import type { PlayerEntry } from "@/features/teams/types";
+import {
+  mergeRosterWithJourneymen,
+  type ServedPlayer,
+} from "@/lib/journeymen";
 
 /** A persisted live event, serialized for the timeline (LM-10). */
 interface LiveEventDto {
@@ -163,45 +166,32 @@ export function parseLiveWinnings(value: unknown): { home: number; away: number 
 }
 
 /**
- * Builds the served `players` roster for a team side (D21/RAU-9): the squad
- * ALWAYS carries every roster entry (id → rosterPlayerId, name, positionalKey)
- * so the Design-A feed and EventControls mini-form resolve names/positions/dorsals even
- * during a LIVE match before the lazy `Player` progression rows exist. When a
- * `Player` row is present it is overlaid (progression fields, alive) so a played
- * match keeps the authoritative post-result state. Dorsal = roster index + 1 —
- * the served order IS the roster JSON order (RAU-9 reorders the dorsal by
- * reordering the roster), with the id-asc `players` rows as the overlay source
- * and the fallback when the roster JSON is missing/unparseable.
+ * Builds the served `players` roster for a team side (D21/RAU-9/RAU-13): the
+ * squad ALWAYS carries every roster entry (id → rosterPlayerId, name,
+ * positionalKey) so the Design-A feed and EventControls mini-form resolve
+ * names/positions/dorsals even during a LIVE match before the lazy `Player`
+ * progression rows exist. When a `Player` row is present it is overlaid
+ * (progression fields, alive) so a played match keeps the authoritative
+ * post-result state. Dorsal = roster index + 1 — the served order IS the roster
+ * JSON order (RAU-9 reorders the dorsal by reordering the roster), with the
+ * id-asc `players` rows as the overlay source and the fallback when the roster
+ * JSON is missing/unparseable.
+ *
+ * RAU-13: `includeJourneymen` controls the match-only Journeymen (Novatos) —
+ * appended AFTER the roster when fewer than 11 players are available, so the
+ * dorsal sequence continues. Journeymen exist ONLY for matches the teams will/
+ * are/did play LIVE: an unplayed fixture (pending/scheduled) and every fixture
+ * with a `LiveMatch` row. A PLAYED fixture with no live match (the manual result
+ * form / a walkover) never serves journeymen — that flow cannot reference them.
  */
 function mergeRosterPlayers(
-  team: { roster: unknown; players: MatchPlayerRow[] },
-): MatchPlayerRow[] {
-  const entries = Array.isArray(team.roster) ? (team.roster as PlayerEntry[]) : [];
-  // A missing/unparseable roster cannot define an order: serve the id-asc
-  // Player rows (D21 deterministic) so a live dorsal never disappears.
-  if (entries.length === 0 && team.players.length > 0) return team.players;
-  const rowByRef = new Map(team.players.map((p) => [p.rosterPlayerId, p]));
-  // Roster JSON is the identity source and its order is deterministic; a
-  // Player-progression row, when present, overlays the live fields.
-  return entries.map((e) => {
-    const row = rowByRef.get(e.id);
-    return {
-      rosterPlayerId: e.id,
-      name: row?.name ?? e.name,
-      positionalKey: row?.positionalKey ?? e.positionalKey,
-      pe: row?.pe ?? 0,
-      skills: row?.skills ?? [],
-      injuries: row?.injuries ?? [],
-      alive: row?.alive ?? true,
-      // RAU-12: the suspension flag only exists on a Player row; a roster entry
-      // without one is available.
-      missNextMatch: row?.missNextMatch ?? false,
-      valueBonus: row?.valueBonus ?? 0,
-    };
-  });
+  team: { id: string; raceId: string; roster: unknown; players: MatchPlayerRow[] },
+  includeJourneymen: boolean,
+): ServedPlayer[] {
+  return mergeRosterWithJourneymen(team, { includeJourneymen });
 }
 
-/** A Prisma `Player` row as served for a match roster. */
+/** A Prisma `Player` row as served for a match roster (the merge overlay). */
 interface MatchPlayerRow {
   rosterPlayerId: string;
   name: string;
@@ -353,11 +343,18 @@ export async function GET(
     ? serializeLive(fixture.liveMatch as LiveMatchRow, side, Date.now())
     : null;
 
+  // RAU-13: journeymen are served for every match the teams play (or will play)
+  // LIVE — an unplayed fixture, or any fixture with a LiveMatch row. A played
+  // fixture without a live match (manual result / walkover) never had them.
+  const includeJourneymen =
+    fixture.liveMatch != null ||
+    (fixture.result == null && fixture.homeScore == null && fixture.awayScore == null);
+
   return NextResponse.json({
     fixture: fixtureRest,
     result: fixture.result ?? null,
-    homeTeam: { ...homeTeam, players: mergeRosterPlayers(homeTeam as never) },
-    awayTeam: { ...awayTeam, players: mergeRosterPlayers(awayTeam as never) },
+    homeTeam: { ...homeTeam, players: mergeRosterPlayers(homeTeam as never, includeJourneymen) },
+    awayTeam: { ...awayTeam, players: mergeRosterPlayers(awayTeam as never, includeJourneymen) },
     live,
     // RAU-44: the winnings persisted at live finish are surfaced ONLY once the
     // match is finished (a pending/live row has none). Once the result is
