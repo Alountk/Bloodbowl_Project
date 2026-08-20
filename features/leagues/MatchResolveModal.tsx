@@ -106,11 +106,12 @@ export function MatchResolveModal({
 
   // RAU-51: the pickers are fed ONLY the viewer's own team's alive+available
   // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
-  // players here.
+  // players here. RAU-13: Journeymen are excluded too — they earn no PE and
+  // can never be the MJP grantee (the server would reject them as foreign).
   const ownRoster = useMemo<RosterPlayerRef[]>(
     () =>
       (ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players)
-        .filter((p) => p.alive && !p.missNextMatch)
+        .filter((p) => p.alive && !p.missNextMatch && !p.journeyman)
         .map((p) => ({ id: p.rosterPlayerId, name: p.name })),
     [ownSide, detail.homeTeam.players, detail.awayTeam.players],
   );

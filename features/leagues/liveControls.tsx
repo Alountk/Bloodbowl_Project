@@ -74,9 +74,12 @@ function positionName(raceId: string, positionalKey: string): string {
   return race?.positionals.find((pos) => pos.key === positionalKey)?.name ?? positionalKey;
 }
 
-/** RAU-48: the option label for a roster player — "Don Pelayo El Bestia (Bull
- * Centaur)" — so causer/victim/scorer picks are unambiguous. */
-function playerOptionLabel(p: MatchPlayer, raceId: string): string {
+/** RAU-48/RAU-13: the option label for a roster player — "Don Pelayo El Bestia
+ * (Bull Centaur)" — so causer/victim/scorer picks are unambiguous. A Journeyman
+ * (Novato) is labeled with the journeyman marker instead of the positional name:
+ * "Novato 1 (Novato)". */
+function playerOptionLabel(p: MatchPlayer, raceId: string, journeymanLabel: string): string {
+  if (p.journeyman) return `${p.name} (${journeymanLabel})`;
   return `${p.name} (${positionName(raceId, p.positionalKey)})`;
 }
 
@@ -136,8 +139,11 @@ export function EventControls({
   // RAU-12: a lasting-band casualty makes the victim unavailable for THIS match
   // — the pools exclude them (in addition to the dead), so a suspended player
   // can never be a scorer/causer/victim/foul-target until the team plays again.
+  // RAU-13: Journeymen are alive && !missNextMatch, so they naturally pass into
+  // the pools and become selectable (labeled "Novato" via `playerOptionLabel`).
   const alivePlayers = roster.filter((p) => p.alive && !p.missNextMatch);
   const aliveOpponentPlayers = opponentRoster.filter((p) => p.alive && !p.missNextMatch);
+  const journeymanLabel = t("match.journeyman");
   // RAU-39 role-aware pools: the ACTIVE coach proposes the injury THEY inflicted
   // (victim from the rival, causer from their OWN roster); the NON-active coach
   // records a SELF-INFLICTED wound on their OWN player (victim own, no causer).
@@ -255,7 +261,7 @@ export function EventControls({
                 </option>
                 {alivePlayers.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {playerOptionLabel(p, rosterRaceId)}
+                    {playerOptionLabel(p, rosterRaceId, journeymanLabel)}
                   </option>
                 ))}
               </select>
@@ -302,7 +308,7 @@ export function EventControls({
                     </option>
                     {causerPool.map((p) => (
                       <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                        {playerOptionLabel(p, rosterRaceId)}
+                        {playerOptionLabel(p, rosterRaceId, journeymanLabel)}
                       </option>
                     ))}
                   </select>
@@ -326,7 +332,7 @@ export function EventControls({
                 </option>
                 {victimPool.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {playerOptionLabel(p, victimRaceId)}
+                    {playerOptionLabel(p, victimRaceId, journeymanLabel)}
                   </option>
                 ))}
               </select>
@@ -406,7 +412,7 @@ export function EventControls({
                 </option>
                 {aliveOpponentPlayers.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {playerOptionLabel(p, opponentRaceId)}
+                    {playerOptionLabel(p, opponentRaceId, journeymanLabel)}
                   </option>
                 ))}
               </select>
