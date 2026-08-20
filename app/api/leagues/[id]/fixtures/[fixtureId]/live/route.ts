@@ -45,6 +45,7 @@ import {
   type CasualtyCause,
 } from "@/lib/livePhase";
 import { ensurePlayersForTeam } from "@/lib/players";
+import { mergeRosterWithJourneymen } from "@/lib/journeymen";
 import type { PlayerEntry } from "@/features/teams/types";
 
 export const dynamic = "force-dynamic";
@@ -257,17 +258,40 @@ async function materializeTeamRosters(
  * `checkActorInvariant`: a foul victim / casualty causer MUST resolve to a
  * roster player on the opposite side. Reads the idempotent `ensurePlayersForTeam`
  * backfill, so it runs after `begin` materializes the rosters.
+ *
+ * RAU-13: the map ALSO resolves each side's Journeymen (Novatos) — the fixture
+ * GET serves them selectable in the EventControls pools, so a foul victim or
+ * casualty causer whose id is a served journeyman must pass the actor
+ * invariants (a journeyman leaves after the match; nothing is persisted for it).
  */
 async function loadRosterSideMap(ctx: FixtureContext): Promise<RosterSideMap> {
-  const players = await prisma.player.findMany({
-    where: { teamId: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
-    select: { teamId: true, rosterPlayerId: true },
-  });
+  const [teamRows, players] = await Promise.all([
+    prisma.team.findMany({
+      where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+      select: { id: true, raceId: true, roster: true },
+    }),
+    prisma.player.findMany({
+      where: { teamId: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+      select: { teamId: true, rosterPlayerId: true, alive: true, missNextMatch: true },
+    }),
+  ]);
   const home = new Set<string>();
   const away = new Set<string>();
   for (const p of players) {
     if (p.teamId === ctx.homeTeamId) home.add(p.rosterPlayerId);
     else if (p.teamId === ctx.awayTeamId) away.add(p.rosterPlayerId);
+  }
+  // The served-journeymen set per side mirrors the fixture GET exactly (same
+  // availability rule + synthetic ids), so the invariants and the UI agree.
+  for (const team of teamRows ?? []) {
+    const served = mergeRosterWithJourneymen({
+      id: team.id,
+      raceId: team.raceId,
+      roster: team.roster,
+      players: players.filter((p) => p.teamId === team.id),
+    });
+    const target = team.id === ctx.homeTeamId ? home : away;
+    for (const p of served) if (p.journeyman) target.add(p.rosterPlayerId);
   }
   return { home, away };
 }
