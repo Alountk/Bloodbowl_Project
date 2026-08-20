@@ -571,11 +571,12 @@ test("RAU-12: a lasting casualty suspends the victim for the next match until it
 });
 
 test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve excludes them)", async ({ browser }) => {
-  // A 2-member, 2-jornada league: the pivot team plays BOTH rounds, so a
+  // A 3-member, 2-jornada league: the pivot team plays BOTH rounds, so a
   // round-1 lasting casualty makes it field 10 available players in round 2 —
   // the match then provides a Journeyman (Novato) for that match only.
+  // (2 rounds need 3 teams: the round-robin season length is at most teams−1.)
   const tag = Date.now().toString(36);
-  const league = await buildLeague(browser, tag, 2, 2);
+  const league = await buildLeague(browser, tag, 2, 3);
   try {
     const { admin, leagueId, teams } = league;
     const r1 = await roundOne(admin, leagueId, teams);
@@ -667,8 +668,25 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     await expect(pivotPage.getByLabel("Jugador", { exact: true })).toHaveCount(0);
 
     // Resolve match 2 → the closure writes awards WITHOUT the Journeyman.
-    const afterEnd2 = await liveCommand(admin, leagueId, r2Fixture.id, { type: "endMatch" });
-    expect(afterEnd2.status).toBe("finished");
+    // endMatch is an optimistic-guard write: a hub-driven pause transition can
+    // race it (seq conflict → 409, the transition rolls back), so retry once —
+    // the same way a user would simply click again — and accept an already-
+    // finished live row (a raced "Invalid transition").
+    let finished = false;
+    for (let attempt = 0; attempt < 2 && !finished; attempt++) {
+      const res = await admin.request.post(
+        `/api/leagues/${leagueId}/fixtures/${r2Fixture.id}/live`,
+        { data: { type: "endMatch" } },
+      );
+      if (res.status() === 200) {
+        finished = ((await res.json()) as { view: { status: string } }).view.status === "finished";
+      }
+    }
+    if (!finished) {
+      const liveState = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+      finished = ((await liveState.json()) as { live: { status: string } | null }).live?.status === "finished";
+    }
+    expect(finished).toBe(true);
     await admin.goto(match2Url);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
     await resolvePerSide(home2Page, away2Page, home2Name, away2Name, match2Url);
@@ -692,7 +710,8 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
 
     // No `Player` row was ever created for the Novato (progression has only the
     // real roster) and the team roster still shows exactly the 11 real players.
-    const prog = await admin.request.get(`/api/teams/${pivotTeamId}/progression`);
+    // The progression route is owner-scoped → request from the pivot coach.
+    const prog = await pivotPage.request.get(`/api/teams/${pivotTeamId}/progression`);
     expect(prog.status()).toBe(200);
     const progBody = (await prog.json()) as { rosterPlayerId: string }[];
     expect(progBody.some((p) => p.rosterPlayerId.startsWith("journeyman-"))).toBe(false);
