@@ -23,6 +23,7 @@ import {
 import { rollD3, rollD6, rollD16 } from "@/lib/random";
 import { clearSuspensionUpdate, injurySuspensionUpdate } from "@/lib/playerInjuries";
 import { ensurePlayersForTeam } from "@/lib/players";
+import { isJourneymanId } from "@/lib/journeymen";
 import { getRaceById } from "@/features/teams/data/races";
 import {
   computeRosterCostFromPlayers,
@@ -43,7 +44,9 @@ interface TeamResultBody {
   casualties: CasualtyVictim[];
 }
 
-/** Parses the team's reported casualty victims ({team, rosterPlayerId}). */
+/** Parses the team's reported casualty victims ({team, rosterPlayerId}).
+ * RAU-13 defensive: a crafted journeyman id is dropped — the form can only
+ * reference REAL roster players, and a Novato's injury never persists. */
 function parseCasualties(raw: unknown): CasualtyVictim[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -52,7 +55,8 @@ function parseCasualties(raw: unknown): CasualtyVictim[] {
       team: c.team === "home" || c.team === "away" ? c.team : null,
       rosterPlayerId: typeof c.rosterPlayerId === "string" ? c.rosterPlayerId : null,
     }))
-    .filter((c): c is CasualtyVictim => c.team !== null && c.rosterPlayerId !== null);
+    .filter((c): c is CasualtyVictim => c.team !== null && c.rosterPlayerId !== null)
+    .filter((c) => !isJourneymanId(c.rosterPlayerId));
 }
 
 function asPlayerActions(raw: unknown): ResultPlayerAction[] {
@@ -62,6 +66,9 @@ function asPlayerActions(raw: unknown): ResultPlayerAction[] {
       (p): p is Record<string, unknown> =>
         typeof p === "object" && p !== null && typeof p.rosterPlayerId === "string",
     )
+    // RAU-13 defensive: a journeyman id cannot earn PE through the form — the
+    // form references roster players only, and a Novato never gets PE.
+    .filter((p) => !isJourneymanId(p.rosterPlayerId as string))
     .map((p) => ({
       rosterPlayerId: p.rosterPlayerId as string,
       tds: typeof p.tds === "number" ? p.tds : 0,
@@ -85,7 +92,10 @@ function parseTeamResult(raw: unknown): TeamResultBody | null {
   const players = asPlayerActions(team.players);
   const mvp = team.mvp as Record<string, unknown> | undefined;
   const nominations = Array.isArray(mvp?.nominations)
-    ? (mvp.nominations as unknown[]).filter((n): n is string => typeof n === "string")
+    ? (mvp.nominations as unknown[])
+        .filter((n): n is string => typeof n === "string")
+        // RAU-13 defensive: a journeyman can never be the MJP grantee.
+        .filter((n) => !isJourneymanId(n))
     : [];
   if (nominations.length !== 6) return null;
   return { score, heldBall, players, nominations, casualties: parseCasualties(team.casualties) };

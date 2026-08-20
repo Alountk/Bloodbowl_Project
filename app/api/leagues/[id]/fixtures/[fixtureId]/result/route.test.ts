@@ -255,6 +255,41 @@ describe("POST /api/.../[fixtureId]/result", () => {
     expect(peUpdate.some((c) => c.where.rosterPlayerId === "p1" && c.data.pe.increment === 3 + PE_MVP)).toBe(true);
   });
 
+  it("RAU-13 defensive: drops a crafted Journeyman id from actions/casualties/nominations", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    stubFixedRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+    // The journeyman casualty is dropped BEFORE any 1D16 roll, so no roll is
+    // consumed — reset the shared rollD16 queue so a stray `Once` never leaks.
+    randomMock.rollD16.mockReset();
+    // A malicious/crafted body referencing a synthetic journeyman id: the route
+    // must drop it (the FORM references roster players only; a Novato never
+    // earns PE nor persists an injury) and keep the real players' awards.
+    const body = structuredClone(validBody);
+    body.home.score = 1; // the journeyman's TD is dropped → p1's single TD matches the score
+    body.home.players = [
+      { rosterPlayerId: "p1", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
+      { rosterPlayerId: "journeyman-t1-1", tds: 1, casualties: 0, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 },
+    ];
+    body.home.casualties = [{ team: "home", rosterPlayerId: "journeyman-t1-1" }];
+    body.home.mvp.nominations = ["p1", "p2", "p3", "p4", "p5", "p6"];
+    prismaMock.player.findMany.mockResolvedValue([]);
+
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(200);
+
+    const writes = prismaMock.player.updateMany.mock.calls.map((c) => c[0]);
+    // The journeyman is never the PE target, never a casualty victim, never MVP.
+    expect(writes.some((c) => String(c.where?.rosterPlayerId ?? "").startsWith("journeyman-"))).toBe(false);
+    // The real scorer still earns his PE.
+    expect(writes.some((c) => c.where.rosterPlayerId === "p1")).toBe(true);
+    // The snapshot never carries the journeyman (casualties/PE/nominations).
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    const allIds = JSON.stringify(scores);
+    expect(allIds).not.toContain("journeyman-");
+  });
+
   it("persists per-victim injury outcomes on the Player rows in the same transaction", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());

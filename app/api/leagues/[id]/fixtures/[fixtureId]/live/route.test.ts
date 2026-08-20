@@ -1333,6 +1333,49 @@ describe("POST .../live — LM-12 foul/casualty actor invariants + LM-6 payloads
       band: "grave",
     });
   });
+
+  it("RAU-13: a foul against a served Journeyman (opposite side) passes the actor invariant", async () => {
+    // The away team fields only 10 players (roster JSON) → the fixture GET would
+    // serve `journeyman-away-t-1`. The active HOME coach fouls that journeyman:
+    // the id must resolve to the OPPOSITE side in the side map (it mirrors the
+    // served rosters), so the invariant allows the foul instead of 409.
+    const tenRoster = Array.from({ length: 10 }, (_, i) => ({
+      id: `ap${i + 1}`,
+      name: `Away ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    authMock.mockResolvedValue(authSession("coach-home"));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+    prismaMock.team.findMany.mockResolvedValue([
+      {
+        id: "home-t",
+        raceId: "human",
+        roster: Array.from({ length: 11 }, (_, i) => ({ id: `hp${i + 1}`, name: `Home ${i + 1}`, positionalKey: "lineman" })),
+      },
+      { id: "away-t", raceId: "human", roster: tenRoster },
+    ]);
+    prismaMock.player.findMany.mockResolvedValue([
+      ...tenRoster.map((p) => ({ teamId: "away-t", rosterPlayerId: p.id, alive: true, missNextMatch: false })),
+      { teamId: "home-t", rosterPlayerId: "hp1", alive: true, missNextMatch: false },
+    ]);
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+
+    const res = await POST(
+      req({ type: "foul", side: "home", playerRosterId: "hp1", victimRosterId: "journeyman-away-t-1" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("POST .../live — casualty propose → confirm round trip (RAU-39)", () => {

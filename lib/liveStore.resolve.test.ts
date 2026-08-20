@@ -73,7 +73,7 @@ function teamRow(side: "home" | "away") {
 }
 
 /** The finished LiveMatch row (normal end: fixture NOT closed, score 1-0). */
-function finishedRow(overrides: Partial<LiveMatch> = {}): LiveMatch & { events: LiveEvent[] } {
+function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = {}): LiveMatch & { events: LiveEvent[] } {
   return {
     id: "lm-1",
     fixtureId: "f-1",
@@ -372,6 +372,50 @@ describe("resolveLiveMatch", () => {
     );
   });
 
+  it("RAU-13: resolve EXCLUDES Journeymen — no PE, no snapshot entry, no Player-row write", async () => {
+    // A journeyman scores a TD and a journeyman SUFFERS a lasting casualty.
+    // Neither may produce a PE award, a casualty snapshot entry or any Player
+    // write — the Novato leaves after the match.
+    const { deps, matchResultCreate, playerUpdateMany } = makeResolveDeps({
+      rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
+      row: finishedRow({
+        events: [
+          { id: "e1", liveMatchId: "lm-1", seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, createdAt: new Date(0) },
+          { id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date(1000) },
+          { id: "e3", liveMatchId: "lm-1", seq: 3, kind: "completion", side: "home", playerRosterId: "h2", half: 1, turnNumber: 4, payload: {}, createdAt: new Date(2000) },
+          { id: "e4", liveMatchId: "lm-1", seq: 4, kind: "casualty", side: "home", playerRosterId: "h3", half: 1, turnNumber: 5, payload: { victimRosterId: "h3", causerRosterId: "a1", band: "apaleado" }, createdAt: new Date(3000) },
+          // Journeyman TD (scores) — must NOT be awarded.
+          { id: "e6", liveMatchId: "lm-1", seq: 6, kind: "td", side: "home", playerRosterId: "journeyman-home-t-1", half: 1, turnNumber: 6, payload: {}, createdAt: new Date(4000) },
+          // Journeyman VICTIM of a lasting casualty — must NOT persist nor reach the snapshot.
+          { id: "e7", liveMatchId: "lm-1", seq: 7, kind: "casualty", side: "home", playerRosterId: "journeyman-home-t-2", half: 1, turnNumber: 7, payload: { victimRosterId: "journeyman-home-t-2", causerRosterId: "a1", band: "grave" }, createdAt: new Date(5000) },
+          { id: "e8", liveMatchId: "lm-1", seq: 8, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, createdAt: new Date(6000) },
+        ],
+      }),
+    });
+
+    await resolveLiveMatch(resolveInput, deps);
+
+    // MVP grantees (rolls): home nom[4] = h5, away nom[5] = a6.
+    const scoreboard = matchResultCreate.mock.calls[0][0].data.scores;
+    expect(scoreboard.home.pe.map((a: { rosterPlayerId: string }) => a.rosterPlayerId)).not.toContain(
+      "journeyman-home-t-1",
+    );
+    expect(scoreboard.home.pe).toEqual([
+      { rosterPlayerId: "h1", pe: 3 },
+      { rosterPlayerId: "h2", pe: 1 },
+      { rosterPlayerId: "h5", pe: 4 },
+    ]);
+    // The journeyman VICTIM is absent from the snapshot casualties (h3 stays).
+    expect(scoreboard.home.casualties).toEqual([
+      { team: "home", rosterPlayerId: "h3", outcome: { kind: "apaleado" } },
+    ]);
+    // No Player write ever references a journeyman id.
+    const writes = playerUpdateMany.mock.calls.map((c) => c[0]);
+    expect(
+      writes.some((c) => String(c.where?.rosterPlayerId ?? "").startsWith("journeyman-")),
+    ).toBe(false);
+  });
+
   it("reuses the persisted pendingResolution (RAU-49 fix): committed MVP + FF EQUAL the previewed values, no re-roll", async () => {
     // The modal previewed h5/a6 + FF 4/3. The injected rolls would produce a
     // DIFFERENT fresh result (h1/a1 + FF 3/2), proving the commit does NOT roll.
@@ -424,10 +468,9 @@ describe("resolveLiveMatch", () => {
   });
 
   it("rejects with 409 when the live row is not finished", async () => {
-    const { deps } = makeResolveDeps({ row: finishedRow({ status: "live" as const }) });
+    const { deps } = makeResolveDeps({ row: finishedRow({ status: "live" }) });
     await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 409 });
   });
-
   it("rejects with 409 when a MatchResult already exists (already resolved)", async () => {
     const { deps } = makeResolveDeps({ matchResult: { id: "mr-x" } });
     await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 409 });
