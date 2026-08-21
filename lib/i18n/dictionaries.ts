@@ -574,6 +574,14 @@ const es: Dict = {
   "match.resolve.saveError": "No se pudo guardar el resultado.",
   "match.resolve.banner": "El partido terminó. Falta resolver el resultado.",
   "match.resolve.action": "Resolver partido",
+
+  // RAU-14 — post-resolve journeyman (Novato) hire panel
+  "match.journeymen.aria": "Novatos del partido",
+  "match.journeymen.title": "Novatos del partido",
+  "match.journeymen.offer": "Tu novato {name} puede quedarse por {cost} M.O.",
+  "match.journeymen.hire": "Contratar",
+  "match.journeymen.letGo": "Dejar ir",
+  "match.journeymen.error": "No se pudo procesar la decisión.",
 };
 
 const en: Dict = {
@@ -1142,6 +1150,14 @@ const en: Dict = {
   "match.resolve.saveError": "Could not save the result.",
   "match.resolve.banner": "The match has ended. The result is still pending.",
   "match.resolve.action": "Resolve match",
+
+  // RAU-14 — post-resolve journeyman hire panel
+  "match.journeymen.aria": "Match journeymen",
+  "match.journeymen.title": "Match journeymen",
+  "match.journeymen.offer": "Your journeyman {name} can stay for {cost} GP",
+  "match.journeymen.hire": "Hire",
+  "match.journeymen.letGo": "Let go",
+  "match.journeymen.error": "Could not process the decision.",
 };
 
 /** The full es/en dictionaries, keyed by locale. */

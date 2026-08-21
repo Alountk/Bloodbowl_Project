@@ -20,6 +20,7 @@ import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
 import { useLeagueName } from "./useLeagueName";
 import { MatchResolveModal } from "./MatchResolveModal";
+import { JourneymenHirePanel } from "./JourneymenHire";
 
 /**
  * Internal single-match fetch hook mirroring `useLeagueDetail`: loads the match
@@ -1590,7 +1591,12 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
               }}
               onNominated={refresh}
             />
-          ) : null}
+          ) : (
+            // RAU-14: once the match is REPORTED, each side's owner sees their
+            // fielded journeymen (Novatos) as hire/let-go offers. The panel
+            // renders nothing for a side without remaining journeymen.
+            <JourneymenHirePanel detail={detail} viewerSide={viewerSide} onUpdated={refresh} />
+          )}
         </>
       );
     } else {
