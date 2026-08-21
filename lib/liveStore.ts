@@ -23,7 +23,7 @@
  * pre-live). `seq` remains monotonically increasing (LM-6).
  */
 
-import type { LiveMatch, LiveEvent, Prisma } from "@prisma/client";
+import type { LiveMatch, LiveEvent, Player, Prisma } from "@prisma/client";
 import {
   beginMatch,
   consentStart,
@@ -48,7 +48,7 @@ import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
 import { computeWinnings, preMatchFanFactor, postMatchFanFactor, type MatchOutcome } from "@/lib/rules";
 import { rollD3, rollD6 } from "@/lib/random";
-import { clearSuspensionUpdate, injurySuspensionUpdate } from "@/lib/playerInjuries";
+import { clearSuspensionUpdate, injurySuspensionUpdate, isLastingBand } from "@/lib/playerInjuries";
 import {
   computeMvpGrantee,
   computePettyCash,
@@ -59,9 +59,11 @@ import {
   addMvpPe,
   casualtyVictimsFromEvents,
   deriveLivePeAwards,
+  journeymanSnapshotEarned,
   validateMvpNominations,
   validateSingleMvpNomination,
   type ResolveEventLike,
+  type SnapshotSideLike,
 } from "./liveResolve";
 import { DEFAULT_COACHING, isCoachingStaff, type PlayerEntry } from "@/features/teams/types";
 import { getRaceById } from "@/features/teams/data/races";
@@ -136,20 +138,25 @@ export interface StoreTx {
     >;
   };
   /** RAU-49: the resolve transaction needs the MatchResult existence guard
-   * (a fixture already has a result → already resolved) and the report write. */
+   * (a fixture already has a result → already resolved) and the report write.
+   * RAU-13: the hire ALSO reads the persisted `scores` snapshot — the single
+   * source of truth for the journeyman's earned PE + injuries. */
   matchResult: {
     findUnique(args: {
       where: { fixtureId: string };
-    }): Promise<{ id: string } | null>;
+    }): Promise<{ id: string; scores: Prisma.JsonValue | null } | null>;
     create(args: Prisma.MatchResultCreateArgs): Promise<{ id: string }>;
   };
   /** RAU-49: the lazy Player writes — per-player PE increments and the casualty
-   * injury appends (skip-unknown/dead semantics mirror the result route). */
+   * injury appends (skip-unknown/dead semantics mirror the result route).
+   * RAU-13: the hire CREATEs the journeyman's row (they are not on the roster
+   * until now, so `ensurePlayersForTeam` never made one). */
   player: {
     findMany(args: Prisma.PlayerFindManyArgs): Promise<
       { teamId: string; rosterPlayerId: string; injuries: Prisma.JsonValue | null; alive: boolean }[]
     >;
     updateMany(args: Prisma.PlayerUpdateManyArgs): Promise<{ count: number }>;
+    create(args: Prisma.PlayerCreateArgs): Promise<Player>;
   };
   /** RAU-38: the accept-concede transaction closes the fixture (winner + scores)
    * in the SAME tx as the `concede` event rows. */
@@ -1699,6 +1706,12 @@ export interface HireJourneymanInput {
  * `positionalKey` = the race Lineman, RAU-11 style) or LET GO (removes the
  * option; no mutation beyond the persisted list).
  *
+ * RAU-13: a hire ALSO CREATEs the journeyman's `Player` row in the same
+ * transaction, carrying the PE they earned during the match (read from the
+ * persisted `MatchResult` snapshot — the single source of truth) and every
+ * casualty band they suffered (`missNextMatch` for a lasting band, `alive:
+ * false` on a dead one). A "Dejar ir" leaves a clean slate — no row, no PE.
+ *
  * Guards: 404 no live row / team; 400 unknown journeyman (the match never
  * persisted journeymen or the JSON is malformed); 409 the journeyman is not in
  * the persisted list (already hired-or-gone) or the match is NOT resolved yet
@@ -1711,8 +1724,8 @@ export interface HireJourneymanInput {
  * Effect in ONE transaction: the journeyman is removed from
  * `LiveMatch.journeymen`; a hire ALSO appends a `PlayerEntry { id: createId(),
  * name: <the persisted journeyman name>, positionalKey: <race Lineman key> }`
- * to the roster and decrements the treasury by the lineman cost. Returns the
- * remaining journeymen + the updated team surface.
+ * to the roster and creates the matching Player row with the match's earned PE
+ * + injuries. Returns the remaining journeymen + the updated team surface.
  */
 export async function hireJourneymanLiveMatch(
   input: HireJourneymanInput,
@@ -1800,9 +1813,10 @@ export async function hireJourneymanLiveMatch(
       throw Object.assign(new Error("not enough treasury"), { status: 409 });
     }
 
+    const nextRosterId = createId();
     const nextRoster: PlayerEntry[] = [
       ...roster,
-      { id: createId(), name: entry.name, positionalKey: lineman.key },
+      { id: nextRosterId, name: entry.name, positionalKey: lineman.key },
     ];
     const updated = await tx.liveMatch.updateMany({
       where: { id: row.id, seq: row.seq },
@@ -1819,6 +1833,40 @@ export async function hireJourneymanLiveMatch(
     await tx.team.updateMany({
       where: { id: input.teamId },
       data: { roster: nextRoster as never },
+    });
+
+    // RAU-13: the hire CARRIES the match into the journeyman's new `Player`
+    // row — the PE they EARNED during the match (TD ★3 / completion ★1 /
+    // lasting casualty ★2 plus the MJP +4 when granted) and every casualty band
+    // they SUFFERED. Both come from the persisted `MatchResult` snapshot: the
+    // resolve already wrote it, so it is the single source of truth at hire
+    // time. A lasting band starts their RAU-12 suspension; a dead band sets
+    // `alive: false`. The row is keyed `(teamId, rosterPlayerId)` with the NEW
+    // roster entry id — `ensurePlayersForTeam` never touched the journeyman
+    // (they are not on the roster until now), so this is the ONLY place the
+    // match's awards land for a hired Novato.
+    const scoreboard = (existing.scores ?? {}) as Record<string, unknown>;
+    const earned = journeymanSnapshotEarned(
+      scoreboard[input.side] as SnapshotSideLike | undefined,
+      input.journeymanId,
+    );
+    const injuries = earned.injuries.map((kind) => ({ kind }));
+    const alive = !injuries.some((injury) => injury.kind === "dead");
+    await tx.player.create({
+      data: {
+        teamId: input.teamId,
+        rosterPlayerId: nextRosterId,
+        name: entry.name,
+        positionalKey: lineman.key,
+        pe: earned.pe,
+        skills: [],
+        injuries: injuries as never,
+        alive,
+        missNextMatch: alive && injuries.some((injury) => isLastingBand(injury.kind)),
+        valueBonus: 0,
+        improvements: [],
+        attributeIncreases: {},
+      },
     });
 
     return {
