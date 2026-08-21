@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
-import { useTeamMigration } from "@/features/migration/useTeamMigration";
+import { useMigrationReload } from "@/app/providers/MigrationReloadContext";
 import { Dashboard } from "./Dashboard";
 
 interface HomeDashboardProps {
@@ -19,19 +19,16 @@ interface HomeDashboardProps {
  * Self-shelled dashboard for the home route. The root layout's shared shell is
  * skipped on "/" (the server page renders the public Landing for anonymous
  * users, which must not carry the app chrome), so this client wrapper provides
- * the AppShell itself — mirroring `SessionAppProvider`'s store/logout/migration
- * wiring for the dashboard. Logout returns to "/" (the landing).
+ * the AppShell itself — mirroring `SessionAppProvider`'s store/logout wiring
+ * for the dashboard. The one-shot legacy migration stays in the layout's
+ * SessionAppProvider; its reload bump reaches this shell via
+ * `useMigrationReload`. Logout returns to "/" (the landing).
  */
 export function HomeDashboard({ authenticated, userName }: HomeDashboardProps) {
   const router = useRouter();
   // Stable ApiTeamStore instance across re-renders.
   const [apiStore] = useState(() => new ApiTeamStore());
-  // Bumped after a migration so AppProvider re-hydrates and shows migrated teams.
-  const [migrationReload, setMigrationReload] = useState(0);
-
-  useTeamMigration(authenticated, {
-    onMigrated: () => setMigrationReload((value) => value + 1),
-  });
+  const migrationReload = useMigrationReload();
 
   return (
     <AppShell
