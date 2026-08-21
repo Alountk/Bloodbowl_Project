@@ -89,10 +89,11 @@ describe("hireJourneymanLiveMatch — HIRE", () => {
     // The option is gone from the persisted list.
     expect(result.journeymen).toEqual({ home: [], away: [] });
     // The roster gained a player with the PERSISTED journeyman name + the race
-    // Lineman positional (RAU-11 style), and the treasury dropped by the cost.
+    // Lineman positional (RAU-11 style). The hire is PAID via the balance
+    // formula (rosterCost growth) — the treasury ledger is NOT decremented.
     const teamCall = teamUpdate.mock.calls[0][0];
     expect(teamCall).toMatchObject({ where: { id: "home-t" } });
-    expect(teamCall.data.treasury).toEqual({ decrement: 50_000 });
+    expect(teamCall.data.treasury).toBeUndefined();
     const nextRoster = teamCall.data.roster;
     expect(nextRoster).toHaveLength(12);
     expect(nextRoster[11]).toMatchObject({ name: "Aldric Martillo", positionalKey: "lineman" });
@@ -102,7 +103,7 @@ describe("hireJourneymanLiveMatch — HIRE", () => {
       where: { id: "lm-1", seq: 12 },
       data: { journeymen: { home: [], away: [] }, seq: 13 },
     });
-    expect(result.team.treasury).toBe(450_000);
+    expect(result.team.treasury).toBe(500_000);
   });
 
   it("409s on a seq conflict (a concurrent decision won) and writes nothing", async () => {

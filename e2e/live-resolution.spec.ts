@@ -779,8 +779,10 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     expect(hired).toBeTruthy();
     expect(hired!.positionalKey).toBe("lineman");
     expect(pivotAfterHire.roster.some((p) => p.name === jrnyName2)).toBe(false);
-    // The hire is PAID: the treasury drops by exactly the Human Lineman cost.
-    expect(pivotAfterHire.treasury).toBe(treasuryBefore - 50_000);
+    // The hire is PAID via the balance formula: the roster grows (rosterCost),
+    // so `computeSpendableBalance` drops by the Lineman cost — the treasury
+    // ledger itself does NOT change (RAU-11 convention, no double-count).
+    expect(pivotAfterHire.treasury).toBe(treasuryBefore);
 
     // A reload shows the hired novato is GONE from the offers (persisted) while
     // the second offer remains — the decision survives the reload.
