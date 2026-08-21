@@ -140,9 +140,9 @@ test.describe("Auth flow regression (LAN host)", () => {
     await expect(page).toHaveURL(`${base}/`);
     await expect(page.getByText("LAN Reavers")).toBeVisible();
 
-    // Logout → /login.
+    // Logout → the public landing.
     await page.getByRole("button", { name: "Log out" }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL("/");
 
     // Login — WITHOUT any reload, teams must be visible and other sections reachable.
     await page.goto(`${base}/login`);
