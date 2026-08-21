@@ -804,6 +804,11 @@ export async function POST(
         const jrny = served[side].filter((p) => p.journeyman);
         return jrny.length > 0 ? { count: jrny.length, names: jrny.map((p) => p.name) } : undefined;
       };
+      // RAU-14: the PERSISTED journeymen (synthetic id + the served race-bank
+      // name) ride the begin write so the post-resolve hire flow can reference
+      // them — the same derivation as the timeline event above.
+      const persistedJourneymen = (side: "home" | "away") =>
+        served[side].filter((p) => p.journeyman).map((p) => ({ id: p.rosterPlayerId, name: p.name }));
       // LM-21/LM-16: every kickoff die is rolled server-side here; any rolls in
       // the POST body are ignored. D3 for a minor deduction, the D6 keep pair
       // for a catastrophe, and the per-team 1D6 em + 1D6 fan rolls.
@@ -833,7 +838,20 @@ export async function POST(
           away: journeymenSide("away"),
         },
       };
-      const result = await beginLiveMatch({ liveMatchId: row.id, fixtureId, now, kickoff }, deps);
+      const result = await beginLiveMatch(
+        {
+          liveMatchId: row.id,
+          fixtureId,
+          now,
+          kickoff,
+          // RAU-14: persist the fielded novatos atomically with the begin rows.
+          journeymen: {
+            home: persistedJourneymen("home"),
+            away: persistedJourneymen("away"),
+          },
+        },
+        deps,
+      );
       return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
     } catch (error) {
       if ((error as { status?: number }).status === 409) {

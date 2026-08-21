@@ -679,6 +679,52 @@ describe("POST .../live — consent/retract/begin command handling", () => {
     expect(kickoff.journeymen.away).toBeUndefined();
   });
 
+  it("persists the fielded journeymen (id + name) on the begin input (RAU-14)", async () => {
+    beginLiveMatchMock.mockResolvedValue({ seq: 3, view: liveView({ status: "live", viewerSide: "home" }) });
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(2));
+    rollD6Mock.mockReturnValue(1);
+    rollD3Mock.mockReturnValue(1);
+    const roster10 = roster11.slice(0, 10);
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 }, raceId: "human", roster: roster10 },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 }, raceId: "human", roster: roster11 },
+    ]);
+    prismaMock.player.findMany.mockResolvedValue(
+      roster10.map((e) => ({
+        teamId: "home-t",
+        rosterPlayerId: e.id,
+        name: e.name,
+        positionalKey: e.positionalKey,
+        pe: 0,
+        skills: [],
+        injuries: [],
+        alive: true,
+        missNextMatch: false,
+        valueBonus: 0,
+      })),
+    );
+
+    const res = await POST(req({ type: "begin" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+
+    const beginArg = beginLiveMatchMock.mock.calls[0][0];
+    // The persisted journeymen carry the synthetic id + the SAME seeded name
+    // the kickoff event uses — the post-resolve hire flow reads them off the row.
+    const expectedName = journeymanName(
+      "home-t",
+      "human",
+      1,
+      new Set(roster10.map((e) => e.name)),
+    );
+    expect(beginArg.journeymen).toEqual({
+      home: [{ id: `journeyman-home-t-1`, name: expectedName }],
+      away: [],
+    });
+  });
+
   it("returns 400 for an unknown command type", async () => {
     prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
     const res = await POST(req({ type: "explode" }), {
