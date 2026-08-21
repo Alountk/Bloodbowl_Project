@@ -20,6 +20,7 @@ import {
   rollLiveMvp,
   resolveLiveMatch,
   nominateMvpLiveMatch,
+  hireJourneymanLiveMatch,
 } from "@/lib/liveStore";
 import {
   applyEndTurn,
@@ -602,6 +603,16 @@ type ControlCommand =
       type: "nominateMvp";
       side: TeamSide;
       players: string[];
+    }
+  | {
+      /** RAU-14: the post-resolve journeyman decision. `hire: true` pays the
+       * race Lineman cost from the treasury and makes the Novato a permanent
+       * roster player; `hire: false` ("Dejar ir") just removes the option. The
+       * route enforces the caller owns THAT side (like `nominateMvp`). */
+      type: "hireJourneyman";
+      side: TeamSide;
+      journeymanId: string;
+      hire: boolean;
     };
 
 function isControlCommand(value: unknown): value is ControlCommand {
@@ -665,6 +676,13 @@ function isControlCommand(value: unknown): value is ControlCommand {
         (c.side === "home" || c.side === "away") &&
         Array.isArray(c.players) &&
         c.players.every((p) => typeof p === "string")
+      );
+    case "hireJourneyman":
+      // RAU-14: the caller's side + the synthetic journeyman id + the decision.
+      return (
+        (c.side === "home" || c.side === "away") &&
+        typeof c.journeymanId === "string" &&
+        typeof c.hire === "boolean"
       );
     default:
       return false;
@@ -1016,6 +1034,40 @@ export async function POST(
         return Response.json({ error: "Cannot resolve match in current state" }, { status: 409 });
       }
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      throw error;
+    }
+  }
+
+  // RAU-14: the post-resolve journeyman decision (hire / let go). Restricted to
+  // the side's OWN owner like `nominateMvp` — each coach decides their own
+  // Novatos; an admin/bye viewer without a side is rejected with 409.
+  if (command.type === "hireJourneyman") {
+    if (side === null) {
+      return Response.json({ error: "No side to hire" }, { status: 409 });
+    }
+    if (command.side !== side) {
+      return Response.json({ error: "Not your team" }, { status: 409 });
+    }
+    try {
+      const result = await hireJourneymanLiveMatch(
+        {
+          fixtureId,
+          teamId: command.side === "home" ? ctx.homeTeamId : ctx.awayTeamId,
+          side: command.side,
+          journeymanId: command.journeymanId,
+          hire: command.hire,
+          now,
+        },
+        deps,
+      );
+      return Response.json(result, { status: 200 });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400) return Response.json({ error: "Unknown journeyman" }, { status: 400 });
+      if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      if (status === 409) {
+        return Response.json({ error: "Cannot hire in current state" }, { status: 409 });
+      }
       throw error;
     }
   }

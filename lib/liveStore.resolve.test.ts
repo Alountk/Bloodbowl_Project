@@ -63,6 +63,7 @@ function teamRow(side: "home" | "away") {
     raceId: "human",
     roster: side === "home" ? homeRoster : awayRoster,
     coaching: side === "home" ? coaching : { ...coaching, dedicatedFans: 1 },
+    treasury: 50000,
     players: ids.map((rosterPlayerId) => ({
       rosterPlayerId,
       valueBonus: 0,
@@ -105,6 +106,8 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
       home: ["h1", "h2", "h3", "h4", "h5", "h6"],
       away: ["a1", "a2", "a3", "a4", "a5", "a6"],
     },
+    // RAU-14: the default finished row fields no journeymen.
+    journeymen: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     events: [

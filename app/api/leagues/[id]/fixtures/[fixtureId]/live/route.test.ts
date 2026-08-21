@@ -28,6 +28,7 @@ const confirmCasualtyLiveMatchMock = vi.hoisted(() => vi.fn());
 const rollLiveMvpMock = vi.hoisted(() => vi.fn());
 const resolveLiveMatchMock = vi.hoisted(() => vi.fn());
 const nominateMvpLiveMatchMock = vi.hoisted(() => vi.fn());
+const hireJourneymanLiveMatchMock = vi.hoisted(() => vi.fn());
 
 const hubMock = vi.hoisted(() => ({
   subscribe: vi.fn(),
@@ -64,6 +65,7 @@ vi.mock("@/lib/liveStore", () => ({
   rollLiveMvp: rollLiveMvpMock,
   resolveLiveMatch: resolveLiveMatchMock,
   nominateMvpLiveMatch: nominateMvpLiveMatchMock,
+  hireJourneymanLiveMatch: hireJourneymanLiveMatchMock,
 }));
 
 import { GET, POST } from "./route";
@@ -1830,5 +1832,141 @@ describe("POST .../live — RAU-51 per-side MVP nominations (nominateMvp)", () =
     } as never);
     expect(res.status).toBe(400);
     expect(nominateMvpLiveMatchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST .../live — RAU-14 post-resolve journeyman hire (hireJourneyman)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+    prismaMock.team.findMany.mockResolvedValue([]);
+  });
+
+  function finishedSetup(sessionId = "owner-1") {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(8),
+      status: "finished",
+      finishedAt: new Date(2000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue({
+      ...liveState,
+      seq: 8,
+      status: "finished",
+      finishedAt: 2000,
+      events: [],
+    });
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("rejects with 409 when the caller owns NO side (admin/bye — read-only)", async () => {
+    finishedSetup("owner-1"); // league admin, not a fixture coach
+    const res = await POST(
+      req({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-home-t-1", hire: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "No side to hire" });
+    expect(hireJourneymanLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 409 when a coach decides the RIVAL side's journeyman (owner-only)", async () => {
+    finishedSetup("coach-home");
+    const res = await POST(
+      req({ type: "hireJourneyman", side: "away", journeymanId: "journeyman-away-t-1", hire: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Not your team" });
+    expect(hireJourneymanLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("wires `hireJourneyman` through hireJourneymanLiveMatch with the OWNER-side team id + side + decision", async () => {
+    finishedSetup("coach-home");
+    hireJourneymanLiveMatchMock.mockResolvedValue({
+      journeymen: { home: [], away: [] },
+      team: { id: "home-t", roster: [{ id: "new-1", name: "Aldric Martillo", positionalKey: "lineman" }], treasury: 450000 },
+    });
+    const res = await POST(
+      req({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-home-t-1", hire: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(hireJourneymanLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fixtureId: "f-1",
+        teamId: "home-t",
+        side: "home",
+        journeymanId: "journeyman-home-t-1",
+        hire: true,
+      }),
+      expect.anything(),
+    );
+    expect(await res.json()).toMatchObject({
+      journeymen: { home: [], away: [] },
+      team: { id: "home-t", treasury: 450000 },
+    });
+  });
+
+  it("wires the let-go decision (`hire: false`) through unchanged", async () => {
+    finishedSetup("coach-home");
+    hireJourneymanLiveMatchMock.mockResolvedValue({
+      journeymen: { home: [], away: [] },
+      team: { id: "home-t", roster: [], treasury: 0 },
+    });
+    const res = await POST(
+      req({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-home-t-1", hire: false }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(hireJourneymanLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ hire: false }),
+      expect.anything(),
+    );
+  });
+
+  it("maps a hire 400 (unknown journeyman) to 400", async () => {
+    finishedSetup("coach-home");
+    hireJourneymanLiveMatchMock.mockRejectedValue(Object.assign(new Error("unknown journeyman"), { status: 400 }));
+    const res = await POST(
+      req({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-home-t-1", hire: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Unknown journeyman" });
+  });
+
+  it("maps a hire 409 (not-resolved / already-gone / roster-full / insufficient balance) to 409", async () => {
+    finishedSetup("coach-home");
+    hireJourneymanLiveMatchMock.mockRejectedValue(
+      Object.assign(new Error("match not resolved"), { status: 409 }),
+    );
+    const res = await POST(
+      req({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-home-t-1", hire: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Cannot hire in current state" });
+  });
+
+  it("rejects a malformed hireJourneyman body (bad side / missing hire flag) with 400", async () => {
+    finishedSetup("coach-home");
+    let res = await POST(req({ type: "hireJourneyman", side: "home", journeymanId: "j-1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    res = await POST(req({ type: "hireJourneyman", side: "midfield", journeymanId: "j-1", hire: true }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(hireJourneymanLiveMatchMock).not.toHaveBeenCalled();
   });
 });
