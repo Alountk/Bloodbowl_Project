@@ -5,6 +5,7 @@ import { deriveLiveClock, isDisplayEvent, parseMvpNominations } from "@/lib/live
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 import {
   mergeRosterWithJourneymen,
+  parsePersistedJourneymen,
   type ServedPlayer,
 } from "@/lib/journeymen";
 
@@ -50,6 +51,13 @@ export interface LiveDto {
    * has not nominated yet) — the resolution modal renders its per-coach pickers
    * and gates the server roll on BOTH sides. */
   mvpNominations: { home: string[] | null; away: string[] | null };
+  /** RAU-14: the persisted per-side journeymen (`{ home: [{ id, name }], away:
+   * [{ id, name }] }`) — exposed even for a FINISHED/resolved match so the
+   * post-resolve HIRE flow can reference them; null when the row has none. */
+  journeymen: {
+    home: { id: string; name: string }[];
+    away: { id: string; name: string }[];
+  } | null;
   events: LiveEventDto[];
 }
 
@@ -75,6 +83,8 @@ interface LiveMatchRow {
   pendingCasualty: unknown;
   /** RAU-51: the persisted per-side MJP nominations JSON (null = none yet). */
   mvpNominations: unknown;
+  /** RAU-14: the persisted per-side journeymen JSON (null until the match begins). */
+  journeymen: unknown;
   /** RAU-44: the persisted per-team live winnings JSON (`{ home, away }`),
    * null until the match reaches `finished`. */
   winnings: unknown;
@@ -135,6 +145,9 @@ export function serializeLive(
         ? (row.pendingCasualty as Record<string, unknown>)
         : null,
     mvpNominations: parseMvpNominations(row.mvpNominations),
+    // RAU-14: the persisted journeymen ride the live DTO even once the match is
+    // finished/resolved (the post-resolve hire flow reads them off `live`).
+    journeymen: parsePersistedJourneymen(row.journeymen),
     // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
     // `requestTurn` stay in the DB (audit/replay) and are never shown here.
     events: row.events

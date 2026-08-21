@@ -5,6 +5,7 @@ import {
   journeymanName,
   linemanPositionalOf,
   mergeRosterWithJourneymen,
+  parsePersistedJourneymen,
   type PlayerRowLike,
   type TeamRosterInput,
 } from "./journeymen";
@@ -274,5 +275,26 @@ describe("mergeRosterWithJourneymen — availability-driven append", () => {
     const realIds = served.filter((p) => !p.journeyman).map((p) => p.rosterPlayerId);
     expect(realIds).toEqual(roster.map((e) => e.id));
     expect(served[10].journeyman).toBe(true);
+  });
+
+  it("parses a well-formed persisted journeymen JSON into both sides (RAU-14)", () => {
+    const parsed = parsePersistedJourneymen({
+      home: [{ id: "journeyman-home-t-1", name: "Aldric Martillo" }],
+      away: [],
+    });
+    expect(parsed).toEqual({
+      home: [{ id: "journeyman-home-t-1", name: "Aldric Martillo" }],
+      away: [],
+    });
+  });
+
+  it("collapses null/malformed persisted journeymen to null (never crashes)", () => {
+    expect(parsePersistedJourneymen(null)).toBeNull();
+    expect(parsePersistedJourneymen(undefined)).toBeNull();
+    expect(parsePersistedJourneymen("nope")).toBeNull();
+    expect(parsePersistedJourneymen({ home: "x", away: [] })).toBeNull();
+    expect(parsePersistedJourneymen({ home: [{ id: 1, name: "X" }], away: [] })).toBeNull();
+    expect(parsePersistedJourneymen({ home: [{ id: "j-1", name: "X" }, null], away: [] })).toBeNull();
+    expect(parsePersistedJourneymen({ home: [], away: undefined })).toBeNull();
   });
 });

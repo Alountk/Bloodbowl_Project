@@ -795,4 +795,110 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
       "journeyman-t1-1",
     );
   });
+
+  it("RAU-14: exposes the PERSISTED journeymen on `live` for a RESOLVED match (post-resolve hire flow)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const roster = Array.from({ length: 10 }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Lineman ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [],
+        },
+        result: { id: "mr-1", fixtureId: "f1", weather: null, scores: {}, pettyCash: 0, loadedBy: "user-1" },
+        homeScore: 2,
+        awayScore: 1,
+        winnerId: "t1",
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "finished",
+          half: 2,
+          turnNumber: 8,
+          activeSide: "away",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 2,
+          awayScore: 1,
+          seq: 11,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: new Date("2026-03-01T21:00:00"),
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: { home: 55000, away: 45000 },
+          // RAU-14: the journeymen persisted at begin survive the resolve.
+          journeymen: { home: [{ id: "journeyman-t1-1", name: "Aldric Martillo" }], away: [] },
+          events: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The fixture is PLAYED + has a result, yet `live.journeymen` still serves
+    // the persisted novato — the post-resolve hire flow reads it from here.
+    expect(body.result).not.toBeNull();
+    expect(body.live.journeymen).toEqual({
+      home: [{ id: "journeyman-t1-1", name: "Aldric Martillo" }],
+      away: [],
+    });
+  });
+
+  it("RAU-14: `live.journeymen` is null when the LiveMatch row never persisted journeymen", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster: [],
+          players: [],
+        },
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "finished",
+          half: 2,
+          turnNumber: 8,
+          activeSide: "away",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 0,
+          awayScore: 0,
+          seq: 9,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: new Date("2026-03-01T21:00:00"),
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: { home: 0, away: 0 },
+          journeymen: null,
+          events: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.live.journeymen).toBeNull();
+  });
 });

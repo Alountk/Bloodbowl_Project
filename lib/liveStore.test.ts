@@ -572,6 +572,63 @@ describe("beginLiveMatch — ready→live ONLY via the first turn (LM-3)", () =>
     expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "live" }));
   });
 
+  it("persists the fielded journeymen on the LiveMatch row at begin (RAU-14)", async () => {
+    const { deps, updateMany, liveMatchFindFirst } = makeDeps(1);
+    const readyRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 2,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(readyRow);
+
+    await beginLiveMatch(
+      {
+        liveMatchId: "lm-1",
+        fixtureId: "f-1",
+        now: 1000,
+        kickoff: {
+          now: 1000,
+          half: 1,
+          turnNumber: 1,
+          home: { teamId: "home-t", treasury: 234000, dedicatedFans: 2 },
+          away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+          dice: {
+            home: { em: 1, d3: 2, keep: [0, 0] as [number, number], fan: 3 },
+            away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+          },
+        },
+        // RAU-14: the route derives these from the SAME served rosters that
+        // name the `journeyman` events — home fields one Novato, away none.
+        journeymen: {
+          home: [{ id: "journeyman-home-t-1", name: "Aldric Martillo" }],
+          away: [],
+        },
+      },
+      deps,
+    );
+
+    // The begin write carries the journeymen JSON atomically with the event rows.
+    const beginCall = updateMany.mock.calls.find((c) => c[0].data.journeymen != null);
+    expect(beginCall).toBeTruthy();
+    expect(beginCall![0].data).toMatchObject({
+      journeymen: { home: [{ id: "journeyman-home-t-1", name: "Aldric Martillo" }], away: [] },
+    });
+  });
+
   it("rolls back the whole transaction (events + treasury) when an event row fails (LM-23 atomicity)", async () => {
     const { deps, liveEventCreate, liveMatchFindFirst, teamUpdateMany, publish } = makeDeps(1);
     const readyRow = {

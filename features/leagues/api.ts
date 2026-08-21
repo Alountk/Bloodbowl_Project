@@ -537,6 +537,11 @@ export interface MatchDetail {
 /** The live-match DTO returned by the fixture GET: view state + event feed. */
 export interface LiveMatchView extends LiveMatchViewState {
   events: LiveMatchEventDto[];
+  /** RAU-14: the persisted per-side journeymen (`{ home: [{ id, name }], away:
+   * [{ id, name }] }`) — exposed even for a FINISHED/resolved match so the
+   * post-resolve HIRE flow can read them; null when the row has none. Absent
+   * on SSE/hub frames (only the fixture GET sets it). */
+  journeymen?: JourneymenState | null;
 }
 
 /**
@@ -713,6 +718,18 @@ export interface ResolveOutcome {
   postFf: { home: number; away: number };
   mvp: { home: string; away: string };
   resultId: string;
+}
+
+/** RAU-14: one persisted journeyman (Novato) offered for hire after the match. */
+export interface JourneymanRef {
+  id: string;
+  name: string;
+}
+
+/** RAU-14: the persisted per-side journeymen shape (`LiveMatch.journeymen`). */
+export interface JourneymenState {
+  home: JourneymanRef[];
+  away: JourneymanRef[];
 }
 
 /** RAU-51: submits a coach's OWN side's six MJP nominations (the route enforces
