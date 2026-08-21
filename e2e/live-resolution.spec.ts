@@ -692,11 +692,12 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     await pivotPage.goto(match2Url);
     await expect(pivotPage.getByTestId("journeymen-notice")).toBeVisible();
     await expect(pivotPage.getByText("Faltan 2 jugadores — se añaden 2 novatos")).toBeVisible();
+    // RAU-13: the join timeline event lists BOTH novatos on ONE plural row.
     await expect(
-      pivotPage.getByTestId("live-event-row").filter({ hasText: `${jrnyName} se une como novato` }).first(),
-    ).toBeVisible();
-    await expect(
-      pivotPage.getByTestId("live-event-row").filter({ hasText: `${jrnyName2} se une como novato` }).first(),
+      pivotPage
+        .getByTestId("live-event-row")
+        .filter({ hasText: `${jrnyName}, ${jrnyName2} se unen como novatos` })
+        .first(),
     ).toBeVisible();
     await expect(pivotPage.getByRole("button", { name: "+" })).toBeVisible();
     await pivotPage.getByRole("button", { name: "+" }).click();
