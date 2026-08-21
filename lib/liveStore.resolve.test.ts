@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { PE_MVP } from "./rules/pe";
 import {
   nominateMvpLiveMatch,
   resolveLiveMatch,
@@ -63,6 +64,7 @@ function teamRow(side: "home" | "away") {
     raceId: "human",
     roster: side === "home" ? homeRoster : awayRoster,
     coaching: side === "home" ? coaching : { ...coaching, dedicatedFans: 1 },
+    treasury: 50000,
     players: ids.map((rosterPlayerId) => ({
       rosterPlayerId,
       valueBonus: 0,
@@ -105,6 +107,8 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
       home: ["h1", "h2", "h3", "h4", "h5", "h6"],
       away: ["a1", "a2", "a3", "a4", "a5", "a6"],
     },
+    // RAU-14: the default finished row fields no journeymen.
+    journeymen: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     events: [
@@ -372,10 +376,11 @@ describe("resolveLiveMatch", () => {
     );
   });
 
-  it("RAU-13: resolve EXCLUDES Journeymen — no PE, no snapshot entry, no Player-row write", async () => {
+  it("RAU-13: a Journeyman's TD + casualty land in the snapshot (PE + victim), with no Player-row persistence for them", async () => {
     // A journeyman scores a TD and a journeyman SUFFERS a lasting casualty.
-    // Neither may produce a PE award, a casualty snapshot entry or any Player
-    // write — the Novato leaves after the match.
+    // Both reach the snapshot (the match documents the Novato's awards and
+    // injuries) but NO `Player` row is created or mutated for them at resolve
+    // — the earned PE lives only in the snapshot until the hire decision.
     const { deps, matchResultCreate, playerUpdateMany } = makeResolveDeps({
       rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
       row: finishedRow({
@@ -384,9 +389,11 @@ describe("resolveLiveMatch", () => {
           { id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date(1000) },
           { id: "e3", liveMatchId: "lm-1", seq: 3, kind: "completion", side: "home", playerRosterId: "h2", half: 1, turnNumber: 4, payload: {}, createdAt: new Date(2000) },
           { id: "e4", liveMatchId: "lm-1", seq: 4, kind: "casualty", side: "home", playerRosterId: "h3", half: 1, turnNumber: 5, payload: { victimRosterId: "h3", causerRosterId: "a1", band: "apaleado" }, createdAt: new Date(3000) },
-          // Journeyman TD (scores) — must NOT be awarded.
+          // Journeyman TD (scores) — earns its ★3 in the snapshot.
           { id: "e6", liveMatchId: "lm-1", seq: 6, kind: "td", side: "home", playerRosterId: "journeyman-home-t-1", half: 1, turnNumber: 6, payload: {}, createdAt: new Date(4000) },
-          // Journeyman VICTIM of a lasting casualty — must NOT persist nor reach the snapshot.
+          // Journeyman VICTIM of a lasting casualty — documented in the
+          // snapshot casualties (the hire carries their injury); the casualty
+          // ★2 still goes to its causer (a1).
           { id: "e7", liveMatchId: "lm-1", seq: 7, kind: "casualty", side: "home", playerRosterId: "journeyman-home-t-2", half: 1, turnNumber: 7, payload: { victimRosterId: "journeyman-home-t-2", causerRosterId: "a1", band: "grave" }, createdAt: new Date(5000) },
           { id: "e8", liveMatchId: "lm-1", seq: 8, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, createdAt: new Date(6000) },
         ],
@@ -397,22 +404,34 @@ describe("resolveLiveMatch", () => {
 
     // MVP grantees (rolls): home nom[4] = h5, away nom[5] = a6.
     const scoreboard = matchResultCreate.mock.calls[0][0].data.scores;
-    expect(scoreboard.home.pe.map((a: { rosterPlayerId: string }) => a.rosterPlayerId)).not.toContain(
-      "journeyman-home-t-1",
-    );
     expect(scoreboard.home.pe).toEqual([
       { rosterPlayerId: "h1", pe: 3 },
       { rosterPlayerId: "h2", pe: 1 },
+      { rosterPlayerId: "journeyman-home-t-1", pe: 3 },
       { rosterPlayerId: "h5", pe: 4 },
     ]);
-    // The journeyman VICTIM is absent from the snapshot casualties (h3 stays).
+    expect(scoreboard.away.pe).toEqual([
+      { rosterPlayerId: "a1", pe: 4 },
+      { rosterPlayerId: "a6", pe: 4 },
+    ]);
+    // The journeyman VICTIM is in the snapshot casualties (next to h3).
     expect(scoreboard.home.casualties).toEqual([
       { team: "home", rosterPlayerId: "h3", outcome: { kind: "apaleado" } },
+      { team: "home", rosterPlayerId: "journeyman-home-t-2", outcome: { kind: "grave" } },
     ]);
-    // No Player write ever references a journeyman id.
     const writes = playerUpdateMany.mock.calls.map((c) => c[0]);
+    // The journeyman TD award rides the lazy updateMany NO-OP (no row exists
+    // for the synthetic id — updateMany creates nothing).
     expect(
-      writes.some((c) => String(c.where?.rosterPlayerId ?? "").startsWith("journeyman-")),
+      writes.some((c) => String(c.where?.rosterPlayerId ?? "") === "journeyman-home-t-1"),
+    ).toBe(true);
+    // But the journeyman VICTIM never gets an injury write (unknown row → skip).
+    expect(
+      writes.some(
+        (c) =>
+          String(c.where?.rosterPlayerId ?? "") === "journeyman-home-t-2" &&
+          c.data?.injuries != null,
+      ),
     ).toBe(false);
   });
 
@@ -490,6 +509,37 @@ describe("resolveLiveMatch", () => {
       }),
     });
     await expect(resolveLiveMatch(resolveInput, deps)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("RAU-13: a Journeyman can be the MJP grantee — the nomination passes and the +4 lands in the snapshot", async () => {
+    // post-FF d6: 1/1, then home roll 6 → nom[5] = the journeyman; away roll
+    // 6 → nom[5] = a6.
+    const { deps, matchResultCreate, liveEventCreateMany } = makeResolveDeps({
+      rolls: { d3: [1, 1], d6: [1, 1, 6, 6] },
+      row: finishedRow({
+        mvpNominations: {
+          home: ["h1", "h2", "h3", "h4", "h5", "journeyman-home-t-1"],
+          away: awayNom,
+        },
+        // The journeyman is a PERSISTED home novato → eligible, not foreign.
+        journeymen: { home: [{ id: "journeyman-home-t-1", name: "Aldric" }], away: [] },
+      }),
+    });
+
+    await resolveLiveMatch(resolveInput, deps);
+
+    const scoreboard = matchResultCreate.mock.calls[0][0].data.scores;
+    expect(scoreboard.mvp).toEqual({ home: "journeyman-home-t-1", away: "a6" });
+    expect(scoreboard.home.pe).toContainEqual({ rosterPlayerId: "journeyman-home-t-1", pe: PE_MVP });
+    // The mvp timeline event names the journeyman grantee (LM-mvp parity).
+    expect(liveEventCreateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({ kind: "mvp", side: "home", playerRosterId: "journeyman-home-t-1" }),
+          expect.objectContaining({ kind: "mvp", side: "away", playerRosterId: "a6" }),
+        ],
+      }),
+    );
   });
 
   it("rejects with 409 when a side has not nominated yet (RAU-51 both-sides gate)", async () => {
@@ -681,6 +731,26 @@ describe("nominateMvpLiveMatch", () => {
     await expect(
       nominateMvpLiveMatch({ ...nominateInput, players: ["h1"] }, short.deps),
     ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("RAU-13: accepts a fielded Journeyman among the side's nominations (MVP-eligible)", async () => {
+    const { deps, liveMatchUpdateMany } = makeResolveDeps({
+      row: finishedRow({
+        journeymen: { home: [{ id: "journeyman-home-t-1", name: "Aldric" }], away: [] },
+      }),
+    });
+    const withJourneyman = ["h1", "h2", "h3", "h4", "h5", "journeyman-home-t-1"];
+
+    const result = await nominateMvpLiveMatch(
+      { ...nominateInput, players: withJourneyman },
+      deps,
+    );
+
+    expect(liveMatchUpdateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 12 },
+      data: { mvpNominations: { home: withJourneyman, away: awayNom }, seq: 13 },
+    });
+    expect(result.view.mvpNominations.home).toEqual(withJourneyman);
   });
 
   it("rejects with 400 a DEAD nominee (RAU-12 availability guard)", async () => {

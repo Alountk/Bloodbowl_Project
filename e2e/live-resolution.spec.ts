@@ -570,7 +570,7 @@ test("RAU-12: a lasting casualty suspends the victim for the next match until it
   }
 });
 
-test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve excludes them)", async ({ browser }) => {
+test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE carried on hire)", async ({ browser }) => {
   // A 3-member, 2-jornada league: the pivot team plays BOTH rounds, so a
   // round-1 lasting casualty makes it field 10 available players in round 2 —
   // the match then provides a Journeyman (Novato) for that match only.
@@ -601,8 +601,9 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     const proposerTeam = body.teams.find((t) => t.id === proposerTeamId)!;
     const causerId = proposerTeam.roster[0].id;
 
-    // --- Match 1: consent + begin, drive to the proposer's turn, record a
-    // lasting casualty (1D16 9 → apaleado) on the pivot team.
+    // --- Match 1: consent + begin, drive to the proposer's turn, record TWO
+    // lasting casualties (1D16 9 → apaleado) on the pivot team — round 2 will
+    // then field only 9 available players → 2 Journeymen (RAU-13/RAU-14).
     await liveCommand(r1.homePage, leagueId, r1.fixtureId, { type: "consent", side: "home" });
     await liveCommand(r1.awayPage, leagueId, r1.fixtureId, { type: "consent", side: "away" });
     let view = await liveCommand(r1.homePage, leagueId, r1.fixtureId, { type: "begin" });
@@ -610,8 +611,13 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
       const activePage = view.activeSide === "home" ? r1.homePage : r1.awayPage;
       view = await liveCommand(activePage, leagueId, r1.fixtureId, { type: "endTurn", side: view.activeSide });
     }
+    const victim2Id = pivotTeam.roster[1].id;
     await liveCommand(proposerPage, leagueId, r1.fixtureId, {
       type: "proposeCasualty", victimRosterId: victimId, causerRosterId: causerId, cause: "blitz", roll16: 9,
+    });
+    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
+    await liveCommand(proposerPage, leagueId, r1.fixtureId, {
+      type: "proposeCasualty", victimRosterId: victim2Id, causerRosterId: causerId, cause: "blitz", roll16: 9,
     });
     await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
 
@@ -623,8 +629,8 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     await admin.goto(`/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
     await waitFixturePlayed(admin, leagueId, r1.fixtureId, 1);
 
-    // --- Match 2: the pivot team fields 10 available → the GET serves the
-    // Journeyman (synthetic id, Novato name, the race's lineman positional).
+    // --- Match 2: the pivot team fields 9 available → the GET serves TWO
+    // Journeymen (synthetic ids, Novato names, the race's lineman positional).
     const home2Name = body.teams.find((t) => t.id === r2Fixture.homeTeamId)!.name;
     const away2Name = body.teams.find((t) => t.id === r2Fixture.awayTeamId)!.name;
     const home2Page = teams[home2Name];
@@ -638,11 +644,36 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
       awayTeam: { players: { rosterPlayerId: string; name: string; positionalKey: string; journeyman?: boolean }[] };
     };
     const pivotServed = pivotSide2 === "home" ? servedBody.homeTeam.players : servedBody.awayTeam.players;
-    const jrny = pivotServed.find((p) => p.journeyman === true);
-    expect(jrny).toBeDefined();
-    expect(jrny!.name).toBe("Novato 1");
+    const jrnyList = pivotServed.filter((p) => p.journeyman === true);
+    expect(jrnyList).toHaveLength(2);
+    const jrny = jrnyList[0];
+    const jrny2 = jrnyList[1];
+    const jrnyName = jrny!.name;
+    const jrnyName2 = jrny2!.name;
+    // RAU-13: the Novatos carry RACE-BANK names ("First Surname" style, never
+    // the old "Novato N") while still being flagged journeyman for the match.
+    expect(jrnyName).not.toMatch(/^Novato\b/);
+    expect(jrnyName2).not.toMatch(/^Novato\b/);
+    expect(jrnyName).not.toBe(jrnyName2);
+    expect(jrnyName.length).toBeGreaterThan(0);
     expect(jrny!.positionalKey).toBe("lineman");
+    expect(jrny2!.positionalKey).toBe("lineman");
     expect(jrny!.rosterPlayerId).toBe(`journeyman-${pivotTeamId}-1`);
+    expect(jrny2!.rosterPlayerId).toBe(`journeyman-${pivotTeamId}-2`);
+
+    // The names are deterministic for the match: re-reading the same fixture GET
+    // (the served DTO is recomputed per request) serves the SAME novato names.
+    const servedAgain = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    expect(servedAgain.status()).toBe(200);
+    const servedAgainBody = (await servedAgain.json()) as {
+      homeTeam: { players: { rosterPlayerId: string; name: string; journeyman?: boolean }[] };
+      awayTeam: { players: { rosterPlayerId: string; name: string; journeyman?: boolean }[] };
+    };
+    const pivotServedAgain =
+      pivotSide2 === "home" ? servedAgainBody.homeTeam.players : servedAgainBody.awayTeam.players;
+    const jrnyNamesAgain = pivotServedAgain.filter((p) => p.journeyman === true).map((p) => p.name);
+    expect(jrnyNamesAgain).toContain(jrnyName);
+    expect(jrnyNamesAgain).toContain(jrnyName2);
 
     await liveCommand(home2Page, leagueId, r2Fixture.id, { type: "consent", side: "home" });
     await liveCommand(away2Page, leagueId, r2Fixture.id, { type: "consent", side: "away" });
@@ -653,21 +684,61 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     }
     expect(view.activeSide).toBe(pivotSide2);
 
-    // The match page shows the notice and the Journeyman is selectable in the
-    // FAB (marked Novato). Record a TD with the Novato through the REAL FAB.
+    // The match page shows the notice, the timeline journals the novato joining
+    // ("{name} se une como novato"), and the Journeyman is selectable in the
+    // FAB (marked Novato with its dorsal). Record a TD with the Novato through
+    // the REAL FAB.
     const match2Url = `/leagues/${leagueId}/fixtures/${r2Fixture.id}`;
     await pivotPage.goto(match2Url);
     await expect(pivotPage.getByTestId("journeymen-notice")).toBeVisible();
-    await expect(pivotPage.getByText("Faltan 1 jugadores — se añaden 1 novatos")).toBeVisible();
+    await expect(pivotPage.getByText("Faltan 2 jugadores — se añaden 2 novatos")).toBeVisible();
+    // RAU-13: the join timeline event lists BOTH novatos on ONE plural row.
+    await expect(
+      pivotPage
+        .getByTestId("live-event-row")
+        .filter({ hasText: `${jrnyName}, ${jrnyName2} se unen como novatos` })
+        .first(),
+    ).toBeVisible();
     await expect(pivotPage.getByRole("button", { name: "+" })).toBeVisible();
     await pivotPage.getByRole("button", { name: "+" }).click();
     await pivotPage.getByRole("button", { name: /Touchdown/i }).click();
     const tdSelect = pivotPage.getByLabel("Jugador", { exact: true });
-    await tdSelect.selectOption({ label: "Novato 1 (Novato)" });
+    // The novato options read "Name (Novato · #N)" — dorsal = served index + 1.
+    const jrnyOption = tdSelect.locator("option", { hasText: jrnyName });
+    await expect(jrnyOption).toHaveCount(1);
+    expect((await jrnyOption.textContent()) ?? "").toMatch(/\(Novato · #\d+\)$/);
+    await tdSelect.selectOption(jrny!.rosterPlayerId);
     await pivotPage.getByRole("button", { name: "Registrar" }).click();
     await expect(pivotPage.getByLabel("Jugador", { exact: true })).toHaveCount(0);
 
-    // Resolve match 2 → the closure writes awards WITHOUT the Journeyman.
+    // The TD flips the turn to the OPPOSITE coach — have them injure the
+    // Journeyman (1D16 9 → apaleado, lasting); the pivot confirms. RAU-13: the
+    // casualty VICTIM is a served Novato, so the snapshot + the hire must both
+    // carry the injury.
+    const opponentTeamId = pivotSide2 === "home" ? r2Fixture.awayTeamId : r2Fixture.homeTeamId;
+    const opponentTeamRow = body.teams.find((t) => t.id === opponentTeamId)!;
+    const opponentCauserId = opponentTeamRow.roster[0].id;
+    const opponentPage = pivotSide2 === "home" ? away2Page : home2Page;
+    // The FAB closes immediately (its TD POST is fire-and-forget), so wait for
+    // the TD to LAND before the opponent proposes — a raced propose reads the
+    // pre-TD state (pivot still active) and 409s out-of-turn.
+    await expect
+      .poll(
+        async () => {
+          const liveState = await opponentPage.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+          const body = (await liveState.json()) as { live: { homeScore: number; awayScore: number } | null };
+          return body.live != null && (pivotSide2 === "home" ? body.live.homeScore : body.live.awayScore) === 1;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    await liveCommand(opponentPage, leagueId, r2Fixture.id, {
+      type: "proposeCasualty", victimRosterId: jrny!.rosterPlayerId, causerRosterId: opponentCauserId, cause: "blitz", roll16: 9,
+    });
+    await liveCommand(pivotPage, leagueId, r2Fixture.id, { type: "confirmCasualty" });
+
+    // Resolve match 2 → the closure writes the awards: the Novato's TD earned
+    // PE (snapshot) while NO Player row exists for them yet.
     // endMatch is an optimistic-guard write: a hub-driven pause transition can
     // race it (seq conflict → 409, the transition rolls back), so retry once —
     // the same way a user would simply click again — and accept an already-
@@ -693,32 +764,143 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     await admin.goto(match2Url);
     await waitFixturePlayed(admin, leagueId, r2Fixture.id, 2);
 
+    // --- RAU-14: after the match is REPORTED, the hire step appears on the
+    // PIVOT coach's OWN page — one offer per remaining journeyman, with the
+    // race Lineman cost (Human Lineman = 50.000 M.O.).
+    await pivotPage.goto(match2Url);
+    const hirePanel = pivotPage.getByTestId("journeymen-hire");
+    await expect(hirePanel).toBeVisible();
+    await expect(hirePanel.getByText(new RegExp(`${jrnyName}`))).toBeVisible();
+    await expect(hirePanel.getByText(new RegExp(`${jrnyName2}`))).toBeVisible();
+    await expect(hirePanel.getByText(/puede quedarse por 50\.000 M\.O\./)).toHaveCount(2);
+
+    // Treasury BEFORE the decisions (the resolve winnings were already applied).
+    const beforeRes = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(beforeRes.status()).toBe(200);
+    const beforeBody = (await beforeRes.json()) as {
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+    };
+    const pivotBefore = beforeBody.teams.find((t) => t.id === pivotTeamId)!;
+    const treasuryBefore = pivotBefore.treasury;
+    expect(pivotBefore.roster).toHaveLength(11);
+
+    // "Contratar" the FIRST journeyman → the roster gains them (reload
+    // persists), the treasury drops by the lineman cost and the option vanishes.
+    await hirePanel
+      .locator("li")
+      .filter({ hasText: jrnyName })
+      .getByRole("button", { name: "Contratar" })
+      .click();
+    await expect(pivotPage.getByTestId("journeymen-hire")).toBeVisible();
+    await expect(hirePanel.getByText(new RegExp(jrnyName))).toHaveCount(0);
+    await expect(hirePanel.getByText(new RegExp(jrnyName2))).toBeVisible();
+
+    const afterHire = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(afterHire.status()).toBe(200);
+    const afterHireBody = (await afterHire.json()) as {
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+    };
+    const pivotAfterHire = afterHireBody.teams.find((t) => t.id === pivotTeamId)!;
+    expect(pivotAfterHire.roster).toHaveLength(12);
+    const hired = pivotAfterHire.roster.find((p) => p.name === jrnyName);
+    expect(hired).toBeTruthy();
+    expect(hired!.positionalKey).toBe("lineman");
+    expect(pivotAfterHire.roster.some((p) => p.name === jrnyName2)).toBe(false);
+    // The hire is PAID via the balance formula: the roster grows (rosterCost),
+    // so `computeSpendableBalance` drops by the Lineman cost — the treasury
+    // ledger itself does NOT change (RAU-11 convention, no double-count).
+    expect(pivotAfterHire.treasury).toBe(treasuryBefore);
+
+    // A reload shows the hired novato is GONE from the offers (persisted) while
+    // the second offer remains — the decision survives the reload.
+    await pivotPage.reload();
+    const hirePanelReload = pivotPage.getByTestId("journeymen-hire");
+    await expect(hirePanelReload).toBeVisible();
+    await expect(hirePanelReload.getByText(new RegExp(jrnyName2))).toBeVisible();
+    await expect(hirePanelReload.getByText(new RegExp(jrnyName))).toHaveCount(0);
+
+    // "Dejar ir" the SECOND journeyman → the option is gone and NO roster or
+    // treasury change happens (the panel disappears when none remain).
+    await hirePanelReload
+      .locator("li")
+      .filter({ hasText: jrnyName2 })
+      .getByRole("button", { name: "Dejar ir" })
+      .click();
+    await expect(pivotPage.getByTestId("journeymen-hire")).not.toBeVisible();
+
+    const afterLetGo = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(afterLetGo.status()).toBe(200);
+    const afterLetGoBody = (await afterLetGo.json()) as {
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+    };
+    const pivotAfterLetGo = afterLetGoBody.teams.find((t) => t.id === pivotTeamId)!;
+    expect(pivotAfterLetGo.roster).toHaveLength(12);
+    expect(pivotAfterLetGo.roster.some((p) => p.name === jrnyName2)).toBe(false);
+    // "Dejar ir" never touches the team — the ledger stays exactly where the
+    // paid hire left it (RAU-14 balance formula: the hire dropped spendable
+    // balance via rosterCost growth, not the treasury).
+    expect(pivotAfterLetGo.treasury).toBe(treasuryBefore);
+
     const after = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
     expect(after.status()).toBe(200);
     const afterBody = (await after.json()) as {
       result: {
         scores: {
-          home: { pe: { rosterPlayerId: string; pe: number }[]; casualties: { rosterPlayerId: string }[] };
-          away: { pe: { rosterPlayerId: string; pe: number }[]; casualties: { rosterPlayerId: string }[] };
+          home: {
+            pe: { rosterPlayerId: string; pe: number }[];
+            casualties: { rosterPlayerId: string; outcome?: { kind?: string } }[];
+          };
+          away: {
+            pe: { rosterPlayerId: string; pe: number }[];
+            casualties: { rosterPlayerId: string; outcome?: { kind?: string } }[];
+          };
         };
       };
     };
     const pivotScoreboard = pivotSide2 === "home" ? afterBody.result.scores.home : afterBody.result.scores.away;
-    // The Novato's TD earned NO PE and their id never reaches the snapshot.
-    expect(pivotScoreboard.pe.some((row) => row.rosterPlayerId.startsWith("journeyman-"))).toBe(false);
-    expect(pivotScoreboard.casualties.some((c) => c.rosterPlayerId.startsWith("journeyman-"))).toBe(false);
+    // RAU-13: the Novato's TD earned ★3 PE and their id IS in the snapshot;
+    // the lasting injury they suffered is documented there too (the hire
+    // carries both into the new Player row).
+    const jrnyPe = pivotScoreboard.pe.find((row) => row.rosterPlayerId === jrny!.rosterPlayerId);
+    expect(jrnyPe).toBeDefined();
+    expect(jrnyPe!.pe).toBe(3);
+    expect(
+      pivotScoreboard.casualties.some(
+        (c) => c.rosterPlayerId === jrny!.rosterPlayerId && c.outcome?.kind === "apaleado",
+      ),
+    ).toBe(true);
 
-    // No `Player` row was ever created for the Novato (progression has only the
-    // real roster) and the team roster still shows exactly the 11 real players.
-    // The progression route is owner-scoped → request from the pivot coach.
+    // RAU-13: the HIRED journeyman keeps their earned PE + injury on the new
+    // Player row (keyed by the NEW roster id, with the RAU-12 suspension); the
+    // let-go one leaves no trace. The progression route is owner-scoped →
+    // request from the pivot coach.
+    const hiredEntry = pivotAfterHire.roster.find((p) => p.name === jrnyName)!;
     const prog = await pivotPage.request.get(`/api/teams/${pivotTeamId}/progression`);
     expect(prog.status()).toBe(200);
-    const progBody = (await prog.json()) as { rosterPlayerId: string }[];
+    const progBody = (await prog.json()) as {
+      rosterPlayerId: string;
+      pe: number;
+      injuries: { kind: string }[];
+      missNextMatch: boolean;
+    }[];
+    const hiredRow = progBody.find((p) => p.rosterPlayerId === hiredEntry.id);
+    expect(hiredRow).toBeDefined();
+    expect(hiredRow!.pe).toBe(3);
+    expect(hiredRow!.injuries.some((i) => i.kind === "apaleado")).toBe(true);
+    expect(hiredRow!.missNextMatch).toBe(true);
+    // The let-go journeyman never became a Player row and no synthetic id ever
+    // does (the hired one carries the NEW roster id).
     expect(progBody.some((p) => p.rosterPlayerId.startsWith("journeyman-"))).toBe(false);
+
+    // The team detail (owner) renders the hired Novato's row with the carried
+    // PE (★3) + the injury badge (🩹x1) — the hire decision survives a reload.
+    await pivotPage.goto(`/teams/${pivotTeamId}`);
+    await expect(pivotPage.getByTestId(`spp-pe-${hiredEntry.id}`)).toHaveText("★3");
+    await expect(pivotPage.getByTestId(`ni-${hiredEntry.id}`)).toContainText("🩹x1");
     const leagueAgain = await admin.request.get(`/api/leagues/${leagueId}`);
     expect(leagueAgain.status()).toBe(200);
     const leagueBody = (await leagueAgain.json()) as { teams: { id: string; roster: unknown[] }[] };
-    expect(leagueBody.teams.find((t) => t.id === pivotTeamId)!.roster).toHaveLength(11);
+    expect(leagueBody.teams.find((t) => t.id === pivotTeamId)!.roster).toHaveLength(12);
   } finally {
     await league.close();
   }

@@ -16,7 +16,6 @@
  */
 
 import { PE_TD, PE_MVP, PE_CASUALTY, PE_COMPLETION } from "./rules/pe";
-import { isJourneymanId } from "./journeymen";
 
 /** One player's total PE for the match (rosterPlayerId + earned PE). */
 export interface PeAward {
@@ -46,10 +45,11 @@ export function isLastingBand(band: string): boolean {
  * stays authoritative). TD ★3 and completion ★1 go to the event's side; a
  * lasting casualty awards ★2 to its causer (the OPPOSITE side).
  *
- * RAU-13: Journeyman ids (synthetic `journeyman-{teamId}-{n}`) are EXCLUDED —
- * a journeyman scores/completes/injures for the match but earns NO PE and never
- * produces a `Player` row or a snapshot entry. The resolve therefore can never
- * award or persist a journeyman.
+ * RAU-13: Journeymen earn PE like any match player — they play for the team
+ * that match, so a Novato's TD/completion/lasting-casualty lands in the
+ * snapshot. The resolve NEVER creates a `Player` row for them (they are not on
+ * the roster), so the earned PE lives only in the snapshot until the hire
+ * decision carries it into their new row.
  */
 export function deriveLivePeAwards(
   events: readonly ResolveEventLike[],
@@ -65,17 +65,18 @@ export function deriveLivePeAwards(
   for (const event of events) {
     switch (event.kind) {
       case "td":
-        if (event.playerRosterId && !isJourneymanId(event.playerRosterId)) add(event.side, event.playerRosterId, PE_TD);
+        if (event.playerRosterId) add(event.side, event.playerRosterId, PE_TD);
         break;
       case "completion":
-        if (event.playerRosterId && !isJourneymanId(event.playerRosterId)) add(event.side, event.playerRosterId, PE_COMPLETION);
+        if (event.playerRosterId) add(event.side, event.playerRosterId, PE_COMPLETION);
         break;
       case "casualty": {
         const band = event.payload.band;
         if (typeof band === "string" && isLastingBand(band)) {
           const causer = event.payload.causerRosterId;
-          // A journeyman CAUSER (a Novato inflicting the injury) earns nothing.
-          if (typeof causer === "string" && !isJourneymanId(causer)) {
+          // A journeyman CAUSER earns the ★2 too — they inflicted the injury
+          // for the team that match.
+          if (typeof causer === "string") {
             add(event.side === "home" ? "away" : event.side === "away" ? "home" : null, causer, PE_CASUALTY);
           }
         }
@@ -94,12 +95,11 @@ export function deriveLivePeAwards(
 /**
  * Adds the MJP grantee's +4 PE to a team's awards (upsert). The grantee is
  * ALWAYS owed at least the 4 PE even when they recorded no action (mirrors the
- * result route's `computeTeamPeAwards`). RAU-13 defensive guard: a journeyman
- * grantee (impossible via the roster-scoped nomination validation, but guarded
- * anyway) receives nothing.
+ * result route's `computeTeamPeAwards`). RAU-13: the grantee may be a
+ * Journeyman — they play for the team that match, so they are MVP-eligible and
+ * their +4 lands in the snapshot like any match player's.
  */
 export function addMvpPe(awards: readonly PeAward[], grantee: string): PeAward[] {
-  if (isJourneymanId(grantee)) return [...awards];
   const byId = new Map(awards.map((a) => [a.rosterPlayerId, a.pe]));
   byId.set(grantee, (byId.get(grantee) ?? 0) + PE_MVP);
   return Array.from(byId.entries()).map(([rosterPlayerId, pe]) => ({ rosterPlayerId, pe }));
@@ -117,16 +117,16 @@ export interface LiveCasualtyVictim {
 }
 
 /** Collects the casualties from the live events (band already server-derived).
- * RAU-13: a Journeyman VICTIM is excluded — their injury is irrelevant after
- * the match (no `Player` row exists or is created), so it never reaches the
- * snapshot nor the casualty-persistence path. */
+ * RAU-13: a Journeyman VICTIM IS included — the snapshot documents the match,
+ * and the hire flow reads it to carry their injuries into the new `Player`
+ * row. `persistResolveCasualties` still skips them at resolve (no row exists
+ * for a synthetic id yet). */
 export function casualtyVictimsFromEvents(
   events: readonly ResolveEventLike[],
 ): LiveCasualtyVictim[] {
   const out: LiveCasualtyVictim[] = [];
   for (const event of events) {
     if (event.kind !== "casualty" || event.side == null || !event.playerRosterId) continue;
-    if (isJourneymanId(event.playerRosterId)) continue;
     const band = event.payload.band;
     if (typeof band !== "string") continue;
     out.push({ team: event.side, rosterPlayerId: event.playerRosterId, band });
@@ -135,9 +135,12 @@ export function casualtyVictimsFromEvents(
 }
 
 /**
- * Validates a team's six MJP nominations: exactly 6 DISTINCT roster player ids
- * (duplicates and foreign ids are rejected). Returns an error message (the
- * i18n key fragment) or null when valid.
+ * Validates a team's six MJP nominations: exactly 6 DISTINCT ids (duplicates
+ * and foreign ids are rejected). The eligibility sets are a side's roster ids
+ * PLUS its fielded Journeyman ids (RAU-13: a Novato is MVP-eligible like any
+ * match player) — the liveStore callers build them from the team roster and
+ * the persisted `LiveMatch.journeymen`. Returns an error message (the i18n key
+ * fragment) or null when valid.
  */
 export function validateMvpNominations(
   rawHome: unknown,
@@ -161,11 +164,12 @@ export function validateMvpNominations(
 
 /**
  * RAU-51: validates ONE side's six MJP nominations — exactly 6 DISTINCT ids
- * belonging to that side's roster — PLUS the RAU-12 availability guard: every
- * nominee must be alive and not suspended for the next match (`availability` is
- * the side's Player rows keyed by rosterPlayerId; a roster entry WITHOUT a lazy
- * Player row counts as available, mirroring `mergeRosterPlayers`). Returns an
- * error-message fragment or null when valid.
+ * belonging to that side's eligible players (`rosterIds` = roster ∪ fielded
+ * Journeymen, RAU-13) — PLUS the RAU-12 availability guard: every nominee must
+ * be alive and not suspended for the next match (`availability` is the side's
+ * Player rows keyed by rosterPlayerId; a roster entry or Journeyman WITHOUT a
+ * lazy Player row counts as available, mirroring `mergeRosterPlayers`). Returns
+ * an error-message fragment or null when valid.
  */
 export function validateSingleMvpNomination(
   raw: unknown,
@@ -183,4 +187,32 @@ export function validateSingleMvpNomination(
     if (player && (!player.alive || player.missNextMatch)) return "mvp.unavailable";
   }
   return null;
+}
+
+/** One side of a persisted `MatchResult.scores` snapshot (minimum surface for
+ * the hire-time carry-over). */
+export interface SnapshotSideLike {
+  pe?: { rosterPlayerId: string; pe: number }[] | null;
+  casualties?: { team?: string; rosterPlayerId?: string; outcome?: { kind?: string } }[] | null;
+}
+
+/**
+ * The PE a Journeyman EARNED during the match and the injury bands they
+ * SUFFERED, read from the persisted `MatchResult` snapshot (the resolve already
+ * wrote it — the single source of truth at hire time, RAU-13). PE covers the
+ * TD/completion/lasting-casualty awards plus the MJP +4 when granted; injuries
+ * are every casualty band where they were the victim (mirrors
+ * `persistCasualtyOutcomes`'s `{ kind }` records).
+ */
+export function journeymanSnapshotEarned(
+  side: SnapshotSideLike | null | undefined,
+  journeymanId: string,
+): { pe: number; injuries: string[] } {
+  const pe = side?.pe?.find((a) => a.rosterPlayerId === journeymanId)?.pe ?? 0;
+  const injuries: string[] = [];
+  for (const casualty of side?.casualties ?? []) {
+    if (casualty.rosterPlayerId !== journeymanId) continue;
+    if (typeof casualty.outcome?.kind === "string") injuries.push(casualty.outcome.kind);
+  }
+  return { pe, injuries };
 }

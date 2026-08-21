@@ -68,19 +68,25 @@ function roll6OptionLabel(n: number, t: TFunc): string {
 }
 
 /** RAU-48: the positional display name for a player line ("blitzer" → "Blitzer"),
- * resolved against the race catalog; unknown keys pass through. */
-function positionName(raceId: string, positionalKey: string): string {
+ * resolved against the race catalog; unknown keys pass through. Exported so the
+ * resolution modal's MJP pickers share the same position label (RAU-13 dorsal). */
+export function positionName(raceId: string, positionalKey: string): string {
   const race = getRaceById(raceId);
   return race?.positionals.find((pos) => pos.key === positionalKey)?.name ?? positionalKey;
 }
 
 /** RAU-48/RAU-13: the option label for a roster player — "Don Pelayo El Bestia
- * (Bull Centaur)" — so causer/victim/scorer picks are unambiguous. A Journeyman
- * (Novato) is labeled with the journeyman marker instead of the positional name:
- * "Novato 1 (Novato)". */
-function playerOptionLabel(p: MatchPlayer, raceId: string, journeymanLabel: string): string {
-  if (p.journeyman) return `${p.name} (${journeymanLabel})`;
-  return `${p.name} (${positionName(raceId, p.positionalKey)})`;
+ * (Bull Centaur · #3)" — so causer/victim/scorer picks are unambiguous and the
+ * dorsal (served-array index + 1) is visible. A Journeyman (Novato) is labeled
+ * with the journeyman marker in the role slot: "Aldric Martillo (Novato · #12)". */
+function playerOptionLabel(
+  p: MatchPlayer,
+  raceId: string,
+  journeymanLabel: string,
+  dorsal: number,
+): string {
+  const role = p.journeyman ? journeymanLabel : positionName(raceId, p.positionalKey);
+  return `${p.name} (${role} · #${dorsal})`;
 }
 
 interface EventControlsProps {
@@ -144,6 +150,10 @@ export function EventControls({
   const alivePlayers = roster.filter((p) => p.alive && !p.missNextMatch);
   const aliveOpponentPlayers = opponentRoster.filter((p) => p.alive && !p.missNextMatch);
   const journeymanLabel = t("match.journeyman");
+  // RAU-13: the dorsal is the served-array index + 1 (D21), so the option
+  // label shows the same #n the feed/table use — built per pool source array.
+  const rosterDorsal = new Map<string, number>(roster.map((p, i) => [p.rosterPlayerId, i + 1]));
+  const opponentDorsal = new Map<string, number>(opponentRoster.map((p, i) => [p.rosterPlayerId, i + 1]));
   // RAU-39 role-aware pools: the ACTIVE coach proposes the injury THEY inflicted
   // (victim from the rival, causer from their OWN roster); the NON-active coach
   // records a SELF-INFLICTED wound on their OWN player (victim own, no causer).
@@ -261,7 +271,7 @@ export function EventControls({
                 </option>
                 {alivePlayers.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {playerOptionLabel(p, rosterRaceId, journeymanLabel)}
+                    {playerOptionLabel(p, rosterRaceId, journeymanLabel, rosterDorsal.get(p.rosterPlayerId) ?? 0)}
                   </option>
                 ))}
               </select>
@@ -308,7 +318,7 @@ export function EventControls({
                     </option>
                     {causerPool.map((p) => (
                       <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                        {playerOptionLabel(p, rosterRaceId, journeymanLabel)}
+                        {playerOptionLabel(p, rosterRaceId, journeymanLabel, rosterDorsal.get(p.rosterPlayerId) ?? 0)}
                       </option>
                     ))}
                   </select>
@@ -332,7 +342,7 @@ export function EventControls({
                 </option>
                 {victimPool.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {playerOptionLabel(p, victimRaceId, journeymanLabel)}
+                    {playerOptionLabel(p, victimRaceId, journeymanLabel, (isActive ? opponentDorsal : rosterDorsal).get(p.rosterPlayerId) ?? 0)}
                   </option>
                 ))}
               </select>
@@ -412,7 +422,7 @@ export function EventControls({
                 </option>
                 {aliveOpponentPlayers.map((p) => (
                   <option key={p.rosterPlayerId} value={p.rosterPlayerId}>
-                    {playerOptionLabel(p, opponentRaceId, journeymanLabel)}
+                    {playerOptionLabel(p, opponentRaceId, journeymanLabel, opponentDorsal.get(p.rosterPlayerId) ?? 0)}
                   </option>
                 ))}
               </select>

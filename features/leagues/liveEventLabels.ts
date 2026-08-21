@@ -83,6 +83,7 @@ export const EVENT_GLYPH: Record<string, IconName> = {
   fan_factor: "account-group",
   turnStart: "hand",
   people: "account-group",
+  journeyman: "shirt",
 };
 
 /**
@@ -215,6 +216,23 @@ export function bandToDisplay(band: string, fn: TFunc = esT): BandDisplay {
   }
 }
 
+/**
+ * RAU-13: the journeyman join line for the timeline card — "{name} se une como
+ * novato" (one novato) or "{name} se unen como novatos" (several), where
+ * {name} is the per-side names list joined. A payload without a non-empty
+ * `names` array → null (defensive — the card then falls back to the kind label).
+ */
+export function journeymanJoinLabel(
+  payload: Record<string, unknown>,
+  fn: TFunc = esT,
+): string | null {
+  const names = payload.names;
+  if (!Array.isArray(names) || names.length === 0 || typeof names[0] !== "string") return null;
+  const name = names.join(", ");
+  const key = names.length === 1 ? "match.event.journeymanJoin" : "match.event.journeymanJoinMany";
+  return fn(key, { name });
+}
+
 /** The SPP star total for an event (LM-19): TD ★3, Completion ★1, MVP ★4, a
  * lasting casualty ★2 (bruise ★0), and any other kind ★0. */
 export function eventSpp(event: LiveEventLabelInput): number {
@@ -269,6 +287,8 @@ export function liveEventLabel(event: LiveEventLabelInput, fn: TFunc = esT): str
       return fn("match.event.endMatch");
     case "concede":
       return fn("match.event.concede");
+    case "journeyman":
+      return fn("match.event.journeyman");
     default:
       return event.kind;
   }
