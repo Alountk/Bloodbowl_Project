@@ -6,6 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
 import { useTeamMigration } from "@/features/migration/useTeamMigration";
+import { MigrationReloadContext } from "./MigrationReloadContext";
 
 /**
  * Session-aware application gate.
@@ -32,14 +33,23 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
   const [migrationReload, setMigrationReload] = useState(0);
 
   const authenticated = status === "authenticated";
-  // On "/" the dashboard shell owns the migration (skip it here so the
-  // module-level guard does not consume the one-shot before the dashboard).
-  useTeamMigration(authenticated && pathname !== "/", {
+  // This layout-level component is the ONE stable host for the one-shot legacy
+  // migration: unlike the home page it survives the post-login `router.refresh`
+  // that remounts the dashboard, so the migration's async run is never cancelled
+  // and its reload bump always reaches the mounted shell. It never runs while on
+  // an auth page (the /login → / transition window) nor while unauthenticated;
+  // on "/" the bump flows to the dashboard through MigrationReloadContext.
+  const isAuthPage = pathname === "/login" || pathname === "/signup";
+  useTeamMigration(authenticated && !isAuthPage, {
     onMigrated: () => setMigrationReload((v) => v + 1),
   });
 
   if (pathname === "/") {
-    return <>{children}</>;
+    return (
+      <MigrationReloadContext.Provider value={migrationReload}>
+        {children}
+      </MigrationReloadContext.Provider>
+    );
   }
 
   if (status === "loading") {
