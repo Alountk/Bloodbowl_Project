@@ -23,9 +23,9 @@ async function signup(page: Page, email: string, password: string) {
   await expect(page).toHaveURL("/");
 }
 
-async function createTeam(page: Page) {
+async function createTeam(page: Page, name = "Middenheim Marauders") {
   await page.goto("/teams/create");
-  await page.getByLabel("Nombre del equipo").fill("Middenheim Marauders");
+  await page.getByLabel("Nombre del equipo").fill(name);
   await page.getByLabel("Raza").selectOption("human");
   await page.getByRole("button", { name: "Siguiente →" }).click();
   // Three players so the team is valid.
@@ -34,7 +34,7 @@ async function createTeam(page: Page) {
   await page.getByRole("button", { name: "Añadir Human Blitzer" }).first().click();
   await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
-  await expect(page.getByText("Middenheim Marauders")).toBeVisible();
+  await expect(page.getByText(name)).toBeVisible();
 }
 
 async function createLeague(page: Page, name: string) {
@@ -230,5 +230,88 @@ test("direct API assign of an archived team returns 409", async ({ page }) => {
     data: { teamId },
   });
   expect(assign.status()).toBe(409);
+});
+
+/**
+ * RAU-54: one user = one team per league. A user who already owns a member
+ * team in a league must NOT be able to join a SECOND team of theirs — the live
+ * match start would fail later because both teams share an owner. The guard is
+ * per user: another user may still join the same league with their own team.
+ */
+test("one user = one team per league: a second join by the same owner is 409, another user can join", async ({
+  page,
+  browser,
+}) => {
+  const email1 = uniqueEmail();
+  const password = "password-123";
+  await signup(page, email1, password);
+
+  // user1 creates team A and league L, then joins with team A via the API.
+  await createTeam(page, "Reikland Reavers");
+  const leagueName = `Liga RAU-54 ${Date.now()}`;
+  await createLeague(page, leagueName);
+
+  const leagues = await (await page.request.get("/api/leagues")).json();
+  const leagueId = (leagues as Array<{ id: string; name: string }>).find(
+    (l) => l.name === leagueName,
+  )?.id;
+  expect(leagueId).toBeDefined();
+  const teams1 = await (await page.request.get("/api/teams")).json();
+  const teamA = (teams1 as Array<{ id: string; name: string }>).find(
+    (t) => t.name === "Reikland Reavers",
+  )!;
+  const joinA = await page.request.post(`/api/leagues/${leagueId}/teams`, {
+    data: { teamId: teamA.id },
+  });
+  expect(joinA.status()).toBe(200);
+
+  // user1 creates a SECOND team; joining the SAME league with it must be 409
+  // with the clear message, and no mutation may occur.
+  await createTeam(page, "Reikland Stealers");
+  const teams2 = await (await page.request.get("/api/teams")).json();
+  const teamB = (teams2 as Array<{ id: string; name: string }>).find(
+    (t) => t.name === "Reikland Stealers",
+  )!;
+  const joinB = await page.request.post(`/api/leagues/${leagueId}/teams`, {
+    data: { teamId: teamB.id },
+  });
+  expect(joinB.status()).toBe(409);
+  expect(((await joinB.json()) as { error: string }).error).toBe(
+    "Ya tienes un equipo en esta liga",
+  );
+
+  // Team A is still the only member; team B remains unassigned.
+  const detail = await (await page.request.get(`/api/leagues/${leagueId}`)).json();
+  expect(
+    (detail as { teams: Array<{ name: string }> }).teams.map((t) => t.name),
+  ).toEqual(["Reikland Reavers"]);
+  const teamsAfter = await (await page.request.get("/api/teams")).json();
+  expect(
+    (teamsAfter as Array<{ name: string; leagueId: string | null }>).find(
+      (t) => t.name === "Reikland Stealers",
+    )?.leagueId,
+  ).toBeNull();
+
+  // A SECOND user (own session, own team) can still join the same league.
+  const ctxB = await browser.newContext({ locale: "es-ES" });
+  const pageB = await ctxB.newPage();
+  await signup(pageB, uniqueEmail(), password);
+  await createTeam(pageB, "Dwarf Wall");
+  const teamsB = await (await pageB.request.get("/api/teams")).json();
+  const teamC = (teamsB as Array<{ id: string; name: string }>).find(
+    (t) => t.name === "Dwarf Wall",
+  )!;
+  const joinC = await pageB.request.post(`/api/leagues/${leagueId}/teams`, {
+    data: { teamId: teamC.id },
+  });
+  expect(joinC.status()).toBe(200);
+
+  // Both owners are now members — the guard was per user, not per league.
+  const detail2 = await (await pageB.request.get(`/api/leagues/${leagueId}`)).json();
+  const memberNames = (detail2 as { teams: Array<{ name: string }> })
+    .teams.map((t) => t.name)
+    .sort();
+  expect(memberNames).toEqual(["Dwarf Wall", "Reikland Reavers"]);
+  await ctxB.close();
 });
 
