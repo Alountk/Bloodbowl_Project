@@ -185,6 +185,20 @@ describe("MatchResolveModal", () => {
     expect(texts.some((t) => t?.includes("Hugo5 (Human Lineman · #5)"))).toBe(true);
   });
 
+  it("RAU-13: includes a Journeyman in the OWN pickers, labeled Novato (MVP-eligible)", () => {
+    const homePlayers = [
+      ...sixRoster("h", "Hugo"),
+      { ...player("journeyman-th-1", "Aldric"), journeyman: true },
+    ];
+    renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    const options = within(dialog).getByLabelText(`MVP 1 ${homeName}`).querySelectorAll("option");
+    const texts = Array.from(options).map((o) => o.textContent);
+    // The Novato is selectable and keeps the "Novato" marker + its dorsal.
+    expect(texts.some((t) => t?.includes("Aldric") && t?.includes("Novato"))).toBe(true);
+    expect(texts.some((t) => t?.includes("(Novato · #7)"))).toBe(true);
+  });
+
   it("RAU-51: 'Guardar mis nominaciones' POSTs nominateMvp for the OWN side and refreshes (onNominated)", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       void _url;
