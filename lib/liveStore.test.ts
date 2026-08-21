@@ -1450,6 +1450,8 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
         raceId: true,
         roster: true,
         coaching: true,
+        // RAU-14: the shared select now reads the treasury too (hire balance).
+        treasury: true,
         players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
       },
     });

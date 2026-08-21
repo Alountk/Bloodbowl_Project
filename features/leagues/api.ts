@@ -732,6 +732,35 @@ export interface JourneymenState {
   away: JourneymanRef[];
 }
 
+/** The hire/let-go command's response (RAU-14): the remaining journeymen + the
+ * updated OWN-side team surface (roster + treasury — the hire is PAID). */
+export interface HireJourneymanOutcome {
+  journeymen: JourneymenState;
+  team: { id: string; roster: unknown; treasury: number };
+}
+
+/** RAU-14: posts a coach's decision on one of THEIR OWN side's journeymen —
+ * `hire: true` pays the lineman cost and keeps the Novato as a permanent roster
+ * player; `hire: false` ("Dejar ir") just removes the option. The route enforces
+ * the caller owns that side's team. */
+export async function hireJourneyman(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+  journeymanId: string,
+  hire: boolean,
+): Promise<HireJourneymanOutcome> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "hireJourneyman", side, journeymanId, hire }),
+    },
+  );
+  return readJson<HireJourneymanOutcome>(res);
+}
+
 /** RAU-51: submits a coach's OWN side's six MJP nominations (the route enforces
  * the caller owns that side's team). The server persists them per-side; the
  * roll is gated on BOTH sides. */
