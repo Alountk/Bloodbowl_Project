@@ -66,6 +66,7 @@ import {
 import { DEFAULT_COACHING, isCoachingStaff, type PlayerEntry } from "@/features/teams/types";
 import { getRaceById } from "@/features/teams/data/races";
 import { computeRosterCostFromPlayers, computeCoachingCost } from "@/features/teams/roster";
+import type { PersistedJourneymen } from "./journeymen";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
 export interface StoreTx {
@@ -406,6 +407,9 @@ async function persistAndPublish(
     /** Optional per-team treasury decrements to commit in the SAME transaction as
      * the event rows (LM-23 atomicity): a failure rolls back events AND treasury. */
     treasuryUpdates?: { teamId: string; amountLost: number }[];
+    /** RAU-14: the fielded journeymen to persist on the LiveMatch row at begin
+     * (additive, never re-typed). Undefined → the field is not touched. */
+    journeymen?: PersistedJourneymen;
     /** RAU-38: when set, closes the fixture (winner + scores) in the SAME
      * transaction as the event rows — a concession's victory is atomic with its
      * `concede` event, never a partial state. `leagueId` lets the store run the
@@ -445,6 +449,9 @@ async function persistAndPublish(
         ...rowData(input.next),
         seq: nextSeq,
         ...(liveWinnings ? { winnings: liveWinnings } : {}),
+        // RAU-14: the begin write persists the fielded journeymen atomically
+        // with the kickoff rows; later transitions never touch the field.
+        ...(input.journeymen !== undefined ? { journeymen: input.journeymen as unknown as Prisma.InputJsonValue } : {}),
       },
     });
     if (updated.count === 0) {
@@ -671,6 +678,12 @@ export interface BeginLiveMatchInput {
   /** Optional kickoff input (LM-21/22/23): when present, the begin transition
    * builds the em/em/fan_factor events and commits the treasury deltas atomically. */
   kickoff?: BuildKickoffEventsInput;
+  /** RAU-14: the journeymen (Novatos) fielded at begin, persisted on the
+   * LiveMatch row so the post-resolve HIRE flow can reference them. Built by
+   * the route from the SAME served rosters that name the `journeyman` timeline
+   * events (deterministic per match). Omit → the row keeps SQL NULL (a match
+   * with no journeymen has nothing to hire). */
+  journeymen?: PersistedJourneymen;
 }
 
 /**
@@ -712,6 +725,9 @@ export async function beginLiveMatch(
       next,
       now: input.now,
       treasuryUpdates: kickoff.treasuryUpdates,
+      // RAU-14: persist the fielded journeymen atomically with the begin event
+      // rows — the post-resolve hire flow reads them off the row.
+      journeymen: input.journeymen,
     },
     deps,
   );

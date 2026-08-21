@@ -94,6 +94,52 @@ export function linemanPositionalOf(race: Race | undefined): Positional | undefi
   return [...race.positionals].sort((a, b) => a.cost - b.cost)[0];
 }
 
+/** One persisted journeyman entry on the LiveMatch row (RAU-14): the synthetic
+ * id (`journeyman-{teamId}-{n}`, same scheme as the served players) + the
+ * deterministic race-bank name persisted at begin. */
+export interface PersistedJourneyman {
+  id: string;
+  name: string;
+}
+
+/** The persisted per-side journeymen shape (`LiveMatch.journeymen`). */
+export interface PersistedJourneymen {
+  home: PersistedJourneyman[];
+  away: PersistedJourneyman[];
+}
+
+/** The default (empty) persisted shape — no journeymen on either side. */
+export function emptyPersistedJourneymen(): PersistedJourneymen {
+  return { home: [], away: [] };
+}
+
+/**
+ * Defensively parses a persisted `LiveMatch.journeymen` JSON value (RAU-14):
+ * malformed/foreign shapes collapse to `null` (never crash) so the caller can
+ * treat "no persisted journeymen" as absent; a well-formed value always yields
+ * both sides' arrays (empty when a side fielded none).
+ */
+export function parsePersistedJourneymen(value: unknown): PersistedJourneymen | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const side = (candidate: unknown): PersistedJourneyman[] | null => {
+    if (!Array.isArray(candidate)) return null;
+    const entries: PersistedJourneyman[] = [];
+    for (const item of candidate) {
+      if (typeof item !== "object" || item === null) return null;
+      const entry = item as Record<string, unknown>;
+      if (typeof entry.id !== "string" || typeof entry.name !== "string") return null;
+      entries.push({ id: entry.id, name: entry.name });
+    }
+    return entries;
+  };
+  const home = side(raw.home);
+  const away = side(raw.away);
+  if (home === null || away === null) return null;
+  return { home, away };
+}
+
+
 /** One served match player: a roster player overlaid by its `Player` row, or a
  * synthetic journeyman. `journeyman` is true ONLY for the match-only novatos. */
 export interface ServedPlayer {

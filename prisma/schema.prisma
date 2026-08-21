@@ -206,6 +206,13 @@ model LiveMatch {
   /// ROLLED result. Additive JSON, never re-typed; null until the first side
   /// nominates.
   mvpNominations    Json?
+  /// RAU-14: the journeymen (Novatos) fielded at begin, persisted so the
+  /// post-resolve HIRE flow can reference them (`{ home: [{ id, name }],
+  /// away: [{ id, name }] }` — each journeyman's synthetic id + deterministic
+  /// race-bank name). A side that fields none carries an empty array. Additive
+  /// JSON, never re-typed; null until the match begins (or for a match with no
+  /// LiveMatch row).
+  journeymen        Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   events        LiveEvent[]
