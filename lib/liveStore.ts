@@ -75,6 +75,7 @@ import { createId } from "@/features/teams/id";
 import {
   linemanPositionalOf,
   parsePersistedJourneymen,
+  type PersistedJourneyman,
   type PersistedJourneymen,
 } from "./journeymen";
 
@@ -1073,6 +1074,22 @@ function resolveEventsOf(rows: readonly unknown[]): ResolveEventLike[] {
     }));
 }
 
+/** A side's MJP-eligible ids: the roster ids PLUS the fielded Journeyman ids
+ * (RAU-13: a Novato plays for the team that match, so they are MVP-eligible).
+ * The journeymen come from the persisted `LiveMatch.journeymen` — only the ids
+ * that actually fielded the match are accepted, never a foreign `journeyman-*`
+ * pattern. */
+function eligibleMvpIds(
+  roster: Prisma.JsonValue | null,
+  journeymen: readonly PersistedJourneyman[] | null | undefined,
+): Set<string> {
+  const ids = new Set(
+    (Array.isArray(roster) ? (roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
+  );
+  for (const journeyman of journeymen ?? []) ids.add(journeyman.id);
+  return ids;
+}
+
 /** The rolled resolution the preview persists for the commit to reuse (RAU-49
  * fix): the chosen nominee rosterPlayerIds + the post-match FF totals — both
  * from the SAME server roll the modal previewed. */
@@ -1151,9 +1168,7 @@ export async function nominateMvpLiveMatch(
     const team = teams[0];
     if (!team) throw Object.assign(new Error("not found"), { status: 404 });
 
-    const rosterIds = new Set(
-      (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
-    );
+    const rosterIds = eligibleMvpIds(team.roster, parsePersistedJourneymen(row.journeymen)?.[input.side]);
     const availability = new Map(
       team.players.map((p) => [p.rosterPlayerId, { alive: p.alive, missNextMatch: p.missNextMatch }]),
     );
@@ -1252,15 +1267,14 @@ export async function rollLiveMvp(
     const awayTeam = byTeamId.get(input.awayTeamId);
     if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
 
-    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }) =>
-      new Set(
-        (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
-      );
+    const persistedJourneymen = parsePersistedJourneymen(row.journeymen);
+    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }, side: "home" | "away") =>
+      eligibleMvpIds(team.roster, persistedJourneymen?.[side]);
     const invalid = validateMvpNominations(
       homeNom,
       awayNom,
-      rosterIdsOf(homeTeam),
-      rosterIdsOf(awayTeam),
+      rosterIdsOf(homeTeam, "home"),
+      rosterIdsOf(awayTeam, "away"),
     );
     if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
 
@@ -1404,15 +1418,14 @@ export async function resolveLiveMatch(
     const awayTeam = byTeamId.get(input.awayTeamId);
     if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
 
-    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }) =>
-      new Set(
-        (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
-      );
+    const persistedJourneymen = parsePersistedJourneymen(row.journeymen);
+    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }, side: "home" | "away") =>
+      eligibleMvpIds(team.roster, persistedJourneymen?.[side]);
     const invalid = validateMvpNominations(
       homeNom,
       awayNom,
-      rosterIdsOf(homeTeam),
-      rosterIdsOf(awayTeam),
+      rosterIdsOf(homeTeam, "home"),
+      rosterIdsOf(awayTeam, "away"),
     );
     if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
 

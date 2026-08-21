@@ -10,6 +10,7 @@ import {
   casualtyVictimsFromEvents,
   deriveLivePeAwards,
   isLastingBand,
+  journeymanSnapshotEarned,
   validateMvpNominations,
   type ResolveEventLike,
 } from "./liveResolve";
@@ -96,11 +97,12 @@ describe("deriveLivePeAwards", () => {
     expect(away).toEqual([]);
   });
 
-  it("RAU-13: skips Journeymen for TD/completion and as a casualty causer (no PE)", () => {
+  it("RAU-13: counts a Journeyman's TD/completion and a journeyman causer's casualty PE", () => {
     const { home, away } = deriveLivePeAwards([
       event({ kind: "td", side: "home", playerRosterId: "journeyman-home-t-1" }),
       event({ kind: "completion", side: "home", playerRosterId: "journeyman-home-t-2" }),
-      // A journeyman INFLICTS a lasting injury → the ★2 goes to NOBODY.
+      // A journeyman INFLICTS a lasting injury on the away victim → the ★2 goes
+      // to THEM (on the home side).
       event({
         kind: "casualty",
         side: "away",
@@ -111,7 +113,12 @@ describe("deriveLivePeAwards", () => {
       event({ kind: "td", side: "home", playerRosterId: "h1" }),
       event({ kind: "completion", side: "away", playerRosterId: "a2" }),
     ]);
-    expect(home).toEqual([{ rosterPlayerId: "h1", pe: PE_TD }]);
+    expect(home).toEqual([
+      { rosterPlayerId: "journeyman-home-t-1", pe: PE_TD },
+      { rosterPlayerId: "journeyman-home-t-2", pe: PE_COMPLETION },
+      { rosterPlayerId: "journeyman-home-t-3", pe: PE_CASUALTY },
+      { rosterPlayerId: "h1", pe: PE_TD },
+    ]);
     expect(away).toEqual([{ rosterPlayerId: "a2", pe: PE_COMPLETION }]);
   });
 });
@@ -130,9 +137,10 @@ describe("addMvpPe", () => {
     ]);
   });
 
-  it("RAU-13: a journeyman grantee receives nothing (defensive — MJP excludes them)", () => {
+  it("RAU-13: a journeyman grantee receives the +4 (MVP-eligible like any match player)", () => {
     expect(addMvpPe([{ rosterPlayerId: "h1", pe: 3 }], "journeyman-home-t-1")).toEqual([
       { rosterPlayerId: "h1", pe: 3 },
+      { rosterPlayerId: "journeyman-home-t-1", pe: PE_MVP },
     ]);
   });
 });
@@ -170,7 +178,7 @@ describe("casualtyVictimsFromEvents", () => {
     ).toEqual([]);
   });
 
-  it("RAU-13: skips a Journeyman victim (their injury never persists)", () => {
+  it("RAU-13: includes a Journeyman victim (the snapshot documents the match; the hire carries their injuries)", () => {
     const victims = casualtyVictimsFromEvents([
       event({
         kind: "casualty",
@@ -185,7 +193,10 @@ describe("casualtyVictimsFromEvents", () => {
         payload: { band: "bruise" },
       }),
     ]);
-    expect(victims).toEqual([{ team: "home", rosterPlayerId: "h2", band: "bruise" }]);
+    expect(victims).toEqual([
+      { team: "home", rosterPlayerId: "journeyman-home-t-1", band: "grave" },
+      { team: "home", rosterPlayerId: "h2", band: "bruise" },
+    ]);
   });
 });
 
@@ -222,9 +233,76 @@ describe("validateMvpNominations", () => {
     ).toBe("mvp.foreign");
   });
 
+  it("RAU-13: accepts a fielded Journeyman id in the side's eligible set (MVP-eligible)", () => {
+    const withJourneyman = new Set([...home, "journeyman-home-t-1"]);
+    expect(
+      validateMvpNominations(
+        ["h1", "h2", "h3", "h4", "h5", "journeyman-home-t-1"],
+        ["a1", "a2", "a3", "a4", "a5", "a6"],
+        withJourneyman,
+        away,
+      ),
+    ).toBeNull();
+  });
+
+  it("still rejects a journeyman NOT in the side's eligible set (foreign id)", () => {
+    expect(
+      validateMvpNominations(
+        ["h1", "h2", "h3", "h4", "h5", "journeyman-away-t-9"],
+        ["a1", "a2", "a3", "a4", "a5", "a6"],
+        home,
+        away,
+      ),
+    ).toBe("mvp.foreign");
+  });
+
   it("rejects non-string / empty nominations", () => {
     expect(validateMvpNominations(["h1", "h2", "h3", "h4", "h5", ""], ["a1", "a2", "a3", "a4", "a5", "a6"], home, away)).toBe(
       "mvp.ids",
     );
+  });
+});
+
+describe("journeymanSnapshotEarned", () => {
+  it("returns the PE the journeyman earned + every casualty band they suffered (snapshot single source)", () => {
+    const side = {
+      pe: [
+        { rosterPlayerId: "journeyman-home-t-1", pe: 7 },
+        { rosterPlayerId: "h1", pe: 3 },
+      ],
+      casualties: [
+        { team: "home", rosterPlayerId: "journeyman-home-t-1", outcome: { kind: "apaleado" } },
+        { team: "home", rosterPlayerId: "h2", outcome: { kind: "bruise" } },
+      ],
+    };
+    expect(journeymanSnapshotEarned(side, "journeyman-home-t-1")).toEqual({
+      pe: 7,
+      injuries: ["apaleado"],
+    });
+  });
+
+  it("returns zeroes for a journeyman absent from the snapshot (nothing earned/suffered)", () => {
+    expect(journeymanSnapshotEarned(undefined, "journeyman-home-t-1")).toEqual({ pe: 0, injuries: [] });
+    expect(
+      journeymanSnapshotEarned(
+        { pe: [{ rosterPlayerId: "h1", pe: 3 }], casualties: [] },
+        "journeyman-home-t-1",
+      ),
+    ).toEqual({ pe: 0, injuries: [] });
+  });
+
+  it("skips casualties without a resolved band", () => {
+    expect(
+      journeymanSnapshotEarned(
+        {
+          pe: [],
+          casualties: [
+            { team: "home", rosterPlayerId: "journeyman-home-t-1", outcome: {} },
+            { team: "home", rosterPlayerId: "h2", outcome: { kind: "grave" } },
+          ],
+        },
+        "journeyman-home-t-1",
+      ),
+    ).toEqual({ pe: 0, injuries: [] });
   });
 });
