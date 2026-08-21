@@ -614,10 +614,9 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     // The 10 roster players are served first, flagged NOT journeyman.
     expect(players.filter((p) => !p.journeyman)).toHaveLength(10);
     expect(players.slice(0, 10).every((p) => p.journeyman === false)).toBe(true);
-    // The single journeyman: synthetic id, Novato name, the race's lineman key.
+    // The single journeyman: synthetic id, race-bank name, the race's lineman key.
     expect(players[10]).toMatchObject({
       rosterPlayerId: "journeyman-t1-1",
-      name: "Novato 1",
       positionalKey: "lineman",
       pe: 0,
       alive: true,
@@ -625,6 +624,9 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
       valueBonus: 0,
       journeyman: true,
     });
+    // Named from the human bank ("First Surname"), never "Novato N".
+    expect(players[10].name).not.toBe("Novato 1");
+    expect(players[10].name).toMatch(/\b(Martillo|Cuervo|Valiente|Ferrer|Escudo Viejo)$/);
   });
 
   it("RAU-13: uses the race's Lineman positional key (amazon → linewoman)", async () => {
@@ -650,7 +652,11 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     const res = await callGet();
     const body = await res.json();
     const jrny = body.homeTeam.players.find((p: { journeyman: boolean }) => p.journeyman);
-    expect(jrny).toMatchObject({ rosterPlayerId: "journeyman-t1-1", name: "Novato 1", positionalKey: "linewoman" });
+    expect(jrny).toMatchObject({ rosterPlayerId: "journeyman-t1-1", positionalKey: "linewoman" });
+    // The amazon bank name, not "Novato N".
+    expect(jrny.name).not.toBe("Novato 1");
+    expect(typeof jrny.name).toBe("string");
+    expect(jrny.name.length).toBeGreaterThan(0);
   });
 
   it("RAU-13: does NOT append journeymen when 11+ players are available", async () => {

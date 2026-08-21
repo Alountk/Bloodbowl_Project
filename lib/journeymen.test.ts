@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isJourneymanId,
   journeymanId,
+  journeymanName,
   linemanPositionalOf,
   mergeRosterWithJourneymen,
   type PlayerRowLike,
@@ -42,6 +43,39 @@ describe("isJourneymanId / journeymanId (synthetic id scheme)", () => {
     expect(isJourneymanId("")).toBe(false);
     expect(isJourneymanId(null)).toBe(false);
     expect(isJourneymanId(undefined)).toBe(false);
+  });
+});
+
+describe("journeymanName — race-bank names, deterministic for the match", () => {
+  it("returns a human-bank 'First Surname' name (RAU-27/45 composed style)", () => {
+    const name = journeymanName("t1", "human", 1, new Set());
+    expect(name).not.toBe("");
+    expect(name.split(" ").length).toBeGreaterThan(1);
+    // Composed from the banks: a first name + one of the human surnames.
+    expect(name).toMatch(/\b(Martillo|Cuervo|Valiente|Ferrer|Escudo Viejo)$/);
+  });
+
+  it("is deterministic for the same team + index (reloads never rename)", () => {
+    const a = journeymanName("t1", "human", 1, new Set());
+    const b = journeymanName("t1", "human", 1, new Set());
+    expect(a).toBe(b);
+  });
+
+  it("avoids the roster's used names", () => {
+    const used = new Set(["Aldric", "Brunhild"]);
+    const name = journeymanName("t1", "human", 1, used);
+    expect(used.has(name)).toBe(false);
+    // A used FIRST name is excluded from the composition entirely.
+    expect(name.startsWith("Aldric ")).toBe(false);
+    expect(name.startsWith("Brunhild ")).toBe(false);
+  });
+
+  it("keeps two journeymen of the same serve distinct", () => {
+    const used = new Set<string>();
+    const one = journeymanName("t1", "human", 1, used);
+    used.add(one);
+    const two = journeymanName("t1", "human", 2, used);
+    expect(two).not.toBe(one);
   });
 });
 
@@ -99,7 +133,6 @@ describe("mergeRosterWithJourneymen — availability-driven append", () => {
     expect(jrny).toHaveLength(2);
     expect(jrny[0]).toMatchObject({
       rosterPlayerId: "journeyman-t1-1",
-      name: "Novato 1",
       positionalKey: "lineman",
       pe: 0,
       skills: [],
@@ -111,9 +144,35 @@ describe("mergeRosterWithJourneymen — availability-driven append", () => {
     });
     expect(jrny[1]).toMatchObject({
       rosterPlayerId: "journeyman-t1-2",
-      name: "Novato 2",
       journeyman: true,
     });
+    // Names come from the race bank (never "Novato N") and differ per novato.
+    expect(jrny[0].name).not.toBe("Novato 1");
+    expect(jrny[1].name).not.toBe("Novato 2");
+    expect(jrny[0].name).not.toBe(jrny[1].name);
+    // No journeyman shares a name with a real roster player.
+    const realNames = new Set(real.map((p) => p.name));
+    expect(realNames.has(jrny[0].name)).toBe(false);
+    expect(realNames.has(jrny[1].name)).toBe(false);
+  });
+
+  it("serves the SAME journeyman names on every call (match-stable determinism)", () => {
+    const players: PlayerRowLike[] = elevenRoster.slice(0, 10).map((e) => ({
+      rosterPlayerId: e.id,
+      name: e.name,
+      positionalKey: e.positionalKey,
+      pe: 0,
+      skills: [],
+      injuries: [],
+      alive: true,
+      missNextMatch: false,
+      valueBonus: 0,
+    }));
+    const input: TeamRosterInput = { id: "t1", raceId: "human", roster: elevenRoster.slice(0, 10), players };
+    const first = mergeRosterWithJourneymen(input).filter((p) => p.journeyman).map((p) => p.name);
+    const second = mergeRosterWithJourneymen(input).filter((p) => p.journeyman).map((p) => p.name);
+    expect(first).toEqual(second);
+    expect(first).toHaveLength(1);
   });
 
   it("uses the race's Lineman positional for the journeymen (amazon → linewoman)", () => {
@@ -151,7 +210,9 @@ describe("mergeRosterWithJourneymen — availability-driven append", () => {
     const served = mergeRosterWithJourneymen(teamRow({ roster: elevenRoster.slice(0, 10), players }));
     const jrny = served.filter((p) => p.journeyman);
     expect(jrny.map((p) => p.rosterPlayerId)).toEqual(["journeyman-t1-1", "journeyman-t1-2"]);
-    expect(jrny.map((p) => p.name)).toEqual(["Novato 1", "Novato 2"]);
+    // Race-bank names (never "Novato N") and distinct per novato.
+    expect(jrny.map((p) => p.name)).not.toEqual(["Novato 1", "Novato 2"]);
+    expect(new Set(jrny.map((p) => p.name)).size).toBe(2);
   });
 
   it("does NOT append when 11+ players are available", () => {

@@ -1465,6 +1465,10 @@ export function randomPlayerName(
   raceId: string,
   usedNames?: Set<string>,
   fallbackPrefix?: string,
+  /** Optional deterministic source of floats in [0, 1) — defaults to
+   * `Math.random`. Passed by the journeyman naming path so the same team's
+   * journeyman gets the SAME name on every serve (RAU-13 determinism). */
+  rng: () => number = Math.random,
 ): string {
   const used = usedNames ?? new Set<string>();
   const firstBank = getPlayerNameBank(raceId);
@@ -1486,13 +1490,13 @@ export function randomPlayerName(
       }
     }
     if (fullNames.length > 0) {
-      return fullNames[Math.floor(Math.random() * fullNames.length)];
+      return fullNames[Math.floor(rng() * fullNames.length)];
     }
   }
 
   // Surname bank absent or exhausted: fall back to a bare first name.
   if (availableFirsts.length > 0) {
-    return availableFirsts[Math.floor(Math.random() * availableFirsts.length)];
+    return availableFirsts[Math.floor(rng() * availableFirsts.length)];
   }
 
   return `${fallbackPrefix ?? "Player"} ${used.size + 1}`;
