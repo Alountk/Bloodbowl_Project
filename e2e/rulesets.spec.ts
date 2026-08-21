@@ -63,7 +63,9 @@ async function signupAsDeveloper(page: Page): Promise<string> {
   await signup(page, email);
   promoteToDeveloper(email);
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
-  await expect(page).toHaveURL("/");
+  await expect(
+    page.getByRole("heading", { name: "Your league, in your pocket." }),
+  ).toBeVisible();
   await login(page, email);
   return email;
 }
