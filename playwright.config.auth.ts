@@ -14,6 +14,7 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: [
     "**/auth.spec.ts",
+    "**/landing-dashboard.spec.ts",
     "**/migration.spec.ts",
     "**/isolation.spec.ts",
     "**/leagues.spec.ts",
