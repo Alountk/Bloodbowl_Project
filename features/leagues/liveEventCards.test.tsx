@@ -108,6 +108,19 @@ describe("LiveEventCards — team cards 68% + generic 100% (MVT-1/D3)", () => {
     expect(row.querySelector(".dline")?.className).toContain("dline--away");
   });
 
+  it("renders a journeyman join as a team card with the join line + Novato marker (RAU-13)", () => {
+    const { container } = renderCards([
+      ev(7, "journeyman", "home", { count: 1, names: ["Aldric Martillo"] }, null, 1, 1000),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row).toBeTruthy();
+    // Team card corners + the join line ("X se une como novato") + the marker.
+    expect(row.querySelector(".turn-tag")?.className).toContain("turn-tag--home");
+    expect(row.textContent).toContain("Aldric Martillo se une como novato");
+    expect(row.querySelector(".pos")?.textContent).toBe("Novato");
+    expect(row.querySelector(".token svg")).toBeTruthy();
+  });
+
   it("renders a generic endMatch event as a full-width card with no turn tag", () => {
     const { container } = renderCards([ev(12, "endMatch", null, {}, null, 8, 481000)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;

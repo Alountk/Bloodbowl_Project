@@ -13,6 +13,7 @@ import {
   bandSubLabel,
   casualtyRollLine,
   casualtyActionLine,
+  journeymanJoinLabel,
   type TFunc,
 } from "./liveEventLabels";
 import { Icon, type IconName } from "./icons";
@@ -42,7 +43,7 @@ import styles from "./liveEventCards.module.css";
  * A CSS module cannot be mangled that way, so the grid, gradients and per-side
  * mirroring live there; Tailwind remains only for simple utilities.
  */
-const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake", "turnStart"]);
+const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake", "turnStart", "journeyman"]);
 
 /** A roster player lookup for a side: id → { name, dorsal, positionalKey }. */
 type RosterLookup = { name: string; dorsal: number; positionalKey: string } | undefined;
@@ -305,11 +306,15 @@ export function LiveEventCards({
         const player = team && event.playerRosterId ? findPlayer(team, event.playerRosterId, ref!) : undefined;
         const minute = deriveMinute(event.at, startedAt ?? 0);
         // The turnStart card is TEAM-assigned (RAU-36/37): it reads "Turno
-        // {team}" instead of the generic audit label ("Tu turno").
+        // {team}" instead of the generic audit label ("Tu turno"). The
+        // journeyman card (RAU-13) overrides the generic "Novato" kind label
+        // with the join line "{name} se une como novato".
         const label =
           event.kind === "turnStart" && team
             ? t("match.turnOfTeam", { team: team.name })
-            : liveEventLabel(event, t);
+            : event.kind === "journeyman" && team
+              ? (journeymanJoinLabel(event.payload, t) ?? liveEventLabel(event, t))
+              : liveEventLabel(event, t);
         const iconName: IconName =
           event.kind === "casualty" ? casualtyIcon(event.payload) : EVENT_GLYPH[event.kind] ?? "football";
         const partial = event.kind === "td" ? partialScores.get(event.seq) : undefined;
@@ -385,6 +390,30 @@ export function LiveEventCards({
                     <span className={`${c.dline} ${isHome ? c.dlineHome : c.dlineAway}`}>
                       <span className={c.dicon}>
                         <Icon name={iconName} className="h-[15px] w-[15px]" />
+                      </span>
+                      {label}
+                    </span>
+                  </span>
+                </div>
+              ) : event.kind === "journeyman" ? (
+                // RAU-13: the journeyman join team card — shirt token + the
+                // join line "{name} se une como novato" / "Novato" marker, no
+                // dorsal (no single player to name on a multi-novato side).
+                <div className={c.cardBody}>
+                  <span
+                    aria-hidden="true"
+                    className={`${c.token} ${isAway ? c.tokenAway : c.tokenHome}`}
+                  >
+                    <Icon name="shirt" className="h-[18px] w-[18px]" />
+                  </span>
+                  <div className={c.who}>
+                    <p className={c.name}>{label}</p>
+                    <p className={c.pos}>{t("match.event.journeyman")}</p>
+                  </div>
+                  <span className={c.detail}>
+                    <span className={`${c.dline} ${isHome ? c.dlineHome : c.dlineAway}`}>
+                      <span className={c.dicon}>
+                        <Icon name="shirt" className="h-[15px] w-[15px]" />
                       </span>
                       {label}
                     </span>
