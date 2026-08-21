@@ -67,6 +67,49 @@ test.describe("Auth E2E (real Postgres)", () => {
 });
 
 /**
+ * Unauthenticated-access audit (RAU-54): with AUTH_MODE=auth every mutating API
+ * route and every user-scoped GET must return 401 without a session, and every
+ * protected page must redirect to /login. This test pins that contract on a
+ * fresh browser context with NO cookies (no signup/login first).
+ */
+test.describe("Unauthenticated access (auth mode)", () => {
+  test("API mutating routes and user-scoped GETs reject with 401", async ({ page }) => {
+    // Mutating routes: creating a league, joining a team, expelling a member.
+    const createLeague = await page.request.post("/api/leagues", {
+      data: { name: "Sneaky" },
+    });
+    expect(createLeague.status()).toBe(401);
+
+    const createTeam = await page.request.post("/api/teams", {
+      data: { name: "Sneaky", raceId: "human", roster: [], coaching: {} },
+    });
+    expect(createTeam.status()).toBe(401);
+
+    const join = await page.request.post("/api/leagues/l1/teams", {
+      data: { teamId: "t1" },
+    });
+    expect(join.status()).toBe(401);
+
+    // User-scoped GETs: profile, own teams, open leagues, rulesets selector.
+    expect((await page.request.get("/api/me")).status()).toBe(401);
+    expect((await page.request.get("/api/teams")).status()).toBe(401);
+    expect((await page.request.get("/api/leagues")).status()).toBe(401);
+    expect((await page.request.get("/api/rulesets")).status()).toBe(401);
+  });
+
+  test("protected pages redirect to /login without a session", async ({ page }) => {
+    await page.goto("/teams");
+    await expect(page).toHaveURL(/\/login$/);
+
+    await page.goto("/leagues");
+    await expect(page).toHaveURL(/\/login$/);
+
+    await page.goto("/teams/create");
+    await expect(page).toHaveURL(/\/login$/);
+  });
+});
+
+/**
  * Regression: the login → teams → logout → login flow must work WITHOUT a
  * manual reload. This mirrors the production host (LAN IP, not localhost) —
  * the reported bug ("no access until refresh") reproduced only against old
