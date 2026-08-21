@@ -1799,16 +1799,18 @@ export async function hireJourneymanLiveMatch(
       },
     });
     if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
-    // RAU-14: the hire is PAID — the treasury decrements by the lineman cost in
-    // the SAME transaction as the roster append and the list removal.
+    // RAU-14: hiring is PAID via the spendable-balance formula — appending the
+    // roster player grows rosterCost, so `computeSpendableBalance` drops by the
+    // lineman cost automatically. The treasury ledger is NOT decremented (that
+    // would double-count the payment; RAU-11 hire follows the same convention).
     await tx.team.updateMany({
       where: { id: input.teamId },
-      data: { roster: nextRoster as never, treasury: { decrement: lineman.cost } },
+      data: { roster: nextRoster as never },
     });
 
     return {
       journeymen: nextJourneymen,
-      team: { id: input.teamId, roster: nextRoster, treasury: team.treasury - lineman.cost },
+      team: { id: input.teamId, roster: nextRoster, treasury: team.treasury },
     };
   });
 }
