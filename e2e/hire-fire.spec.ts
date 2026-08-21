@@ -63,6 +63,12 @@ function rosterTable(page: Page) {
 async function openTeamDetail(page: Page, teamId: string) {
   await page.goto(`/teams/${teamId}`);
   await expect(rosterTable(page)).toBeVisible();
+  // The row click opens the improve modal only once the progression payload
+  // (a separate fetch) has arrived — until then the table is read-only and a
+  // click is a silent no-op. The reorder buttons render only when the table is
+  // interactive, so wait for one before interacting (fresh teams have no
+  // Player rows, so the SPP-cell wait used elsewhere does not apply here).
+  await expect(page.locator('[data-testid^="reorder-down-"]').first()).toBeVisible();
 }
 
 /**
