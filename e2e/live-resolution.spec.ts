@@ -640,9 +640,25 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     const pivotServed = pivotSide2 === "home" ? servedBody.homeTeam.players : servedBody.awayTeam.players;
     const jrny = pivotServed.find((p) => p.journeyman === true);
     expect(jrny).toBeDefined();
-    expect(jrny!.name).toBe("Novato 1");
+    const jrnyName = jrny!.name;
+    // RAU-13: the Novato carries a RACE-BANK name ("First Surname" style, never
+    // the old "Novato N") while still being flagged journeyman for the match.
+    expect(jrnyName).not.toMatch(/^Novato\b/);
+    expect(jrnyName.length).toBeGreaterThan(0);
     expect(jrny!.positionalKey).toBe("lineman");
     expect(jrny!.rosterPlayerId).toBe(`journeyman-${pivotTeamId}-1`);
+
+    // The name is deterministic for the match: re-reading the same fixture GET
+    // (the served DTO is recomputed per request) serves the SAME novato name.
+    const servedAgain = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    expect(servedAgain.status()).toBe(200);
+    const servedAgainBody = (await servedAgain.json()) as {
+      homeTeam: { players: { rosterPlayerId: string; name: string; journeyman?: boolean }[] };
+      awayTeam: { players: { rosterPlayerId: string; name: string; journeyman?: boolean }[] };
+    };
+    const pivotServedAgain =
+      pivotSide2 === "home" ? servedAgainBody.homeTeam.players : servedAgainBody.awayTeam.players;
+    expect(pivotServedAgain.find((p) => p.journeyman === true)?.name).toBe(jrnyName);
 
     await liveCommand(home2Page, leagueId, r2Fixture.id, { type: "consent", side: "home" });
     await liveCommand(away2Page, leagueId, r2Fixture.id, { type: "consent", side: "away" });
@@ -653,17 +669,26 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve ex
     }
     expect(view.activeSide).toBe(pivotSide2);
 
-    // The match page shows the notice and the Journeyman is selectable in the
-    // FAB (marked Novato). Record a TD with the Novato through the REAL FAB.
+    // The match page shows the notice, the timeline journals the novato joining
+    // ("{name} se une como novato"), and the Journeyman is selectable in the
+    // FAB (marked Novato with its dorsal). Record a TD with the Novato through
+    // the REAL FAB.
     const match2Url = `/leagues/${leagueId}/fixtures/${r2Fixture.id}`;
     await pivotPage.goto(match2Url);
     await expect(pivotPage.getByTestId("journeymen-notice")).toBeVisible();
     await expect(pivotPage.getByText("Faltan 1 jugadores — se añaden 1 novatos")).toBeVisible();
+    await expect(
+      pivotPage.getByTestId("live-event-row").filter({ hasText: `${jrnyName} se une como novato` }).first(),
+    ).toBeVisible();
     await expect(pivotPage.getByRole("button", { name: "+" })).toBeVisible();
     await pivotPage.getByRole("button", { name: "+" }).click();
     await pivotPage.getByRole("button", { name: /Touchdown/i }).click();
     const tdSelect = pivotPage.getByLabel("Jugador", { exact: true });
-    await tdSelect.selectOption({ label: "Novato 1 (Novato)" });
+    // The novato option reads "Name (Novato · #N)" — dorsal = served index + 1.
+    const jrnyOption = tdSelect.locator("option", { hasText: jrnyName });
+    await expect(jrnyOption).toHaveCount(1);
+    expect((await jrnyOption.textContent()) ?? "").toMatch(/\(Novato · #\d+\)$/);
+    await tdSelect.selectOption(jrny!.rosterPlayerId);
     await pivotPage.getByRole("button", { name: "Registrar" }).click();
     await expect(pivotPage.getByLabel("Jugador", { exact: true })).toHaveCount(0);
 
