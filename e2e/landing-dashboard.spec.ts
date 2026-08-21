@@ -91,8 +91,8 @@ test.describe("Dashboard for logged-in users (auth mode)", () => {
     // Dashboard chrome.
     await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
     await expect(page.getByLabel("Overview")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Create team" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Create league" })).toBeVisible();
+    await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Create team" })).toBeVisible();
+    await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Create league" })).toBeVisible();
 
     // My teams (TeamList embedded).
     const teamName = "Landing Reavers";

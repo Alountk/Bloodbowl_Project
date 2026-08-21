@@ -72,7 +72,7 @@ test.describe("localStorage migration E2E (real Postgres)", () => {
     await signup(page, email, password);
     // Sign out so we can seed localStorage before the migration-triggering login.
     await page.getByRole("button", { name: "Log out" }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL("/");
 
     // Seed legacy teams BEFORE logging in; the migration must pick these up.
     await seedLegacyTeams(page);
@@ -89,7 +89,7 @@ test.describe("localStorage migration E2E (real Postgres)", () => {
 
     // A later login must NOT duplicate the migrated teams (idempotent).
     await page.getByRole("button", { name: "Log out" }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL("/");
     await login(page, email, password);
     await expect(page.getByText("Legacy Reavers")).toHaveCount(1);
   });
