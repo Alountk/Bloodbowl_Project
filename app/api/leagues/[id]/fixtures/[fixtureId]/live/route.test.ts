@@ -2015,4 +2015,35 @@ describe("POST .../live — RAU-14 post-resolve journeyman hire (hireJourneyman)
     expect(res.status).toBe(400);
     expect(hireJourneymanLiveMatchMock).not.toHaveBeenCalled();
   });
+
+  it("ALLOWS the post-resolve hire on a FINISHED league (the RAU-40 guard exempts it — RAU-14)", async () => {
+    // The last fixture's resolve finishes the league atomically; the hire is
+    // the post-"Match reported" decision and must still run.
+    authMock.mockResolvedValue(authSession("coach-home"));
+    prismaMock.fixture.findFirst.mockResolvedValue({
+      ...startedFixture("f-1", "lg-1"),
+      league: {
+        ownerId: "owner-1",
+        status: "finished",
+        turnClockEnabled: true,
+        turnClockSeconds: 240 as const,
+        teams: [{ userId: "coach-home" }, { userId: "coach-away" }],
+      },
+    });
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(8),
+      status: "finished",
+      finishedAt: new Date(2000).toISOString(),
+    });
+    hireJourneymanLiveMatchMock.mockResolvedValue({
+      journeymen: { home: [], away: [] },
+      team: { id: "home-t", roster: [{ id: "new-1", name: "Aldric Martillo", positionalKey: "lineman" }], treasury: 450000 },
+    });
+    const res = await POST(
+      req({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-home-t-1", hire: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(hireJourneymanLiveMatchMock).toHaveBeenCalledTimes(1);
+  });
 });

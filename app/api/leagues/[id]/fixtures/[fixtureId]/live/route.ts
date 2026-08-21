@@ -729,12 +729,6 @@ export async function POST(
   if (userId === null) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // RAU-40: a finished league is definitive — no live control command (incl. a
-  // concede accept/decline) may mutate it further. The SSE read stream above
-  // stays open so the finished match remains watchable.
-  if (ctx.league.status === "finished") {
-    return Response.json({ error: "League is finished" }, { status: 409 });
-  }
 
   let command: unknown;
   try {
@@ -744,6 +738,18 @@ export async function POST(
   }
   if (!isControlCommand(command)) {
     return Response.json({ error: "Unsupported command" }, { status: 400 });
+  }
+
+  // RAU-40: a finished league is definitive — no live control command (incl. a
+  // concede accept/decline) may mutate it further. The SSE read stream above
+  // stays open so the finished match remains watchable.
+  // RAU-14 EXCEPTION: the post-resolve journeyman hire/let-go is NOT a
+  // live-play control — it is the product-mandated post-"Match reported"
+  // decision, which for the season's LAST fixture happens AFTER the resolve
+  // finished the league atomically. The hire mutates only the team roster /
+  // treasury and the persisted journeymen list, never the league or the result.
+  if (ctx.league.status === "finished" && command.type !== "hireJourneyman") {
+    return Response.json({ error: "League is finished" }, { status: 409 });
   }
 
   const now = Date.now();
