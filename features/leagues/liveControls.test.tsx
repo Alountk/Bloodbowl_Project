@@ -406,3 +406,60 @@ describe("EventControls — NON-active coach SELF-INFLICTED casualty (RAU-39)", 
     } as LiveCommand);
   });
 });
+
+describe("EventControls — RAU-13 Journeymen (Novatos) in the pools", () => {
+  const journeyman = {
+    rosterPlayerId: "journeyman-t1-1",
+    name: "Novato 1",
+    positionalKey: "lineman",
+    pe: 0,
+    skills: [],
+    injuries: [],
+    alive: true,
+    missNextMatch: false,
+    valueBonus: 0,
+    journeyman: true,
+  };
+
+  it("offers a journeyman as scorer (own pool), labeled Novato, and submits its id", async () => {
+    const { onSubmit } = renderControls({ roster: [...aliveRoster, journeyman] });
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
+    const tdSelect = screen.getByLabelText(/Jugador/i) as HTMLSelectElement;
+    const labels = Array.from(tdSelect.options).map((o) => o.textContent ?? "");
+    // The journeyman passes the alive && !missNextMatch pool and is marked Novato.
+    expect(labels.some((l) => l.includes("Novato 1") && l.includes("Novato"))).toBe(true);
+    fireEvent.change(tdSelect, { target: { value: journeyman.rosterPlayerId } });
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
+    expect(onSubmit).toHaveBeenCalledWith({ type: "td", side: "home", playerRosterId: "journeyman-t1-1" } as LiveCommand);
+  });
+
+  it("offers a rival journeyman as a foul victim and as the casualty victim (opponent pool)", async () => {
+    renderControls({ opponentRoster: [...opponentRoster, journeyman] });
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+
+    // Foul victim (opponent pool).
+    fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
+    const foulVictim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
+    const foulLabels = Array.from(foulVictim.options).map((o) => o.textContent ?? "");
+    expect(foulLabels.some((l) => l.includes("Novato 1") && l.includes("Novato"))).toBe(true);
+
+    // Casualty victim (rival pool for the ACTIVE coach's proposal).
+    fireEvent.click(screen.getByRole("button", { name: /Cancelar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
+    const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
+    const victimLabels = Array.from(victim.options).map((o) => o.textContent ?? "");
+    expect(victimLabels.some((l) => l.includes("Novato 1") && l.includes("Novato"))).toBe(true);
+  });
+
+  it("keeps real roster players unlabeled (no Novato marker)", async () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
+    const labels = Array.from((screen.getByLabelText(/Jugador/i) as HTMLSelectElement).options).map(
+      (o) => o.textContent ?? "",
+    );
+    expect(labels.some((l) => l.includes("Blitzer A"))).toBe(true);
+    expect(labels.some((l) => l.includes("(Novato)"))).toBe(false);
+  });
+});

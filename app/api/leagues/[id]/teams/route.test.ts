@@ -36,6 +36,23 @@ function makeLeague(overrides: Partial<{ status: string }> = {}) {
   return { id: "l1", ownerId: "user-1", status: "open", ...overrides };
 }
 
+/**
+ * Routes `team.findFirst` by shape: the team lookup queries by `id` (the team
+ * being joined), the RAU-54 guard queries by `leagueId` (an existing member
+ * team owned by the session user). `team` is the join target; `existingMember`
+ * is whatever the guard should find (null when the user has no team in the
+ * league yet).
+ */
+function mockTeamFindFirst(
+  team: unknown,
+  existingMember: unknown,
+) {
+  prismaMock.team.findFirst.mockImplementation((args: { where?: { id?: string; leagueId?: string } }) => {
+    if (args?.where?.id) return Promise.resolve(team);
+    return Promise.resolve(existingMember);
+  });
+}
+
 describe("POST /api/leagues/[id]/teams", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -49,12 +66,10 @@ describe("POST /api/leagues/[id]/teams", () => {
   it("joins an OPEN league owned by ANOTHER user (public join)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-2" } });
     prismaMock.league.findFirst.mockResolvedValue(makeLeague({ status: "open" }));
-    prismaMock.team.findFirst.mockResolvedValue({
-      id: "t1",
-      userId: "user-2",
-      leagueId: null,
-      archivedAt: null,
-    });
+    mockTeamFindFirst(
+      { id: "t1", userId: "user-2", leagueId: null, archivedAt: null },
+      null,
+    );
     prismaMock.team.update.mockResolvedValue({ id: "t1", leagueId: "l1" });
 
     const res = await assignRequest("l1", "t1");
@@ -63,8 +78,49 @@ describe("POST /api/leagues/[id]/teams", () => {
     expect(prismaMock.league.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "l1" } }),
     );
+    // The guard ran (no team of THIS user in the league) and the join updated.
+    expect(prismaMock.team.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ leagueId: "l1", userId: "user-2" }),
+      }),
+    );
     expect(prismaMock.team.update).toHaveBeenCalledWith({
       where: { id: "t1" },
+      data: { leagueId: "l1" },
+    });
+  });
+
+  it("returns 409 when the SAME user already owns a team in the league (one user = one team)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague());
+    mockTeamFindFirst(
+      { id: "t2", userId: "user-1", leagueId: null, archivedAt: null },
+      // user-1 already has team t1 in this league → the second join is blocked.
+      { id: "t1" },
+    );
+
+    const res = await assignRequest("l1", "t2");
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("Ya tienes un equipo en esta liga");
+    // No mutation: the rejected join never touches the team row.
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+  });
+
+  it("allows ANOTHER user to join with their own team (guard is per user, not per league)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-2" } });
+    prismaMock.league.findFirst.mockResolvedValue(makeLeague());
+    mockTeamFindFirst(
+      { id: "t2", userId: "user-2", leagueId: null, archivedAt: null },
+      // user-1's team t1 is already a member, but user-2 has no team here.
+      null,
+    );
+    prismaMock.team.update.mockResolvedValue({ id: "t2", leagueId: "l1" });
+
+    const res = await assignRequest("l1", "t2");
+    expect(res.status).toBe(200);
+    expect(prismaMock.team.update).toHaveBeenCalledWith({
+      where: { id: "t2" },
       data: { leagueId: "l1" },
     });
   });

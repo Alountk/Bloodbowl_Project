@@ -470,6 +470,9 @@ export interface MatchPlayer {
   /** RAU-12: unavailable for this match — a lasting-band casualty of the team's previous match. */
   missNextMatch: boolean;
   valueBonus: number;
+  /** RAU-13: a match-only Journeyman (Novato) completing the lineup — no `Player`
+   * row, never awarded PE. Absent/false on real roster players. */
+  journeyman?: boolean;
 }
 
 /** One team side of a match detail: identity, race, coach, and roster. */

@@ -945,6 +945,31 @@ function TourplayHeader({
   );
 }
 
+/** RAU-13: the per-side notice shown while a match is being set up / played
+ * when a team fields Journeymen: "Faltan X jugadores — se añaden X novatos".
+ * Rendered once per affected side, directly under the match header. */
+function JourneymenNotice({
+  homeTeam,
+  awayTeam,
+}: {
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
+}) {
+  const { t } = useI18n();
+  const homeCount = homeTeam.players.filter((p) => p.journeyman).length;
+  const awayCount = awayTeam.players.filter((p) => p.journeyman).length;
+  if (homeCount === 0 && awayCount === 0) return null;
+  return (
+    <div
+      data-testid="journeymen-notice"
+      className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
+    >
+      {homeCount > 0 ? <p>{t("match.journeymenNotice", { count: homeCount })}</p> : null}
+      {awayCount > 0 ? <p>{t("match.journeymenNotice", { count: awayCount })}</p> : null}
+    </div>
+  );
+}
+
 /** The live-session control: consent → ready → begin → live clock + controls. */
 function LiveActiveMatch({
   live,
@@ -1088,6 +1113,10 @@ function LiveActiveMatch({
         concedeControls={concedeControls}
         casualtyControls={casualtyControls}
       />
+
+      {/* RAU-13: the Journeymen (Novatos) notice — per affected side, whenever
+          the lineup is being completed with match-only players. */}
+      <JourneymenNotice homeTeam={homeTeam} awayTeam={awayTeam} />
 
       {state.status === "pending" || state.status === "ready" ? (
         <>

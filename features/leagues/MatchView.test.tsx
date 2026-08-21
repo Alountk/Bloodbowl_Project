@@ -1920,3 +1920,42 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
     await waitFor(() => expect(screen.getByRole("dialog", { name: "Resolver partido" })).toBeTruthy());
   });
 });
+
+describe("MatchView — RAU-13 Journeymen notice", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows the per-side notice when a live match fields Journeymen", async () => {
+    stubLiveEventSource();
+    const detail = liveDetail();
+    detail.awayTeam = {
+      ...detail.awayTeam,
+      players: [
+        ...detail.awayTeam.players,
+        {
+          rosterPlayerId: "journeyman-t2-1",
+          name: "Novato 1",
+          positionalKey: "lineman",
+          pe: 0,
+          skills: [],
+          injuries: [],
+          alive: true,
+          missNextMatch: false,
+          valueBonus: 0,
+          journeyman: true,
+        },
+      ],
+    };
+    stubMatch(detail);
+    renderPlayed();
+    const notice = await screen.findByTestId("journeymen-notice");
+    expect(notice.textContent).toContain("Faltan 1 jugadores — se añaden 1 novatos");
+  });
+
+  it("renders no notice when neither side has Journeymen", async () => {
+    stubLiveEventSource();
+    stubMatch(liveDetail());
+    renderPlayed();
+    await waitFor(() => expect(screen.getByTestId("tourplay-header")).toBeTruthy());
+    expect(screen.queryByTestId("journeymen-notice")).toBeNull();
+  });
+});
