@@ -36,7 +36,8 @@ async function createLeague(page: Page, name: string) {
   await page.goto("/leagues");
   await page.getByRole("button", { name: "+ New league" }).first().click();
   await page.getByLabel("Name").fill(name);
-  await page.getByRole("button", { name: "Create league" }).click();
+  // exact: the modal backdrop's aria-label is "Close create league" in en.
+  await page.getByRole("button", { name: "Create league", exact: true }).click();
   await expect(page.getByText(name)).toBeVisible();
 }
 

@@ -142,7 +142,11 @@ test.describe("Auth flow regression (LAN host)", () => {
 
     // Logout → the public landing.
     await page.getByRole("button", { name: "Log out" }).click();
-    await expect(page).toHaveURL("/");
+    // Await the landing (not just the URL, which is already "/" on the
+    // dashboard) so the async sign-out has cleared the session cookie.
+    await expect(
+      page.getByRole("heading", { name: "Your league, in your pocket." }),
+    ).toBeVisible();
 
     // Login — WITHOUT any reload, teams must be visible and other sections reachable.
     await page.goto(`${base}/login`);
