@@ -8,7 +8,7 @@ const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn() },
   league: { findFirst: vi.fn() },
   team: { findMany: vi.fn() },
-  player: { findMany: vi.fn() },
+  player: { findMany: vi.fn(), createMany: vi.fn() },
   liveMatch: { findFirst: vi.fn() },
   liveEvent: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
 }));
@@ -67,6 +67,7 @@ vi.mock("@/lib/liveStore", () => ({
 }));
 
 import { GET, POST } from "./route";
+import { journeymanName } from "@/lib/journeymen";
 
 /** A started-league fixture with both team owners set (coach-home / coach-away). */
 function startedFixture(id: string, leagueId: string): Record<string, unknown> {
@@ -623,6 +624,59 @@ describe("POST .../live — consent/retract/begin command handling", () => {
     });
   }
 
+  /** A full 11-player human roster (no Player rows → all available). */
+  const roster11 = Array.from({ length: 11 }, (_, i) => ({
+    id: `p${i + 1}`,
+    name: `Jugador ${i + 1}`,
+    positionalKey: "lineman",
+  }));
+
+  it("wires the per-side journeymen into the begin kickoff input (RAU-13)", async () => {
+    beginLiveMatchMock.mockResolvedValue({ seq: 3, view: liveView({ status: "live", viewerSide: "home" }) });
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(2));
+    rollD6Mock.mockReturnValue(1);
+    rollD3Mock.mockReturnValue(1);
+    // Home fields 10 available → 1 journeyman; away fields 11 → none.
+    const roster10 = roster11.slice(0, 10);
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 }, raceId: "human", roster: roster10 },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 }, raceId: "human", roster: roster11 },
+    ]);
+    prismaMock.player.findMany.mockResolvedValue(
+      roster10.map((e) => ({
+        teamId: "home-t",
+        rosterPlayerId: e.id,
+        name: e.name,
+        positionalKey: e.positionalKey,
+        pe: 0,
+        skills: [],
+        injuries: [],
+        alive: true,
+        missNextMatch: false,
+        valueBonus: 0,
+      })),
+    );
+
+    const res = await POST(req({ type: "begin" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+
+    const kickoff = beginLiveMatchMock.mock.calls[0][0].kickoff;
+    // The journeyman name matches the fixture-GET derivation exactly: the same
+    // seeded name for the same team + index + used roster names.
+    const expectedName = journeymanName(
+      "home-t",
+      "human",
+      1,
+      new Set(roster10.map((e) => e.name)),
+    );
+    expect(kickoff.journeymen.home).toEqual({ count: 1, names: [expectedName] });
+    expect(kickoff.journeymen.home.names[0]).not.toBe("Novato 1");
+    expect(kickoff.journeymen.away).toBeUndefined();
+  });
+
   it("returns 400 for an unknown command type", async () => {
     prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
     const res = await POST(req({ type: "explode" }), {
@@ -692,10 +746,12 @@ describe("POST .../live — consent/retract/begin command handling", () => {
     rollD6Mock.mockReturnValue(1);
     rollD3Mock.mockReturnValue(1);
     // Begin materializes both teams (idempotent) to build the kickoff input.
+    // The roster rows also feed the served-rosters journeyman derivation.
     prismaMock.team.findMany.mockResolvedValue([
-      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 } },
-      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 } },
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 }, raceId: "human", roster: roster11 },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 }, raceId: "human", roster: roster11 },
     ]);
+    prismaMock.player.findMany.mockResolvedValue([]);
     const res = await POST(req({ type: "begin" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
@@ -733,9 +789,10 @@ describe("POST .../live — consent/retract/begin command handling", () => {
       .mockReturnValueOnce(1); // away fan
     rollD3Mock.mockReturnValueOnce(2).mockReturnValueOnce(3); // home d3, away d3
     prismaMock.team.findMany.mockResolvedValue([
-      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 } },
-      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 } },
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 }, raceId: "human", roster: roster11 },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 }, raceId: "human", roster: roster11 },
     ]);
+    prismaMock.player.findMany.mockResolvedValue([]);
     // The client body fabricates completely different dice.
     const res = await POST(
       req({
@@ -770,9 +827,10 @@ describe("POST .../live — consent/retract/begin command handling", () => {
     rollD6Mock.mockReturnValue(1);
     rollD3Mock.mockReturnValue(1);
     prismaMock.team.findMany.mockResolvedValue([
-      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 } },
-      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 } },
+      { id: "home-t", treasury: 234000, coaching: { dedicatedFans: 2 }, raceId: "human", roster: roster11 },
+      { id: "away-t", treasury: 500000, coaching: { dedicatedFans: 1 }, raceId: "human", roster: roster11 },
     ]);
+    prismaMock.player.findMany.mockResolvedValue([]);
     const res = await POST(req({ type: "begin" }), {
       params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
     } as never);
@@ -1215,6 +1273,12 @@ describe("POST .../live — LM-12 foul/casualty actor invariants + LM-6 payloads
       { teamId: "home-t", rosterPlayerId: "p1" },
       { teamId: "home-t", rosterPlayerId: "p2" },
       { teamId: "away-t", rosterPlayerId: "p9" },
+    ]);
+    // The served-rosters derivation (actor-side maps) reads the team rows'
+    // rosters — mirror the Player rows so the invariant maps agree.
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "home-t", raceId: "human", roster: [{ id: "p1", name: "P1", positionalKey: "lineman" }, { id: "p2", name: "P2", positionalKey: "lineman" }] },
+      { id: "away-t", raceId: "human", roster: [{ id: "p9", name: "P9", positionalKey: "lineman" }] },
     ]);
   }
 

@@ -157,6 +157,57 @@ describe("resolveExpensiveMistake — full rulebook matrix (LM-23)", () => {
 });
 
 describe("buildKickoffEvents — em(home), em(away), fan_factor events + treasury deltas (LM-21/22/23)", () => {
+  it("prepends a journeyman event per side that fields novatos (RAU-13)", () => {
+    const input = {
+      now: 1000,
+      half: 1,
+      turnNumber: 1,
+      home: { teamId: "home-t", treasury: 234000, dedicatedFans: 2 },
+      away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+      dice: {
+        home: { em: 1, d3: 2, keep: [0, 0] as [number, number], fan: 3 },
+        away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+      },
+      journeymen: {
+        home: { count: 1, names: ["Aldric Martillo"] },
+        away: { count: 2, names: ["Sigrun Cuervo", "Lothar Escudo Viejo"] },
+      },
+    };
+    const { events } = buildKickoffEvents(input);
+    // Seq order: journeyman(home), journeyman(away), then the kickoff rows.
+    expect(events.map((e) => e.kind)).toEqual([
+      "journeyman",
+      "journeyman",
+      "expensive_mistake",
+      "expensive_mistake",
+      "fan_factor",
+    ]);
+    const [homeJ, awayJ] = events;
+    expect(homeJ.side).toBe("home");
+    expect(homeJ.payload).toEqual({ count: 1, names: ["Aldric Martillo"] });
+    expect(awayJ.side).toBe("away");
+    expect(awayJ.payload).toEqual({ count: 2, names: ["Sigrun Cuervo", "Lothar Escudo Viejo"] });
+    expect(homeJ.at).toBe(1000);
+    expect(homeJ.half).toBe(1);
+  });
+
+  it("emits NO journeyman event for a side without novatos (absent/zero-count)", () => {
+    const input = {
+      now: 1000,
+      half: 1,
+      turnNumber: 1,
+      home: { teamId: "home-t", treasury: 234000, dedicatedFans: 2 },
+      away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+      dice: {
+        home: { em: 1, d3: 2, keep: [0, 0] as [number, number], fan: 3 },
+        away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+      },
+      journeymen: { home: { count: 0, names: [] } },
+    };
+    const { events } = buildKickoffEvents(input);
+    expect(events.map((e) => e.kind)).toEqual(["expensive_mistake", "expensive_mistake", "fan_factor"]);
+  });
+
   it("builds the two expensive-mistake events, the centered fan_factor, and the per-team deltas", () => {
     const input = {
       now: 1000,

@@ -45,7 +45,7 @@ import {
   type CasualtyCause,
 } from "@/lib/livePhase";
 import { ensurePlayersForTeam } from "@/lib/players";
-import { mergeRosterWithJourneymen } from "@/lib/journeymen";
+import { mergeRosterWithJourneymen, type ServedPlayer } from "@/lib/journeymen";
 import type { PlayerEntry } from "@/features/teams/types";
 
 export const dynamic = "force-dynamic";
@@ -253,6 +253,49 @@ async function materializeTeamRosters(
 }
 
 /**
+ * Loads BOTH teams' served match rosters (roster-order merge + the race-bank
+ * journeymen, `mergeRosterWithJourneymen`) — the same derivation the fixture
+ * GET serves, so the journeyman NAMES the begin flow persists in the timeline
+ * event match the FAB/combos exactly. Used by the begin handler (to build the
+ * `journeymen` kickoff input) and by `loadRosterSideMap` (actor invariants).
+ */
+async function loadServedRosters(
+  ctx: FixtureContext,
+): Promise<{ home: ServedPlayer[]; away: ServedPlayer[] }> {
+  const [teamRows, players] = await Promise.all([
+    prisma.team.findMany({
+      where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+      select: { id: true, raceId: true, roster: true },
+    }),
+    prisma.player.findMany({
+      where: { teamId: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+      select: {
+        teamId: true,
+        rosterPlayerId: true,
+        name: true,
+        positionalKey: true,
+        pe: true,
+        skills: true,
+        injuries: true,
+        alive: true,
+        missNextMatch: true,
+        valueBonus: true,
+      },
+    }),
+  ]);
+  const servedFor = (teamId: string): ServedPlayer[] => {
+    const team = teamRows.find((t) => t.id === teamId);
+    return mergeRosterWithJourneymen({
+      id: teamId,
+      raceId: team?.raceId ?? "human",
+      roster: team?.roster,
+      players: players.filter((p) => p.teamId === teamId),
+    });
+  };
+  return { home: servedFor(ctx.homeTeamId), away: servedFor(ctx.awayTeamId) };
+}
+
+/**
  * Loads the materialized Player rows for BOTH teams and groups their
  * `rosterPlayerId`s by side into a `RosterSideMap` (LM-12/D1). The map powers
  * `checkActorInvariant`: a foul victim / casualty causer MUST resolve to a
@@ -265,35 +308,11 @@ async function materializeTeamRosters(
  * invariants (a journeyman leaves after the match; nothing is persisted for it).
  */
 async function loadRosterSideMap(ctx: FixtureContext): Promise<RosterSideMap> {
-  const [teamRows, players] = await Promise.all([
-    prisma.team.findMany({
-      where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
-      select: { id: true, raceId: true, roster: true },
-    }),
-    prisma.player.findMany({
-      where: { teamId: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
-      select: { teamId: true, rosterPlayerId: true, alive: true, missNextMatch: true },
-    }),
-  ]);
-  const home = new Set<string>();
-  const away = new Set<string>();
-  for (const p of players) {
-    if (p.teamId === ctx.homeTeamId) home.add(p.rosterPlayerId);
-    else if (p.teamId === ctx.awayTeamId) away.add(p.rosterPlayerId);
-  }
-  // The served-journeymen set per side mirrors the fixture GET exactly (same
-  // availability rule + synthetic ids), so the invariants and the UI agree.
-  for (const team of teamRows ?? []) {
-    const served = mergeRosterWithJourneymen({
-      id: team.id,
-      raceId: team.raceId,
-      roster: team.roster,
-      players: players.filter((p) => p.teamId === team.id),
-    });
-    const target = team.id === ctx.homeTeamId ? home : away;
-    for (const p of served) if (p.journeyman) target.add(p.rosterPlayerId);
-  }
-  return { home, away };
+  const { home, away } = await loadServedRosters(ctx);
+  return {
+    home: new Set(home.map((p) => p.rosterPlayerId)),
+    away: new Set(away.map((p) => p.rosterPlayerId)),
+  };
 }
 
 /**
@@ -759,6 +778,14 @@ export async function POST(
       const teams = await materializeTeamRosters(ctx);
       const home = teams.find((t) => t.id === ctx.homeTeamId);
       const away = teams.find((t) => t.id === ctx.awayTeamId);
+      // RAU-13: the begin flow persists a `journeyman` timeline event per side
+      // that fields novatos — the served rosters share the fixture GET's naming
+      // (deterministic per match), so the feed and the FAB agree on the names.
+      const served = await loadServedRosters(ctx);
+      const journeymenSide = (side: "home" | "away") => {
+        const jrny = served[side].filter((p) => p.journeyman);
+        return jrny.length > 0 ? { count: jrny.length, names: jrny.map((p) => p.name) } : undefined;
+      };
       // LM-21/LM-16: every kickoff die is rolled server-side here; any rolls in
       // the POST body are ignored. D3 for a minor deduction, the D6 keep pair
       // for a catastrophe, and the per-team 1D6 em + 1D6 fan rolls.
@@ -783,6 +810,10 @@ export async function POST(
           dedicatedFans: dedicatedFansOf(away?.coaching),
         },
         dice: { home: diceFor(), away: diceFor() },
+        journeymen: {
+          home: journeymenSide("home"),
+          away: journeymenSide("away"),
+        },
       };
       const result = await beginLiveMatch({ liveMatchId: row.id, fixtureId, now, kickoff }, deps);
       return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });

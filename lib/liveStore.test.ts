@@ -512,6 +512,66 @@ describe("beginLiveMatch — ready→live ONLY via the first turn (LM-3)", () =>
     expect(result.view.status).toBe("live");
   });
 
+  it("persists the journeyman join events ahead of the kickoff rows when sides field novatos (RAU-13)", async () => {
+    const { deps, updateMany, liveEventCreate, liveMatchFindFirst, publish } = makeDeps(1);
+    const readyRow = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq: 2,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+    };
+    liveMatchFindFirst.mockResolvedValue(readyRow);
+
+    await beginLiveMatch(
+      {
+        liveMatchId: "lm-1",
+        fixtureId: "f-1",
+        now: 1000,
+        kickoff: {
+          now: 1000,
+          half: 1,
+          turnNumber: 1,
+          home: { teamId: "home-t", treasury: 234000, dedicatedFans: 2 },
+          away: { teamId: "away-t", treasury: 500000, dedicatedFans: 1 },
+          dice: {
+            home: { em: 1, d3: 2, keep: [0, 0] as [number, number], fan: 3 },
+            away: { em: 1, d3: 0, keep: [4, 6] as [number, number], fan: 6 },
+          },
+          journeymen: { home: { count: 1, names: ["Aldric Martillo"] } },
+        },
+      },
+      deps,
+    );
+
+    // 6 events (home journeyman + em-home + em-away + fan_factor + start +
+    // turnStart) → the row seq advances from 2 to 8.
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "lm-1", seq: 2 }, data: expect.objectContaining({ seq: 8 }) }),
+    );
+    const createCalls = liveEventCreate.mock.calls.map((c: { data: { kind: string } }[]) => c[0].data.kind);
+    expect(createCalls).toEqual(["journeyman", "expensive_mistake", "expensive_mistake", "fan_factor", "start", "turnStart"]);
+    expect(liveEventCreate.mock.calls[0][0].data).toMatchObject({
+      kind: "journeyman",
+      side: "home",
+      playerRosterId: null,
+      payload: { count: 1, names: ["Aldric Martillo"] },
+    });
+    expect(publish).toHaveBeenCalledWith("f-1", expect.objectContaining({ status: "live" }));
+  });
+
   it("rolls back the whole transaction (events + treasury) when an event row fails (LM-23 atomicity)", async () => {
     const { deps, liveEventCreate, liveMatchFindFirst, teamUpdateMany, publish } = makeDeps(1);
     const readyRow = {

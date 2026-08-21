@@ -164,6 +164,17 @@ export interface BuildKickoffEventsInput {
   home: KickoffTeamInput;
   away: KickoffTeamInput;
   dice: { home: KickoffDiceInput; away: KickoffDiceInput };
+  /** RAU-13: the per-side journeymen (Novatos) fielded at begin. Each side that
+   * fields journeymen gets a `journeyman` event FIRST (seq order home, away)
+   * so the feed reads "novato se une" → kickoff → start. Absent/zero-count sides
+   * emit nothing. */
+  journeymen?: { home?: JourneymanSideInput; away?: JourneymanSideInput };
+}
+
+/** One side's journeymen at begin: how many + their deterministic names. */
+export interface JourneymanSideInput {
+  count: number;
+  names: string[];
 }
 
 export interface TreasuryUpdate {
@@ -224,6 +235,22 @@ export function buildKickoffEvents(
   };
 
   const events: KickoffResolvedEvent[] = [];
+  // RAU-13: a journeyman join event per side that fields novatos, FIRST in seq
+  // order — the joined players exist before the kickoff rolls happen.
+  const journeymanEvent = (side: "home" | "away", jrny: JourneymanSideInput | undefined) => {
+    if (!jrny || jrny.count <= 0) return;
+    events.push({
+      kind: "journeyman",
+      side,
+      playerRosterId: null,
+      half,
+      turnNumber,
+      payload: { count: jrny.count, names: jrny.names },
+      at: now,
+    });
+  };
+  journeymanEvent("home", input.journeymen?.home);
+  journeymanEvent("away", input.journeymen?.away);
   // RAU-33 skip: a sub-100k team contributes no expensive_mistake row.
   const homeEm = teamEvent("home", input.home, input.dice.home);
   const awayEm = teamEvent("away", input.away, input.dice.away);
@@ -247,7 +274,7 @@ export function buildKickoffEvents(
 
 /** A kickoff event without its row `seq` (assigned by `beginMatch`). */
 export interface KickoffResolvedEvent {
-  kind: "expensive_mistake" | "fan_factor";
+  kind: "expensive_mistake" | "fan_factor" | "journeyman";
   side: "home" | "away" | null;
   playerRosterId: null;
   half: number;
