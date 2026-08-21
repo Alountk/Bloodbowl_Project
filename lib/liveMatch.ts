@@ -39,13 +39,14 @@ export type LiveEventKind =
   | "mvp"
   | "expensive_mistake"
   | "fan_factor"
-  | "concede";
+  | "concede"
+  | "journeyman";
 
 /**
  * The display-worthy kinds that reach the feed DTOs (LM-16): the history shows
- * `start|td|completion|casualty|foul|endHalf|endMatch|mvp|concede`. `turn`,
- * `turnStart` and `requestTurn` stay in the DB (audit/replay) and live-only
- * (nudge banner) but MUST NEVER appear in a feed DTO. Shared by BOTH
+ * `start|td|completion|casualty|foul|endHalf|endMatch|mvp|concede|journeyman`.
+ * `turn`, `turnStart` and `requestTurn` stay in the DB (audit/replay) and
+ * live-only (nudge banner) but MUST NEVER appear in a feed DTO. Shared by BOTH
  * serializers (`toEventDtos` in the live route and `serializeLive` in the
  * fixture GET) so the feed and the render can never drift (D23). Unknown kinds
  * are rejected so a future raw kind never leaks without a deliberate filter
@@ -64,6 +65,7 @@ export function isDisplayEvent(kind: string): boolean {
     case "expensive_mistake":
     case "fan_factor":
     case "concede":
+    case "journeyman":
       return true;
     default:
       return false;

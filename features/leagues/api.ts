@@ -537,6 +537,11 @@ export interface MatchDetail {
 /** The live-match DTO returned by the fixture GET: view state + event feed. */
 export interface LiveMatchView extends LiveMatchViewState {
   events: LiveMatchEventDto[];
+  /** RAU-14: the persisted per-side journeymen (`{ home: [{ id, name }], away:
+   * [{ id, name }] }`) — exposed even for a FINISHED/resolved match so the
+   * post-resolve HIRE flow can read them; null when the row has none. Absent
+   * on SSE/hub frames (only the fixture GET sets it). */
+  journeymen?: JourneymenState | null;
 }
 
 /**
@@ -713,6 +718,47 @@ export interface ResolveOutcome {
   postFf: { home: number; away: number };
   mvp: { home: string; away: string };
   resultId: string;
+}
+
+/** RAU-14: one persisted journeyman (Novato) offered for hire after the match. */
+export interface JourneymanRef {
+  id: string;
+  name: string;
+}
+
+/** RAU-14: the persisted per-side journeymen shape (`LiveMatch.journeymen`). */
+export interface JourneymenState {
+  home: JourneymanRef[];
+  away: JourneymanRef[];
+}
+
+/** The hire/let-go command's response (RAU-14): the remaining journeymen + the
+ * updated OWN-side team surface (roster + treasury — the hire is PAID). */
+export interface HireJourneymanOutcome {
+  journeymen: JourneymenState;
+  team: { id: string; roster: unknown; treasury: number };
+}
+
+/** RAU-14: posts a coach's decision on one of THEIR OWN side's journeymen —
+ * `hire: true` pays the lineman cost and keeps the Novato as a permanent roster
+ * player; `hire: false` ("Dejar ir") just removes the option. The route enforces
+ * the caller owns that side's team. */
+export async function hireJourneyman(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+  journeymanId: string,
+  hire: boolean,
+): Promise<HireJourneymanOutcome> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "hireJourneyman", side, journeymanId, hire }),
+    },
+  );
+  return readJson<HireJourneymanOutcome>(res);
 }
 
 /** RAU-51: submits a coach's OWN side's six MJP nominations (the route enforces

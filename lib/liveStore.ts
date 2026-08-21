@@ -23,7 +23,7 @@
  * pre-live). `seq` remains monotonically increasing (LM-6).
  */
 
-import type { LiveMatch, LiveEvent, Prisma } from "@prisma/client";
+import type { LiveMatch, LiveEvent, Player, Prisma } from "@prisma/client";
 import {
   beginMatch,
   consentStart,
@@ -48,7 +48,7 @@ import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
 import { computeWinnings, preMatchFanFactor, postMatchFanFactor, type MatchOutcome } from "@/lib/rules";
 import { rollD3, rollD6 } from "@/lib/random";
-import { clearSuspensionUpdate, injurySuspensionUpdate } from "@/lib/playerInjuries";
+import { clearSuspensionUpdate, injurySuspensionUpdate, isLastingBand } from "@/lib/playerInjuries";
 import {
   computeMvpGrantee,
   computePettyCash,
@@ -59,13 +59,27 @@ import {
   addMvpPe,
   casualtyVictimsFromEvents,
   deriveLivePeAwards,
+  journeymanSnapshotEarned,
   validateMvpNominations,
   validateSingleMvpNomination,
   type ResolveEventLike,
+  type SnapshotSideLike,
 } from "./liveResolve";
 import { DEFAULT_COACHING, isCoachingStaff, type PlayerEntry } from "@/features/teams/types";
 import { getRaceById } from "@/features/teams/data/races";
-import { computeRosterCostFromPlayers, computeCoachingCost } from "@/features/teams/roster";
+import {
+  computeRosterCostFromPlayers,
+  computeCoachingCost,
+  computeSpendableBalance,
+  MAX_PLAYERS,
+} from "@/features/teams/roster";
+import { createId } from "@/features/teams/id";
+import {
+  linemanPositionalOf,
+  parsePersistedJourneymen,
+  type PersistedJourneyman,
+  type PersistedJourneymen,
+} from "./journeymen";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
 export interface StoreTx {
@@ -105,6 +119,9 @@ export interface StoreTx {
         raceId: true;
         roster: true;
         coaching: true;
+        /** RAU-14: the hire command reads the team's treasury for the balance
+         * guard + the paid decrement. */
+        treasury: true;
         players: {
           select: { rosterPlayerId: true; valueBonus: true; alive: true; missNextMatch: true };
         };
@@ -115,25 +132,31 @@ export interface StoreTx {
         raceId: string;
         roster: Prisma.JsonValue | null;
         coaching: Prisma.JsonValue | null;
+        treasury: number;
         players: { rosterPlayerId: string; valueBonus: number; alive: boolean; missNextMatch: boolean }[];
       }[]
     >;
   };
   /** RAU-49: the resolve transaction needs the MatchResult existence guard
-   * (a fixture already has a result → already resolved) and the report write. */
+   * (a fixture already has a result → already resolved) and the report write.
+   * RAU-13: the hire ALSO reads the persisted `scores` snapshot — the single
+   * source of truth for the journeyman's earned PE + injuries. */
   matchResult: {
     findUnique(args: {
       where: { fixtureId: string };
-    }): Promise<{ id: string } | null>;
+    }): Promise<{ id: string; scores: Prisma.JsonValue | null } | null>;
     create(args: Prisma.MatchResultCreateArgs): Promise<{ id: string }>;
   };
   /** RAU-49: the lazy Player writes — per-player PE increments and the casualty
-   * injury appends (skip-unknown/dead semantics mirror the result route). */
+   * injury appends (skip-unknown/dead semantics mirror the result route).
+   * RAU-13: the hire CREATEs the journeyman's row (they are not on the roster
+   * until now, so `ensurePlayersForTeam` never made one). */
   player: {
     findMany(args: Prisma.PlayerFindManyArgs): Promise<
       { teamId: string; rosterPlayerId: string; injuries: Prisma.JsonValue | null; alive: boolean }[]
     >;
     updateMany(args: Prisma.PlayerUpdateManyArgs): Promise<{ count: number }>;
+    create(args: Prisma.PlayerCreateArgs): Promise<Player>;
   };
   /** RAU-38: the accept-concede transaction closes the fixture (winner + scores)
    * in the SAME tx as the `concede` event rows. */
@@ -361,6 +384,7 @@ async function computeLiveWinnings(
       raceId: true,
       roster: true,
       coaching: true,
+      treasury: true,
       players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
     },
   });
@@ -406,6 +430,9 @@ async function persistAndPublish(
     /** Optional per-team treasury decrements to commit in the SAME transaction as
      * the event rows (LM-23 atomicity): a failure rolls back events AND treasury. */
     treasuryUpdates?: { teamId: string; amountLost: number }[];
+    /** RAU-14: the fielded journeymen to persist on the LiveMatch row at begin
+     * (additive, never re-typed). Undefined → the field is not touched. */
+    journeymen?: PersistedJourneymen;
     /** RAU-38: when set, closes the fixture (winner + scores) in the SAME
      * transaction as the event rows — a concession's victory is atomic with its
      * `concede` event, never a partial state. `leagueId` lets the store run the
@@ -445,6 +472,9 @@ async function persistAndPublish(
         ...rowData(input.next),
         seq: nextSeq,
         ...(liveWinnings ? { winnings: liveWinnings } : {}),
+        // RAU-14: the begin write persists the fielded journeymen atomically
+        // with the kickoff rows; later transitions never touch the field.
+        ...(input.journeymen !== undefined ? { journeymen: input.journeymen as unknown as Prisma.InputJsonValue } : {}),
       },
     });
     if (updated.count === 0) {
@@ -671,6 +701,12 @@ export interface BeginLiveMatchInput {
   /** Optional kickoff input (LM-21/22/23): when present, the begin transition
    * builds the em/em/fan_factor events and commits the treasury deltas atomically. */
   kickoff?: BuildKickoffEventsInput;
+  /** RAU-14: the journeymen (Novatos) fielded at begin, persisted on the
+   * LiveMatch row so the post-resolve HIRE flow can reference them. Built by
+   * the route from the SAME served rosters that name the `journeyman` timeline
+   * events (deterministic per match). Omit → the row keeps SQL NULL (a match
+   * with no journeymen has nothing to hire). */
+  journeymen?: PersistedJourneymen;
 }
 
 /**
@@ -712,6 +748,9 @@ export async function beginLiveMatch(
       next,
       now: input.now,
       treasuryUpdates: kickoff.treasuryUpdates,
+      // RAU-14: persist the fielded journeymen atomically with the begin event
+      // rows — the post-resolve hire flow reads them off the row.
+      journeymen: input.journeymen,
     },
     deps,
   );
@@ -1042,6 +1081,22 @@ function resolveEventsOf(rows: readonly unknown[]): ResolveEventLike[] {
     }));
 }
 
+/** A side's MJP-eligible ids: the roster ids PLUS the fielded Journeyman ids
+ * (RAU-13: a Novato plays for the team that match, so they are MVP-eligible).
+ * The journeymen come from the persisted `LiveMatch.journeymen` — only the ids
+ * that actually fielded the match are accepted, never a foreign `journeyman-*`
+ * pattern. */
+function eligibleMvpIds(
+  roster: Prisma.JsonValue | null,
+  journeymen: readonly PersistedJourneyman[] | null | undefined,
+): Set<string> {
+  const ids = new Set(
+    (Array.isArray(roster) ? (roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
+  );
+  for (const journeyman of journeymen ?? []) ids.add(journeyman.id);
+  return ids;
+}
+
 /** The rolled resolution the preview persists for the commit to reuse (RAU-49
  * fix): the chosen nominee rosterPlayerIds + the post-match FF totals — both
  * from the SAME server roll the modal previewed. */
@@ -1113,15 +1168,14 @@ export async function nominateMvpLiveMatch(
         raceId: true,
         roster: true,
         coaching: true,
+        treasury: true,
         players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
       },
     });
     const team = teams[0];
     if (!team) throw Object.assign(new Error("not found"), { status: 404 });
 
-    const rosterIds = new Set(
-      (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
-    );
+    const rosterIds = eligibleMvpIds(team.roster, parsePersistedJourneymen(row.journeymen)?.[input.side]);
     const availability = new Map(
       team.players.map((p) => [p.rosterPlayerId, { alive: p.alive, missNextMatch: p.missNextMatch }]),
     );
@@ -1211,6 +1265,7 @@ export async function rollLiveMvp(
         raceId: true,
         roster: true,
         coaching: true,
+        treasury: true,
         players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
       },
     });
@@ -1219,15 +1274,14 @@ export async function rollLiveMvp(
     const awayTeam = byTeamId.get(input.awayTeamId);
     if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
 
-    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }) =>
-      new Set(
-        (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
-      );
+    const persistedJourneymen = parsePersistedJourneymen(row.journeymen);
+    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }, side: "home" | "away") =>
+      eligibleMvpIds(team.roster, persistedJourneymen?.[side]);
     const invalid = validateMvpNominations(
       homeNom,
       awayNom,
-      rosterIdsOf(homeTeam),
-      rosterIdsOf(awayTeam),
+      rosterIdsOf(homeTeam, "home"),
+      rosterIdsOf(awayTeam, "away"),
     );
     if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
 
@@ -1362,6 +1416,7 @@ export async function resolveLiveMatch(
         raceId: true,
         roster: true,
         coaching: true,
+        treasury: true,
         players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
       },
     });
@@ -1370,15 +1425,14 @@ export async function resolveLiveMatch(
     const awayTeam = byTeamId.get(input.awayTeamId);
     if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
 
-    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }) =>
-      new Set(
-        (Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : []).map((entry) => entry.id),
-      );
+    const persistedJourneymen = parsePersistedJourneymen(row.journeymen);
+    const rosterIdsOf = (team: { roster: Prisma.JsonValue | null }, side: "home" | "away") =>
+      eligibleMvpIds(team.roster, persistedJourneymen?.[side]);
     const invalid = validateMvpNominations(
       homeNom,
       awayNom,
-      rosterIdsOf(homeTeam),
-      rosterIdsOf(awayTeam),
+      rosterIdsOf(homeTeam, "home"),
+      rosterIdsOf(awayTeam, "away"),
     );
     if (invalid) throw Object.assign(new Error(invalid), { status: 400 });
 
@@ -1629,4 +1683,195 @@ async function persistResolveCasualties(
       },
     });
   }
+}
+
+/** The hire/let-go command input (RAU-14). */
+export interface HireJourneymanInput {
+  fixtureId: string;
+  /** The OWNER-side team id (the route resolves it from the session, mirroring
+   * `NominateMvpInput`). */
+  teamId: string;
+  side: TeamSide;
+  /** The synthetic journeyman id (`journeyman-{teamId}-{n}`) being decided. */
+  journeymanId: string;
+  /** true = HIRE (pay the lineman cost from the treasury, add to the roster);
+   * false = "Dejar ir" (remove the option; nothing else mutates). */
+  hire: boolean;
+  now: number;
+}
+
+/**
+ * RAU-14: the post-resolve journeyman decision — HIRE a fielded Novato as a
+ * permanent roster player (pays the race Lineman cost from the treasury,
+ * `positionalKey` = the race Lineman, RAU-11 style) or LET GO (removes the
+ * option; no mutation beyond the persisted list).
+ *
+ * RAU-13: a hire ALSO CREATEs the journeyman's `Player` row in the same
+ * transaction, carrying the PE they earned during the match (read from the
+ * persisted `MatchResult` snapshot — the single source of truth) and every
+ * casualty band they suffered (`missNextMatch` for a lasting band, `alive:
+ * false` on a dead one). A "Dejar ir" leaves a clean slate — no row, no PE.
+ *
+ * Guards: 404 no live row / team; 400 unknown journeyman (the match never
+ * persisted journeymen or the JSON is malformed); 409 the journeyman is not in
+ * the persisted list (already hired-or-gone) or the match is NOT resolved yet
+ * (`MatchResult` must exist); 409 roster at the 16 cap; 409 insufficient
+ * spendable balance (the RAU-11 formula — the lineman cost must fit). Double-
+ * hire is impossible: removing the id from the list plus the optimistic `seq`
+ * guard on the row (a concurrent decision on the SAME journeyman loses the
+ * guard → 409).
+ *
+ * Effect in ONE transaction: the journeyman is removed from
+ * `LiveMatch.journeymen`; a hire ALSO appends a `PlayerEntry { id: createId(),
+ * name: <the persisted journeyman name>, positionalKey: <race Lineman key> }`
+ * to the roster and creates the matching Player row with the match's earned PE
+ * + injuries. Returns the remaining journeymen + the updated team surface.
+ */
+export async function hireJourneymanLiveMatch(
+  input: HireJourneymanInput,
+  deps: StoreDeps,
+): Promise<{
+  journeymen: PersistedJourneymen;
+  team: { id: string; roster: PlayerEntry[]; treasury: number };
+}> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+
+  const current = parsePersistedJourneymen(row.journeymen);
+  const sideList = current?.[input.side];
+  // 400 unknown journeyman: the match never persisted journeymen (or the JSON
+  // is malformed) — there is nothing to decide for this side.
+  if (!current || !Array.isArray(sideList)) {
+    throw Object.assign(new Error("unknown journeyman"), { status: 400 });
+  }
+  const entry = sideList.find((j) => j.id === input.journeymanId);
+  // 409 already hired-or-gone: the id is no longer in the persisted list (the
+  // pre-check is a fast path — the in-tx `seq` guard is the real concurrency
+  // protection against a simultaneous decision on the same journeyman).
+  if (!entry) {
+    throw Object.assign(new Error("journeyman already hired or gone"), { status: 409 });
+  }
+
+  return deps.prisma.$transaction(async (tx) => {
+    // 409 not resolved yet: hiring is a POST-resolve decision — the match must
+    // be reported (`MatchResult` exists) before a journeyman can stay.
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (!existing) throw Object.assign(new Error("match not resolved"), { status: 409 });
+
+    const nextJourneymen: PersistedJourneymen = {
+      ...current,
+      [input.side]: sideList.filter((j) => j.id !== input.journeymanId),
+    };
+
+    if (!input.hire) {
+      // "Dejar ir": just remove the option — no team mutation.
+      const updated = await tx.liveMatch.updateMany({
+        where: { id: row.id, seq: row.seq },
+        data: {
+          journeymen: nextJourneymen as unknown as Prisma.InputJsonValue,
+          seq: row.seq + 1,
+        },
+      });
+      if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
+      return {
+        journeymen: nextJourneymen,
+        team: { id: input.teamId, roster: [], treasury: 0 },
+      };
+    }
+
+    // HIRE: load the team + race, then the cap/balance guards.
+    const teams = await tx.team.findMany({
+      where: { id: { in: [input.teamId] } },
+      select: {
+        id: true,
+        raceId: true,
+        roster: true,
+        coaching: true,
+        treasury: true,
+        players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
+      },
+    });
+    const team = teams[0];
+    if (!team) throw Object.assign(new Error("not found"), { status: 404 });
+    const race = getRaceById(team.raceId);
+    const lineman = linemanPositionalOf(race);
+    if (!race || !lineman) throw Object.assign(new Error("unknown race"), { status: 400 });
+
+    const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
+    if (roster.length >= MAX_PLAYERS) {
+      throw Object.assign(new Error("roster full"), { status: 409 });
+    }
+    const balance = computeSpendableBalance(
+      {
+        treasury: team.treasury,
+        roster,
+        coaching: isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING,
+      },
+      race,
+    );
+    if (lineman.cost > balance) {
+      throw Object.assign(new Error("not enough treasury"), { status: 409 });
+    }
+
+    const nextRosterId = createId();
+    const nextRoster: PlayerEntry[] = [
+      ...roster,
+      { id: nextRosterId, name: entry.name, positionalKey: lineman.key },
+    ];
+    const updated = await tx.liveMatch.updateMany({
+      where: { id: row.id, seq: row.seq },
+      data: {
+        journeymen: nextJourneymen as unknown as Prisma.InputJsonValue,
+        seq: row.seq + 1,
+      },
+    });
+    if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
+    // RAU-14: hiring is PAID via the spendable-balance formula — appending the
+    // roster player grows rosterCost, so `computeSpendableBalance` drops by the
+    // lineman cost automatically. The treasury ledger is NOT decremented (that
+    // would double-count the payment; RAU-11 hire follows the same convention).
+    await tx.team.updateMany({
+      where: { id: input.teamId },
+      data: { roster: nextRoster as never },
+    });
+
+    // RAU-13: the hire CARRIES the match into the journeyman's new `Player`
+    // row — the PE they EARNED during the match (TD ★3 / completion ★1 /
+    // lasting casualty ★2 plus the MJP +4 when granted) and every casualty band
+    // they SUFFERED. Both come from the persisted `MatchResult` snapshot: the
+    // resolve already wrote it, so it is the single source of truth at hire
+    // time. A lasting band starts their RAU-12 suspension; a dead band sets
+    // `alive: false`. The row is keyed `(teamId, rosterPlayerId)` with the NEW
+    // roster entry id — `ensurePlayersForTeam` never touched the journeyman
+    // (they are not on the roster until now), so this is the ONLY place the
+    // match's awards land for a hired Novato.
+    const scoreboard = (existing.scores ?? {}) as Record<string, unknown>;
+    const earned = journeymanSnapshotEarned(
+      scoreboard[input.side] as SnapshotSideLike | undefined,
+      input.journeymanId,
+    );
+    const injuries = earned.injuries.map((kind) => ({ kind }));
+    const alive = !injuries.some((injury) => injury.kind === "dead");
+    await tx.player.create({
+      data: {
+        teamId: input.teamId,
+        rosterPlayerId: nextRosterId,
+        name: entry.name,
+        positionalKey: lineman.key,
+        pe: earned.pe,
+        skills: [],
+        injuries: injuries as never,
+        alive,
+        missNextMatch: alive && injuries.some((injury) => isLastingBand(injury.kind)),
+        valueBonus: 0,
+        improvements: [],
+        attributeIncreases: {},
+      },
+    });
+
+    return {
+      journeymen: nextJourneymen,
+      team: { id: input.teamId, roster: nextRoster, treasury: team.treasury },
+    };
+  });
 }

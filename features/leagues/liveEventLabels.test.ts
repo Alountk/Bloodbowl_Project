@@ -9,6 +9,7 @@ import {
   formatTreasury,
   casualtyIcon,
   bandSubLabel,
+  journeymanJoinLabel,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -123,6 +124,10 @@ describe("liveEventLabel", () => {
     expect(liveEventLabel(ev("concede"))).toBe("Concesión");
   });
 
+  it("labels a journeyman join (RAU-13)", () => {
+    expect(liveEventLabel(ev("journeyman", { count: 1, names: ["Aldric Martillo"] }))).toBe("Novato");
+  });
+
   it("labels a turn-start notice and a request-turn nudge (LM-13)", () => {
     // Audit labels: the visible turnStart CARD overrides the label with the
     // team-specific "Turno {team}" text (RAU-36/37); the map keeps the generic
@@ -172,6 +177,29 @@ describe("EVENT_GLYPH — per-kind inline SVG icon map (MV-7, no icon lib)", () 
     expect(EVENT_GLYPH.expensive_mistake).toBe("money-bag");
     expect(EVENT_GLYPH.fan_factor).toBe("account-group");
     expect(EVENT_GLYPH.people).toBe("account-group");
+  });
+
+  it("maps a journeyman join to the shirt glyph (RAU-13)", () => {
+    expect(EVENT_GLYPH.journeyman).toBe("shirt");
+  });
+});
+
+describe("journeymanJoinLabel — the '{name} se une como novato' join line (RAU-13)", () => {
+  it("renders the singular join line for one novato", () => {
+    expect(journeymanJoinLabel({ count: 1, names: ["Aldric Martillo"] })).toBe(
+      "Aldric Martillo se une como novato",
+    );
+  });
+
+  it("renders the plural join line for several novatos (names joined)", () => {
+    expect(journeymanJoinLabel({ count: 2, names: ["Sigrun Cuervo", "Lothar Escudo Viejo"] })).toBe(
+      "Sigrun Cuervo, Lothar Escudo Viejo se unen como novatos",
+    );
+  });
+
+  it("returns null for a missing/empty names payload (defensive)", () => {
+    expect(journeymanJoinLabel({})).toBeNull();
+    expect(journeymanJoinLabel({ count: 0, names: [] })).toBeNull();
   });
 });
 

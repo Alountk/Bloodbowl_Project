@@ -20,6 +20,7 @@ import {
   rollLiveMvp,
   resolveLiveMatch,
   nominateMvpLiveMatch,
+  hireJourneymanLiveMatch,
 } from "@/lib/liveStore";
 import {
   applyEndTurn,
@@ -45,7 +46,7 @@ import {
   type CasualtyCause,
 } from "@/lib/livePhase";
 import { ensurePlayersForTeam } from "@/lib/players";
-import { mergeRosterWithJourneymen } from "@/lib/journeymen";
+import { mergeRosterWithJourneymen, type ServedPlayer } from "@/lib/journeymen";
 import type { PlayerEntry } from "@/features/teams/types";
 
 export const dynamic = "force-dynamic";
@@ -253,6 +254,49 @@ async function materializeTeamRosters(
 }
 
 /**
+ * Loads BOTH teams' served match rosters (roster-order merge + the race-bank
+ * journeymen, `mergeRosterWithJourneymen`) — the same derivation the fixture
+ * GET serves, so the journeyman NAMES the begin flow persists in the timeline
+ * event match the FAB/combos exactly. Used by the begin handler (to build the
+ * `journeymen` kickoff input) and by `loadRosterSideMap` (actor invariants).
+ */
+async function loadServedRosters(
+  ctx: FixtureContext,
+): Promise<{ home: ServedPlayer[]; away: ServedPlayer[] }> {
+  const [teamRows, players] = await Promise.all([
+    prisma.team.findMany({
+      where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+      select: { id: true, raceId: true, roster: true },
+    }),
+    prisma.player.findMany({
+      where: { teamId: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+      select: {
+        teamId: true,
+        rosterPlayerId: true,
+        name: true,
+        positionalKey: true,
+        pe: true,
+        skills: true,
+        injuries: true,
+        alive: true,
+        missNextMatch: true,
+        valueBonus: true,
+      },
+    }),
+  ]);
+  const servedFor = (teamId: string): ServedPlayer[] => {
+    const team = teamRows.find((t) => t.id === teamId);
+    return mergeRosterWithJourneymen({
+      id: teamId,
+      raceId: team?.raceId ?? "human",
+      roster: team?.roster,
+      players: players.filter((p) => p.teamId === teamId),
+    });
+  };
+  return { home: servedFor(ctx.homeTeamId), away: servedFor(ctx.awayTeamId) };
+}
+
+/**
  * Loads the materialized Player rows for BOTH teams and groups their
  * `rosterPlayerId`s by side into a `RosterSideMap` (LM-12/D1). The map powers
  * `checkActorInvariant`: a foul victim / casualty causer MUST resolve to a
@@ -265,35 +309,11 @@ async function materializeTeamRosters(
  * invariants (a journeyman leaves after the match; nothing is persisted for it).
  */
 async function loadRosterSideMap(ctx: FixtureContext): Promise<RosterSideMap> {
-  const [teamRows, players] = await Promise.all([
-    prisma.team.findMany({
-      where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
-      select: { id: true, raceId: true, roster: true },
-    }),
-    prisma.player.findMany({
-      where: { teamId: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
-      select: { teamId: true, rosterPlayerId: true, alive: true, missNextMatch: true },
-    }),
-  ]);
-  const home = new Set<string>();
-  const away = new Set<string>();
-  for (const p of players) {
-    if (p.teamId === ctx.homeTeamId) home.add(p.rosterPlayerId);
-    else if (p.teamId === ctx.awayTeamId) away.add(p.rosterPlayerId);
-  }
-  // The served-journeymen set per side mirrors the fixture GET exactly (same
-  // availability rule + synthetic ids), so the invariants and the UI agree.
-  for (const team of teamRows ?? []) {
-    const served = mergeRosterWithJourneymen({
-      id: team.id,
-      raceId: team.raceId,
-      roster: team.roster,
-      players: players.filter((p) => p.teamId === team.id),
-    });
-    const target = team.id === ctx.homeTeamId ? home : away;
-    for (const p of served) if (p.journeyman) target.add(p.rosterPlayerId);
-  }
-  return { home, away };
+  const { home, away } = await loadServedRosters(ctx);
+  return {
+    home: new Set(home.map((p) => p.rosterPlayerId)),
+    away: new Set(away.map((p) => p.rosterPlayerId)),
+  };
 }
 
 /**
@@ -583,6 +603,16 @@ type ControlCommand =
       type: "nominateMvp";
       side: TeamSide;
       players: string[];
+    }
+  | {
+      /** RAU-14: the post-resolve journeyman decision. `hire: true` pays the
+       * race Lineman cost from the treasury and makes the Novato a permanent
+       * roster player; `hire: false` ("Dejar ir") just removes the option. The
+       * route enforces the caller owns THAT side (like `nominateMvp`). */
+      type: "hireJourneyman";
+      side: TeamSide;
+      journeymanId: string;
+      hire: boolean;
     };
 
 function isControlCommand(value: unknown): value is ControlCommand {
@@ -647,6 +677,13 @@ function isControlCommand(value: unknown): value is ControlCommand {
         Array.isArray(c.players) &&
         c.players.every((p) => typeof p === "string")
       );
+    case "hireJourneyman":
+      // RAU-14: the caller's side + the synthetic journeyman id + the decision.
+      return (
+        (c.side === "home" || c.side === "away") &&
+        typeof c.journeymanId === "string" &&
+        typeof c.hire === "boolean"
+      );
     default:
       return false;
   }
@@ -692,12 +729,6 @@ export async function POST(
   if (userId === null) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // RAU-40: a finished league is definitive — no live control command (incl. a
-  // concede accept/decline) may mutate it further. The SSE read stream above
-  // stays open so the finished match remains watchable.
-  if (ctx.league.status === "finished") {
-    return Response.json({ error: "League is finished" }, { status: 409 });
-  }
 
   let command: unknown;
   try {
@@ -707,6 +738,18 @@ export async function POST(
   }
   if (!isControlCommand(command)) {
     return Response.json({ error: "Unsupported command" }, { status: 400 });
+  }
+
+  // RAU-40: a finished league is definitive — no live control command (incl. a
+  // concede accept/decline) may mutate it further. The SSE read stream above
+  // stays open so the finished match remains watchable.
+  // RAU-14 EXCEPTION: the post-resolve journeyman hire/let-go is NOT a
+  // live-play control — it is the product-mandated post-"Match reported"
+  // decision, which for the season's LAST fixture happens AFTER the resolve
+  // finished the league atomically. The hire mutates only the team roster /
+  // treasury and the persisted journeymen list, never the league or the result.
+  if (ctx.league.status === "finished" && command.type !== "hireJourneyman") {
+    return Response.json({ error: "League is finished" }, { status: 409 });
   }
 
   const now = Date.now();
@@ -759,6 +802,19 @@ export async function POST(
       const teams = await materializeTeamRosters(ctx);
       const home = teams.find((t) => t.id === ctx.homeTeamId);
       const away = teams.find((t) => t.id === ctx.awayTeamId);
+      // RAU-13: the begin flow persists a `journeyman` timeline event per side
+      // that fields novatos — the served rosters share the fixture GET's naming
+      // (deterministic per match), so the feed and the FAB agree on the names.
+      const served = await loadServedRosters(ctx);
+      const journeymenSide = (side: "home" | "away") => {
+        const jrny = served[side].filter((p) => p.journeyman);
+        return jrny.length > 0 ? { count: jrny.length, names: jrny.map((p) => p.name) } : undefined;
+      };
+      // RAU-14: the PERSISTED journeymen (synthetic id + the served race-bank
+      // name) ride the begin write so the post-resolve hire flow can reference
+      // them — the same derivation as the timeline event above.
+      const persistedJourneymen = (side: "home" | "away") =>
+        served[side].filter((p) => p.journeyman).map((p) => ({ id: p.rosterPlayerId, name: p.name }));
       // LM-21/LM-16: every kickoff die is rolled server-side here; any rolls in
       // the POST body are ignored. D3 for a minor deduction, the D6 keep pair
       // for a catastrophe, and the per-team 1D6 em + 1D6 fan rolls.
@@ -783,8 +839,25 @@ export async function POST(
           dedicatedFans: dedicatedFansOf(away?.coaching),
         },
         dice: { home: diceFor(), away: diceFor() },
+        journeymen: {
+          home: journeymenSide("home"),
+          away: journeymenSide("away"),
+        },
       };
-      const result = await beginLiveMatch({ liveMatchId: row.id, fixtureId, now, kickoff }, deps);
+      const result = await beginLiveMatch(
+        {
+          liveMatchId: row.id,
+          fixtureId,
+          now,
+          kickoff,
+          // RAU-14: persist the fielded novatos atomically with the begin rows.
+          journeymen: {
+            home: persistedJourneymen("home"),
+            away: persistedJourneymen("away"),
+          },
+        },
+        deps,
+      );
       return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
     } catch (error) {
       if ((error as { status?: number }).status === 409) {
@@ -985,6 +1058,40 @@ export async function POST(
         return Response.json({ error: "Cannot resolve match in current state" }, { status: 409 });
       }
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      throw error;
+    }
+  }
+
+  // RAU-14: the post-resolve journeyman decision (hire / let go). Restricted to
+  // the side's OWN owner like `nominateMvp` — each coach decides their own
+  // Novatos; an admin/bye viewer without a side is rejected with 409.
+  if (command.type === "hireJourneyman") {
+    if (side === null) {
+      return Response.json({ error: "No side to hire" }, { status: 409 });
+    }
+    if (command.side !== side) {
+      return Response.json({ error: "Not your team" }, { status: 409 });
+    }
+    try {
+      const result = await hireJourneymanLiveMatch(
+        {
+          fixtureId,
+          teamId: command.side === "home" ? ctx.homeTeamId : ctx.awayTeamId,
+          side: command.side,
+          journeymanId: command.journeymanId,
+          hire: command.hire,
+          now,
+        },
+        deps,
+      );
+      return Response.json(result, { status: 200 });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400) return Response.json({ error: "Unknown journeyman" }, { status: 400 });
+      if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      if (status === 409) {
+        return Response.json({ error: "Cannot hire in current state" }, { status: 409 });
+      }
       throw error;
     }
   }

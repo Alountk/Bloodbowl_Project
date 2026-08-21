@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
 import { addMvpPe, deriveLivePeAwards } from "@/lib/liveResolve";
+import { positionName } from "./liveControls";
 import {
   nominateMvp,
   rollLiveMvp,
@@ -12,10 +13,17 @@ import {
   type MatchDetail,
 } from "./api";
 
-/** A roster player reference (id + name), shared with the result modal. */
+/** A roster player reference (id + name), shared with the result modal. The
+ * optional dorsal/positionalKey power the "Name (Position · #N)" MJP picker
+ * labels (RAU-13); `journeyman` swaps the role slot for the "Novato" marker.
+ * The summary sections only use id + name. */
 export interface RosterPlayerRef {
   id: string;
   name: string;
+  dorsal?: number;
+  positionalKey?: string;
+  /** RAU-13: a match-only Journeyman (Novato) — MVP-eligible, labeled "Novato". */
+  journeyman?: boolean;
 }
 
 /** Six empty MJP nomination slots per team. */
@@ -106,15 +114,22 @@ export function MatchResolveModal({
 
   // RAU-51: the pickers are fed ONLY the viewer's own team's alive+available
   // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
-  // players here. RAU-13: Journeymen are excluded too — they earn no PE and
-  // can never be the MJP grantee (the server would reject them as foreign).
-  const ownRoster = useMemo<RosterPlayerRef[]>(
-    () =>
-      (ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players)
-        .filter((p) => p.alive && !p.missNextMatch && !p.journeyman)
-        .map((p) => ({ id: p.rosterPlayerId, name: p.name })),
-    [ownSide, detail.homeTeam.players, detail.awayTeam.players],
-  );
+  // players here. RAU-13: Journeymen are INCLUDED — they play for the team
+  // that match, so they are MVP-eligible like any match player (labeled "Novato"
+  // in the picker). The dorsal (RAU-13) is the served-array index + 1 (D21), so
+  // the picker labels match the FAB combos and the feed.
+  const ownRoster = useMemo<RosterPlayerRef[]>(() => {
+    const players = ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players;
+    return players
+      .filter((p) => p.alive && !p.missNextMatch)
+      .map((p) => ({
+        id: p.rosterPlayerId,
+        name: p.name,
+        dorsal: players.indexOf(p) + 1,
+        positionalKey: p.positionalKey,
+        journeyman: p.journeyman,
+      }));
+  }, [ownSide, detail.homeTeam.players, detail.awayTeam.players]);
   const homeRoster = useMemo<RosterPlayerRef[]>(
     () => detail.homeTeam.players.map((p) => ({ id: p.rosterPlayerId, name: p.name })),
     [detail.homeTeam.players],
@@ -224,6 +239,7 @@ export function MatchResolveModal({
                       read-only status that never leaks the rival's picks. */}
                   <OwnNominationSection
                     name={ownName}
+                    raceId={ownSide === "home" ? detail.homeTeam.raceId : detail.awayTeam.raceId}
                     roster={ownRoster}
                     nominations={draft}
                     saved={ownNomination != null}
@@ -346,9 +362,11 @@ export function MatchResolveModal({
 }
 
 /** RAU-51: the viewer's OWN team's six numbered MJP pickers (alive+available
- * roster only) + the "Guardar mis nominaciones" action and status line. */
+ * roster only; Journeymen included and labeled "Novato", RAU-13) + the
+ * "Guardar mis nominaciones" action and status line. */
 function OwnNominationSection({
   name,
+  raceId,
   roster,
   nominations,
   saved,
@@ -358,6 +376,8 @@ function OwnNominationSection({
   t,
 }: {
   name: string;
+  /** The OWN side's race id, so the option labels resolve the positional name. */
+  raceId: string;
   roster: RosterPlayerRef[];
   nominations: string[];
   saved: boolean;
@@ -367,6 +387,7 @@ function OwnNominationSection({
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const ready = nominationsReady(nominations);
+  const journeymanLabel = t("match.journeyman");
   return (
     <section aria-label={t("match.resolve.ownNomination")} className="border border-[#e2e8f0] p-3">
       <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
@@ -383,7 +404,7 @@ function OwnNominationSection({
               <option value="">—</option>
               {roster.map((player) => (
                 <option key={player.id} value={player.id}>
-                  {player.name}
+                  {`${player.name} (${player.journeyman ? journeymanLabel : positionName(raceId, player.positionalKey ?? "lineman")} · #${player.dorsal ?? 0})`}
                 </option>
               ))}
             </select>

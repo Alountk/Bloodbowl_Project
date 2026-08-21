@@ -614,10 +614,9 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     // The 10 roster players are served first, flagged NOT journeyman.
     expect(players.filter((p) => !p.journeyman)).toHaveLength(10);
     expect(players.slice(0, 10).every((p) => p.journeyman === false)).toBe(true);
-    // The single journeyman: synthetic id, Novato name, the race's lineman key.
+    // The single journeyman: synthetic id, race-bank name, the race's lineman key.
     expect(players[10]).toMatchObject({
       rosterPlayerId: "journeyman-t1-1",
-      name: "Novato 1",
       positionalKey: "lineman",
       pe: 0,
       alive: true,
@@ -625,6 +624,9 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
       valueBonus: 0,
       journeyman: true,
     });
+    // Named from the human bank ("First Surname"), never "Novato N".
+    expect(players[10].name).not.toBe("Novato 1");
+    expect(players[10].name).toMatch(/\b(Martillo|Cuervo|Valiente|Ferrer|Escudo Viejo)$/);
   });
 
   it("RAU-13: uses the race's Lineman positional key (amazon → linewoman)", async () => {
@@ -650,7 +652,11 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     const res = await callGet();
     const body = await res.json();
     const jrny = body.homeTeam.players.find((p: { journeyman: boolean }) => p.journeyman);
-    expect(jrny).toMatchObject({ rosterPlayerId: "journeyman-t1-1", name: "Novato 1", positionalKey: "linewoman" });
+    expect(jrny).toMatchObject({ rosterPlayerId: "journeyman-t1-1", positionalKey: "linewoman" });
+    // The amazon bank name, not "Novato N".
+    expect(jrny.name).not.toBe("Novato 1");
+    expect(typeof jrny.name).toBe("string");
+    expect(jrny.name.length).toBeGreaterThan(0);
   });
 
   it("RAU-13: does NOT append journeymen when 11+ players are available", async () => {
@@ -788,5 +794,111 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.homeTeam.players.find((p: { journeyman: boolean }) => p.journeyman)?.rosterPlayerId).toBe(
       "journeyman-t1-1",
     );
+  });
+
+  it("RAU-14: exposes the PERSISTED journeymen on `live` for a RESOLVED match (post-resolve hire flow)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const roster = Array.from({ length: 10 }, (_, i) => ({
+      id: `p${i + 1}`,
+      name: `Lineman ${i + 1}`,
+      positionalKey: "lineman",
+    }));
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster,
+          players: [],
+        },
+        result: { id: "mr-1", fixtureId: "f1", weather: null, scores: {}, pettyCash: 0, loadedBy: "user-1" },
+        homeScore: 2,
+        awayScore: 1,
+        winnerId: "t1",
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "finished",
+          half: 2,
+          turnNumber: 8,
+          activeSide: "away",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 2,
+          awayScore: 1,
+          seq: 11,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: new Date("2026-03-01T21:00:00"),
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: { home: 55000, away: 45000 },
+          // RAU-14: the journeymen persisted at begin survive the resolve.
+          journeymen: { home: [{ id: "journeyman-t1-1", name: "Aldric Martillo" }], away: [] },
+          events: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // The fixture is PLAYED + has a result, yet `live.journeymen` still serves
+    // the persisted novato — the post-resolve hire flow reads it from here.
+    expect(body.result).not.toBeNull();
+    expect(body.live.journeymen).toEqual({
+      home: [{ id: "journeyman-t1-1", name: "Aldric Martillo" }],
+      away: [],
+    });
+  });
+
+  it("RAU-14: `live.journeymen` is null when the LiveMatch row never persisted journeymen", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster: [],
+          players: [],
+        },
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "finished",
+          half: 2,
+          turnNumber: 8,
+          activeSide: "away",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: new Date("2026-03-01T20:00:00"),
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 0,
+          awayScore: 0,
+          seq: 9,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: new Date("2026-03-01T21:00:00"),
+          concedeProposedBy: null,
+          pendingCasualty: null,
+          winnings: { home: 0, away: 0 },
+          journeymen: null,
+          events: [],
+        },
+      }),
+    );
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.live.journeymen).toBeNull();
   });
 });
