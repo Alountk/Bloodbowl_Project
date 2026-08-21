@@ -570,6 +570,160 @@ test("RAU-12: a lasting casualty suspends the victim for the next match until it
   }
 });
 
+test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + resolve excludes them)", async ({ browser }) => {
+  // A 3-member, 2-jornada league: the pivot team plays BOTH rounds, so a
+  // round-1 lasting casualty makes it field 10 available players in round 2 —
+  // the match then provides a Journeyman (Novato) for that match only.
+  // (2 rounds need 3 teams: the round-robin season length is at most teams−1.)
+  const tag = Date.now().toString(36);
+  const league = await buildLeague(browser, tag, 2, 3);
+  try {
+    const { admin, leagueId, teams } = league;
+    const r1 = await roundOne(admin, leagueId, teams);
+
+    const detail = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(detail.status()).toBe(200);
+    const body = (await detail.json()) as {
+      fixtures: { id: string; round: number; homeTeamId: string; awayTeamId: string }[];
+      teams: { id: string; name: string; roster: { id: string; name: string }[] }[];
+    };
+    const r1Fixture = body.fixtures.find((f) => f.round === 1)!;
+    const r2Fixture = body.fixtures.find((f) => f.round === 2)!;
+    const pivotTeamId = [r1Fixture.homeTeamId, r1Fixture.awayTeamId].find(
+      (id) => id === r2Fixture.homeTeamId || id === r2Fixture.awayTeamId,
+    )!;
+    const pivotTeam = body.teams.find((t) => t.id === pivotTeamId)!;
+    const pivotPage = teams[pivotTeam.name];
+    const victimId = pivotTeam.roster[0].id;
+    const proposerSide: "home" | "away" = r1Fixture.homeTeamId === pivotTeamId ? "away" : "home";
+    const proposerPage = proposerSide === "home" ? r1.homePage : r1.awayPage;
+    const proposerTeamId = proposerSide === "home" ? r1Fixture.homeTeamId : r1Fixture.awayTeamId;
+    const proposerTeam = body.teams.find((t) => t.id === proposerTeamId)!;
+    const causerId = proposerTeam.roster[0].id;
+
+    // --- Match 1: consent + begin, drive to the proposer's turn, record a
+    // lasting casualty (1D16 9 → apaleado) on the pivot team.
+    await liveCommand(r1.homePage, leagueId, r1.fixtureId, { type: "consent", side: "home" });
+    await liveCommand(r1.awayPage, leagueId, r1.fixtureId, { type: "consent", side: "away" });
+    let view = await liveCommand(r1.homePage, leagueId, r1.fixtureId, { type: "begin" });
+    while (view.activeSide !== proposerSide) {
+      const activePage = view.activeSide === "home" ? r1.homePage : r1.awayPage;
+      view = await liveCommand(activePage, leagueId, r1.fixtureId, { type: "endTurn", side: view.activeSide });
+    }
+    await liveCommand(proposerPage, leagueId, r1.fixtureId, {
+      type: "proposeCasualty", victimRosterId: victimId, causerRosterId: causerId, cause: "blitz", roll16: 9,
+    });
+    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
+
+    const afterEnd = await liveCommand(admin, leagueId, r1.fixtureId, { type: "endMatch" });
+    expect(afterEnd.status).toBe("finished");
+    await admin.goto(`/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
+    await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
+    await resolvePerSide(r1.homePage, r1.awayPage, r1.homeTeamName, r1.awayTeamName, `/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
+    await admin.goto(`/leagues/${leagueId}/fixtures/${r1.fixtureId}`);
+    await waitFixturePlayed(admin, leagueId, r1.fixtureId, 1);
+
+    // --- Match 2: the pivot team fields 10 available → the GET serves the
+    // Journeyman (synthetic id, Novato name, the race's lineman positional).
+    const home2Name = body.teams.find((t) => t.id === r2Fixture.homeTeamId)!.name;
+    const away2Name = body.teams.find((t) => t.id === r2Fixture.awayTeamId)!.name;
+    const home2Page = teams[home2Name];
+    const away2Page = teams[away2Name];
+    const pivotSide2: "home" | "away" = r2Fixture.homeTeamId === pivotTeamId ? "home" : "away";
+
+    const served = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    expect(served.status()).toBe(200);
+    const servedBody = (await served.json()) as {
+      homeTeam: { players: { rosterPlayerId: string; name: string; positionalKey: string; journeyman?: boolean }[] };
+      awayTeam: { players: { rosterPlayerId: string; name: string; positionalKey: string; journeyman?: boolean }[] };
+    };
+    const pivotServed = pivotSide2 === "home" ? servedBody.homeTeam.players : servedBody.awayTeam.players;
+    const jrny = pivotServed.find((p) => p.journeyman === true);
+    expect(jrny).toBeDefined();
+    expect(jrny!.name).toBe("Novato 1");
+    expect(jrny!.positionalKey).toBe("lineman");
+    expect(jrny!.rosterPlayerId).toBe(`journeyman-${pivotTeamId}-1`);
+
+    await liveCommand(home2Page, leagueId, r2Fixture.id, { type: "consent", side: "home" });
+    await liveCommand(away2Page, leagueId, r2Fixture.id, { type: "consent", side: "away" });
+    view = await liveCommand(home2Page, leagueId, r2Fixture.id, { type: "begin" });
+    while (view.activeSide !== pivotSide2) {
+      const activePage = view.activeSide === "home" ? home2Page : away2Page;
+      view = await liveCommand(activePage, leagueId, r2Fixture.id, { type: "endTurn", side: view.activeSide });
+    }
+    expect(view.activeSide).toBe(pivotSide2);
+
+    // The match page shows the notice and the Journeyman is selectable in the
+    // FAB (marked Novato). Record a TD with the Novato through the REAL FAB.
+    const match2Url = `/leagues/${leagueId}/fixtures/${r2Fixture.id}`;
+    await pivotPage.goto(match2Url);
+    await expect(pivotPage.getByTestId("journeymen-notice")).toBeVisible();
+    await expect(pivotPage.getByText("Faltan 1 jugadores — se añaden 1 novatos")).toBeVisible();
+    await expect(pivotPage.getByRole("button", { name: "+" })).toBeVisible();
+    await pivotPage.getByRole("button", { name: "+" }).click();
+    await pivotPage.getByRole("button", { name: /Touchdown/i }).click();
+    const tdSelect = pivotPage.getByLabel("Jugador", { exact: true });
+    await tdSelect.selectOption({ label: "Novato 1 (Novato)" });
+    await pivotPage.getByRole("button", { name: "Registrar" }).click();
+    await expect(pivotPage.getByLabel("Jugador", { exact: true })).toHaveCount(0);
+
+    // Resolve match 2 → the closure writes awards WITHOUT the Journeyman.
+    // endMatch is an optimistic-guard write: a hub-driven pause transition can
+    // race it (seq conflict → 409, the transition rolls back), so retry once —
+    // the same way a user would simply click again — and accept an already-
+    // finished live row (a raced "Invalid transition").
+    let finished = false;
+    for (let attempt = 0; attempt < 2 && !finished; attempt++) {
+      const res = await admin.request.post(
+        `/api/leagues/${leagueId}/fixtures/${r2Fixture.id}/live`,
+        { data: { type: "endMatch" } },
+      );
+      if (res.status() === 200) {
+        finished = ((await res.json()) as { view: { status: string } }).view.status === "finished";
+      }
+    }
+    if (!finished) {
+      const liveState = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+      finished = ((await liveState.json()) as { live: { status: string } | null }).live?.status === "finished";
+    }
+    expect(finished).toBe(true);
+    await admin.goto(match2Url);
+    await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
+    await resolvePerSide(home2Page, away2Page, home2Name, away2Name, match2Url);
+    await admin.goto(match2Url);
+    await waitFixturePlayed(admin, leagueId, r2Fixture.id, 2);
+
+    const after = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
+    expect(after.status()).toBe(200);
+    const afterBody = (await after.json()) as {
+      result: {
+        scores: {
+          home: { pe: { rosterPlayerId: string; pe: number }[]; casualties: { rosterPlayerId: string }[] };
+          away: { pe: { rosterPlayerId: string; pe: number }[]; casualties: { rosterPlayerId: string }[] };
+        };
+      };
+    };
+    const pivotScoreboard = pivotSide2 === "home" ? afterBody.result.scores.home : afterBody.result.scores.away;
+    // The Novato's TD earned NO PE and their id never reaches the snapshot.
+    expect(pivotScoreboard.pe.some((row) => row.rosterPlayerId.startsWith("journeyman-"))).toBe(false);
+    expect(pivotScoreboard.casualties.some((c) => c.rosterPlayerId.startsWith("journeyman-"))).toBe(false);
+
+    // No `Player` row was ever created for the Novato (progression has only the
+    // real roster) and the team roster still shows exactly the 11 real players.
+    // The progression route is owner-scoped → request from the pivot coach.
+    const prog = await pivotPage.request.get(`/api/teams/${pivotTeamId}/progression`);
+    expect(prog.status()).toBe(200);
+    const progBody = (await prog.json()) as { rosterPlayerId: string }[];
+    expect(progBody.some((p) => p.rosterPlayerId.startsWith("journeyman-"))).toBe(false);
+    const leagueAgain = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(leagueAgain.status()).toBe(200);
+    const leagueBody = (await leagueAgain.json()) as { teams: { id: string; roster: unknown[] }[] };
+    expect(leagueBody.teams.find((t) => t.id === pivotTeamId)!.roster).toHaveLength(11);
+  } finally {
+    await league.close();
+  }
+});
+
 test("concede → the resolution still runs (awards + MatchResult) though the fixture was already closed", async ({ browser }) => {
   const tag = Date.now().toString(36);
   // A 3-member, 2-jornada league: conceding round 1's fixture leaves the

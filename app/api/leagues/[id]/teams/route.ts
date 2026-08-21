@@ -10,8 +10,10 @@ import { prisma } from "@/lib/prisma";
  * Guards (spec): the league must be OPEN (a started league is immutable → 409);
  * the team must be owned by the session user, currently unassigned
  * (`leagueId: null`) and non-archived. A nonexistent league or a foreign team
- * returns 404; an already-member or archived team returns 409. No mutation
- * occurs on any rejected path.
+ * returns 404; an already-member or archived team returns 409. One user = one
+ * team per league (RAU-54): if the session user ALREADY owns a member team in
+ * this league, joining a second one returns 409 and the team row is untouched.
+ * No mutation occurs on any rejected path.
  */
 export async function POST(
   req: Request,
@@ -58,6 +60,21 @@ export async function POST(
   }
   if (team.leagueId != null) {
     return NextResponse.json({ error: "Team already belongs to a league" }, { status: 409 });
+  }
+
+  // One user = one team per league (RAU-54): the session user may hold at most
+  // one member team in a league. Checked BEFORE the update so a rejected second
+  // join never mutates the team. (The team being joined is unassigned and its
+  // own leagueId is null, so it can never match this query.)
+  const existingMember = await prisma.team.findFirst({
+    where: { leagueId: id, userId: ownerId, archivedAt: null },
+    select: { id: true },
+  });
+  if (existingMember) {
+    return NextResponse.json(
+      { error: "Ya tienes un equipo en esta liga" },
+      { status: 409 },
+    );
   }
 
   const updated = await prisma.team.update({

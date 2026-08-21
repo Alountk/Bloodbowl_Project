@@ -95,6 +95,25 @@ describe("deriveLivePeAwards", () => {
     expect(home).toEqual([]);
     expect(away).toEqual([]);
   });
+
+  it("RAU-13: skips Journeymen for TD/completion and as a casualty causer (no PE)", () => {
+    const { home, away } = deriveLivePeAwards([
+      event({ kind: "td", side: "home", playerRosterId: "journeyman-home-t-1" }),
+      event({ kind: "completion", side: "home", playerRosterId: "journeyman-home-t-2" }),
+      // A journeyman INFLICTS a lasting injury → the ★2 goes to NOBODY.
+      event({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "a1",
+        payload: { victimRosterId: "a1", causerRosterId: "journeyman-home-t-3", band: "apaleado" },
+      }),
+      // Real players around them still earn their PE.
+      event({ kind: "td", side: "home", playerRosterId: "h1" }),
+      event({ kind: "completion", side: "away", playerRosterId: "a2" }),
+    ]);
+    expect(home).toEqual([{ rosterPlayerId: "h1", pe: PE_TD }]);
+    expect(away).toEqual([{ rosterPlayerId: "a2", pe: PE_COMPLETION }]);
+  });
 });
 
 describe("addMvpPe", () => {
@@ -108,6 +127,12 @@ describe("addMvpPe", () => {
     expect(awards).toEqual([
       { rosterPlayerId: "h1", pe: 3 },
       { rosterPlayerId: "h9", pe: PE_MVP },
+    ]);
+  });
+
+  it("RAU-13: a journeyman grantee receives nothing (defensive — MJP excludes them)", () => {
+    expect(addMvpPe([{ rosterPlayerId: "h1", pe: 3 }], "journeyman-home-t-1")).toEqual([
+      { rosterPlayerId: "h1", pe: 3 },
     ]);
   });
 });
@@ -143,6 +168,24 @@ describe("casualtyVictimsFromEvents", () => {
         event({ kind: "casualty", side: "home", playerRosterId: "h1", payload: {} }),
       ]),
     ).toEqual([]);
+  });
+
+  it("RAU-13: skips a Journeyman victim (their injury never persists)", () => {
+    const victims = casualtyVictimsFromEvents([
+      event({
+        kind: "casualty",
+        side: "home",
+        playerRosterId: "journeyman-home-t-1",
+        payload: { band: "grave" },
+      }),
+      event({
+        kind: "casualty",
+        side: "home",
+        playerRosterId: "h2",
+        payload: { band: "bruise" },
+      }),
+    ]);
+    expect(victims).toEqual([{ team: "home", rosterPlayerId: "h2", band: "bruise" }]);
   });
 });
 
