@@ -55,9 +55,10 @@ test.describe("Auth E2E (real Postgres)", () => {
     await page.reload();
     await expect(page.getByText(teamName)).toBeVisible();
 
-    // Logout lands on /login and no longer shows the team (session cleared).
+    // Logout lands on the public landing and no longer shows the team (session cleared).
     await page.getByRole("button", { name: "Log out" }).click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { name: "Your league, in your pocket." })).toBeVisible();
     await expect(page.getByText(teamName)).not.toBeVisible();
 
     // Log back in with the same account: the team is still there from the DB.
