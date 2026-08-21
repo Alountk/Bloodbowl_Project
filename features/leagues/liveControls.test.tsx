@@ -148,29 +148,30 @@ describe("EventControls — mini-form player + roll selects (LM-20, RAU-39)", ()
     expect(options.some((o) => o.includes("Dead B"))).toBe(false); // not alive
   });
 
-  it("RAU-48: casualty author/victim options show the position next to the name", () => {
+  it("RAU-48: casualty author/victim options show the position + dorsal next to the name", () => {
     renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Herida/i }));
-    // Causer (own roster, active coach).
+    // Causer (own roster, active coach): dorsal = served-array index + 1.
     const author = screen.getByLabelText(/Autor/i) as HTMLSelectElement;
     const authorLabels = Array.from(author.options).map((o) => o.textContent);
-    expect(authorLabels).toContain("Blitzer A (Human Blitzer)");
-    expect(authorLabels).toContain("Thrower A (Human Thrower)");
+    expect(authorLabels).toContain("Blitzer A (Human Blitzer · #1)");
+    expect(authorLabels).toContain("Thrower A (Human Thrower · #2)");
     // Victim (rival roster, active coach).
     const victim = screen.getByLabelText(/Víctima/i) as HTMLSelectElement;
     const victimLabels = Array.from(victim.options).map((o) => o.textContent);
-    expect(victimLabels).toContain("Blitzer Rival (Human Blitzer)");
-    expect(victimLabels).toContain("Thrower Rival (Human Thrower)");
+    expect(victimLabels).toContain("Blitzer Rival (Human Blitzer · #1)");
+    expect(victimLabels).toContain("Thrower Rival (Human Thrower · #2)");
   });
 
-  it("RAU-48: the foul victim select shows the position next to the rival names", () => {
+  it("RAU-48: the foul victim select shows the position + dorsal next to the rival names", () => {
     renderControls();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
     fireEvent.click(screen.getByRole("button", { name: /Falta/i }));
     const foulVictim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
     const foulLabels = Array.from(foulVictim.options).map((o) => o.textContent);
-    expect(foulLabels).toContain("Blitzer Rival (Human Blitzer)");
+    expect(foulLabels).toContain("Blitzer Rival (Human Blitzer · #1)");
+    expect(foulLabels).toContain("Thrower Rival (Human Thrower · #2)");
   });
 
   it("shows the 1D16 roll + derived band instead of a band select, and the 1D6 ONLY when the derived band is permanent", () => {
@@ -427,8 +428,10 @@ describe("EventControls — RAU-13 Journeymen (Novatos) in the pools", () => {
     fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
     const tdSelect = screen.getByLabelText(/Jugador/i) as HTMLSelectElement;
     const labels = Array.from(tdSelect.options).map((o) => o.textContent ?? "");
-    // The journeyman passes the alive && !missNextMatch pool and is marked Novato.
+    // The journeyman passes the alive && !missNextMatch pool and is marked
+    // Novato with its dorsal (served-array index + 1 → #4 here).
     expect(labels.some((l) => l.includes("Novato 1") && l.includes("Novato"))).toBe(true);
+    expect(labels.some((l) => l.includes("(Novato · #4)"))).toBe(true);
     fireEvent.change(tdSelect, { target: { value: journeyman.rosterPlayerId } });
     fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
     expect(onSubmit).toHaveBeenCalledWith({ type: "td", side: "home", playerRosterId: "journeyman-t1-1" } as LiveCommand);
@@ -443,6 +446,7 @@ describe("EventControls — RAU-13 Journeymen (Novatos) in the pools", () => {
     const foulVictim = screen.getByLabelText(/Víctima de la falta/i) as HTMLSelectElement;
     const foulLabels = Array.from(foulVictim.options).map((o) => o.textContent ?? "");
     expect(foulLabels.some((l) => l.includes("Novato 1") && l.includes("Novato"))).toBe(true);
+    expect(foulLabels.some((l) => l.includes("(Novato · #3)"))).toBe(true);
 
     // Casualty victim (rival pool for the ACTIVE coach's proposal).
     fireEvent.click(screen.getByRole("button", { name: /Cancelar/i }));
@@ -450,6 +454,20 @@ describe("EventControls — RAU-13 Journeymen (Novatos) in the pools", () => {
     const victim = screen.getByLabelText(/^Víctima$/i) as HTMLSelectElement;
     const victimLabels = Array.from(victim.options).map((o) => o.textContent ?? "");
     expect(victimLabels.some((l) => l.includes("Novato 1") && l.includes("Novato"))).toBe(true);
+    expect(victimLabels.some((l) => l.includes("(Novato · #3)"))).toBe(true);
+  });
+
+  it("shows the dorsal next to the position for real players in every pool", async () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
+    const labels = Array.from((screen.getByLabelText(/Jugador/i) as HTMLSelectElement).options).map(
+      (o) => o.textContent ?? "",
+    );
+    // Alive roster order: Blitzer A (#1), Thrower A (#2) — dead B (#3) excluded.
+    expect(labels.some((l) => l.includes("Blitzer A (Human Blitzer · #1)"))).toBe(true);
+    expect(labels.some((l) => l.includes("Thrower A (Human Thrower · #2)"))).toBe(true);
+    expect(labels.some((l) => l.includes("(Novato)"))).toBe(false);
   });
 
   it("keeps real roster players unlabeled (no Novato marker)", async () => {

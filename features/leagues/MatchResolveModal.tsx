@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
 import { addMvpPe, deriveLivePeAwards } from "@/lib/liveResolve";
+import { positionName } from "./liveControls";
 import {
   nominateMvp,
   rollLiveMvp,
@@ -12,10 +13,14 @@ import {
   type MatchDetail,
 } from "./api";
 
-/** A roster player reference (id + name), shared with the result modal. */
+/** A roster player reference (id + name), shared with the result modal. The
+ * optional dorsal/positionalKey power the "Name (Position · #N)" MJP picker
+ * labels (RAU-13); the summary sections only use id + name. */
 export interface RosterPlayerRef {
   id: string;
   name: string;
+  dorsal?: number;
+  positionalKey?: string;
 }
 
 /** Six empty MJP nomination slots per team. */
@@ -108,13 +113,19 @@ export function MatchResolveModal({
   // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
   // players here. RAU-13: Journeymen are excluded too — they earn no PE and
   // can never be the MJP grantee (the server would reject them as foreign).
-  const ownRoster = useMemo<RosterPlayerRef[]>(
-    () =>
-      (ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players)
-        .filter((p) => p.alive && !p.missNextMatch && !p.journeyman)
-        .map((p) => ({ id: p.rosterPlayerId, name: p.name })),
-    [ownSide, detail.homeTeam.players, detail.awayTeam.players],
-  );
+  // The dorsal (RAU-13) is the served-array index + 1 (D21), so the picker
+  // labels match the FAB combos and the feed.
+  const ownRoster = useMemo<RosterPlayerRef[]>(() => {
+    const players = ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players;
+    return players
+      .filter((p) => p.alive && !p.missNextMatch && !p.journeyman)
+      .map((p) => ({
+        id: p.rosterPlayerId,
+        name: p.name,
+        dorsal: players.indexOf(p) + 1,
+        positionalKey: p.positionalKey,
+      }));
+  }, [ownSide, detail.homeTeam.players, detail.awayTeam.players]);
   const homeRoster = useMemo<RosterPlayerRef[]>(
     () => detail.homeTeam.players.map((p) => ({ id: p.rosterPlayerId, name: p.name })),
     [detail.homeTeam.players],
@@ -224,6 +235,7 @@ export function MatchResolveModal({
                       read-only status that never leaks the rival's picks. */}
                   <OwnNominationSection
                     name={ownName}
+                    raceId={ownSide === "home" ? detail.homeTeam.raceId : detail.awayTeam.raceId}
                     roster={ownRoster}
                     nominations={draft}
                     saved={ownNomination != null}
@@ -349,6 +361,7 @@ export function MatchResolveModal({
  * roster only) + the "Guardar mis nominaciones" action and status line. */
 function OwnNominationSection({
   name,
+  raceId,
   roster,
   nominations,
   saved,
@@ -358,6 +371,8 @@ function OwnNominationSection({
   t,
 }: {
   name: string;
+  /** The OWN side's race id, so the option labels resolve the positional name. */
+  raceId: string;
   roster: RosterPlayerRef[];
   nominations: string[];
   saved: boolean;
@@ -383,7 +398,7 @@ function OwnNominationSection({
               <option value="">—</option>
               {roster.map((player) => (
                 <option key={player.id} value={player.id}>
-                  {player.name}
+                  {`${player.name} (${positionName(raceId, player.positionalKey ?? "lineman")} · #${player.dorsal ?? 0})`}
                 </option>
               ))}
             </select>

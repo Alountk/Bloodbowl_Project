@@ -178,9 +178,11 @@ describe("MatchResolveModal", () => {
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
     const options = within(dialog).getByLabelText(`MVP 1 ${homeName}`).querySelectorAll("option");
     const texts = Array.from(options).map((o) => o.textContent);
-    expect(texts).toContain("Hugo1");
-    expect(texts).not.toContain("Hugo3");
-    expect(texts).not.toContain("Hugo4");
+    expect(texts.some((t) => t?.includes("Hugo1"))).toBe(true);
+    expect(texts.some((t) => t?.includes("Hugo3"))).toBe(false);
+    expect(texts.some((t) => t?.includes("Hugo4"))).toBe(false);
+    // RAU-13: the dorsal (served-array index + 1) sits next to the position.
+    expect(texts.some((t) => t?.includes("Hugo5 (Human Lineman · #5)"))).toBe(true);
   });
 
   it("RAU-51: 'Guardar mis nominaciones' POSTs nominateMvp for the OWN side and refreshes (onNominated)", async () => {
