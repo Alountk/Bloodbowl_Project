@@ -21,6 +21,7 @@ import {
   countPlayers,
   countPlayersFromEntries,
   summarizeRosterFromEntries,
+  countReadyToImprove,
 } from "./roster";
 import type { PlayerEntry, Team } from "./types";
 import { DEFAULT_COACHING } from "./types";
@@ -187,6 +188,39 @@ describe("roster helpers", () => {
         roster: [],
       };
       expect(summarizeRosterFromEntries(team, [human])).toBe("0 jugadores");
+    });
+  });
+
+  describe("countReadyToImprove", () => {
+    it("counts alive players whose PE reaches their next improvement cost", () => {
+      // 0 acq -> cost 3; pe 3 ready. 1 acq -> cost 4; pe 4 ready.
+      const entries = [
+        { pe: 3, alive: true, improvements: 0 },
+        { pe: 4, alive: true, improvements: 1 },
+      ];
+      expect(countReadyToImprove(entries)).toBe(2);
+    });
+
+    it("excludes players below the next cost and dead players", () => {
+      const entries = [
+        { pe: 3, alive: true, improvements: 0 }, // ready (cost 3)
+        { pe: 2, alive: true, improvements: 0 }, // below cost 3
+        { pe: 50, alive: false, improvements: 0 }, // dead, never counts
+        { pe: 10, alive: false, improvements: 0 }, // dead, never counts
+      ];
+      expect(countReadyToImprove(entries)).toBe(1);
+    });
+
+    it("respects the 6a cap: a six-cap player needs a fresh 6a cost (15)", () => {
+      const entries = [
+        { pe: 14, alive: true, improvements: 5 }, // 6a cost 15 -> not ready
+        { pe: 15, alive: true, improvements: 5 }, // ready
+      ];
+      expect(countReadyToImprove(entries)).toBe(1);
+    });
+
+    it("returns 0 for an empty progression", () => {
+      expect(countReadyToImprove([])).toBe(0);
     });
   });
 
