@@ -20,10 +20,15 @@ interface AuthModalProps {
  * mobile (`max-md:items-end`). The /login and /signup pages mount this same
  * component as their fallback content.
  *
- * Chrome copy is English (home/header convention, per the preview); field
- * labels and error messages go through i18n.
+ * The dialog only mounts while `open`, so its state (tab, fields) starts fresh
+ * on every open and the router/nav hooks never run while closed.
  */
 export function AuthModal({ open, onClose, initialMode = "login" }: AuthModalProps) {
+  if (!open) return null;
+  return <AuthModalDialog onClose={onClose} initialMode={initialMode} />;
+}
+
+function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initialMode: AuthMode }) {
   const router = useRouter();
   const { t } = useI18n();
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -39,34 +44,17 @@ export function AuthModal({ open, onClose, initialMode = "login" }: AuthModalPro
   // overlay mid-interaction would read as a backdrop click and close the modal.
   const pointerDownOnBackdrop = useRef(false);
 
-  // Reset the form when the modal opens (render-phase adjustment, the approved
-  // replacement for setState-in-effect): track the previous `open` value and
-  // re-sync the fields on a false → true transition.
-  const [prevOpen, setPrevOpen] = useState(open);
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (open) {
-      setMode(initialMode);
-      setError(null);
-      setForgotNote(false);
-    }
-  }
-
   useEffect(() => {
-    if (!open) return;
     emailRef.current?.focus();
-  }, [open]);
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+  }, [onClose]);
 
   const isLogin = mode === "login";
 
