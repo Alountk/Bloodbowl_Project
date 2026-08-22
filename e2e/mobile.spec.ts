@@ -69,13 +69,18 @@ test.describe("Mobile", () => {
     await expectNoHorizontalOverflow(page, "create step2 with player");
   });
 
-  test("drawer opens from hamburger and closes on scrim", async ({ page }) => {
+  test("drawer opens from hamburger, shows the nav links, and closes on scrim", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
     const burger = page.getByRole("button", { name: /open navigation menu/i });
     await expect(burger).toBeVisible();
     await burger.click();
-    await expect(page.getByRole("complementary", { name: "Mobile navigation" })).toBeVisible();
+    const drawer = page.getByRole("complementary", { name: "Mobile navigation" });
+    await expect(drawer).toBeVisible();
+    // The drawer shares the unified nav links.
+    await expect(drawer.getByRole("link", { name: "Matches" })).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Teams" })).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Leagues" })).toBeVisible();
     // Close via scrim click (top-right area outside the drawer)
     await page.mouse.click(360, 400);
     await expect(page.getByRole("complementary", { name: "Mobile navigation" })).not.toBeVisible();

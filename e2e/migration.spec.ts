@@ -48,8 +48,14 @@ async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Log in" }).last().click();
+  await page.getByRole("button", { name: "Sign in" }).last().click();
   await expect(page).toHaveURL("/");
+}
+
+/** Logs out through the avatar user menu in the unified nav. */
+async function logout(page: Page) {
+  await page.getByRole("button", { name: "User menu" }).click();
+  await logout(page);
 }
 
 /** Seeds legacy bbo teams into localStorage from the given (non-home) page context. */
@@ -71,7 +77,7 @@ test.describe("localStorage migration E2E (real Postgres)", () => {
     // Create the account but do NOT log in yet.
     await signup(page, email, password);
     // Sign out so we can seed localStorage before the migration-triggering login.
-    await page.getByRole("button", { name: "Log out" }).click();
+    await logout(page);
     await expect(
       page.getByRole("heading", { name: "Your league, in your pocket." }),
     ).toBeVisible();
@@ -90,7 +96,7 @@ test.describe("localStorage migration E2E (real Postgres)", () => {
     expect(retained).not.toBeNull();
 
     // A later login must NOT duplicate the migrated teams (idempotent).
-    await page.getByRole("button", { name: "Log out" }).click();
+    await logout(page);
     await expect(
       page.getByRole("heading", { name: "Your league, in your pocket." }),
     ).toBeVisible();
