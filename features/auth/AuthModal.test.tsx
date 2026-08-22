@@ -35,7 +35,7 @@ describe("AuthModal", () => {
 
   it("opens in login mode with email + password and no name field", () => {
     renderModal();
-    expect(screen.getByRole("dialog", { name: "Sign in" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();
     expect(screen.getByLabelText("Correo electrónico")).toBeTruthy();
     expect(screen.getByLabelText("Contraseña")).toBeTruthy();
     expect(screen.queryByLabelText("Nombre")).toBeNull();
@@ -43,8 +43,8 @@ describe("AuthModal", () => {
 
   it("switches to the signup tab showing the name field", () => {
     renderModal();
-    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
-    expect(screen.getByRole("dialog", { name: "Sign up" })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" })[0]);
+    expect(screen.getByRole("dialog", { name: "Registrarse" })).toBeTruthy();
     expect(screen.getByLabelText("Nombre")).toBeTruthy();
   });
 
@@ -58,7 +58,7 @@ describe("AuthModal", () => {
     fireEvent.change(screen.getByLabelText("Contraseña"), {
       target: { value: "SuperSecret123!" },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Iniciar sesión" }).at(-1)!);
 
     await waitFor(() =>
       expect(signInMock).toHaveBeenCalledWith("credentials", {
@@ -81,7 +81,7 @@ describe("AuthModal", () => {
     fireEvent.change(screen.getByLabelText("Contraseña"), {
       target: { value: "wrong" },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Iniciar sesión" }).at(-1)!);
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe("Email o contraseña no válidos"),
@@ -104,7 +104,7 @@ describe("AuthModal", () => {
     fireEvent.change(screen.getByLabelText("Contraseña"), {
       target: { value: "SuperSecret123!" },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign up" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" }).at(-1)!);
 
     await waitFor(() =>
       expect(signInMock).toHaveBeenCalledWith("credentials", {
@@ -133,7 +133,7 @@ describe("AuthModal", () => {
     fireEvent.change(screen.getByLabelText("Contraseña"), {
       target: { value: "SuperSecret123!" },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign up" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" }).at(-1)!);
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toBe(
@@ -174,7 +174,7 @@ describe("AuthModal", () => {
 
   it("shows the forgot-password note without closing", () => {
     renderModal();
-    fireEvent.click(screen.getByRole("button", { name: /Forgot your password/i }));
+    fireEvent.click(screen.getByRole("button", { name: /olvidaste tu contraseña/i }));
     expect(screen.getByRole("status").textContent).toBe(
       "El restablecimiento de contraseña aún no está disponible. Pide ayuda al administrador de tu liga.",
     );

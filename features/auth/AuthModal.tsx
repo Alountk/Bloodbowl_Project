@@ -93,7 +93,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={isLogin ? "Sign in" : "Sign up"}
+      aria-label={isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4 py-8 max-md:items-end max-md:px-0 max-md:py-0"
       onPointerDown={(e) => {
         pointerDownOnBackdrop.current = e.target === e.currentTarget;
@@ -106,7 +106,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
       <div className="flex max-h-[90vh] w-full max-w-[400px] flex-col overflow-y-auto bg-white max-md:max-w-none">
         <header className="flex items-center bg-[#12225a] px-4 py-3.5 text-white">
           <p className="text-[15px] font-extrabold">
-            {isLogin ? "Sign in" : "Create your account"}
+            {isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
           </p>
           <button
             type="button"
@@ -129,7 +129,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
                 : "text-slate-500 hover:text-[#12225a]"
             }`}
           >
-            Sign in
+            {t("auth.loginTitle")}
           </button>
           <button
             type="button"
@@ -141,7 +141,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
                 : "text-slate-500 hover:text-[#12225a]"
             }`}
           >
-            Sign up
+            {t("auth.signupTitle")}
           </button>
         </div>
 
@@ -205,7 +205,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
             disabled={isSubmitting}
             className="w-full rounded-none bg-[#d11938] px-4 py-3 text-sm font-extrabold text-white hover:bg-[#e51b40] disabled:opacity-60"
           >
-            {isLogin ? "Sign in" : "Sign up"}
+            {isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
           </button>
 
           <p className="text-center text-xs text-slate-500">
@@ -216,26 +216,26 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
                   onClick={() => setForgotNote(true)}
                   className="mx-auto mb-1 block font-semibold text-slate-500 hover:text-[#12225a]"
                 >
-                  Forgot your password?
+                  {t("auth.forgotPassword")}
                 </button>
-                New here?{" "}
+                {t("auth.noAccount")}{" "}
                 <button
                   type="button"
                   onClick={() => switchMode("signup")}
                   className="font-extrabold text-[#12225a] hover:underline"
                 >
-                  Create an account
+                  {t("auth.signupTitle")}
                 </button>
               </>
             ) : (
               <>
-                Already have an account?{" "}
+                {t("auth.hasAccount")}{" "}
                 <button
                   type="button"
                   onClick={() => switchMode("login")}
                   className="font-extrabold text-[#12225a] hover:underline"
                 >
-                  Log in
+                  {t("auth.loginTitle")}
                 </button>
               </>
             )}

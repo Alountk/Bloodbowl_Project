@@ -48,14 +48,14 @@ async function login(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).last().click();
+  await page.getByRole("button", { name: "Log in" }).last().click();
   await expect(page).toHaveURL("/");
 }
 
 /** Logs out through the avatar user menu in the unified nav. */
 async function logout(page: Page) {
   await page.getByRole("button", { name: "User menu" }).click();
-  await logout(page);
+  await page.getByRole("button", { name: "Log out" }).click();
 }
 
 /** Seeds legacy bbo teams into localStorage from the given (non-home) page context. */

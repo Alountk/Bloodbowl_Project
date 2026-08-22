@@ -62,6 +62,8 @@ async function signupAsDeveloper(page: Page): Promise<string> {
   const email = uniqueEmail("dev");
   await signup(page, email);
   promoteToDeveloper(email);
+  // Logout lives in the avatar user menu (unified nav).
+  await page.getByRole("button", { name: "Menú de usuario" }).click();
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(
     page.getByRole("heading", { name: "Your league, in your pocket." }),
