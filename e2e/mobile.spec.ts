@@ -81,10 +81,11 @@ test.describe("Mobile", () => {
     await burger.click();
     const drawer = page.getByRole("complementary", { name: "Mobile navigation" });
     await expect(drawer).toBeVisible();
-    // The drawer shares the unified nav links.
-    await expect(drawer.getByRole("link", { name: "Matches" })).toBeVisible();
-    await expect(drawer.getByRole("link", { name: "Teams" })).toBeVisible();
+    // The drawer shares the unified nav links — only working links ship
+    // (Teams and Matches are hidden until dedicated pages exist, RAU-60).
     await expect(drawer.getByRole("link", { name: "Leagues" })).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Teams" })).toHaveCount(0);
+    await expect(drawer.getByRole("link", { name: "Matches" })).toHaveCount(0);
     // Close via scrim click (top-right area outside the drawer)
     await page.mouse.click(360, 400);
     await expect(page.getByRole("complementary", { name: "Mobile navigation" })).not.toBeVisible();
