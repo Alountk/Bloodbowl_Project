@@ -95,6 +95,21 @@ describe("auth config session user id propagation", () => {
     expect(token.id).toBe("cls-user-9");
   });
 
+  it("persists the authorize user locale into the JWT token at sign-in", () => {
+    const token = callbacks.jwt({
+      token: { sub: "cls-user-1", name: null, email: "a@test.local" },
+      user: { id: "cls-user-1", name: null, email: "a@test.local", locale: "en" },
+    } as never) as Record<string, unknown>;
+    expect(token.locale).toBe("en");
+  });
+
+  it("keeps an existing token locale across refreshes (no user object)", () => {
+    const token = callbacks.jwt({
+      token: { sub: "cls-user-9", id: "cls-user-9", name: null, email: "b@test.local", locale: "en" },
+    } as never) as Record<string, unknown>;
+    expect(token.locale).toBe("en");
+  });
+
   it("exposes the token id as session.user.id", () => {
     const result = callbacks.session({
       session: {
@@ -105,5 +120,16 @@ describe("auth config session user id propagation", () => {
     } as never) as { user: { id?: string } };
     // The scoped /api/teams routes rely on session.user.id; without it they 401.
     expect(result.user?.id).toBe("cls-user-1");
+  });
+
+  it("exposes the token locale as session.user.locale", () => {
+    const result = callbacks.session({
+      session: {
+        user: { name: null, email: "a@test.local" },
+        expires: new Date("2026-09-07"),
+      },
+      token: { id: "cls-user-1", locale: "en" },
+    } as never) as { user: { locale?: string } };
+    expect(result.user?.locale).toBe("en");
   });
 });
