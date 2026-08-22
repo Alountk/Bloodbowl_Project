@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { I18nProvider } from "@/lib/i18n";
 import { TeamCard } from "./TeamCard";
 import { fetchTeamProgression } from "./api";
 import type { PlayerProgressionCore, Team } from "./types";
@@ -151,5 +152,24 @@ describe("TeamCard", () => {
     const btn = screen.getByRole("button", { name: "Eliminar Reikland Reavers" });
     fireEvent.click(btn);
     expect(onDeleteRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the treasury label and improvement hint in English under an en locale (TP-6)", async () => {
+    fetchProgressionMock.mockResolvedValue([
+      progression({ id: "p1", pe: 3 }),
+      progression({ id: "p2", pe: 3 }),
+    ]);
+    render(
+      <I18nProvider initialLocale="en">
+        <TeamCard team={team} leagueName={undefined} onDeleteRequest={() => {}} />
+      </I18nProvider>,
+    );
+
+    // Treasury uses teams.treasury → "Treasury".
+    await waitFor(() => expect(screen.getByText(/^Treasury:/)).toBeTruthy());
+    // Plural hint via teams.readyToImproveMany → "2 players ready to improve".
+    await waitFor(() => expect(screen.getByText("2 players ready to improve")).toBeTruthy());
+    // The roster summary also follows the locale family (English "players").
+    expect(screen.getByText(/^6 players ·/)).toBeTruthy();
   });
 });

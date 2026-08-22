@@ -23,7 +23,8 @@ describe("AppShell unified nav", () => {
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     expect(within(nav).getByRole("link", { name: "Leagues" })).toBeTruthy();
-    expect(within(nav).getAllByRole("link")).toHaveLength(1);
+    expect(within(nav).getByRole("link", { name: "Teams" })).toBeTruthy();
+    expect(within(nav).getAllByRole("link")).toHaveLength(2);
   });
 
   it("renders the unified nav without a topbar search (search lives in the teams section)", () => {

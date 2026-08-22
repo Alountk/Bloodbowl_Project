@@ -32,14 +32,14 @@ function renderLogged(name = "Coach") {
 }
 
 describe("AppNav public variant (landing)", () => {
-  it("renders only the working section links and a Sign in button that opens the auth modal", () => {
+  it("renders the working section links (Teams + Leagues) and a Sign in button that opens the auth modal", () => {
     renderPublic();
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(1);
+    // Teams now ships (dedicated /teams page); Matches stays hidden (RAU-60).
+    expect(within(nav).getAllByRole("link")).toHaveLength(2);
     expect(within(nav).getByRole("link", { name: "Leagues" }).getAttribute("href")).toBe("/leagues");
-    // Teams and Matches are hidden until dedicated pages exist (backlog RAU-60).
-    expect(within(nav).queryByRole("link", { name: "Teams" })).toBeNull();
+    expect(within(nav).getByRole("link", { name: "Teams" }).getAttribute("href")).toBe("/teams");
     expect(within(nav).queryByRole("link", { name: "Matches" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
@@ -79,8 +79,9 @@ describe("AppNav logged-in variant (app shell)", () => {
     render(<AppNav authenticated onLogout={logoutMock} />);
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(2);
+    expect(within(nav).getAllByRole("link")).toHaveLength(3);
     expect(within(nav).getByRole("link", { name: "Leagues" }).getAttribute("href")).toBe("/leagues");
+    expect(within(nav).getByRole("link", { name: "Teams" }).getAttribute("href")).toBe("/teams");
     expect(within(nav).getByRole("link", { name: "Tipos de reglas" }).getAttribute("href")).toBe(
       "/dev/rulesets",
     );
@@ -103,8 +104,8 @@ describe("AppNav mobile drawer", () => {
 
     const drawer = screen.getByRole("complementary", { name: "Mobile navigation" });
     expect(within(drawer).getByRole("link", { name: "Leagues" })).toBeTruthy();
-    // The drawer shares the unified nav: only working links, no Teams/Matches.
-    expect(within(drawer).queryByRole("link", { name: "Teams" })).toBeNull();
+    // The drawer shares the unified nav: Teams present, Matches still absent.
+    expect(within(drawer).getByRole("link", { name: "Teams" }).getAttribute("href")).toBe("/teams");
     expect(within(drawer).queryByRole("link", { name: "Matches" })).toBeNull();
 
     // The public drawer Sign in opens the same auth modal.
