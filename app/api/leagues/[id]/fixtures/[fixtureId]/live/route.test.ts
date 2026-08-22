@@ -1636,7 +1636,15 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
 
   it("wires `rollMvp` through rollLiveMvp (server-owned preview roll, NO body nominations — RAU-51) and returns the roll", async () => {
     finishedSetup();
-    rollLiveMvpMock.mockResolvedValue({ mvp: { home: "p1", away: "p2" }, postFf: { home: 4, away: 3 } });
+    const roll = {
+      mvp: { home: "p1", away: "p2" },
+      postFf: { home: 4, away: 3 },
+      ffRoll: {
+        home: { roll: 4, direction: "up" },
+        away: { roll: 3, direction: "stay" },
+      },
+    };
+    rollLiveMvpMock.mockResolvedValue(roll);
     const res = await POST(
       req({ type: "rollMvp" }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
@@ -1651,7 +1659,7 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
       expect.anything(),
     );
     const body = await res.json();
-    expect(body.roll).toEqual({ mvp: { home: "p1", away: "p2" }, postFf: { home: 4, away: 3 } });
+    expect(body.roll).toEqual(roll);
   });
 
   it("maps a rollMvp 400 (invalid nominations) and 404 to the matching responses", async () => {
@@ -1703,6 +1711,10 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
       winnerId: "home-t",
       winnings: { home: 55000, away: 45000 },
       postFf: { home: 4, away: 3 },
+      ffRoll: {
+        home: { roll: 4, direction: "up" },
+        away: { roll: 3, direction: "stay" },
+      },
       mvp: { home: "p1", away: "p2" },
       resultId: "mr-1",
     });
@@ -1759,6 +1771,10 @@ describe("POST .../live — RAU-49 end-of-match resolution (rollMvp + resolveMat
       winnerId: "home-t",
       winnings: { home: 0, away: 0 },
       postFf: { home: 0, away: 0 },
+      ffRoll: {
+        home: { roll: 0, direction: "stay" },
+        away: { roll: 0, direction: "stay" },
+      },
       mvp: { home: "p1", away: "p2" },
       resultId: "mr-1",
     });

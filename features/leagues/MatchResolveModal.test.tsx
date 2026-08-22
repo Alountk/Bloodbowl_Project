@@ -294,7 +294,14 @@ describe("MatchResolveModal", () => {
         json: () =>
           Promise.resolve({
             view: {},
-            roll: { mvp: { home: "h2", away: "a4" }, postFf: { home: 4, away: 3 } },
+            roll: {
+              mvp: { home: "h2", away: "a4" },
+              postFf: { home: 4, away: 3 },
+              ffRoll: {
+                home: { roll: 4, direction: "up" },
+                away: { roll: 3, direction: "stay" },
+              },
+            },
           }),
       });
     });
@@ -335,7 +342,7 @@ describe("MatchResolveModal", () => {
     const homeSection = within(dialog).getByLabelText(homeName);
     expect(within(homeSection).getByText("Hugo2 · +4 PE")).toBeTruthy();
     expect(within(homeSection).getByText("55.000 gp.")).toBeTruthy();
-    expect(within(homeSection).getByText("+4")).toBeTruthy();
+    expect(within(homeSection).getByText("↑ (tirada 4)")).toBeTruthy();
     expect(within(homeSection).getByText("+3 PE · Hugo1")).toBeTruthy();
     expect(within(homeSection).getByText("+7 PE · Hugo2")).toBeTruthy();
     expect(within(homeSection).getByText("+1 PE · Hugo3")).toBeTruthy();
@@ -343,7 +350,7 @@ describe("MatchResolveModal", () => {
     const awaySection = within(dialog).getByLabelText(awayName);
     expect(within(awaySection).getByText("Aurora4 · +4 PE")).toBeTruthy();
     expect(within(awaySection).getByText("45.000 gp.")).toBeTruthy();
-    expect(within(awaySection).getByText("+3")).toBeTruthy();
+    expect(within(awaySection).getByText("= (tirada 3)")).toBeTruthy();
   });
 
   it("RAU-52: NO going back after the final confirm — the summary has no 'Cambiar nominaciones'", async () => {
@@ -356,7 +363,14 @@ describe("MatchResolveModal", () => {
         json: () =>
           Promise.resolve({
             view: {},
-            roll: { mvp: { home: "h2", away: "a4" }, postFf: { home: 4, away: 3 } },
+            roll: {
+              mvp: { home: "h2", away: "a4" },
+              postFf: { home: 4, away: 3 },
+              ffRoll: {
+                home: { roll: 4, direction: "up" },
+                away: { roll: 3, direction: "stay" },
+              },
+            },
           }),
       });
     });
@@ -379,7 +393,14 @@ describe("MatchResolveModal", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ view: {}, roll: { mvp: { home: "h1", away: "a1" }, postFf: { home: 4, away: 3 } } }),
+          json: () => Promise.resolve({ view: {}, roll: {
+              mvp: { home: "h1", away: "a1" },
+              postFf: { home: 4, away: 3 },
+              ffRoll: {
+                home: { roll: 4, direction: "up" },
+                away: { roll: 3, direction: "stay" },
+              },
+            } }),
         });
       }
       return Promise.resolve({
@@ -428,7 +449,14 @@ describe("MatchResolveModal", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ view: {}, roll: { mvp: { home: "h1", away: "a1" }, postFf: { home: 4, away: 3 } } }),
+          json: () => Promise.resolve({ view: {}, roll: {
+              mvp: { home: "h1", away: "a1" },
+              postFf: { home: 4, away: 3 },
+              ffRoll: {
+                home: { roll: 4, direction: "up" },
+                away: { roll: 3, direction: "stay" },
+              },
+            } }),
         });
       }
       return Promise.resolve({
@@ -481,7 +509,14 @@ describe("MatchResolveModal", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ view: {}, roll: { mvp: { home: "h1", away: "a1" }, postFf: { home: 4, away: 3 } } }),
+          json: () => Promise.resolve({ view: {}, roll: {
+              mvp: { home: "h1", away: "a1" },
+              postFf: { home: 4, away: 3 },
+              ffRoll: {
+                home: { roll: 4, direction: "up" },
+                away: { roll: 3, direction: "stay" },
+              },
+            } }),
         });
       }
       return Promise.resolve({

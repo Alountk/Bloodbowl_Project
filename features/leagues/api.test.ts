@@ -882,7 +882,14 @@ describe("MatchResultRecord — createdAt surface for the report date (MVT/summa
 });
 
 describe("RAU-51 resolution wrappers — per-side nomination + server-owned roll/resolve (no body nominations)", () => {
-  const roll = { mvp: { home: "p1", away: "p2" }, postFf: { home: 4, away: 3 } };
+  const roll = {
+    mvp: { home: "p1", away: "p2" },
+    postFf: { home: 4, away: 3 },
+    ffRoll: {
+      home: { roll: 4, direction: "up" },
+      away: { roll: 3, direction: "stay" },
+    },
+  };
   const resolved = {
     fixtureId: "f1",
     status: "played" as const,
@@ -891,6 +898,10 @@ describe("RAU-51 resolution wrappers — per-side nomination + server-owned roll
     winnerId: "t1",
     winnings: { home: 55_000, away: 45_000 },
     postFf: { home: 4, away: 3 },
+    ffRoll: {
+      home: { roll: 4, direction: "up" },
+      away: { roll: 3, direction: "stay" },
+    },
     mvp: { home: "p1", away: "p2" },
     resultId: "mr1",
   };
