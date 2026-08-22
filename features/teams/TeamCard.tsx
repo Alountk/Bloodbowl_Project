@@ -13,8 +13,7 @@ import {
   summarizeRosterFromEntries,
 } from "./roster";
 import { formatRulebookCost } from "./format";
-import type { Locale } from "@/lib/i18n/dictionaries";
-import { DEFAULT_LOCALE } from "@/lib/i18n/dictionaries";
+import { useI18n } from "@/lib/i18n";
 import type { PlayerProgressionCore, Team, Race } from "./types";
 
 /**
@@ -33,13 +32,12 @@ export function TeamCard({
   team,
   leagueName,
   onDeleteRequest,
-  locale = DEFAULT_LOCALE,
 }: {
   team: Team;
   leagueName: string | undefined;
   onDeleteRequest: () => void;
-  locale?: Locale;
 }) {
+  const { t, locale } = useI18n();
   const [progression, setProgression] = useState<PlayerProgressionCore[]>([]);
 
   useEffect(() => {
@@ -71,7 +69,10 @@ export function TeamCard({
   const ctv = rosterCost + coachingCost + valueBonus;
   const treasury = computeSpendableBalance(team, race);
   const readyCount = countReadyToImprove(progression);
-  const hint = readyCount === 1 ? "1 listo para mejorar" : `${readyCount} listos para mejorar`;
+  const hint =
+    readyCount === 1
+      ? t("teams.readyToImproveOne", { count: readyCount })
+      : t("teams.readyToImproveMany", { count: readyCount });
 
   return (
     <li className="flex flex-col overflow-hidden border border-slate-200 bg-white">
@@ -107,7 +108,7 @@ export function TeamCard({
             </b>
           </span>
           <span>
-            Tesorería:{" "}
+            {t("teams.treasury")}:{" "}
             <b data-testid="team-treasury" className="text-[#12225a]">
               {formatRulebookCost(treasury)}
             </b>

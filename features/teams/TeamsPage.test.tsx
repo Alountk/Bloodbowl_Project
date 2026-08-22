@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
+import { I18nProvider } from "@/lib/i18n";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { ArchiveGuardError } from "@/features/teams/store/ApiTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
@@ -164,6 +165,23 @@ describe("TeamsPage", () => {
     expect(screen.getByText("Da Krumpaz")).toBeTruthy();
     expect(screen.queryByText("Reikland Reavers")).toBeNull();
     expect(screen.queryByText("Zon Longbottom")).toBeNull();
+  });
+
+  it("renders the section headers in English under an en locale (TP-6)", async () => {
+    listLeaguesMock.mockResolvedValue([league("league-42", "Summer League")]);
+    render(
+      <I18nProvider initialLocale="en">
+        <AppProvider store={new InMemoryTeamStore([unassigned, assigned])}>
+          <TeamsPage />
+        </AppProvider>
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+
+    // teams.unassigned → "Unassigned", teams.inLeague → "In a league".
+    expect(screen.getByRole("heading", { name: "Unassigned" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "In a league" })).toBeTruthy();
   });
 });
 
