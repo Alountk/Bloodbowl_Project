@@ -770,6 +770,15 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
     await admin.goto(match2Url);
     await waitFixturePlayed(admin, leagueId, r2Fixture.id, 2);
 
+    // The season's LAST match just resolved → the league finished ATOMICALLY
+    // (RAU-40). The post-resolve hire must STILL work on the finished league
+    // (RAU-14: the finished-league guard exempts hireJourneyman) — this is the
+    // exact journey the user runs and the regression the fix must not return.
+    const leagueStatus = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(leagueStatus.status()).toBe(200);
+    const seasonBody = (await leagueStatus.json()) as { status: string };
+    expect(seasonBody.status).toBe("finished");
+
     // --- RAU-14: after the match is REPORTED, the hire step appears on the
     // PIVOT coach's OWN page — one offer per remaining journeyman, with the
     // race Lineman cost (Human Lineman = 50.000 M.O.).
