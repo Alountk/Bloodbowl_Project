@@ -5,7 +5,7 @@ import type {
   LeagueDetail,
   LeagueMemberTeam,
 } from "@/features/leagues/api";
-import { selectUpcomingFixtures, type UpcomingFixture } from "./selectUpcomingFixtures";
+import { selectUpcomingFixtures } from "./selectUpcomingFixtures";
 
 /**
  * Pure selector matrix (MP-1/MP-2/MP-3). No mocks — fixtures, leagues and
@@ -80,7 +80,11 @@ function detail(overrides: Partial<LeagueDetail> = {}): LeagueDetail {
   };
 }
 
-function select(userId: string, leagues: League[], details: ReadonlyMap<string, LeagueDetail>) {
+function select(
+  userId: string | null | undefined,
+  leagues: League[],
+  details: ReadonlyMap<string, LeagueDetail>,
+) {
   return selectUpcomingFixtures({ userId, leagues, details });
 }
 
