@@ -10,6 +10,7 @@ import {
   nominateMvp,
   rollLiveMvp,
   resolveLiveMatch,
+  type FanFactorRoll,
   type LiveMvpRoll,
   type MatchDetail,
 } from "./api";
@@ -385,7 +386,7 @@ export function MatchResolveModal({
                 roster={homeRoster}
                 mvp={roll.mvp.home}
                 winnings={winnings.home}
-                postFf={roll.postFf.home}
+                ffRoll={roll.ffRoll.home}
                 pe={teamPe(detail, "home", roll.mvp.home)}
                 nameOf={nameOf}
                 t={t}
@@ -395,7 +396,7 @@ export function MatchResolveModal({
                 roster={awayRoster}
                 mvp={roll.mvp.away}
                 winnings={winnings.away}
-                postFf={roll.postFf.away}
+                ffRoll={roll.ffRoll.away}
                 pe={teamPe(detail, "away", roll.mvp.away)}
                 nameOf={nameOf}
                 t={t}
@@ -553,7 +554,7 @@ function TeamSummarySection({
   roster,
   mvp,
   winnings,
-  postFf,
+  ffRoll,
   pe,
   nameOf,
   t,
@@ -562,11 +563,14 @@ function TeamSummarySection({
   roster: RosterPlayerRef[];
   mvp: string;
   winnings: number;
-  postFf: number;
+  ffRoll: FanFactorRoll;
   pe: { rosterPlayerId: string; pe: number }[];
   nameOf: (roster: RosterPlayerRef[], id: string | null | undefined) => string;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  // RAU-52: the post-match fan-factor verdict glyph (rulebook p. 103) — the
+  // dedicated-fans attribute goes ↑ / stays = / goes ↓ with the 1D6 roll.
+  const ffGlyph = ffRoll.direction === "up" ? "↑" : ffRoll.direction === "down" ? "↓" : "=";
   return (
     <section aria-label={name} className="border border-[#e2e8f0] p-3">
       <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
@@ -583,7 +587,9 @@ function TeamSummarySection({
         </li>
         <li className="flex justify-between gap-3">
           <span className="font-semibold text-slate-500">{t("match.resolve.fans")}</span>
-          <span className="tabular-nums">{t("match.resolve.fansLine", { value: postFf })}</span>
+          <span className="tabular-nums">
+            {t("match.resolve.fansRoll", { direction: ffGlyph, roll: ffRoll.roll })}
+          </span>
         </li>
         <li className="flex flex-col gap-0.5">
           <span className="font-semibold text-slate-500">{t("match.resolve.pe")}</span>

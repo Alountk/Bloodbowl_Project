@@ -261,15 +261,17 @@ describe("resolveLiveMatch", () => {
   });
 
   it("resolves a normally-finished live match: MVP roll, PE, treasury, FF, closure, MatchResult, league close", async () => {
-    // Rolls (call order): preFF home 1D3=1, preFF away 1D3=2, postFF home 1D6=3,
-    // postFF away 1D6=4, MVP home 1D6=5, MVP away 1D6=6.
+    // Rolls (call order): postFF home 1D6=3, postFF away 1D6=4, MVP home
+    // 1D6=5, MVP away 1D6=6. (The pre-match 1D3 attendance is NOT part of the
+    // change roll — rulebook p. 103 compares against the dedicated-fans
+    // ATTRIBUTE: home 2, away 1.)
     const { deps, matchResultCreate, fixtureUpdate, leagueUpdate, leagueFindUnique, teamUpdateMany, playerUpdateMany, playerFindMany, liveEventCreateMany, liveEventAggregate } =
-      makeResolveDeps({ rolls: { d3: [1, 2], d6: [3, 4, 5, 6] } });
+      makeResolveDeps({ rolls: { d6: [3, 4, 5, 6] } });
 
     const outcome = await resolveLiveMatch(resolveInput, deps);
 
-    // home FF = 1 + 2 = 3; away FF = 2 + 1 = 3. Home wins 1-0:
-    // postFF home = roll6 3 >= 3 → 4; postFF away = loss, 4 < 3? no → 3.
+    // Home (dedicatedFans 2) WINS 1-0: roll6 3 >= 2 → UP +1 to 3. Away (1)
+    // LOSS: roll6 4 < 1? no → STAYS at 1.
     // MVP: home nom[4] = h5, away nom[5] = a6.
     expect(outcome).toEqual({
       fixtureId: "f-1",
@@ -278,7 +280,11 @@ describe("resolveLiveMatch", () => {
       awayScore: 0,
       winnerId: "home-t",
       winnings: { home: 55000, away: 45000 },
-      postFf: { home: 4, away: 3 },
+      postFf: { home: 3, away: 1 },
+      ffRoll: {
+        home: { roll: 3, direction: "up" },
+        away: { roll: 4, direction: "stay" },
+      },
       mvp: { home: "h5", away: "a6" },
       resultId: "mr-1",
     });
@@ -320,7 +326,7 @@ describe("resolveLiveMatch", () => {
           scores: {
             home: {
               score: 1,
-              postFf: 4,
+              postFf: 3,
               winnings: 55000,
               casualties: [{ team: "home", rosterPlayerId: "h3", outcome: { kind: "apaleado" } }],
               pe: [
@@ -331,7 +337,7 @@ describe("resolveLiveMatch", () => {
             },
             away: {
               score: 0,
-              postFf: 3,
+              postFf: 1,
               winnings: 45000,
               casualties: [],
               pe: [
@@ -354,6 +360,19 @@ describe("resolveLiveMatch", () => {
     expect(teamUpdateMany).toHaveBeenCalledWith({
       where: { id: "away-t" },
       data: { treasury: { increment: 45000 } },
+    });
+    // RAU-52: the post-match FF roll APPLIES to the dedicated-fans attribute —
+    // home 2 → 3 (UP), away 1 → 1 (STAYS).
+    const coachingUpdates = teamUpdateMany.mock.calls
+      .map((c) => c[0])
+      .filter((call) => call.data.coaching != null);
+    expect(coachingUpdates).toContainEqual({
+      where: { id: "home-t" },
+      data: { coaching: { rerolls: 2, dedicatedFans: 3, assistantCoaches: 0, cheerleaders: 0, apothecary: false } },
+    });
+    expect(coachingUpdates).toContainEqual({
+      where: { id: "away-t" },
+      data: { coaching: { rerolls: 2, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false } },
     });
 
     // PE awards + casualty injury on the lazy Player rows.
@@ -436,20 +455,25 @@ describe("resolveLiveMatch", () => {
   });
 
   it("reuses the persisted pendingResolution (RAU-49 fix): committed MVP + FF EQUAL the previewed values, no re-roll", async () => {
-    // The modal previewed h5/a6 + FF 4/3. The injected rolls would produce a
-    // DIFFERENT fresh result (h1/a1 + FF 3/2), proving the commit does NOT roll.
-    const { deps, matchResultCreate, liveEventCreateMany, playerUpdateMany } = makeResolveDeps({
+    // The modal previewed h5/a6 + FF 3/1 + FF rolls 3/4. The injected rolls
+    // would produce a DIFFERENT fresh result (h1/a1 + FF 2/1), proving the
+    // commit does NOT roll.
+    const { deps, matchResultCreate, liveEventCreateMany, playerUpdateMany, teamUpdateMany } = makeResolveDeps({
       row: finishedRow({
-        pendingResolution: { mvp: { home: "h5", away: "a6" }, postFf: { home: 4, away: 3 } },
+        pendingResolution: { mvp: { home: "h5", away: "a6" }, postFf: { home: 3, away: 1 }, ffRoll: { home: 3, away: 4 } },
       }),
-      rolls: { d3: [1, 1], d6: [1, 1, 1, 1] },
+      rolls: { d6: [1, 1, 1, 1] },
     });
 
     const outcome = await resolveLiveMatch(resolveInput, deps);
 
     // The reported awards are the previewed ones — never a second roll.
     expect(outcome.mvp).toEqual({ home: "h5", away: "a6" });
-    expect(outcome.postFf).toEqual({ home: 4, away: 3 });
+    expect(outcome.postFf).toEqual({ home: 3, away: 1 });
+    expect(outcome.ffRoll).toEqual({
+      home: { roll: 3, direction: "up" },
+      away: { roll: 4, direction: "stay" },
+    });
 
     // The appended mvp events carry the previewed grantees (LM-mvp parity).
     expect(liveEventCreateMany).toHaveBeenCalledWith(
@@ -466,8 +490,8 @@ describe("resolveLiveMatch", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           scores: {
-            home: { score: 1, postFf: 4, winnings: 55000, casualties: expect.any(Array), pe: expect.arrayContaining([{ rosterPlayerId: "h5", pe: 4 }]) },
-            away: { score: 0, postFf: 3, winnings: 45000, casualties: [], pe: expect.arrayContaining([{ rosterPlayerId: "a6", pe: 4 }]) },
+            home: { score: 1, postFf: 3, winnings: 55000, casualties: expect.any(Array), pe: expect.arrayContaining([{ rosterPlayerId: "h5", pe: 4 }]) },
+            away: { score: 0, postFf: 1, winnings: 45000, casualties: [], pe: expect.arrayContaining([{ rosterPlayerId: "a6", pe: 4 }]) },
             winnerId: "home-t",
             mvp: { home: "h5", away: "a6" },
           },
@@ -483,6 +507,15 @@ describe("resolveLiveMatch", () => {
     expect(playerUpdateMany).toHaveBeenCalledWith({
       where: { teamId: "away-t", rosterPlayerId: "a6" },
       data: { pe: { increment: 4 } },
+    });
+
+    // The previewed FF is APPLIED to the dedicated-fans attribute (2 → 3).
+    const coachingUpdates = teamUpdateMany.mock.calls
+      .map((c) => c[0])
+      .filter((call) => call.data.coaching != null);
+    expect(coachingUpdates).toContainEqual({
+      where: { id: "home-t" },
+      data: { coaching: { rerolls: 2, dedicatedFans: 3, assistantCoaches: 0, cheerleaders: 0, apothecary: false } },
     });
   });
 
@@ -601,18 +634,22 @@ describe("rollLiveMvp", () => {
       deps,
     );
     // rollLiveMvp rolls MVP FIRST (1D6=3 → home nom[2] = h3, 1D6=4 → away
-    // nom[3] = a4), then the post-FF 1D6 (5/6): home FF 3 win → 4, away FF 3
-    // loss, 6 < 3? no → 3.
+    // nom[3] = a4), then the post-FF 1D6 (5/6): home (dedicatedFans 2) win →
+    // 5 >= 2 → UP +1 to 3; away (1) loss → 6 < 1? no → STAYS at 1.
     expect(roll).toEqual({
       mvp: { home: "h3", away: "a4" },
-      postFf: { home: 4, away: 3 },
+      postFf: { home: 3, away: 1 },
+      ffRoll: {
+        home: { roll: 5, direction: "up" },
+        away: { roll: 6, direction: "stay" },
+      },
     });
     // RAU-49 fix: the previewed resolution is persisted in the SAME transaction
     // so `resolveMatch` commits EXACTLY these values (never a second roll).
     expect(liveMatchUpdateMany).toHaveBeenCalledWith({
       where: { id: "lm-1" },
       data: {
-        pendingResolution: { mvp: { home: "h3", away: "a4" }, postFf: { home: 4, away: 3 } },
+        pendingResolution: { mvp: { home: "h3", away: "a4" }, postFf: { home: 3, away: 1 }, ffRoll: { home: 5, away: 6 } },
       },
     });
     // No closure writes: the preview only persists pendingResolution.
