@@ -4,14 +4,16 @@ import { MatchResolveModal } from "./MatchResolveModal";
 import type { LiveMatchView, MatchDetail } from "./api";
 
 /**
- * RAU-51 resolution modal tests: the PER-SIDE end-of-match sequence for a
- * finished live match. Each coach nominates ONLY their own team (dead/suspended
- * players are excluded from the pickers), the rival is a read-only status that
- * never leaks the rival's picks, and "Tirar MVP" is gated on BOTH sides'
- * PERSISTED nominations. The modal exercises the REAL `nominateMvp` /
- * `rollLiveMvp` / `resolveLiveMatch` api wrappers through a stubbed global
- * fetch (repo convention); the server owns the roll — the modal never sends
- * nominations in the roll/resolve bodies.
+ * RAU-52 resolution modal tests: the PER-SIDE end-of-match sequence for a
+ * finished live match. Each coach nominates ONLY their own team from
+ * CHECKBOXES (dead/suspended players excluded), the rulebook MAX (6) is
+ * enforced (a 7th player cannot be checked), the send/confirm reaches the
+ * rival WITHOUT a reload (the modal polls the persisted detail), and once BOTH
+ * sides nominated there is a FINAL confirm ("¿Estás seguro?") with NO going
+ * back after it. The modal exercises the REAL `nominateMvp` / `rollLiveMvp` /
+ * `resolveLiveMatch` api wrappers through a stubbed global fetch (repo
+ * convention); the server owns the roll — the modal never sends nominations in
+ * the roll/resolve bodies.
  */
 
 function player(rosterPlayerId: string, name: string) {
@@ -20,6 +22,11 @@ function player(rosterPlayerId: string, name: string) {
 
 function sixRoster(prefix: string, namePrefix: string) {
   return Array.from({ length: 6 }, (_, i) => player(`${prefix}${i + 1}`, `${namePrefix}${i + 1}`));
+}
+
+/** The checkbox label for a home roster player: "{name} ({role} · #{dorsal})". */
+function homeLabel(name: string, dorsal: number) {
+  return `${name} (Human Lineman · #${dorsal})`;
 }
 
 function baseDetail(overrides: {
@@ -98,14 +105,23 @@ const awayName = "Orcs";
 const homeNom = ["h1", "h2", "h3", "h4", "h5", "h6"];
 const awayNom = ["a1", "a2", "a3", "a4", "a5", "a6"];
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
-/** Picks six distinct nominations for the OWN side's pickers. */
-function pickOwnNominations(dialog: HTMLElement) {
+/** Checks six distinct OWN-side players via the checkboxes. */
+function checkOwnNominations(dialog: HTMLElement) {
   for (let i = 1; i <= 6; i++) {
-    const select = within(dialog).getByLabelText(`MVP ${i} ${homeName}`);
-    fireEvent.change(select, { target: { value: `h${i}` } });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: homeLabel(`Hugo${i}`, i) }));
   }
+}
+
+/** The "Tirar MVP" → "Sí, tirar el MVP" final-confirm path to the summary. */
+async function confirmRoll(dialog: HTMLElement) {
+  fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Sí, tirar el MVP" }));
+  await waitFor(() => expect(within(dialog).getByText("Resumen de la resolución")).toBeTruthy());
 }
 
 function renderModal(props: Partial<Parameters<typeof MatchResolveModal>[0]> = {}) {
@@ -126,12 +142,16 @@ function renderModal(props: Partial<Parameters<typeof MatchResolveModal>[0]> = {
 }
 
 describe("MatchResolveModal", () => {
-  it("RAU-51: a coach sees ONLY their OWN side's pickers — the rival is a read-only status, never their players", () => {
+  it("RAU-52: a coach sees ONLY their OWN side's CHECKBOXES — the rival is a read-only status, never their players", () => {
     renderModal();
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    // CHECKBOXES (not the old numbered <select> pickers).
+    expect(dialog.querySelectorAll("select")).toHaveLength(0);
     for (let i = 1; i <= 6; i++) {
-      expect(within(dialog).getByLabelText(`MVP ${i} ${homeName}`)).toBeTruthy();
-      expect(within(dialog).queryByLabelText(`MVP ${i} ${awayName}`)).toBeNull();
+      expect(within(dialog).getByRole("checkbox", { name: homeLabel(`Hugo${i}`, i) })).toBeTruthy();
+    }
+    for (let i = 1; i <= 6; i++) {
+      expect(within(dialog).queryByRole("checkbox", { name: new RegExp(`Aurora${i}`) })).toBeNull();
     }
     // The rival side renders a status only ("El rival aún no ha nominado").
     expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
@@ -139,7 +159,21 @@ describe("MatchResolveModal", () => {
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });
 
-  it("RAU-51: the roll stays disabled until BOTH sides have submitted; the status flips once the rival did", () => {
+  it("RAU-52: the max (6) is enforced — the 7th alive player cannot be checked", () => {
+    const homePlayers = [...sixRoster("h", "Hugo"), player("h7", "Hugo7")];
+    renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    checkOwnNominations(dialog);
+    // The counter reflects the six picks and the 7th checkbox is disabled.
+    expect(within(dialog).getByText("6/6 seleccionados")).toBeTruthy();
+    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo7", 7) })).toHaveProperty("disabled", true);
+    // Un-checking one frees the slot again.
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo1", 1) }));
+    expect(within(dialog).getByText("5/6 seleccionados")).toBeTruthy();
+    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo7", 7) })).toHaveProperty("disabled", false);
+  });
+
+  it("RAU-52: the roll stays disabled until BOTH sides have submitted; the status flips once the rival did", () => {
     renderModal({
       detail: baseDetail({
         viewerSide: "home",
@@ -152,7 +186,7 @@ describe("MatchResolveModal", () => {
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });
 
-  it("RAU-51: the roll is enabled once BOTH sides nominated (persisted state)", () => {
+  it("RAU-52: the roll is enabled once BOTH sides nominated (persisted state)", () => {
     renderModal({
       detail: baseDetail({
         viewerSide: "home",
@@ -164,7 +198,7 @@ describe("MatchResolveModal", () => {
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", false);
   });
 
-  it("RAU-51: excludes dead/suspended players from the OWN pickers (RAU-12)", () => {
+  it("RAU-52: excludes dead/suspended players from the OWN checkboxes (RAU-12)", () => {
     const homePlayers = [
       player("h1", "Hugo1"),
       player("h2", "Hugo2"),
@@ -176,30 +210,52 @@ describe("MatchResolveModal", () => {
     ];
     renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    const options = within(dialog).getByLabelText(`MVP 1 ${homeName}`).querySelectorAll("option");
-    const texts = Array.from(options).map((o) => o.textContent);
-    expect(texts.some((t) => t?.includes("Hugo1"))).toBe(true);
-    expect(texts.some((t) => t?.includes("Hugo3"))).toBe(false);
-    expect(texts.some((t) => t?.includes("Hugo4"))).toBe(false);
+    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo1", 1) })).toBeTruthy();
+    expect(within(dialog).queryByRole("checkbox", { name: homeLabel("Hugo3", 3) })).toBeNull();
+    expect(within(dialog).queryByRole("checkbox", { name: homeLabel("Hugo4", 4) })).toBeNull();
     // RAU-13: the dorsal (served-array index + 1) sits next to the position.
-    expect(texts.some((t) => t?.includes("Hugo5 (Human Lineman · #5)"))).toBe(true);
+    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo5", 5) })).toBeTruthy();
   });
 
-  it("RAU-13: includes a Journeyman in the OWN pickers, labeled Novato (MVP-eligible)", () => {
+  it("RAU-13: includes a Journeyman in the OWN checkboxes, labeled Novato (MVP-eligible)", () => {
     const homePlayers = [
       ...sixRoster("h", "Hugo"),
       { ...player("journeyman-th-1", "Aldric"), journeyman: true },
     ];
     renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    const options = within(dialog).getByLabelText(`MVP 1 ${homeName}`).querySelectorAll("option");
-    const texts = Array.from(options).map((o) => o.textContent);
     // The Novato is selectable and keeps the "Novato" marker + its dorsal.
-    expect(texts.some((t) => t?.includes("Aldric") && t?.includes("Novato"))).toBe(true);
-    expect(texts.some((t) => t?.includes("(Novato · #7)"))).toBe(true);
+    expect(within(dialog).getByRole("checkbox", { name: "Aldric (Novato · #7)" })).toBeTruthy();
   });
 
-  it("RAU-51: 'Guardar mis nominaciones' POSTs nominateMvp for the OWN side and refreshes (onNominated)", async () => {
+  it("RAU-52: polls the persisted detail while the nomination step is open — the rival's confirmation arrives WITHOUT a reload", () => {
+    vi.useFakeTimers();
+    const onNominated = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const onResolved = vi.fn().mockResolvedValue(undefined);
+    const initial = baseDetail({ viewerSide: "home", mvpNominations: { home: null, away: null } });
+    const { rerender } = render(
+      <MatchResolveModal open detail={initial} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
+
+    // The next poll tick refreshes the match detail (the send/confirm is
+    // persisted server-side — the modal pulls it, the hub can't reach a
+    // FINISHED match, hence the poll).
+    vi.advanceTimersByTime(4000);
+    expect(onNominated).toHaveBeenCalledTimes(1);
+
+    // The refreshed detail carries the rival's confirmation → the modal flips
+    // the rival status automatically.
+    const withRival = baseDetail({ viewerSide: "home", mvpNominations: { home: null, away: awayNom } });
+    rerender(
+      <MatchResolveModal open detail={withRival} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
+    );
+    expect(within(screen.getByRole("dialog", { name: "Resolver partido" })).getByText("El rival nominó 6 jugadores")).toBeTruthy();
+  });
+
+  it("RAU-52: 'Guardar mis nominaciones' POSTs nominateMvp for the OWN side and refreshes (onNominated)", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       void _url;
       void init;
@@ -216,7 +272,7 @@ describe("MatchResolveModal", () => {
 
     const { onNominated } = renderModal();
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    pickOwnNominations(dialog);
+    checkOwnNominations(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar mis nominaciones" }));
 
     await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
@@ -228,7 +284,7 @@ describe("MatchResolveModal", () => {
     expect(body).toEqual({ type: "nominateMvp", side: "home", players: homeNom });
   });
 
-  it("rolls the MVP + FF through the server (rollMvp POST with NO nominations body) and reveals the summary", async () => {
+  it("RAU-52: once BOTH sides nominated, 'Tirar MVP' arms the FINAL confirm ('¿Estás seguro?') and the roll only fires on 'Sí, tirar el MVP'", async () => {
     const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
       void _url;
       void _init;
@@ -248,8 +304,19 @@ describe("MatchResolveModal", () => {
       detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
     });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    // First click arms the confirm state — the roll has NOT been called yet.
     fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
+    expect(within(dialog).getByText("¿Estás seguro?")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
 
+    // "Cancelar" disarms back to the roll button.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(within(dialog).queryByText("¿Estás seguro?")).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toBeTruthy();
+
+    // "Sí, tirar el MVP" fires the server-owned roll and reveals the summary.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, tirar el MVP" }));
     await waitFor(() =>
       expect(within(dialog).getByText("Resumen de la resolución")).toBeTruthy(),
     );
@@ -277,6 +344,32 @@ describe("MatchResolveModal", () => {
     expect(within(awaySection).getByText("Aurora4 · +4 PE")).toBeTruthy();
     expect(within(awaySection).getByText("45.000 gp.")).toBeTruthy();
     expect(within(awaySection).getByText("+3")).toBeTruthy();
+  });
+
+  it("RAU-52: NO going back after the final confirm — the summary has no 'Cambiar nominaciones'", async () => {
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
+      void _url;
+      void _init;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            view: {},
+            roll: { mvp: { home: "h2", away: "a4" }, postFf: { home: 4, away: 3 } },
+          }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderModal({
+      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
+    });
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    await confirmRoll(dialog);
+    // The picks are locked: the summary only offers the closure — no back.
+    expect(within(dialog).queryByRole("button", { name: "Cambiar nominaciones" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Guardar y reportar" })).toBeTruthy();
   });
 
   it("saves through the resolveMatch POST (no nominations body) and calls onResolved on success", async () => {
@@ -315,8 +408,7 @@ describe("MatchResolveModal", () => {
       detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
     });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
-    await waitFor(() => expect(within(dialog).getByText("Guardar y reportar")).toBeTruthy());
+    await confirmRoll(dialog);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar y reportar" }));
     await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
@@ -351,8 +443,7 @@ describe("MatchResolveModal", () => {
       detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
     });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
-    await waitFor(() => expect(within(dialog).getByText("Guardar y reportar")).toBeTruthy());
+    await confirmRoll(dialog);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar y reportar" }));
     await waitFor(() =>
@@ -361,7 +452,7 @@ describe("MatchResolveModal", () => {
     expect(onResolved).not.toHaveBeenCalled();
   });
 
-  it("RAU-51: an admin/bye viewer (no side) sees BOTH sides as read-only statuses — no pickers", () => {
+  it("RAU-52: an admin/bye viewer (no side) sees BOTH sides as read-only statuses — no checkboxes", () => {
     renderModal({
       detail: baseDetail({
         viewerSide: null,
@@ -369,7 +460,7 @@ describe("MatchResolveModal", () => {
       }),
     });
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    expect(within(dialog).queryByLabelText(`MVP 1 ${homeName}`)).toBeNull();
+    expect(within(dialog).queryAllByRole("checkbox")).toHaveLength(0);
     expect(within(dialog).getByText("6 jugadores nominados")).toBeTruthy();
     expect(within(dialog).getByText("Pendiente")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
