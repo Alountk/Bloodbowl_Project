@@ -49,7 +49,7 @@ export default async function RootLayout({
   });
 
   return (
-    <html lang={initialLocale}>
+    <html lang={initialLocale ?? "es"}>
       <body className="min-h-screen bg-[#f8fafc] text-slate-900 antialiased">
         <SessionProvider>
           <I18nProvider initialLocale={initialLocale}>
