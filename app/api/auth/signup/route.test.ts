@@ -55,6 +55,37 @@ describe("POST /api/auth/signup", () => {
     );
   });
 
+  it("stores an optional trimmed display name", async () => {
+    bcryptMock.hash.mockResolvedValue("hashed-password");
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "coach@example.com",
+      name: "Coach",
+    });
+
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "coach@example.com",
+        password: "SuperSecret123!",
+        name: "  Coach  ",
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    expect(prismaMock.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: "coach@example.com",
+          passwordHash: "hashed-password",
+          name: "Coach",
+        }),
+      }),
+    );
+  });
+
   it("returns 400 when the payload is missing required fields", async () => {
     const req = new Request("http://localhost:3000/api/auth/signup", {
       method: "POST",

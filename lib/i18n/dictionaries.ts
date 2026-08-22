@@ -102,6 +102,8 @@ const es: Dict = {
   "auth.signupSigninFailed": "La cuenta se creó, pero no se pudo iniciar sesión. Inicia sesión.",
   "auth.noAccount": "¿No tienes cuenta?",
   "auth.hasAccount": "¿Ya tienes cuenta?",
+  "auth.name": "Nombre",
+  "auth.forgotNote": "El restablecimiento de contraseña aún no está disponible. Pide ayuda al administrador de tu liga.",
 
   "detail.plantilla": "Plantilla",
   "detail.equipoListo": "Equipo listo",
@@ -682,6 +684,8 @@ const en: Dict = {
   "auth.signupSigninFailed": "Signup succeeded, but signing you in failed. Please log in.",
   "auth.noAccount": "No account?",
   "auth.hasAccount": "Already have an account?",
+  "auth.name": "Name",
+  "auth.forgotNote": "Password reset isn't available yet. Ask your league admin for help.",
 
   "detail.plantilla": "Roster",
   "detail.equipoListo": "Team ready",
