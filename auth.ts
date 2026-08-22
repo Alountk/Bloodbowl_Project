@@ -44,7 +44,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // on every call — the JWT copy is a UI convenience, not the security
         // boundary. Snapshot at sign-in: promoting a user requires re-login for
         // the nav link to appear.
-        return { id: user.id, email: user.email, name: user.name, role: user.role };
+        // `locale` (RAU-58) rides the JWT the same way (snapshot at sign-in);
+        // the SSR layout re-reads the DB locale so a change applies on the next
+        // request, not only after re-login.
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          locale: user.locale,
+        };
       },
     }),
   ],

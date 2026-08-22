@@ -34,6 +34,12 @@ export const authConfig = {
       if (user && "role" in user && typeof (user as { role?: unknown }).role === "string") {
         token.role = (user as { role: string }).role;
       }
+      // RAU-58: the account locale rides the JWT so the session exposes it.
+      // Snapshot at sign-in, like role; the SSR layout re-reads the DB locale
+      // (fresher) so a change applies on the next request.
+      if (user && "locale" in user && typeof (user as { locale?: unknown }).locale === "string") {
+        token.locale = (user as { locale: string }).locale;
+      }
       return token;
     },
     session({ session, token }) {
@@ -42,6 +48,9 @@ export const authConfig = {
       }
       if (typeof token.role === "string") {
         session.user = { ...session.user, role: token.role };
+      }
+      if (typeof token.locale === "string") {
+        session.user = { ...session.user, locale: token.locale };
       }
       return session;
     },
