@@ -16,10 +16,11 @@ describe("Landing", () => {
     render(<Landing />);
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    // Teams now ships with the /teams page; Matches stays hidden (RAU-60).
-    expect(within(nav).getAllByRole("link")).toHaveLength(2);
+    // Teams and Matches now ship with their dedicated pages.
+    expect(within(nav).getAllByRole("link")).toHaveLength(3);
     expect(within(nav).getByRole("link", { name: "Leagues" })).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Teams" })).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Matches" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();
