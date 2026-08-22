@@ -163,3 +163,53 @@ test.describe("anonymous: the cookie drives the locale", () => {
     await expect(switcher).toHaveAttribute("aria-label", "Idioma");
   });
 });
+
+test.describe("signed-in: the nav switcher syncs with the account (RAU-59)", () => {
+  test.use({ locale: "es-ES" });
+
+  test("clicking EN in the nav switcher PATCHes the account and survives reload", async ({
+    page,
+  }) => {
+    await signupEs(page, uniqueEmail("loc-nav"));
+
+    // The header switcher marks the ACTIVE (account) locale.
+    const switcher = page.locator("header").getByRole("group", { name: /Idioma|Language/ });
+    await expect(switcher.getByRole("button", { name: "ES" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // Click EN → PATCH /api/me (account preference), the UI flips now.
+    await switcher.getByRole("button", { name: "EN" }).click();
+    await expect(switcher).toHaveAttribute("aria-label", "Language");
+    await expect(switcher.getByRole("button", { name: "EN" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // The account PATCH persisted: the /profile selector reflects EN.
+    await page.goto("/profile");
+    await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
+    await expect(page.getByTestId("profile-locale").getByRole("button", { name: "EN" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // A reload keeps EN (SSR re-reads the account locale from the DB).
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  });
+
+  test("the nav shows ONLY the working links (Leagues; no Teams/Matches)", async ({
+    page,
+  }) => {
+    await signupEs(page, uniqueEmail("loc-nav-links"));
+
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
+    await expect(nav.getByRole("link", { name: "Leagues" })).toBeVisible();
+    await expect(nav.getByRole("link")).toHaveCount(1);
+    await expect(nav.getByRole("link", { name: "Teams" })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "Matches" })).toHaveCount(0);
+  });
+});
