@@ -201,15 +201,15 @@ test.describe("signed-in: the nav switcher syncs with the account (RAU-59)", () 
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
   });
 
-  test("the nav shows ONLY the working links (Leagues; no Teams/Matches)", async ({
+  test("the nav shows Teams and Leagues (Matches hidden until its page)", async ({
     page,
   }) => {
     await signupEs(page, uniqueEmail("loc-nav-links"));
 
     const nav = page.getByRole("navigation", { name: "Main navigation" });
     await expect(nav.getByRole("link", { name: "Leagues" })).toBeVisible();
-    await expect(nav.getByRole("link")).toHaveCount(1);
-    await expect(nav.getByRole("link", { name: "Teams" })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "Teams" })).toBeVisible();
+    await expect(nav.getByRole("link")).toHaveCount(2);
     await expect(nav.getByRole("link", { name: "Matches" })).toHaveCount(0);
   });
 });
