@@ -17,6 +17,7 @@ async function signup(page: Page, email: string, password: string) {
   await page.goto("/signup");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Name").fill("E2E Coach");
   await page.getByRole("button", { name: "Sign up" }).last().click();
   await expect(page).toHaveURL("/");
 }
@@ -143,6 +144,7 @@ test.describe("Auth modal (auth mode)", () => {
     await dialog.getByRole("button", { name: "Sign up" }).first().click();
     await dialog.getByLabel("Email").fill(email);
     await dialog.getByLabel("Password").fill(password);
+    await dialog.getByLabel("Name").fill("E2E Coach");
     await dialog.getByRole("button", { name: "Sign up" }).last().click();
 
     // Signed in → the dashboard renders.
