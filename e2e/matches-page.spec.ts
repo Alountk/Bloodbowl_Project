@@ -42,8 +42,8 @@ async function createTeam(page: Page, name: string) {
   await expect(page.getByText(name)).toBeVisible();
 }
 
-/** Creates a league and has `page` join it with the given team (re-join a second squad for round-robin). */
-async function createLeagueAndJoin(page: Page, leagueName: string, teamName: string) {
+/** Creates a league and returns the open detail URL. */
+async function createLeagueAndOpen(page: Page, leagueName: string): Promise<string> {
   await page.goto("/leagues");
   await expect(page.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
   await page.getByRole("button", { name: "+ Nueva liga" }).first().click();
@@ -52,13 +52,19 @@ async function createLeagueAndJoin(page: Page, leagueName: string, teamName: str
   await page.getByRole("button", { name: "Crear liga" }).click();
   await expect(page.getByText(leagueName)).toBeVisible();
 
-  // Open the league detail and join with the given team.
+  // Open the league detail.
   await page
     .locator("li")
     .filter({ hasText: leagueName })
     .getByRole("link", { name: "Ver", exact: true })
     .click();
   await expect(page).toHaveURL(/\/leagues\/.+$/);
+  await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
+  return page.url();
+}
+
+/** On the already-open league detail, joins the league with the given team. */
+async function joinLeague(page: Page, leagueName: string, teamName: string) {
   await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
   await page.getByLabel("Tu equipo").selectOption({ label: teamName });
   await page.getByRole("button", { name: "Apuntarse" }).click();
@@ -85,12 +91,11 @@ test("logged user: empty /matches, then their upcoming fixture after starting a 
 
   // One owner joins BOTH of their teams, then starts the league (round-robin
   // with 2 teams → a single jornada with one A-vs-B fixture the owner plays in).
-  await createLeagueAndJoin(page, leagueName, teamAName);
-  await createLeagueAndJoin(page, leagueName, teamBName);
+  await createLeagueAndOpen(page, leagueName);
+  await joinLeague(page, leagueName, teamAName);
+  await joinLeague(page, leagueName, teamBName);
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Iniciar liga" }),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Iniciar liga" })).toBeEnabled();
   await page.getByRole("button", { name: "Iniciar liga" }).click();
   await expect(page.getByRole("dialog", { name: "Iniciar liga" })).toBeVisible();
   await page
