@@ -77,6 +77,20 @@ describe("t (dictionaries)", () => {
     }
   });
 
+  it("resolves the dedicated matches page keys in es and en (MP-5)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["matches.heading", "Partidos", "Matches"],
+      ["matches.empty", "No tienes partidos próximos.", "No upcoming matches."],
+      ["matches.noDate", "Sin fecha", "No date set"],
+      ["matches.today", "Hoy", "Today"],
+      ["matches.unplanned", "Sin programar", "Unplanned"],
+    ];
+    for (const [key, esValue, enValue] of cases) {
+      expect(t("es", key), `es "${key}"`).toBe(esValue);
+      expect(t("en", key), `en "${key}"`).toBe(enValue);
+    }
+  });
+
   it("formats the ready-to-improve hint count through the plural pair (es/en)", () => {
     expect(t("es", "teams.readyToImproveOne", { count: 1 })).toBe("1 listo para mejorar");
     expect(t("es", "teams.readyToImproveMany", { count: 3 })).toBe("3 listos para mejorar");

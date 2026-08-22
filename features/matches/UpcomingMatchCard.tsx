@@ -3,11 +3,6 @@ import { useI18n } from "@/lib/i18n";
 import { formatMatchDate } from "@/features/leagues/MatchCard";
 import type { UpcomingFixture } from "./selectUpcomingFixtures";
 
-/** The no-date placeholder shown when a fixture has no agreed `scheduledAt`.
- * The localized `matches.noDate` key lands with the route slice (b2); until
- * then a neutral English literal avoids a dangling key reference. */
-const NO_DATE_PLACEHOLDER = "No date set";
-
 export interface UpcomingMatchCardProps {
   fixture: UpcomingFixture;
 }
@@ -26,7 +21,7 @@ export function UpcomingMatchCard({ fixture }: UpcomingMatchCardProps) {
   const awayName = fixture.awayTeamName ?? t("match.teamFallback");
   const dateLabel = fixture.scheduledAt
     ? formatMatchDate(fixture.scheduledAt)
-    : NO_DATE_PLACEHOLDER;
+    : t("matches.noDate");
   const liveActive = fixture.live?.status === "live";
 
   return (
