@@ -12,6 +12,8 @@ test.use({ locale: "es-ES" });
  *   Guardar from the guard persists the whole ruleset (survives reload);
  * - a NON-developer gets a 403 panel on /dev/rulesets, no nav link, and the
  *   /api/dev/rulesets routes answer 403;
+ * - the 403 panel is translated server-side in the ACCOUNT language (RAU-59:
+ *   switching the account via the nav switcher flips the panel too);
  * - league creation picks the chosen ruleset and the league card/detail show
  *   the ruleset badge.
  *
@@ -210,4 +212,22 @@ test("a non-developer user gets a 403 on the dev section and cannot POST", async
     },
   });
   expect(postRes.status()).toBe(403);
+});
+
+test("a non-developer sees the 403 panel in the ACCOUNT language (RAU-59)", async ({ page }) => {
+  await signup(page, uniqueEmail("plain-i18n"));
+
+  // The es account gets the Spanish panel first.
+  await page.goto("/dev/rulesets");
+  await expect(page.getByRole("heading", { name: "Acceso restringido" })).toBeVisible();
+
+  // Switch the account to English via the header switcher (PATCH /api/me).
+  const switcher = page.locator("header").getByRole("group", { name: /Idioma|Language/ });
+  await switcher.getByRole("button", { name: "EN" }).click();
+  await expect(switcher).toHaveAttribute("aria-label", "Language");
+
+  // The 403 panel is translated server-side with the resolved (account) locale.
+  await page.goto("/dev/rulesets");
+  await expect(page.getByRole("heading", { name: "Restricted access" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to home" })).toBeVisible();
 });

@@ -20,6 +20,10 @@ model User {
   /// Adapter-issued avatar value (a `/uploads/...` path or a public S3 URL),
   /// or null when the user has no avatar. Never a client-supplied URL.
   avatar            String?
+  /// RAU-58: the account-level UI language ("es" | "en"). Defaults to Spanish.
+  /// The per-browser `bb-locale` cookie still applies to anonymous visitors,
+  /// but the account locale wins whenever the user is signed in.
+  locale            String             @default("es")
   createdAt         DateTime           @default(now())
   /// Developer-only tools gate (RAU-52): "developer" unlocks the /dev/rulesets
   /// section (server-enforced 403 otherwise); any other value is a regular user.

@@ -16,7 +16,9 @@ describe("Landing", () => {
     render(<Landing />);
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(3);
+    // Only the working links ship (Teams/Matches hidden until dedicated pages).
+    expect(within(nav).getAllByRole("link")).toHaveLength(1);
+    expect(within(nav).getByRole("link", { name: "Leagues" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();

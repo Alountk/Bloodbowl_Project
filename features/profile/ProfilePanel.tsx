@@ -5,6 +5,7 @@ import {
   changePassword,
   getMe,
   getStats,
+  patchMe,
   uploadAvatar,
   type CareerStats,
   type Profile,
@@ -13,11 +14,17 @@ import { cropImageToBlob } from "./crop";
 import { CropDialog } from "./CropDialog";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useI18n } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n/dictionaries";
 import {
   MIN_PASSWORD_LENGTH,
   WRONG_CURRENT_PASSWORD_CODE,
   WEAK_NEW_PASSWORD_CODE,
 } from "@/lib/password";
+
+const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
+  { value: "es", label: "ES" },
+  { value: "en", label: "EN" },
+];
 
 /**
  * Client profile panel for `/profile` (Spanish copy). Loads the session profile
@@ -29,7 +36,7 @@ import {
  * current + confirm the new one, inline error/success).
  */
 export function ProfilePanel() {
-  const { t } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const loadError = t("profile.loadError");
   const uploadError = t("profile.uploadError");
   const statsLoadError = t("profile.stats.loadError");
@@ -41,6 +48,9 @@ export function ProfilePanel() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+
+  const [localePending, setLocalePending] = useState(false);
+  const [localeError, setLocaleError] = useState<string | null>(null);
 
   const [stats, setStats] = useState<CareerStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -119,6 +129,28 @@ export function ProfilePanel() {
     }
   }
 
+  // The selector reflects the ACCOUNT locale (a fresh GET /api/me read), not the
+  // per-browser cookie; while the profile loads it falls back to the active
+  // provider locale. On change we PATCH the account and flip the provider so the
+  // whole page reflects the new language immediately (the provider also writes
+  // the cookie, keeping the browser in sync with the account).
+  const activeLocale: Locale = profile?.locale ?? locale;
+
+  async function handleLocaleChange(next: Locale) {
+    if (!profile || localePending || next === activeLocale) return;
+    setLocalePending(true);
+    setLocaleError(null);
+    try {
+      const updated = await patchMe({ locale: next });
+      setProfile((prev) => (prev ? { ...prev, locale: updated.locale } : prev));
+      setLocale(updated.locale);
+    } catch {
+      setLocaleError(t("profile.locale.error"));
+    } finally {
+      setLocalePending(false);
+    }
+  }
+
   return (
     <section className="mx-auto max-w-md">
       <h1 className="mb-1 text-2xl font-black text-[#12225a]">{t("nav.profile")}</h1>
@@ -151,6 +183,42 @@ export function ProfilePanel() {
       </div>
 
       {error ? <p className="mt-4 text-sm text-[#d11938]">{error}</p> : null}
+
+      <div className="mt-6 border border-[#e2e8f0] bg-white p-4">
+        <h2 className="text-lg font-black text-[#12225a]">{t("profile.locale.title")}</h2>
+        <p className="mb-3 text-sm text-slate-500">{t("profile.locale.hint")}</p>
+        <div
+          role="group"
+          aria-label={t("profile.locale.title")}
+          data-testid="profile-locale"
+          className="flex items-center gap-1 rounded border border-slate-300 bg-[#f8fafc] p-0.5"
+        >
+          {LOCALE_OPTIONS.map((option) => {
+            const active = activeLocale === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={active}
+                disabled={!profile || localePending}
+                onClick={() => handleLocaleChange(option.value)}
+                className={`rounded px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-50 ${
+                  active
+                    ? "bg-[#12225a] text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-[#12225a]"
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        {localeError ? (
+          <p role="alert" className="mt-2 text-sm text-[#d11938]">
+            {localeError}
+          </p>
+        ) : null}
+      </div>
 
       {pickerSrc && cropOpen ? (
         <>
