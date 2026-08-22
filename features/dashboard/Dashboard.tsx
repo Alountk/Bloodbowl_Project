@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { LeagueCard } from "@/features/leagues/LeagueList";
 import { useLeagues } from "@/features/leagues/useLeagues";
 import { TeamList } from "@/features/teams/TeamList";
+import { TeamSearch } from "@/features/teams/TeamSearch";
 
 interface DashboardProps {
   /** True when backed by an authenticated session (API store + real leagues). */
@@ -15,6 +16,13 @@ interface DashboardProps {
   userName: string | null;
 }
 
+/**
+ * Classic home dashboard for logged-in users: welcome header, stat cards
+ * (teams + my leagues), quick actions, and the two lists — teams (reusing
+ * `TeamList` unchanged) and my leagues (reusing the league card). Home-chrome
+ * copy (welcome/stats/quick actions) is English per the repo convention; the
+ * embedded teams/leagues sections keep their own (Spanish) copy.
+ */
 /**
  * Classic home dashboard for logged-in users: welcome header, stat cards
  * (teams + my leagues), quick actions, and the two lists — teams (reusing
@@ -77,6 +85,8 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
           Create league
         </Link>
       </section>
+
+      <TeamSearch />
 
       <TeamList />
 

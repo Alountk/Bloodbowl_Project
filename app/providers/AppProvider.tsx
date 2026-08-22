@@ -11,7 +11,7 @@ import {
 } from "react";
 import type { Team } from "@/features/teams/types";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
-import { LocalStorageTeamStore } from "@/features/teams/store/LocalStorageTeamStore";
+import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import type { CreateTeamValues } from "@/features/teams/create/useCreateTeamForm";
 import { createId } from "@/features/teams/id";
 
@@ -36,7 +36,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({
   children,
-  store = new LocalStorageTeamStore(),
+  store = new InMemoryTeamStore(),
   authenticated = false,
   onLogout = noopLogout,
   reloadVersion = 0,

@@ -15,12 +15,13 @@ vi.mock("next/navigation", () => ({
 
 async function submitForm(email: string, password: string) {
   render(<SignupPage />);
+  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Coach" } });
   fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: email } });
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: password } });
-  fireEvent.click(screen.getAllByRole("button", { name: /registrarse/i }).at(-1)!);
+  fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" }).at(-1)!);
 }
 
-describe("Signup page", () => {
+describe("Signup page (AuthModal fallback)", () => {
   beforeEach(() => {
     signInMock.mockReset();
     vi.unstubAllGlobals();

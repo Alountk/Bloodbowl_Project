@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, refresh: vi.fn() }),
 }));
 
-describe("Login page", () => {
+describe("Login page (AuthModal fallback)", () => {
   it("calls signIn with credentials and navigates to / on success", async () => {
     signInMock.mockResolvedValue({ error: null, ok: true });
 
@@ -21,7 +21,7 @@ describe("Login page", () => {
 
     fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "coach@example.com" } });
     fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "SuperSecret123!" } });
-    fireEvent.click(screen.getAllByRole("button", { name: /iniciar sesión/i }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Iniciar sesión" }).at(-1)!);
 
     await waitFor(() => {
       expect(signInMock).toHaveBeenCalledWith("credentials", {
@@ -44,10 +44,16 @@ describe("Login page", () => {
 
     fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "coach@example.com" } });
     fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "wrong-password" } });
-    fireEvent.click(screen.getAllByRole("button", { name: /iniciar sesión/i }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Iniciar sesión" }).at(-1)!);
 
     await waitFor(() =>
       expect(screen.getByText("Email o contraseña no válidos")).toBeTruthy(),
     );
+  });
+
+  it("closing the modal navigates home", () => {
+    render(<SignInPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(pushMock).toHaveBeenCalledWith("/");
   });
 });

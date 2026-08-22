@@ -1,15 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { Landing } from "./Landing";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/",
+}));
+
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}));
+
 describe("Landing", () => {
-  it("renders the public nav with Sign in and the section links", () => {
+  it("renders the unified public nav: Sign in opens the auth modal, section links present", () => {
     render(<Landing />);
 
-    expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/login");
-    const nav = screen.getByRole("navigation", { name: "Landing" });
-    expect(nav).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
     expect(within(nav).getAllByRole("link")).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();
   });
 
   it("renders the hero with both CTAs", () => {

@@ -101,7 +101,7 @@ describe("AppProvider — hydration", () => {
   });
 
   it("uses a default store when no store prop is provided", async () => {
-    // Default is LocalStorageTeamStore; we just check the context is accessible.
+    // Default is a fresh InMemoryTeamStore; we just check the context is accessible.
     let ctx!: ReturnType<typeof useApp>;
     function Probe() {
       ctx = useApp();
@@ -113,7 +113,7 @@ describe("AppProvider — hydration", () => {
       </AppProvider>,
     );
     await waitFor(() => expect(ctx.isHydrated).toBe(true));
-    expect(ctx.teams).toEqual([]); // real localStorage is empty in vitest jsdom
+    expect(ctx.teams).toEqual([]); // a fresh in-memory store starts empty
   });
 });
 

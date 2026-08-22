@@ -4,7 +4,12 @@ import { DEFAULT_LOCALE, dictionaries, t } from "./dictionaries";
 import { I18nProvider, useI18n } from "./index";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 
-const STORAGE_KEY = "bb-locale";
+const COOKIE_KEY = "bb-locale";
+
+/** Sets the persisted locale cookie the way the app does (max-age 1 year). */
+function setLocaleCookie(locale: string) {
+  document.cookie = `${COOKIE_KEY}=${locale}; path=/; max-age=31536000; SameSite=Lax`;
+}
 
 function stubNavigatorLanguage(language: string) {
   Object.defineProperty(window.navigator, "language", {
@@ -28,6 +33,7 @@ function Probe() {
 
 afterEach(() => {
   window.localStorage.clear();
+  document.cookie = "bb-locale=; path=/; max-age=0";
   stubNavigatorLanguage("en-US");
 });
 
@@ -74,8 +80,8 @@ describe("useI18n without a provider", () => {
 });
 
 describe("I18nProvider", () => {
-  it("initializes from the stored bb-locale", () => {
-    window.localStorage.setItem(STORAGE_KEY, "en");
+  it("initializes from the bb-locale cookie", () => {
+    setLocaleCookie("en");
     render(
       <I18nProvider>
         <Probe />
@@ -85,7 +91,18 @@ describe("I18nProvider", () => {
     expect(screen.getByTestId("nav-teams").textContent).toBe("Teams");
   });
 
-  it("falls back to the browser language when nothing is stored (en → English)", () => {
+  it("initialLocale (SSR cookie) wins over the client cookie", () => {
+    setLocaleCookie("en");
+    render(
+      <I18nProvider initialLocale="es">
+        <Probe />
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId("locale").textContent).toBe("es");
+    expect(screen.getByTestId("nav-teams").textContent).toBe("Equipos");
+  });
+
+  it("falls back to the browser language when no cookie is present (en → English)", () => {
     stubNavigatorLanguage("en-US");
     render(
       <I18nProvider>
@@ -107,8 +124,9 @@ describe("I18nProvider", () => {
     expect(screen.getByTestId("nav-teams").textContent).toBe("Equipos");
   });
 
-  it("switches locale and persists the choice to localStorage", () => {
-    window.localStorage.setItem(STORAGE_KEY, "es");
+  it("switches locale and persists the choice to the cookie (never localStorage)", () => {
+    // No cookie + a non-English browser language → the default (es) start.
+    stubNavigatorLanguage("fr-FR");
     render(
       <I18nProvider>
         <Probe />
@@ -120,13 +138,16 @@ describe("I18nProvider", () => {
 
     expect(screen.getByTestId("locale").textContent).toBe("en");
     expect(screen.getByTestId("nav-teams").textContent).toBe("Teams");
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("en");
+    // The cookie is the only persisted source of truth now.
+    expect(document.cookie).toContain("bb-locale=en");
+    expect(window.localStorage.getItem("bb-locale")).toBeNull();
   });
 });
 
 describe("LocaleSwitcher", () => {
   it("reflects the provider locale and switches it", () => {
-    window.localStorage.setItem(STORAGE_KEY, "es");
+    // No cookie + a non-English browser language → the default (es) start.
+    stubNavigatorLanguage("fr-FR");
     render(
       <I18nProvider>
         <LocaleSwitcher />
