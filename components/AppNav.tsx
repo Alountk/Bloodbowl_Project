@@ -7,15 +7,15 @@ import { useI18n } from "@/lib/i18n";
 import { LocaleSwitcher } from "@/lib/i18n/LocaleSwitcher";
 import { AuthModal } from "@/features/auth/AuthModal";
 
-/**
+/** 
  * Nav links shared by the desktop bar and the mobile drawer (home chrome).
- * Teams ships now that its dedicated `/teams` page exists; Matches stays hidden
- * until /matches lands (backlog RAU-60). The developer Rulesets link is appended
- * below for developer sessions.
+ * Teams and Matches both ship now that their dedicated pages exist. The
+ * developer Rulesets link is appended below for developer sessions.
  */
 const NAV_LINKS = [
   { href: "/teams", label: "Teams" },
   { href: "/leagues", label: "Leagues" },
+  { href: "/matches", label: "Matches" },
 ] as const;
 
 interface AppNavProps {
