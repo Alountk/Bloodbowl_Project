@@ -1867,11 +1867,12 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
 
     fireEvent.click(resolveButton);
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // RAU-51: the viewer's OWN side renders the six pickers; the rival is a
-    // read-only status (no pickers). The roll stays gated on BOTH sides.
-    expect(within(dialog).getByLabelText("MVP 1 Reavers")).toBeTruthy();
-    expect(within(dialog).getByLabelText("MVP 6 Reavers")).toBeTruthy();
-    expect(within(dialog).queryByLabelText("MVP 6 Dwarves")).toBeNull();
+    // RAU-52: the viewer's OWN side renders CHECKBOXES (not the old numbered
+    // selects); the rival is a read-only status (no checkboxes). The roll
+    // stays gated on BOTH sides.
+    expect(within(dialog).getByRole("checkbox", { name: "Blitzer A (Human Blitzer · #1)" })).toBeTruthy();
+    expect(within(dialog).getByRole("checkbox", { name: "Thrower A (Human Thrower · #2)" })).toBeTruthy();
+    expect(within(dialog).queryByRole("checkbox", { name: /Blitzer B/ })).toBeNull();
     expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });

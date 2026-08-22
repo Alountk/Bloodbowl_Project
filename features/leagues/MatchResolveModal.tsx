@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
 import { addMvpPe, deriveLivePeAwards } from "@/lib/liveResolve";
@@ -26,16 +26,19 @@ export interface RosterPlayerRef {
   journeyman?: boolean;
 }
 
-/** Six empty MJP nomination slots per team. */
-function emptyNominations(): string[] {
-  return Array.from({ length: 6 }, () => "");
-}
+/** The rulebook MVP nomination cap per team (BB2025: 6). NOTE: a custom
+ * ruleset could supply its own max — the UI and the server both hard-code 6
+ * today (the `validateSingleMvpNomination` six-length check mirrors it); a
+ * ruleset hook is the flagged future extension point. */
+export const MVP_NOMINATION_MAX = 6;
 
-/** True when a team has exactly six DISTINCT nominations selected. */
+/** True when a team has exactly `MVP_NOMINATION_MAX` DISTINCT nominations
+ * selected (checkbox toggling guarantees distinctness — a re-checked player is
+ * un-toggled). */
 function nominationsReady(nominations: readonly string[]): boolean {
   return (
-    nominations.length === 6 &&
-    new Set(nominations.filter(Boolean)).size === 6
+    nominations.length === MVP_NOMINATION_MAX &&
+    new Set(nominations.filter(Boolean)).size === MVP_NOMINATION_MAX
   );
 }
 
@@ -89,6 +92,9 @@ export function MatchResolveModal({
   const [rolling, setRolling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nominating, setNominating] = useState(false);
+  /** RAU-52: the FINAL confirm state — armed once BOTH sides nominated; "Sí,
+   * tirar el MVP" locks the picks (no back after the roll reveals the MVP). */
+  const [confirming, setConfirming] = useState(false);
 
   const viewerSide = detail.live?.viewerSide ?? null;
   const nominations = detail.live?.mvpNominations ?? { home: null, away: null };
@@ -97,20 +103,28 @@ export function MatchResolveModal({
   const ownNomination = ownSide ? nominations[ownSide] : null;
   const rivalNominated = rivalSide != null && nominations[rivalSide] != null;
   const bothNominated = nominations.home != null && nominations.away != null;
+  const rolled = roll != null;
 
-  // RAU-51: the draft is seeded ONCE from the PERSISTED per-side nomination so
-  // a reload never loses the coach's own picks (re-saves replace; while the
-  // modal stays open the draft is the client's local working copy).
-  const [draft, setDraft] = useState<string[]>(() => {
-    if (ownSide && ownNomination) {
-      const next = emptyNominations();
-      ownNomination.slice(0, 6).forEach((id, i) => {
-        next[i] = id;
-      });
-      return next;
-    }
-    return emptyNominations();
-  });
+  // RAU-52: the draft is the coach's OWN selected ids (checkbox toggles),
+  // seeded ONCE from the PERSISTED per-side nomination so a reload never loses
+  // the coach's own picks (re-saves replace; while the modal stays open the
+  // draft is the client's local working copy).
+  const [draft, setDraft] = useState<string[]>(() =>
+    ownSide && ownNomination ? ownNomination.slice(0, MVP_NOMINATION_MAX) : [],
+  );
+
+  // RAU-52 fix (the "rival never receives the confirmation" bug): a finished
+  // live match is NOT fed by the SSE hub, so the modal polls the persisted
+  // match detail while the nomination step is open. When the rival submits
+  // their side, their status flips to "El rival nominó 6 jugadores" WITHOUT a
+  // reload — the send/confirm reaches the other coach automatically.
+  useEffect(() => {
+    if (!open || rolled) return;
+    const id = setInterval(() => {
+      void onNominated();
+    }, 4000);
+    return () => clearInterval(id);
+  }, [open, rolled, onNominated]);
 
   // RAU-51: the pickers are fed ONLY the viewer's own team's alive+available
   // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
@@ -168,6 +182,7 @@ export function MatchResolveModal({
 
   const doRoll = async () => {
     setError(null);
+    setConfirming(false);
     setRolling(true);
     try {
       const result = await rollLiveMvp(detail.fixture.leagueId, detail.fixture.id);
@@ -234,20 +249,24 @@ export function MatchResolveModal({
 
               {ownSide && ownName ? (
                 <>
-                  {/* RAU-51: ONLY the viewer's own side is editable — the pickers
-                      list their OWN alive+available roster; the rival is a
-                      read-only status that never leaks the rival's picks. */}
+                  {/* RAU-52: ONLY the viewer's own side is editable — the
+                      CHECKBOXES list their OWN alive+available roster; the rival
+                      is a read-only status that never leaks the rival's picks. */}
                   <OwnNominationSection
                     name={ownName}
                     raceId={ownSide === "home" ? detail.homeTeam.raceId : detail.awayTeam.raceId}
                     roster={ownRoster}
-                    nominations={draft}
+                    selected={draft}
                     saved={ownNomination != null}
                     nominating={nominating}
-                    onSlot={(index, value) => {
-                      const next = [...draft];
-                      next[index] = value;
-                      setDraft(next);
+                    onToggle={(id) => {
+                      setDraft((prev) => {
+                        if (prev.includes(id)) return prev.filter((x) => x !== id);
+                        // RAU-52: the MAX (6) is enforced — a 7th player can
+                        // never be checked.
+                        if (prev.length >= MVP_NOMINATION_MAX) return prev;
+                        return [...prev, id];
+                      });
                     }}
                     onSave={() => void doNominate()}
                     t={t}
@@ -288,23 +307,54 @@ export function MatchResolveModal({
               {!bothNominated ? (
                 <p className="text-[11px] text-slate-500">{t("match.resolve.needBothSides")}</p>
               ) : null}
-              <p className="text-[11px] text-slate-500">{t("match.resolve.mvpHint")}</p>
-              <div className="flex justify-end border-t border-[#e2e8f0] pt-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void doRoll()}
-                  disabled={!canRoll}
-                  className="ml-2 rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {rolling ? t("match.resolve.rolling") : t("match.resolve.roll")}
-                </button>
+              <p className="text-[11px] text-slate-500">
+                {t("match.resolve.maxHint", { max: MVP_NOMINATION_MAX })}
+              </p>
+              <div className="flex items-center justify-end gap-2 border-t border-[#e2e8f0] pt-3">
+                {!confirming ? (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                ) : null}
+                {confirming ? (
+                  // RAU-52: the FINAL confirm — armed once BOTH sides nominated.
+                  // "Sí, tirar el MVP" locks the picks; there is NO going back
+                  // after it (the summary below has no "change nominations").
+                  <>
+                    <span className="text-xs font-bold text-[#d11938]">
+                      {t("match.resolve.confirmTitle")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void doRoll()}
+                      disabled={rolling}
+                      className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {rolling ? t("match.resolve.rolling") : t("match.resolve.confirmRoll")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(false)}
+                      disabled={rolling}
+                      className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
+                    >
+                      {t("match.resolve.confirmCancel")}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(true)}
+                    disabled={!canRoll}
+                    className="ml-2 rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {rolling ? t("match.resolve.rolling") : t("match.resolve.roll")}
+                  </button>
+                )}
               </div>
             </>
           ) : (
@@ -332,18 +382,10 @@ export function MatchResolveModal({
                 nameOf={nameOf}
                 t={t}
               />
-              <div className="flex justify-end gap-2 border-t border-[#e2e8f0] pt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRoll(null);
-                    setError(null);
-                  }}
-                  disabled={saving}
-                  className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
-                >
-                  {t("match.resolve.back")}
-                </button>
+              <div className="flex justify-end border-t border-[#e2e8f0] pt-3">
+                {/* RAU-52: NO going back after the final confirm — the picks
+                    are locked once the MVP was rolled; the only way forward is
+                    "Guardar y reportar" (THE closure). */}
                 <button
                   type="button"
                   onClick={() => void doSave()}
@@ -361,17 +403,18 @@ export function MatchResolveModal({
   );
 }
 
-/** RAU-51: the viewer's OWN team's six numbered MJP pickers (alive+available
+/** RAU-52: the viewer's OWN team's MJP nomination CHECKBOXES (alive+available
  * roster only; Journeymen included and labeled "Novato", RAU-13) + the
- * "Guardar mis nominaciones" action and status line. */
+ * "Guardar mis nominaciones" action and status line. The rulebook MAX (6) is
+ * enforced: a 7th checkbox is disabled, and the toggle never exceeds it. */
 function OwnNominationSection({
   name,
   raceId,
   roster,
-  nominations,
+  selected,
   saved,
   nominating,
-  onSlot,
+  onToggle,
   onSave,
   t,
 }: {
@@ -379,37 +422,54 @@ function OwnNominationSection({
   /** The OWN side's race id, so the option labels resolve the positional name. */
   raceId: string;
   roster: RosterPlayerRef[];
-  nominations: string[];
+  selected: string[];
   saved: boolean;
   nominating: boolean;
-  onSlot: (index: number, value: string) => void;
+  onToggle: (id: string) => void;
   onSave: () => void;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
-  const ready = nominationsReady(nominations);
+  const ready = nominationsReady(selected);
   const journeymanLabel = t("match.journeyman");
+  const atMax = selected.length >= MVP_NOMINATION_MAX;
   return (
     <section aria-label={t("match.resolve.ownNomination")} className="border border-[#e2e8f0] p-3">
       <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
-      <div className="flex flex-wrap gap-2">
-        {Array.from({ length: 6 }, (_, i) => (
-          <label key={i} className="text-xs font-medium text-slate-600">
-            {t("match.resolve.mvpSlot", { n: i + 1, name })}
-            <select
-              value={nominations[i] ?? ""}
-              onChange={(e) => onSlot(i, e.target.value)}
-              aria-label={t("match.resolve.mvpSlot", { n: i + 1, name })}
-              className="ml-1 rounded-sm border border-slate-300 px-1.5 py-1 text-sm text-slate-800"
+      <p className="mb-2 text-xs font-semibold text-slate-500">
+        {t("match.resolve.counter", { count: selected.length, max: MVP_NOMINATION_MAX })}
+      </p>
+      <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+        {roster.map((player) => {
+          const checked = selected.includes(player.id);
+          const label = t("match.resolve.checkLabel", {
+            name: player.name,
+            role: player.journeyman
+              ? journeymanLabel
+              : positionName(raceId, player.positionalKey ?? "lineman"),
+            dorsal: player.dorsal ?? 0,
+          });
+          // RAU-52: the MAX is enforced at the CONTROL level — an un-checked
+          // player is not selectable once 6 are already checked.
+          const disabled = !checked && atMax;
+          return (
+            <label
+              key={player.id}
+              className={`flex items-center gap-2 rounded-sm border border-[#e2e8f0] px-2 py-1 text-xs text-slate-700 ${
+                checked ? "bg-[#12225a]/[0.06]" : ""
+              }`}
             >
-              <option value="">—</option>
-              {roster.map((player) => (
-                <option key={player.id} value={player.id}>
-                  {`${player.name} (${player.journeyman ? journeymanLabel : positionName(raceId, player.positionalKey ?? "lineman")} · #${player.dorsal ?? 0})`}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
+              <input
+                type="checkbox"
+                aria-label={label}
+                checked={checked}
+                disabled={disabled}
+                onChange={() => onToggle(player.id)}
+                className="accent-[#12225a]"
+              />
+              <span className="truncate">{label}</span>
+            </label>
+          );
+        })}
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold text-slate-600">
