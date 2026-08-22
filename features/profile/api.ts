@@ -14,6 +14,20 @@ export interface Profile {
   avatar: string | null;
 }
 
+/** Career stats as served by GET /api/me/stats. */
+export interface CareerStats {
+  championships: number;
+  teams: number;
+  leaguesOwned: number;
+  leaguesMember: number;
+  /** Distinct leagues the user owns OR has a team in. */
+  leagues: number;
+  matches: number;
+  wins: number;
+  draws: number;
+  losses: number;
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -54,4 +68,39 @@ export async function uploadAvatar(blob: Blob): Promise<{ avatar: string }> {
   form.append("avatar", blob, "avatar.webp");
   const res = await fetch("/api/me/avatar", { method: "POST", body: form });
   return readJson<{ avatar: string }>(res);
+}
+
+/** GET /api/me/stats — the session user's career stats. */
+export async function getStats(): Promise<CareerStats> {
+  return readJson<CareerStats>(await fetch("/api/me/stats"));
+}
+
+/**
+ * PATCH /api/me/password — self-service password change.
+ *
+ * The server verifies the CURRENT password with bcrypt and validates the NEW
+ * one with the signup rule (>= 8 chars). Thrown errors carry `status` AND a
+ * machine-readable `code` (`wrong-current-password` / `weak-new-password`) so
+ * the form can pick the right localized copy without parsing English.
+ */
+export async function changePassword(patch: {
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ ok: true }> {
+  const res = await fetch("/api/me/password", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    const err = new Error(body?.error ?? `Request failed (${res.status})`) as Error & {
+      status?: number;
+      code?: string;
+    };
+    err.status = res.status;
+    err.code = body?.code;
+    throw err;
+  }
+  return (await res.json()) as { ok: true };
 }

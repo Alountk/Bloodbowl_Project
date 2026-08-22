@@ -1,23 +1,38 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { getMe, uploadAvatar, type Profile } from "./api";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  changePassword,
+  getMe,
+  getStats,
+  uploadAvatar,
+  type CareerStats,
+  type Profile,
+} from "./api";
 import { cropImageToBlob } from "./crop";
 import { CropDialog } from "./CropDialog";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useI18n } from "@/lib/i18n";
+import {
+  MIN_PASSWORD_LENGTH,
+  WRONG_CURRENT_PASSWORD_CODE,
+  WEAK_NEW_PASSWORD_CODE,
+} from "@/lib/password";
 
 /**
  * Client profile panel for `/profile` (Spanish copy). Loads the session profile
- * from GET /api/me (a DB avatar read, not the JWT), shows the current avatar,
- * and lets the user pick an image, adjust a 1:1 crop with pan + zoom, and upload
- * the CROPPED canvas blob (never crop coordinates). After a successful upload
- * the avatar preview updates from the adapter-issued value.
+ * from GET /api/me (a DB avatar read, not the JWT) and the career stats from
+ * GET /api/me/stats, shows the current avatar, and lets the user pick an image,
+ * adjust a 1:1 crop with pan + zoom, and upload the CROPPED canvas blob (never
+ * crop coordinates). Below the avatar card sit the RAU-57 sections: career
+ * stats (mobile-first grid) and the self-service change-password form (verify
+ * current + confirm the new one, inline error/success).
  */
 export function ProfilePanel() {
   const { t } = useI18n();
   const loadError = t("profile.loadError");
   const uploadError = t("profile.uploadError");
+  const statsLoadError = t("profile.stats.loadError");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
   const [pickerSrc, setPickerSrc] = useState<string | null>(null);
@@ -27,6 +42,16 @@ export function ProfilePanel() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
+  const [stats, setStats] = useState<CareerStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordPending, setPasswordPending] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
   useEffect(() => {
     getMe()
       .then((p) => {
@@ -34,7 +59,10 @@ export function ProfilePanel() {
         setAvatarSrc(p.avatar);
       })
       .catch(() => setError(loadError));
-  }, [loadError]);
+    getStats()
+      .then(setStats)
+      .catch(() => setStatsError(statsLoadError));
+  }, [loadError, statsLoadError]);
 
   function handleFileSelected(file: File | undefined) {
     if (!file) return;
@@ -59,6 +87,35 @@ export function ProfilePanel() {
       setError(uploadError);
     } finally {
       setPending(false);
+    }
+  }
+
+  async function handlePasswordSubmit(e: FormEvent) {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(false);
+    if (newPassword !== confirmPassword) {
+      setPasswordError(t("profile.password.mismatch"));
+      return;
+    }
+    setPasswordPending(true);
+    try {
+      await changePassword({ currentPassword, newPassword });
+      setPasswordSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === WRONG_CURRENT_PASSWORD_CODE) {
+        setPasswordError(t("profile.password.wrongCurrent"));
+      } else if (code === WEAK_NEW_PASSWORD_CODE) {
+        setPasswordError(t("profile.password.weak", { min: MIN_PASSWORD_LENGTH }));
+      } else {
+        setPasswordError(t("profile.password.error"));
+      }
+    } finally {
+      setPasswordPending(false);
     }
   }
 
@@ -117,6 +174,96 @@ export function ProfilePanel() {
           />
         </>
       ) : null}
+
+      <div className="mt-6 border border-[#e2e8f0] bg-white p-4">
+        <h2 className="text-lg font-black text-[#12225a]">{t("profile.stats.title")}</h2>
+        <p className="mb-3 text-sm text-slate-500">{t("profile.stats.subtitle")}</p>
+
+        {statsError ? (
+          <p className="text-sm text-[#d11938]">{statsError}</p>
+        ) : stats ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div data-testid="stat-championships" className="border border-[#e2e8f0] bg-[#f8fafc] p-3">
+              <p className="text-2xl font-black text-[#12225a]">{stats.championships}</p>
+              <p className="text-sm text-slate-500">{t("profile.stats.championships")}</p>
+            </div>
+            <div data-testid="stat-teams" className="border border-[#e2e8f0] bg-[#f8fafc] p-3">
+              <p className="text-2xl font-black text-[#12225a]">{stats.teams}</p>
+              <p className="text-sm text-slate-500">{t("profile.stats.teams")}</p>
+            </div>
+            <div data-testid="stat-leagues" className="border border-[#e2e8f0] bg-[#f8fafc] p-3">
+              <p className="text-2xl font-black text-[#12225a]">{stats.leagues}</p>
+              <p className="text-sm text-slate-500">{t("profile.stats.leagues")}</p>
+            </div>
+            <div data-testid="stat-matches" className="border border-[#e2e8f0] bg-[#f8fafc] p-3">
+              <p className="text-2xl font-black text-[#12225a]">{stats.matches}</p>
+              <p className="text-sm text-slate-500">{t("profile.stats.matches")}</p>
+              <p className="mt-1 text-xs text-slate-500" data-testid="stat-wdl">
+                {t("profile.stats.wins")} {stats.wins} · {t("profile.stats.draws")}{" "}
+                {stats.draws} · {t("profile.stats.losses")} {stats.losses}
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-6 border border-[#e2e8f0] bg-white p-4">
+        <h2 className="text-lg font-black text-[#12225a]">{t("profile.password.title")}</h2>
+        <form onSubmit={handlePasswordSubmit} className="mt-3 flex flex-col gap-3">
+          <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+            {t("profile.password.current")}
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-[#12225a] focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+            {t("profile.password.new")}
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              minLength={MIN_PASSWORD_LENGTH}
+              autoComplete="new-password"
+              className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-[#12225a] focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-semibold text-slate-700">
+            {t("profile.password.confirm")}
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-[#12225a] focus:outline-none"
+            />
+          </label>
+          <p className="text-xs text-slate-500">{t("profile.password.hint", { min: MIN_PASSWORD_LENGTH })}</p>
+          {passwordError ? (
+            <p role="alert" className="text-sm text-[#d11938]">
+              {passwordError}
+            </p>
+          ) : null}
+          {passwordSuccess ? (
+            <p role="status" className="text-sm font-semibold text-[#12225a]">
+              {t("profile.password.success")}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={passwordPending}
+            className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-semibold text-[#12225a] hover:border-[#d11938] hover:text-[#d11938] disabled:opacity-50"
+          >
+            {t("profile.password.submit")}
+          </button>
+        </form>
+      </div>
     </section>
   );
 }
