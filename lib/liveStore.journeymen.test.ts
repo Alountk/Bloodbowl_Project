@@ -111,11 +111,12 @@ describe("hireJourneymanLiveMatch — HIRE", () => {
     // The option is gone from the persisted list.
     expect(result.journeymen).toEqual({ home: [], away: [] });
     // The roster gained a player with the PERSISTED journeyman name + the race
-    // Lineman positional (RAU-11 style). The hire is PAID via the balance
-    // formula (rosterCost growth) — the treasury ledger is NOT decremented.
+    // Lineman positional (RAU-11 style). RAU-52: the hire is PAID IN CASH from
+    // the treasury — the ledger is decremented by the lineman cost (50.000)
+    // AFTER the resolve collected the match winnings.
     const teamCall = teamUpdate.mock.calls[0][0];
     expect(teamCall).toMatchObject({ where: { id: "home-t" } });
-    expect(teamCall.data.treasury).toBeUndefined();
+    expect(teamCall.data.treasury).toEqual({ decrement: 50_000 });
     const nextRoster = teamCall.data.roster;
     expect(nextRoster).toHaveLength(12);
     expect(nextRoster[11]).toMatchObject({ name: "Aldric Martillo", positionalKey: "lineman" });
@@ -126,7 +127,7 @@ describe("hireJourneymanLiveMatch — HIRE", () => {
       where: { id: "lm-1", seq: 12 },
       data: { journeymen: { home: [], away: [] }, seq: 13 },
     });
-    expect(result.team.treasury).toBe(500_000);
+    expect(result.team.treasury).toBe(450_000);
 
     // RAU-13: the journeyman's Player row is created keyed to the NEW roster id
     // with the PE they EARNED during the match (the snapshot is the single
@@ -230,9 +231,9 @@ describe("hireJourneymanLiveMatch — HIRE", () => {
     expect(playerCreate).not.toHaveBeenCalled();
   });
 
-  it("409s when the spendable balance cannot cover the lineman cost (RAU-11 formula)", async () => {
-    // 14 players (11 linemen + 2 blitzers + 2 catchers = 14): rosterCost 870k
-    // + coaching 100k → balance 30k < 50k.
+  it("409s when the treasury cannot cover the lineman cost (RAU-52 cash payment)", async () => {
+    // The team's treasury (0) cannot pay the 50.000 lineman cost — the hire is
+    // a CASH payment from the treasury, not a spendable-balance formula.
     const roster = [
       ...linemanRoster(11),
       { id: "b1", name: "Blitzer 1", positionalKey: "blitzer" },

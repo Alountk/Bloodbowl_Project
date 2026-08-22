@@ -5,6 +5,7 @@ import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
 import { addMvpPe, deriveLivePeAwards } from "@/lib/liveResolve";
 import { positionName } from "./liveControls";
+import { JourneymenHireStep } from "./JourneymenHire";
 import {
   nominateMvp,
   rollLiveMvp,
@@ -95,6 +96,9 @@ export function MatchResolveModal({
   /** RAU-52: the FINAL confirm state — armed once BOTH sides nominated; "Sí,
    * tirar el MVP" locks the picks (no back after the roll reveals the MVP). */
   const [confirming, setConfirming] = useState(false);
+  /** RAU-14: once the resolve committed, the modal stays open for the LAST
+   * step of the sequence — the post-match journeyman (Novato) hire step. */
+  const [resolved, setResolved] = useState(false);
 
   const viewerSide = detail.live?.viewerSide ?? null;
   const nominations = detail.live?.mvpNominations ?? { home: null, away: null };
@@ -125,6 +129,15 @@ export function MatchResolveModal({
     }, 4000);
     return () => clearInterval(id);
   }, [open, rolled, onNominated]);
+
+  // RAU-14: the hire step is the LAST step of the sequence. When the resolve
+  // committed and there is nothing left to hire (no own side, or no remaining
+  // journeymen for it), the modal closes itself — the resolution is complete.
+  const ownJourneymen = ownSide ? (detail.live?.journeymen?.[ownSide] ?? []) : [];
+  useEffect(() => {
+    if (!open || !resolved) return;
+    if (!ownSide || ownJourneymen.length === 0) onClose();
+  }, [open, resolved, ownSide, ownJourneymen.length, onClose]);
 
   // RAU-51: the pickers are fed ONLY the viewer's own team's alive+available
   // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
@@ -200,9 +213,14 @@ export function MatchResolveModal({
     setSaving(true);
     try {
       await resolveLiveMatch(detail.fixture.leagueId, detail.fixture.id);
+      // The refresh persists the resolved result (and the finish-time winnings
+      // are already applied); the modal stays OPEN for the post-match hire
+      // step — RAU-14, the LAST step of the resolution sequence.
       await onResolved();
+      setResolved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("match.resolve.saveError"));
+    } finally {
       setSaving(false);
     }
   };
@@ -357,7 +375,7 @@ export function MatchResolveModal({
                 )}
               </div>
             </>
-          ) : (
+          ) : rolled && !resolved ? (
             <>
               <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">
                 {t("match.resolve.summary")}
@@ -393,6 +411,36 @@ export function MatchResolveModal({
                   className="rounded-sm bg-[#d11938] px-4 py-2 text-sm font-bold text-white hover:bg-[#b0142f] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? t("match.resolve.saving") : t("match.resolve.save")}
+                </button>
+              </div>
+            </>
+          ) : (
+            // RAU-14: the LAST step of the resolution sequence — the post-match
+            // journeyman (Novato) hire step (checkboxes + Contratar marcados /
+            // Dejar ir). Renders for the viewer's OWN side only; the modal
+            // closes itself once nothing remains to hire.
+            <>
+              {ownSide && ownName ? (
+                <JourneymenHireStep
+                  leagueId={detail.fixture.leagueId}
+                  fixtureId={detail.fixture.id}
+                  side={ownSide}
+                  team={
+                    ownSide === "home"
+                      ? { name: homeName, raceId: detail.homeTeam.raceId }
+                      : { name: awayName, raceId: detail.awayTeam.raceId }
+                  }
+                  journeymen={ownJourneymen}
+                  onUpdated={onNominated}
+                />
+              ) : null}
+              <div className="flex justify-end border-t border-[#e2e8f0] pt-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
+                >
+                  {t("match.resolve.close")}
                 </button>
               </div>
             </>

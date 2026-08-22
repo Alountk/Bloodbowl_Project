@@ -466,6 +466,76 @@ describe("MatchResolveModal", () => {
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });
 
+  it("RAU-14: the hire step appears AFTER the final save (the LAST step of the sequence) with checkboxes, and the modal closes itself once nothing remains to hire", async () => {
+    const detail = baseDetail({
+      viewerSide: "home",
+      mvpNominations: { home: homeNom, away: awayNom },
+    });
+    detail.live = {
+      ...detail.live!,
+      journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric Martillo" }], away: [] },
+    };
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.type === "rollMvp") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ view: {}, roll: { mvp: { home: "h1", away: "a1" }, postFf: { home: 4, away: 3 } } }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            view: {},
+            resolved: {
+              fixtureId: "f1",
+              status: "played",
+              homeScore: 2,
+              awayScore: 1,
+              winnerId: "th",
+              winnings: { home: 55000, away: 45000 },
+              postFf: { home: 4, away: 3 },
+              mvp: { home: "h1", away: "a1" },
+              resultId: "mr-1",
+            },
+          }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const onResolved = vi.fn().mockResolvedValue(undefined);
+    const onNominated = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <MatchResolveModal open detail={detail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
+    await confirmRoll(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar y reportar" }));
+
+    // The resolve committed (refresh fired) and the modal STAYS open for the
+    // LAST step — the hire step renders INSIDE the sequence with checkboxes.
+    await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+    const hire = within(dialog).getByTestId("journeymen-hire");
+    expect(within(hire).getByRole("checkbox", { name: /Aldric Martillo/ })).toBeTruthy();
+    expect(within(hire).getByRole("button", { name: "Contratar marcados" })).toHaveProperty("disabled", true);
+
+    // Once nothing remains to hire (a refresh emptied the journeymen list) the
+    // modal closes itself — the resolution sequence is complete.
+    const emptyDetail = baseDetail({
+      viewerSide: "home",
+      mvpNominations: { home: homeNom, away: awayNom },
+    });
+    emptyDetail.live = { ...emptyDetail.live!, journeymen: { home: [], away: [] } };
+    rerender(
+      <MatchResolveModal open detail={emptyDetail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
+    );
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it("renders nothing when closed", () => {
     renderModal({ open: false });
     expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();

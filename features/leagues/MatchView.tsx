@@ -20,7 +20,6 @@ import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
 import { useLeagueName } from "./useLeagueName";
 import { MatchResolveModal } from "./MatchResolveModal";
-import { JourneymenHirePanel } from "./JourneymenHire";
 
 /**
  * Internal single-match fetch hook mirroring `useLeagueDetail`: loads the match
@@ -1580,23 +1579,18 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
             leagueId={leagueId}
             onResolve={unresolved ? () => setResolveOpen(true) : undefined}
           />
-          {unresolved ? (
+          {resolveOpen ? (
             <MatchResolveModal
               open={resolveOpen}
               detail={detail}
               onClose={() => setResolveOpen(false)}
-              onResolved={async () => {
-                await refresh();
-                setResolveOpen(false);
-              }}
+              // RAU-14: the resolve commits THE closure; the modal STAYS open
+              // for the LAST step of the sequence — the post-match journeyman
+              // hire step — and closes itself once nothing remains to hire.
+              onResolved={refresh}
               onNominated={refresh}
             />
-          ) : (
-            // RAU-14: once the match is REPORTED, each side's owner sees their
-            // fielded journeymen (Novatos) as hire/let-go offers. The panel
-            // renders nothing for a side without remaining journeymen.
-            <JourneymenHirePanel detail={detail} viewerSide={viewerSide} onUpdated={refresh} />
-          )}
+          ) : null}
         </>
       );
     } else {

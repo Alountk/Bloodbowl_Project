@@ -1939,19 +1939,17 @@ describe("MatchView — RAU-14 post-resolve JourneymenHirePanel gating", () => {
     return detail;
   }
 
-  it("renders the hire panel for the OWNER of a RESOLVED finished-live match that fielded a journeyman", async () => {
+  it("renders NO standalone hire panel for a RESOLVED finished-live match — the hire step lives INSIDE the resolution modal (RAU-52)", async () => {
     stubMatch(resolvedFinishedDetail());
     renderPlayed();
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
 
-    // The match was reported → the resolution modal is gone and the hire panel
-    // shows the offer with the race Lineman cost (Human = 50.000 M.O.).
+    // The match was reported → the resolution modal is gone and NO separate
+    // post-report panel renders: the post-match hire is the LAST STEP of the
+    // resolution sequence (inside the modal), not a standalone panel.
     expect(screen.queryByRole("button", { name: "Resolver partido" })).toBeNull();
-    const panel = screen.getByTestId("journeymen-hire");
-    expect(panel.textContent).toContain("Aldric Martillo");
-    expect(panel.textContent).toContain("puede quedarse por 50.000 M.O.");
-    expect(screen.getByRole("button", { name: "Contratar" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Dejar ir" })).toBeTruthy();
+    expect(screen.queryByTestId("journeymen-hire")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Contratar marcados" })).toBeNull();
   });
 
   it("does NOT render the hire panel while the finished match is UNRESOLVED (the resolution flow shows instead)", async () => {

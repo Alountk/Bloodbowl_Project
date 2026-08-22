@@ -635,6 +635,10 @@ const es: Dict = {
   // RAU-14 — post-resolve journeyman (Novato) hire panel
   "match.journeymen.aria": "Novatos del partido",
   "match.journeymen.title": "Novatos del partido",
+  "match.journeymen.hint": "Marca los novatos que quieres contratar. El coste se descuenta de la tesorería tras cobrar las ganancias.",
+  "match.journeymen.checkHire": "Contratar a {name} por {cost} M.O.",
+  "match.journeymen.counter": "{count} marcados",
+  "match.journeymen.hireChecked": "Contratar marcados",
   "match.journeymen.offer": "Tu novato {name} puede quedarse por {cost} M.O.",
   "match.journeymen.hire": "Contratar",
   "match.journeymen.letGo": "Dejar ir",
@@ -1265,13 +1269,17 @@ const en: Dict = {
   "match.resolve.banner": "The match has ended. The result is still pending.",
   "match.resolve.action": "Resolve match",
 
-  // RAU-14 — post-resolve journeyman hire panel
-  "match.journeymen.aria": "Match journeymen",
-  "match.journeymen.title": "Match journeymen",
-  "match.journeymen.offer": "Your journeyman {name} can stay for {cost} GP",
-  "match.journeymen.hire": "Hire",
-  "match.journeymen.letGo": "Let go",
-  "match.journeymen.error": "Could not process the decision.",
+   // RAU-14 — post-resolve journeyman hire panel
+   "match.journeymen.aria": "Match journeymen",
+   "match.journeymen.title": "Match journeymen",
+   "match.journeymen.hint": "Mark the journeymen you want to hire. The cost is deducted from the treasury after the match winnings are collected.",
+   "match.journeymen.checkHire": "Hire {name} for {cost} GP",
+   "match.journeymen.counter": "{count} selected",
+   "match.journeymen.hireChecked": "Hire selected",
+   "match.journeymen.offer": "Your journeyman {name} can stay for {cost} GP",
+   "match.journeymen.hire": "Hire",
+   "match.journeymen.letGo": "Let go",
+   "match.journeymen.error": "Could not process the decision.",
 };
 
 /** The full es/en dictionaries, keyed by locale. */
