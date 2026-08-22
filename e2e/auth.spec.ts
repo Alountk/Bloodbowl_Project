@@ -13,6 +13,7 @@ async function signup(page: Page, email: string, password: string) {
   await page.goto("/signup");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Name").fill("E2E Coach");
   await page.getByRole("button", { name: "Sign up" }).last().click();
   // Successful signup establishes a session and lands on `/`.
   await expect(page).toHaveURL("/");
@@ -132,6 +133,7 @@ test.describe("Auth flow regression (LAN host)", () => {
     await page.goto(`${base}/signup`);
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill(password);
+    await page.getByLabel("Name").fill("E2E Coach");
     await page.getByRole("button", { name: "Sign up" }).last().click();
     await expect(page).toHaveURL(`${base}/`);
 
