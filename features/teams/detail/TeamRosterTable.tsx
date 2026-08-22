@@ -6,7 +6,7 @@ import { translateRole } from "../roster-table/RosterTable";
 import { formatRulebookCost } from "../format";
 import { skillDisplayName, skillElite, skillKey } from "@/lib/progression";
 import type { ImproveBody } from "@/lib/progression";
-import { improvementCost } from "@/lib/rules";
+import { nextImprovementCost } from "@/lib/rules";
 import type { PlayerAttribute } from "@/lib/rules/improvements";
 import { useI18n } from "@/lib/i18n";
 import { applyAttributeIncreases, isAttributeBetter } from "./characteristics";
@@ -52,11 +52,6 @@ export interface TeamRosterTableProps {
   reorderError?: string | null;
   /** Fire-route client (RAU-10); absent = no Despedir action in the modal. */
   onFire?: (rosterPlayerId: string) => Promise<Record<string, unknown>>;
-}
-
-/** The cost of the player's NEXT random (cheapest) improvement — SPP bar target. */
-export function nextImprovementCost(improvements: number): number {
-  return improvementCost(improvements + 1, "random");
 }
 
 function iconFor(role: string | undefined): string {
