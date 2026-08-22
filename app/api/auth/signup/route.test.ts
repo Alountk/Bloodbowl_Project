@@ -86,6 +86,60 @@ describe("POST /api/auth/signup", () => {
     );
   });
 
+  it("captures the account locale from the bb-locale cookie (RAU-58)", async () => {
+    bcryptMock.hash.mockResolvedValue("hashed-password");
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "coach@example.com",
+      name: null,
+      locale: "en",
+    });
+
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: "coach@example.com", password: "SuperSecret123!" }),
+      headers: {
+        "content-type": "application/json",
+        cookie: "bb-locale=en",
+      },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    expect(prismaMock.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: "coach@example.com", locale: "en" }),
+      }),
+    );
+    expect((await res.json()).locale).toBe("en");
+  });
+
+  it("ignores an invalid bb-locale cookie value and leaves the DB default (es)", async () => {
+    bcryptMock.hash.mockResolvedValue("hashed-password");
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "coach@example.com",
+      name: null,
+      locale: "es",
+    });
+
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: "coach@example.com", password: "SuperSecret123!" }),
+      headers: {
+        "content-type": "application/json",
+        cookie: "bb-locale=fr",
+      },
+    });
+
+    await POST(req);
+    expect(prismaMock.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ locale: undefined }),
+      }),
+    );
+  });
+
   it("returns 400 when the payload is missing required fields", async () => {
     const req = new Request("http://localhost:3000/api/auth/signup", {
       method: "POST",
