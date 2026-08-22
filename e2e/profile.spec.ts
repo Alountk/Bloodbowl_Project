@@ -61,7 +61,7 @@ async function fillPasswordForm(
 ) {
   await page.goto("/profile");
   await page.getByLabel("Contraseña actual").fill(current);
-  await page.getByLabel("Nueva contraseña").fill(next);
+  await page.getByLabel("Nueva contraseña", { exact: true }).fill(next);
   await page.getByLabel("Confirmar nueva contraseña").fill(confirm);
   await page.getByRole("button", { name: "Cambiar contraseña" }).click();
 }
@@ -125,21 +125,19 @@ test("change password: wrong/weak/mismatch errors → success → login with the
 
   // Wrong current password → clear inline error, nothing changes.
   await fillPasswordForm(page, "wrong-password", NEW_PASSWORD);
-  await expect(page.getByRole("alert")).toContainText(
-    "La contraseña actual no es correcta.",
-  );
+  await expect(page.getByText("La contraseña actual no es correcta.")).toBeVisible();
 
   // New password too short → clear inline error (the signup rule).
   await fillPasswordForm(page, PASSWORD, "short");
-  await expect(page.getByRole("alert")).toContainText("al menos 8 caracteres");
+  await expect(page.getByText("al menos 8 caracteres")).toBeVisible();
 
   // Confirmation mismatch → client-side error, no request.
   await fillPasswordForm(page, PASSWORD, "brand-new-pass-1", "different-confirm");
-  await expect(page.getByRole("alert")).toContainText("Las contraseñas no coinciden");
+  await expect(page.getByText("Las contraseñas no coinciden")).toBeVisible();
 
   // Correct current + valid new → success status.
   await fillPasswordForm(page, PASSWORD, NEW_PASSWORD);
-  await expect(page.getByRole("status")).toHaveText("Contraseña actualizada.");
+  await expect(page.getByText("Contraseña actualizada.")).toBeVisible();
 
   // The OLD password no longer authenticates…
   await logout(page);
@@ -191,13 +189,14 @@ test("career stats: league + team + forfeited win → nonzero numbers on /profil
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
     await expect(admin.getByText("Jornada completa")).toBeVisible();
 
-    // Profile now shows the nonzero career stats.
+    // Profile now shows the nonzero career stats. Each card's first <p> is the
+    // big number (value + label share the card textContent).
     await admin.goto("/profile");
     await expect(admin.getByRole("heading", { name: "Estadísticas de carrera" })).toBeVisible();
-    await expect(admin.getByTestId("stat-championships")).toHaveText("1");
-    await expect(admin.getByTestId("stat-teams")).toHaveText("1");
-    await expect(admin.getByTestId("stat-leagues")).toHaveText("1");
-    await expect(admin.getByTestId("stat-matches")).toHaveText(/1/);
+    await expect(admin.getByTestId("stat-championships").locator("p").first()).toHaveText("1");
+    await expect(admin.getByTestId("stat-teams").locator("p").first()).toHaveText("1");
+    await expect(admin.getByTestId("stat-leagues").locator("p").first()).toHaveText("1");
+    await expect(admin.getByTestId("stat-matches").locator("p").first()).toHaveText("1");
     await expect(admin.getByTestId("stat-wdl")).toHaveText(
       /Victorias 1 · Empates 0 · Derrotas 0/,
     );

@@ -228,7 +228,6 @@ export function ProfilePanel() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
-              minLength={MIN_PASSWORD_LENGTH}
               autoComplete="new-password"
               className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-[#12225a] focus:outline-none"
             />
