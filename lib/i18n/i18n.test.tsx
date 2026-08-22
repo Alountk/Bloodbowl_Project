@@ -28,6 +28,7 @@ function Probe() {
 
 afterEach(() => {
   window.localStorage.clear();
+  document.cookie = "bb-locale=; path=/; max-age=0";
   stubNavigatorLanguage("en-US");
 });
 

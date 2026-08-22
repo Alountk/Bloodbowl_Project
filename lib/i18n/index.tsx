@@ -20,19 +20,38 @@ export interface I18nContextValue {
 export const I18nContext = createContext<I18nContextValue | null>(null);
 
 const STORAGE_KEY = "bb-locale";
+const COOKIE_KEY = "bb-locale";
+
+/** Reads the persisted locale from the `bb-locale` cookie (client-side). */
+function readLocaleCookie(): Locale | null {
+  try {
+    const match = document.cookie
+      .split("; ")
+      .find((part) => part.startsWith(`${COOKIE_KEY}=`));
+    const value = match?.split("=")[1];
+    if (value === "es" || value === "en") return value;
+  } catch {
+    // Cookie access can throw in restricted contexts: ignore it.
+  }
+  return null;
+}
 
 /**
- * Resolves the initial locale: a stored `bb-locale` wins, otherwise the browser
- * language (English browsers get `en`, everything else stays the Spanish
- * default). Never runs on the server, so SSR always renders the default.
+ * Resolves the initial locale: the SSR-provided `initialLocale` (from the
+ * `bb-locale` cookie read server-side) wins — this is what makes SSR and the
+ * client agree and kills the hydration language mix. Standalone client mounts
+ * fall back to the cookie, then localStorage, then the browser language.
  */
-function resolveInitialLocale(): Locale {
+function resolveInitialLocale(initialLocale?: Locale): Locale {
+  if (initialLocale === "es" || initialLocale === "en") return initialLocale;
   if (typeof window === "undefined") return DEFAULT_LOCALE;
   try {
+    const cookieLocale = readLocaleCookie();
+    if (cookieLocale) return cookieLocale;
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored === "es" || stored === "en") return stored;
   } catch {
-    // localStorage can throw in privacy/blocked-storage modes: ignore it.
+    // Storage unavailable: ignore it.
   }
   const lang = typeof window.navigator !== "undefined" ? window.navigator.language : "";
   return lang.toLowerCase().startsWith("en") ? "en" : DEFAULT_LOCALE;
@@ -40,12 +59,22 @@ function resolveInitialLocale(): Locale {
 
 const noop = () => {};
 
-export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(() => resolveInitialLocale());
+export function I18nProvider({
+  children,
+  initialLocale,
+}: {
+  children: ReactNode;
+  /** The locale resolved server-side from the `bb-locale` cookie. */
+  initialLocale?: Locale;
+}) {
+  const [locale, setLocaleState] = useState<Locale>(() =>
+    resolveInitialLocale(initialLocale),
+  );
 
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, locale);
+      document.cookie = `${COOKIE_KEY}=${locale}; path=/; max-age=31536000; SameSite=Lax`;
     } catch {
       // Storage unavailable: the locale still applies for this session.
     }

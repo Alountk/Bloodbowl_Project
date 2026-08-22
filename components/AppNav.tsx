@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useApp } from "@/app/providers/AppProvider";
 import { useI18n } from "@/lib/i18n";
 import { LocaleSwitcher } from "@/lib/i18n/LocaleSwitcher";
 import { AuthModal } from "@/features/auth/AuthModal";
@@ -23,8 +21,6 @@ interface AppNavProps {
   onLogout?: () => void;
   /** Public variant: renders the "Sign in" button that opens the auth modal. */
   showSignIn?: boolean;
-  /** App shell only: renders the teams search on "/". */
-  showSearch?: boolean;
 }
 
 /**
@@ -38,7 +34,6 @@ export function AppNav({
   authenticated = false,
   onLogout,
   showSignIn = false,
-  showSearch = false,
 }: AppNavProps) {
   const { t } = useI18n();
   const { data: session } = useSession();
@@ -90,8 +85,6 @@ export function AppNav({
           </nav>
 
           <div className="flex-1" />
-
-          {showSearch ? <NavSearch /> : null}
 
           <div className="hidden md:block">
             <LocaleSwitcher />
@@ -183,26 +176,6 @@ export function AppNav({
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
     </>
-  );
-}
-
-/** Teams search, rendered on "/" by the app shell (inside AppProvider). */
-function NavSearch() {
-  const { searchQuery, setSearchQuery } = useApp();
-  const pathname = usePathname();
-  const { t } = useI18n();
-  if (pathname !== "/") return null;
-  return (
-    <form role="search" className="flex items-center">
-      <input
-        type="search"
-        aria-label={t("topbar.searchLabel")}
-        placeholder={t("topbar.searchPlaceholder")}
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full max-w-[140px] rounded-none border border-white/40 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-white sm:max-w-none sm:px-3"
-      />
-    </form>
   );
 }
 

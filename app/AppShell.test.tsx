@@ -28,13 +28,13 @@ describe("AppShell unified nav", () => {
     expect(within(nav).getAllByRole("link")).toHaveLength(3);
   });
 
-  it("shows the teams search on the home route", () => {
+  it("renders the unified nav without a topbar search (search lives in the teams section)", () => {
     render(
       <AppShell>
         <div>page content</div>
       </AppShell>,
     );
-    expect(screen.getByRole("search")).toBeTruthy();
+    expect(screen.queryByRole("search")).toBeNull();
   });
 
   it("shows neither Sign in nor the user menu in anonymous/local mode", () => {
