@@ -13,6 +13,7 @@ async function signup(page: Page, email: string, password: string) {
   await page.goto("/signup");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Name").fill("E2E Coach");
   await page.getByRole("button", { name: "Sign up" }).last().click();
   // Successful signup establishes a session and lands on `/`.
   await expect(page).toHaveURL("/");
@@ -24,6 +25,12 @@ async function login(page: Page, email: string, password: string) {
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Log in" }).last().click();
   await expect(page).toHaveURL("/");
+}
+
+/** Logs out through the avatar user menu (the nav's right-slot action). */
+async function logout(page: Page) {
+  await page.getByRole("button", { name: "User menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
 }
 
 async function createTeam(page: Page, name: string) {
@@ -56,7 +63,7 @@ test.describe("Auth E2E (real Postgres)", () => {
     await expect(page.getByText(teamName)).toBeVisible();
 
     // Logout lands on the public landing and no longer shows the team (session cleared).
-    await page.getByRole("button", { name: "Log out" }).click();
+    await logout(page);
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("heading", { name: "Your league, in your pocket." })).toBeVisible();
     await expect(page.getByText(teamName)).not.toBeVisible();
@@ -126,6 +133,7 @@ test.describe("Auth flow regression (LAN host)", () => {
     await page.goto(`${base}/signup`);
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill(password);
+    await page.getByLabel("Name").fill("E2E Coach");
     await page.getByRole("button", { name: "Sign up" }).last().click();
     await expect(page).toHaveURL(`${base}/`);
 
@@ -141,7 +149,7 @@ test.describe("Auth flow regression (LAN host)", () => {
     await expect(page.getByText("LAN Reavers")).toBeVisible();
 
     // Logout → the public landing.
-    await page.getByRole("button", { name: "Log out" }).click();
+    await logout(page);
     // Await the landing (not just the URL, which is already "/" on the
     // dashboard) so the async sign-out has cleared the session cookie.
     await expect(

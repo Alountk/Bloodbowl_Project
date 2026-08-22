@@ -14,21 +14,22 @@ function isValidEmail(email: string): boolean {
 /**
  * POST /api/auth/signup
  *
- * Body: `{ email, password }`. Validates input, hashes the password with
+ * Body: `{ email, password, name? }`. Validates input, hashes the password with
  * bcryptjs, and persists a new User. Returns 201 with the created user, or a
  * 400/409 on invalid input / duplicate email. The client establishes the
  * session afterwards via `signIn("credentials")`.
  */
 export async function POST(req: Request) {
-  let body: { email?: string; password?: string };
+  let body: { email?: string; password?: string; name?: string };
   try {
-    body = (await req.json()) as { email?: string; password?: string };
+    body = (await req.json()) as { email?: string; password?: string; name?: string };
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const email = normalizeEmail(body.email);
   const password = body.password ?? "";
+  const name = typeof body.name === "string" ? body.name.trim() : "";
 
   if (!isValidEmail(email) || password.length < MIN_PASSWORD_LENGTH) {
     return NextResponse.json(
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
 
   try {
     const user = await prisma.user.create({
-      data: { email, passwordHash },
+      data: { email, passwordHash, ...(name ? { name } : {}) },
       select: { id: true, email: true, name: true },
     });
     return NextResponse.json(user, { status: 201 });

@@ -2,17 +2,15 @@
 
 import { useState, type ReactNode } from "react";
 import { AppProvider } from "@/app/providers/AppProvider";
-import { LocalStorageTeamStore } from "@/features/teams/store/LocalStorageTeamStore";
+import { getLocalTeamStore } from "@/features/teams/store/localTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
-import { useI18n } from "@/lib/i18n";
-import { Sidebar } from "@/components/Sidebar";
-import { Topbar } from "@/components/Topbar";
+import { AppNav } from "@/components/AppNav";
 
 interface AppShellProps {
   children: ReactNode;
-  /** Store passed from an authenticated parent (e.g. ApiTeamStore), else LocalStorage. */
+  /** Store passed from an authenticated parent (e.g. ApiTeamStore), else the shared in-memory local store. */
   store?: TeamStore;
-  /** True when the shell is backed by an authenticated session; shows logout. */
+  /** True when the shell is backed by an authenticated session; shows the user menu. */
   authenticated?: boolean;
   /** Invoked by the logout control. No-op when absent. */
   onLogout?: () => void;
@@ -20,6 +18,12 @@ interface AppShellProps {
   reloadVersion?: number;
 }
 
+/**
+ * Authenticated app shell. The unified landing-style `AppNav` (logo + links +
+ * user menu, hamburger + drawer on mobile) sits above the page content; the
+ * teams search renders in the nav on the home route. The mobile drawer and the
+ * auth modal are owned by `AppNav` itself.
+ */
 export function AppShell({
   children,
   store: providedStore,
@@ -27,39 +31,17 @@ export function AppShell({
   onLogout,
   reloadVersion,
 }: AppShellProps) {
-  // Stable store instance across re-renders; created only on the client.
-  const [localStore] = useState(() => new LocalStorageTeamStore());
+  // Stable store instance across re-renders; local/anonymous mode shares one
+  // in-memory store so teams survive client navigation within the tab session.
+  const [localStore] = useState(() => getLocalTeamStore());
   const store = providedStore ?? localStore;
-  // The mobile drawer mounts only while open, so it never duplicates the
-  // always-mounted desktop Sidebar aria landmark.
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { t } = useI18n();
-
-  const openMenu = () => setMobileNavOpen(true);
-  const closeMenu = () => setMobileNavOpen(false);
 
   return (
     <AppProvider store={store} authenticated={authenticated} onLogout={onLogout} reloadVersion={reloadVersion}>
-      <div className="flex min-h-screen">
-        <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar onMenuClick={openMenu} />
-          <main className="flex-1 p-4 sm:p-6">{children}</main>
-        </div>
+      <div className="flex min-h-screen flex-col">
+        <AppNav authenticated={authenticated} onLogout={onLogout} />
+        <main className="flex-1 p-4 sm:p-6">{children}</main>
       </div>
-      {mobileNavOpen ? (
-        <>
-          {/* Scrim: renders behind the drawer; click closes. */}
-          <button
-            type="button"
-            aria-label={t("nav.closeMenu")}
-            onClick={closeMenu}
-            className="fixed inset-0 z-40 bg-slate-900/45 md:hidden"
-            data-testid="drawer-scrim"
-          />
-          <Sidebar variant="drawer" onNavigate={closeMenu} />
-        </>
-      ) : null}
     </AppProvider>
   );
 }

@@ -25,6 +25,7 @@ test.describe("User isolation E2E (real Postgres)", () => {
     await pageA.goto("/signup");
     await pageA.getByLabel("Email").fill(uniqueEmail("userA"));
     await pageA.getByLabel("Password").fill(password);
+    await pageA.getByLabel("Name").fill("E2E Coach");
     await pageA.getByRole("button", { name: "Sign up" }).last().click();
     await expect(pageA).toHaveURL("/");
 
@@ -49,6 +50,7 @@ test.describe("User isolation E2E (real Postgres)", () => {
     await pageB.goto("/signup");
     await pageB.getByLabel("Email").fill(uniqueEmail("userB"));
     await pageB.getByLabel("Password").fill(password);
+    await pageB.getByLabel("Name").fill("E2E Coach");
     await pageB.getByRole("button", { name: "Sign up" }).last().click();
     await expect(pageB).toHaveURL("/");
 

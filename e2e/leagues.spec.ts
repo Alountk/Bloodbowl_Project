@@ -19,6 +19,7 @@ async function signup(page: Page, email: string, password: string) {
   await page.goto("/signup");
   await page.getByLabel("Correo electrónico").fill(email);
   await page.getByLabel("Contraseña").fill(password);
+  await page.getByLabel("Nombre").fill("Entrenador E2E");
   await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
@@ -145,6 +146,7 @@ async function archiveGuardSignup(page: import("@playwright/test").Page) {
   await page.goto("/signup");
   await page.getByLabel("Correo electrónico").fill(email);
   await page.getByLabel("Contraseña").fill(archiveGuardPassword);
+  await page.getByLabel("Nombre").fill("Entrenador E2E");
   await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }

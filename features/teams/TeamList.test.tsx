@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { ArchiveGuardError } from "@/features/teams/store/ApiTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
-import { Sidebar } from "@/components/Sidebar";
-import { Topbar } from "@/components/Topbar";
+import { AppNav } from "@/components/AppNav";
 import { TeamList } from "./TeamList";
+import { TeamSearch } from "./TeamSearch";
 import type { Team } from "./types";
 import { DEFAULT_COACHING } from "./types";
 
@@ -17,8 +17,9 @@ vi.mock("@/features/leagues/api", () => ({
 import { getLeagueDetail } from "@/features/leagues/api";
 const getLeagueDetailMock = getLeagueDetail as ReturnType<typeof vi.fn>;
 
-// The shell renders a route-aware Topbar/Sidebar. `usePathnameMock` is a mutable
-// holder accessed through the vi.mock factory; each test sets the current route.
+// The shell renders a route-aware AppNav (search on the home route only).
+// `usePathnameMock` is a mutable holder accessed through the vi.mock factory;
+// each test sets the current route.
 const nav = { pathname: "/" };
 
 vi.mock("next/navigation", () => ({
@@ -85,7 +86,8 @@ function renderWithStoreAndTopbar(teams: Team[] = fixtureTeams) {
   const store = new InMemoryTeamStore(teams);
   render(
     <AppProvider store={store}>
-      <Topbar />
+      <AppNav authenticated={false} />
+      <TeamSearch />
       <TeamList />
     </AppProvider>,
   );
@@ -406,25 +408,26 @@ describe("TeamList — archive-guard (409) surface", () => {
   });
 });
 
-describe("Sidebar navigation", () => {
-  it("shows only the Equipos nav item (no Crear equipo link) on the home route", () => {
+describe("AppNav unified navigation", () => {
+  it("shows the landing-style section links", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
-        <Sidebar />
+        <AppNav authenticated={false} />
       </AppProvider>,
     );
 
-    expect(screen.getByRole("link", { name: "Equipos" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Equipos" }).getAttribute("href")).toBe("/");
-    expect(screen.queryByRole("link", { name: /crear equipo/i })).toBeNull();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(nav).getByRole("link", { name: "Matches" })).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Teams" })).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Leagues" })).toBeTruthy();
   });
 });
 
-describe("Topbar route-conditional search", () => {
-  it("renders the search form on the home route", () => {
+describe("TeamSearch placement", () => {
+  it("renders the search form in the teams section (not the nav)", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
-        <Topbar />
+        <TeamSearch />
       </AppProvider>,
     );
 
@@ -432,18 +435,15 @@ describe("Topbar route-conditional search", () => {
     expect(screen.getByLabelText(/buscar equipos/i)).toBeTruthy();
   });
 
-  it("hides the search form off the home route", () => {
-    nav.pathname = "/teams/create";
-
+  it("the nav itself renders no search form", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
-        <Topbar />
+        <AppNav authenticated={false} />
       </AppProvider>,
     );
 
-    expect(screen.getByRole("heading", { name: "Bloodbowl Teams" })).toBeTruthy();
-    expect(screen.queryByLabelText(/buscar equipos/i)).toBeNull();
     expect(screen.queryByRole("search")).toBeNull();
+    expect(screen.queryByLabelText(/buscar equipos/i)).toBeNull();
   });
 });
 

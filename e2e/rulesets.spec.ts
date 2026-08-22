@@ -44,6 +44,7 @@ async function signup(page: Page, email: string) {
   await page.goto("/signup");
   await page.getByLabel("Correo electrónico").fill(email);
   await page.getByLabel("Contraseña").fill("password-123");
+  await page.getByLabel("Nombre").fill("Entrenador E2E");
   await page.getByRole("button", { name: "Registrarse" }).last().click();
   await expect(page).toHaveURL("/");
 }
@@ -62,6 +63,8 @@ async function signupAsDeveloper(page: Page): Promise<string> {
   const email = uniqueEmail("dev");
   await signup(page, email);
   promoteToDeveloper(email);
+  // Logout lives in the avatar user menu (unified nav).
+  await page.getByRole("button", { name: "Menú de usuario" }).click();
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(
     page.getByRole("heading", { name: "Your league, in your pocket." }),

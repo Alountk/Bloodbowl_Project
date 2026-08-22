@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HowItWorks } from "./HowItWorks";
+import { AppNav } from "@/components/AppNav";
 
 /**
  * Public landing page (approved Option B). Rendered by the home route for
@@ -7,7 +8,8 @@ import { HowItWorks } from "./HowItWorks";
  *
  * Copy is English (home-chrome convention) and static — no i18n keys, matching
  * the approved preview. Buttons are square (border-radius 0, no shadow) per the
- * design reference.
+ * design reference. The header is the unified `AppNav` (public variant: the
+ * "Sign in" button opens the auth modal, not a /login navigation).
  */
 
 const FEATURES = [
@@ -36,36 +38,7 @@ const FEATURES = [
 export function Landing() {
   return (
     <div className="min-h-screen scroll-smooth bg-[#f8fafc] text-slate-900">
-      {/* Public nav: logo + section links + Sign in (the landing has no app shell). */}
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-[#12225a] px-5 py-3 text-white">
-        <span className="text-[18px] font-black tracking-[0.02em]">🏈 Blood Bowl Teams</span>
-        <nav aria-label="Landing" className="ml-auto hidden items-center gap-1 sm:flex">
-          <Link
-            href="/leagues"
-            className="rounded-none px-2 py-1 text-[13px] text-[#cbd5e1] hover:bg-white/10 hover:text-white"
-          >
-            Matches
-          </Link>
-          <Link
-            href="/teams"
-            className="rounded-none px-2 py-1 text-[13px] text-[#cbd5e1] hover:bg-white/10 hover:text-white"
-          >
-            Teams
-          </Link>
-          <Link
-            href="/leagues"
-            className="rounded-none px-2 py-1 text-[13px] text-[#cbd5e1] hover:bg-white/10 hover:text-white"
-          >
-            Leagues
-          </Link>
-        </nav>
-        <Link
-          href="/login"
-          className="ml-auto rounded-none px-3 py-1.5 text-[13px] font-bold text-[#cbd5e1] hover:bg-white/10 hover:text-white sm:ml-0"
-        >
-          Sign in
-        </Link>
-      </header>
+      <AppNav showSignIn />
 
       {/* Navy compact hero + CTA + art panel mock. */}
       <section
