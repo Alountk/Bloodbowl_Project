@@ -38,7 +38,7 @@ export function AppShell({
   return (
     <AppProvider store={store} authenticated={authenticated} onLogout={onLogout} reloadVersion={reloadVersion}>
       <div className="flex min-h-screen flex-col">
-        <AppNav authenticated={authenticated} onLogout={onLogout} showSearch />
+        <AppNav authenticated={authenticated} onLogout={onLogout} />
         <main className="flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </AppProvider>

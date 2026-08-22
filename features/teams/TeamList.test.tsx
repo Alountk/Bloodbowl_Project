@@ -6,6 +6,7 @@ import { ArchiveGuardError } from "@/features/teams/store/ApiTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
 import { AppNav } from "@/components/AppNav";
 import { TeamList } from "./TeamList";
+import { TeamSearch } from "./TeamSearch";
 import type { Team } from "./types";
 import { DEFAULT_COACHING } from "./types";
 
@@ -85,7 +86,8 @@ function renderWithStoreAndTopbar(teams: Team[] = fixtureTeams) {
   const store = new InMemoryTeamStore(teams);
   render(
     <AppProvider store={store}>
-      <AppNav authenticated={false} showSearch />
+      <AppNav authenticated={false} />
+      <TeamSearch />
       <TeamList />
     </AppProvider>,
   );
@@ -410,7 +412,7 @@ describe("AppNav unified navigation", () => {
   it("shows the landing-style section links", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
-        <AppNav authenticated={false} showSearch />
+        <AppNav authenticated={false} />
       </AppProvider>,
     );
 
@@ -421,11 +423,11 @@ describe("AppNav unified navigation", () => {
   });
 });
 
-describe("AppNav route-conditional search", () => {
-  it("renders the search form on the home route", () => {
+describe("TeamSearch placement", () => {
+  it("renders the search form in the teams section (not the nav)", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
-        <AppNav authenticated={false} showSearch />
+        <TeamSearch />
       </AppProvider>,
     );
 
@@ -433,17 +435,15 @@ describe("AppNav route-conditional search", () => {
     expect(screen.getByLabelText(/buscar equipos/i)).toBeTruthy();
   });
 
-  it("hides the search form off the home route", () => {
-    nav.pathname = "/teams/create";
-
+  it("the nav itself renders no search form", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
-        <AppNav authenticated={false} showSearch />
+        <AppNav authenticated={false} />
       </AppProvider>,
     );
 
-    expect(screen.queryByLabelText(/buscar equipos/i)).toBeNull();
     expect(screen.queryByRole("search")).toBeNull();
+    expect(screen.queryByLabelText(/buscar equipos/i)).toBeNull();
   });
 });
 
