@@ -100,7 +100,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
       role="dialog"
       aria-modal="true"
       aria-label={isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4 py-8 max-md:items-end max-md:px-0 max-md:py-0"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 px-4 py-8 max-md:items-start max-md:px-0 max-md:py-0"
       onPointerDown={(e) => {
         pointerDownOnBackdrop.current = e.target === e.currentTarget;
       }}
