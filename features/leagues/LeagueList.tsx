@@ -8,8 +8,9 @@ import { CreateLeagueModal } from "./CreateLeagueModal";
 import { useLeagues } from "./useLeagues";
 import type { League } from "./api";
 
-/** Status badge copy + palette, keyed off the server-supplied league status. */
-function StatusBadge({ status }: { status: League["status"] }) {
+/** Status badge copy + palette, keyed off the server-supplied league status.
+ * Exported so the home dashboard can reuse the badge on its league cards. */
+export function StatusBadge({ status }: { status: League["status"] }) {
   const { t } = useI18n();
   if (status === "started") {
     return (
@@ -35,9 +36,10 @@ function StatusBadge({ status }: { status: League["status"] }) {
 /**
  * Rulebook card for a single league: name, description, status badge ("Abierta"
  * green / "Iniciada" navy), owner name, member count (server-computed, no N+1)
- * and a "Ver" link into the detail page.
+ * and a "Ver" link into the detail page. Exported so the home dashboard can
+ * render the same card for the session user's leagues.
  */
-function LeagueCard({ league }: { league: League }) {
+export function LeagueCard({ league }: { league: League }) {
   const { t } = useI18n();
   return (
     <li className="flex flex-col overflow-hidden rounded-none border border-slate-200 bg-white">

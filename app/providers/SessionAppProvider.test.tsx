@@ -7,10 +7,13 @@ const useSessionMock = vi.hoisted(() => vi.fn());
 const signOutMock = vi.hoisted(() => vi.fn());
 
 const pushMock = vi.hoisted(() => vi.fn());
+// Non-root by default: the shell behaviors below only apply off the home route
+// (on "/" the provider passes children through, since the page owns its shell).
+const nav = { pathname: "/teams" };
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => "/",
+  usePathname: () => nav.pathname,
 }));
 
 vi.mock("next-auth/react", () => ({
@@ -60,9 +63,24 @@ describe("SessionAppProvider", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
     await waitFor(() => expect(signOutMock).toHaveBeenCalledWith({ redirect: false }));
-    // Event-handler router.push (lint-approved) to /login, and only after the
-    // sign-out POST completes (session cookie cleared).
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/login"));
+    // Event-handler router.push (lint-approved) to the landing "/", and only
+    // after the sign-out POST completes (session cookie cleared).
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+  });
+
+  it("passes children through without the app shell on the home route", () => {
+    nav.pathname = "/";
+    useSessionMock.mockReturnValue({ status: "unauthenticated" });
+    fetchMock.mockClear();
+
+    render(<SessionAppProvider>landing content</SessionAppProvider>);
+
+    // No shell chrome, no session gate: the page renders raw for the landing.
+    expect(screen.getByText("landing content")).toBeTruthy();
+    expect(screen.queryByLabelText("Sidebar")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    nav.pathname = "/teams";
   });
 });
 

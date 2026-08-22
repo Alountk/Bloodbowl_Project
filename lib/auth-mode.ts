@@ -23,7 +23,8 @@ export function isAuthEnabled(env: Record<string, string | undefined> = process.
  *
  * @returns "allow" to continue, "redirect-login" when an unauthenticated user
  *   hits a protected route, or "redirect-home" when an authenticated user hits
- *   an auth-only page.
+ *   an auth-only page. The root path "/" is public: anonymous users reach the
+ *   Landing there instead of being bounced to /login.
  */
 export function resolveAuthGate(params: {
   auth: unknown;
@@ -34,8 +35,11 @@ export function resolveAuthGate(params: {
 
   const isAuthenticated = params.auth != null;
   const isAuthPage = params.pathname === "/login" || params.pathname === "/signup";
+  // The public landing: anonymous users may reach "/" (the page itself renders
+  // the Landing for them). Every other protected route keeps redirecting.
+  const isPublicLanding = params.pathname === "/";
 
   if (isAuthenticated && isAuthPage) return "redirect-home";
-  if (!isAuthenticated && !isAuthPage) return "redirect-login";
+  if (!isAuthenticated && !isAuthPage && !isPublicLanding) return "redirect-login";
   return "allow";
 }

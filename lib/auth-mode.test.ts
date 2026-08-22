@@ -54,4 +54,20 @@ describe("resolveAuthGate", () => {
     expect(resolveAuthGate({ auth: null, pathname: "/login", authEnabled: true })).toBe("allow");
     expect(resolveAuthGate({ auth: null, pathname: "/signup", authEnabled: true })).toBe("allow");
   });
+
+  it("allows an unauthenticated user on the public landing (root)", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/", authEnabled: true })).toBe("allow");
+  });
+
+  it("keeps redirecting an unauthenticated user on protected routes other than the landing", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/teams", authEnabled: true })).toBe(
+      "redirect-login",
+    );
+    expect(resolveAuthGate({ auth: null, pathname: "/leagues", authEnabled: true })).toBe(
+      "redirect-login",
+    );
+    expect(resolveAuthGate({ auth: null, pathname: "/teams/create", authEnabled: true })).toBe(
+      "redirect-login",
+    );
+  });
 });
