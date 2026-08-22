@@ -2,13 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import { AppProvider } from "@/app/providers/AppProvider";
-import { LocalStorageTeamStore } from "@/features/teams/store/LocalStorageTeamStore";
+import { getLocalTeamStore } from "@/features/teams/store/localTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
 import { AppNav } from "@/components/AppNav";
 
 interface AppShellProps {
   children: ReactNode;
-  /** Store passed from an authenticated parent (e.g. ApiTeamStore), else LocalStorage. */
+  /** Store passed from an authenticated parent (e.g. ApiTeamStore), else the shared in-memory local store. */
   store?: TeamStore;
   /** True when the shell is backed by an authenticated session; shows the user menu. */
   authenticated?: boolean;
@@ -31,8 +31,9 @@ export function AppShell({
   onLogout,
   reloadVersion,
 }: AppShellProps) {
-  // Stable store instance across re-renders; created only on the client.
-  const [localStore] = useState(() => new LocalStorageTeamStore());
+  // Stable store instance across re-renders; local/anonymous mode shares one
+  // in-memory store so teams survive client navigation within the tab session.
+  const [localStore] = useState(() => getLocalTeamStore());
   const store = providedStore ?? localStore;
 
   return (
