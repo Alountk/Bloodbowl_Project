@@ -468,11 +468,17 @@ export function LiveEventCards({
                         <Icon name={iconName} className="h-[15px] w-[15px]" />
                       </span>
                       {label}
-                      {/* RAU-47: the SPP stars show on BOTH casualty cards — the
-                          injury card ("Baja ★2") so the points are visible even
-                          when the causer can't be resolved, and the action card
-                          on the causer's side below (the causer earns the XP). */}
-                      {spp > 0 ? (
+                      {/* RAU-47 BUSINESS RULE: the SPP stars show ONLY on the
+                          card of the player who DID the action. A casualty's
+                          injury card is the VICTIM's card — it must never show
+                          the ★2 the CAUSER earns (the causer's derived action
+                          card below carries the star). TD ★3 / completion ★1 /
+                          MVP ★4 keep their stars here (the event's player IS
+                          the actor). NOTE: the BB2025 "ambos derribados"
+                          (both-down) block result is NOT implemented — a block
+                          casualty records the ★2 on the causer exactly like a
+                          blitz. */}
+                      {spp > 0 && event.kind !== "casualty" ? (
                         <span className={c.stars}>(★{spp})</span>
                       ) : null}
                     </span>
