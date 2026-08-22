@@ -17,6 +17,7 @@ export default defineConfig({
       testIgnore: [
         "**/mobile.spec.ts",
         "**/auth.spec.ts",
+        "**/landing-dashboard.spec.ts",
         "**/migration.spec.ts",
         "**/isolation.spec.ts",
         "**/leagues.spec.ts",

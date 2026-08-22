@@ -120,8 +120,10 @@ test("deleting an assigned team surfaces the 409 archive guard instead of removi
   await expect(page.getByRole("dialog")).toBeVisible();
 
   // Confirm the delete → the API returns 409 and the guard message appears.
+  // Scoped to the dialog: the dashboard's "Mis Ligas" cards also carry the
+  // league name, which would otherwise be an ambiguous multi-match locator.
   await page.getByRole("button", { name: "Eliminar", exact: true }).click();
-  await expect(page.getByText(leagueName)).toBeVisible();
+  await expect(page.getByRole("dialog").getByText(leagueName)).toBeVisible();
   await expect(
     page.getByText(
       `No se puede borrar este equipo — pertenece a la liga ${leagueName}. Para poder borrarlo, primero expulsalo de la liga.`,
