@@ -230,30 +230,68 @@ describe("beginMatch — ready→live ONLY via the first turn (LM-3/LM-11)", () 
   });
 });
 
-describe("applyEndTurn — alternation + turn cap + half flip (LM-4)", () => {
-  it("flips the active side and increments the turn", () => {
+describe("applyEndTurn — round-shared turn numbers (home T1 → away T1 → home T2)", () => {
+  it("flips to the other side WITHOUT advancing the round (home T1 → away T1)", () => {
     const next = applyEndTurn(state(), { side: "home" }, 1100);
     expect(next.activeSide).toBe("away");
+    expect(next.turnNumber).toBe(1);
+    expect(next.half).toBe(1);
+    expect(next.status).toBe("live");
+  });
+
+  it("advances the round ONLY when the turn returns to the round starter (away T1 → home T2)", () => {
+    const atAwayTurn1 = state({ activeSide: "away", turnNumber: 1 });
+    const next = applyEndTurn(atAwayTurn1, { side: "away" }, 1100);
+    expect(next.activeSide).toBe("home");
     expect(next.turnNumber).toBe(2);
+    expect(next.half).toBe(1);
   });
 
   it("rejects a double action (out-of-turn end)", () => {
     expect(() => applyEndTurn(state(), { side: "away" }, 1100)).toThrow("out");
   });
 
-  it("flips to half 2 and away starts when half-1 turn 8 completes", () => {
-    const atHalf1Turn8 = state({ activeSide: "home", half: 1, turnNumber: 8 });
-    const next = applyEndTurn(atHalf1Turn8, { side: "home" }, 1100);
+  it("keeps the round number when the half-1 FOLLOWER completes a turn (home T8 → away T8)", () => {
+    const atHomeTurn8 = state({ activeSide: "home", half: 1, turnNumber: 8 });
+    const next = applyEndTurn(atHomeTurn8, { side: "home" }, 1100);
+    expect(next.half).toBe(1);
+    expect(next.turnNumber).toBe(8);
+    expect(next.activeSide).toBe("away");
+    expect(next.status).toBe("live");
+  });
+
+  it("flips to half 2 when the round STARTER completes their half-1 turn 8 (away T8 → half 2, away starts turn 1)", () => {
+    const atAwayTurn8 = state({ activeSide: "away", half: 1, turnNumber: 8 });
+    const next = applyEndTurn(atAwayTurn8, { side: "away" }, 1100);
     expect(next.half).toBe(2);
     expect(next.turnNumber).toBe(1);
     expect(next.activeSide).toBe("away");
+    expect(next.status).toBe("live");
   });
 
-  it("auto-finishes the match when half-2 turn 8 completes", () => {
-    const atHalf2Turn8 = state({ activeSide: "away", half: 2, turnNumber: 8 });
-    const next = applyEndTurn(atHalf2Turn8, { side: "away" }, 1100);
+  it("half 2 starts with the away side and keeps the round while the follower plays (away T1 → home T1)", () => {
+    const atAwayTurn1Half2 = state({ activeSide: "away", half: 2, turnNumber: 1 });
+    const next = applyEndTurn(atAwayTurn1Half2, { side: "away" }, 1100);
+    expect(next.activeSide).toBe("home");
+    expect(next.turnNumber).toBe(1);
+    expect(next.half).toBe(2);
+    expect(next.status).toBe("live");
+  });
+
+  it("auto-finishes the match when the half-2 round STARTER completes turn 8 (home T8 ends)", () => {
+    const atHomeTurn8Half2 = state({ activeSide: "home", half: 2, turnNumber: 8 });
+    const next = applyEndTurn(atHomeTurn8Half2, { side: "home" }, 1100);
     expect(next.status).toBe("finished");
     expect(next.finishedAt).not.toBeNull();
+    expect(next.turnNumber).toBe(8);
+  });
+
+  it("does NOT finish while the half-2 FOLLOWER plays turn 8 (away T8 → home T8)", () => {
+    const atAwayTurn8Half2 = state({ activeSide: "away", half: 2, turnNumber: 8 });
+    const next = applyEndTurn(atAwayTurn8Half2, { side: "away" }, 1100);
+    expect(next.status).toBe("live");
+    expect(next.activeSide).toBe("home");
+    expect(next.turnNumber).toBe(8);
   });
 });
 
