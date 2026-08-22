@@ -9,11 +9,14 @@ import { AuthModal } from "@/features/auth/AuthModal";
 
 /**
  * Nav links shared by the desktop bar and the mobile drawer (home chrome).
- * Only WORKING links ship: Teams and Matches are hidden until dedicated pages
- * exist (backlog RAU-60), so the single "Leagues" entry (plus the developer
- * Rulesets link appended below) is what the user sees.
+ * Teams ships now that its dedicated `/teams` page exists; Matches stays hidden
+ * until /matches lands (backlog RAU-60). The developer Rulesets link is appended
+ * below for developer sessions.
  */
-const NAV_LINKS = [{ href: "/leagues", label: "Leagues" }] as const;
+const NAV_LINKS = [
+  { href: "/teams", label: "Teams" },
+  { href: "/leagues", label: "Leagues" },
+] as const;
 
 interface AppNavProps {
   /** True when a session is present: shows the avatar + user menu instead of Sign in. */

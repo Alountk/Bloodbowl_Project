@@ -62,6 +62,27 @@ describe("t (dictionaries)", () => {
     expect(enKeys).toEqual(esKeys);
     expect(esKeys.length).toBeGreaterThan(20);
   });
+
+  it("resolves the dedicated teams page keys in es and en (TP-6)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["teams.unassigned", "Sin liga", "Unassigned"],
+      ["teams.inLeague", "En liga", "In a league"],
+      ["teams.treasury", "Tesorería", "Treasury"],
+      ["teams.readyToImproveOne", "{count} listo para mejorar", "{count} player ready to improve"],
+      ["teams.readyToImproveMany", "{count} listos para mejorar", "{count} players ready to improve"],
+    ];
+    for (const [key, esValue, enValue] of cases) {
+      expect(t("es", key), `es "${key}"`).toBe(esValue);
+      expect(t("en", key), `en "${key}"`).toBe(enValue);
+    }
+  });
+
+  it("formats the ready-to-improve hint count through the plural pair (es/en)", () => {
+    expect(t("es", "teams.readyToImproveOne", { count: 1 })).toBe("1 listo para mejorar");
+    expect(t("es", "teams.readyToImproveMany", { count: 3 })).toBe("3 listos para mejorar");
+    expect(t("en", "teams.readyToImproveOne", { count: 1 })).toBe("1 player ready to improve");
+    expect(t("en", "teams.readyToImproveMany", { count: 3 })).toBe("3 players ready to improve");
+  });
 });
 
 describe("useI18n without a provider", () => {

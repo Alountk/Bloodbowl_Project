@@ -9,6 +9,7 @@ import { TeamSearch } from "./TeamSearch";
 import { TeamCard } from "./TeamCard";
 import { useLeagueNameMap } from "./useLeagueNameMap";
 import { ArchiveGuardError } from "./store/ApiTeamStore";
+import { useI18n } from "@/lib/i18n";
 import type { Team } from "./types";
 
 /**
@@ -26,6 +27,7 @@ function guardMessageFor(leagueName: string): string {
  * trigger a per-team detail call. The delete modal reuses the 409 expel guard.
  */
 export function TeamsPage() {
+  const { t } = useI18n();
   const { teams, isHydrated, searchQuery, removeTeam } = useApp();
   const { leagueNameMap } = useLeagueNameMap();
   const [pendingTeam, setPendingTeam] = useState<Team | null>(null);
@@ -103,23 +105,23 @@ export function TeamsPage() {
       {!isHydrated ? null : visible.length === 0 ? (
         teams.length === 0 ? (
           <div className="border border-slate-200 bg-white p-8 text-center">
-            <p className="text-sm text-slate-600">No hay equipos todavía</p>
+            <p className="text-sm text-slate-600">{t("teams.empty")}</p>
             <Link
               href="/teams/create"
               className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
             >
-              Crear equipo
+              {t("teams.createNew")}
             </Link>
           </div>
         ) : (
           <div className="border border-slate-200 bg-white p-8 text-center">
-            <p className="text-sm text-slate-600">Ningún equipo coincide con tu búsqueda</p>
+            <p className="text-sm text-slate-600">{t("teams.noMatch")}</p>
           </div>
         )
       ) : (
         <>
-          {section("Sin liga", unassigned, "unassigned")}
-          {section("En liga", assigned, "assigned")}
+          {section(t("teams.unassigned"), unassigned, "unassigned")}
+          {section(t("teams.inLeague"), assigned, "assigned")}
         </>
       )}
 
