@@ -32,6 +32,7 @@ export default defineConfig({
     "**/profile.spec.ts",
     "**/locale.spec.ts",
     "**/teams-page.spec.ts",
+    "**/matches-page.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

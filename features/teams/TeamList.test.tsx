@@ -409,7 +409,7 @@ describe("TeamList — archive-guard (409) surface", () => {
 });
 
 describe("AppNav unified navigation", () => {
-  it("renders Teams and Leagues (Matches hidden until its dedicated page)", () => {
+  it("renders Teams, Leagues and Matches in the unified nav", () => {
     render(
       <AppProvider store={new InMemoryTeamStore()}>
         <AppNav authenticated={false} />
@@ -419,8 +419,8 @@ describe("AppNav unified navigation", () => {
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     expect(within(nav).getByRole("link", { name: "Leagues" })).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Teams" })).toBeTruthy();
-    expect(within(nav).getAllByRole("link")).toHaveLength(2);
-    expect(within(nav).queryByRole("link", { name: "Matches" })).toBeNull();
+    expect(within(nav).getByRole("link", { name: "Matches" })).toBeTruthy();
+    expect(within(nav).getAllByRole("link")).toHaveLength(3);
   });
 });
 

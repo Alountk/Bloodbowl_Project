@@ -35,6 +35,7 @@ export default defineConfig({
         "**/profile.spec.ts",
         "**/locale.spec.ts",
         "**/teams-page.spec.ts",
+        "**/matches-page.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
