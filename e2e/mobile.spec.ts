@@ -1,31 +1,32 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Mobile viewport E2E (375x812).
  * Guards: no horizontal page overflow on any route, drawer behavior,
  * stacked mobile rows, and the native select usability.
+ *
+ * Local/anonymous mode teams live in an in-memory store (no persistence), so
+ * teams are created through the UI and survive ONLY client-side navigation
+ * within the same tab session — never a reload.
  */
+
+/**
+ * Creates a team via the wizard using client-side navigation so the shared
+ * in-memory store is preserved (a full page load would reset it).
+ */
+async function createTeamViaUi(page: Page, name: string) {
+  await page.getByRole("link", { name: "Create team" }).first().click();
+  await page.getByLabel("Team name", { exact: true }).fill(name);
+  await page.getByLabel("Race").selectOption("human");
+  await page.getByRole("button", { name: "Next →" }).click();
+  const addLineman = page.getByRole("button", { name: "Add Human Lineman" }).first();
+  for (let i = 0; i < 11; i++) await addLineman.click();
+  await page.getByRole("button", { name: /create team/i }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByText(name)).toBeVisible();
+}
+
 test.describe("Mobile", () => {
-  const TEAM = {
-    id: "mobile-e2e-team",
-    name: "Mobile Reavers",
-    raceId: "human",
-    leagueId: null,
-    roster: [
-      { id: "m1", name: "Player 1", positionalKey: "lineman" },
-      { id: "m2", name: "Player 2", positionalKey: "blitzer" },
-      { id: "m3", name: "Player 3", positionalKey: "thrower" },
-    ],
-    coaching: { rerolls: 2, dedicatedFans: 2, assistantCoaches: 1, cheerleaders: 2, apothecary: true },
-  };
-
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/");
-    await page.evaluate((team) => {
-      localStorage.setItem("bb_teams_v1", JSON.stringify([team]));
-    }, TEAM);
-  });
-
   async function expectNoHorizontalOverflow(page: import("@playwright/test").Page, label: string) {
     const overflow = await page.evaluate(() => {
       const doc = document.scrollingElement!;
@@ -34,20 +35,23 @@ test.describe("Mobile", () => {
     expect(overflow, `${label}: no horizontal page overflow (extra=${overflow}px)`).toBeLessThanOrEqual(1);
   }
 
-  test("home has no horizontal overflow", async ({ page }) => {
+  test("home has no horizontal overflow with a team list", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByText("Mobile Reavers")).toBeVisible();
+    await createTeamViaUi(page, "Mobile Reavers");
     await expectNoHorizontalOverflow(page, "home");
   });
 
   test("team detail has no horizontal overflow (stacked rows + coaching)", async ({ page }) => {
-    await page.goto("/teams/mobile-e2e-team");
+    await page.goto("/");
+    await createTeamViaUi(page, "Mobile Reavers");
+    // Client navigation to the detail page keeps the in-memory store.
+    await page.getByRole("link", { name: /Mobile Reavers/ }).click();
     await page.waitForLoadState("networkidle");
     // Stacked roster rows (not a table) are visible
-    await expect(page.getByText("Player 1")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Roster" })).toBeVisible();
     await expectNoHorizontalOverflow(page, "detail");
-    // Coaching breakdown visible with apothecary SÍ
+    // Coaching breakdown visible with rerolls
     await expect(page.getByText("Rerolls")).toBeVisible();
   });
 

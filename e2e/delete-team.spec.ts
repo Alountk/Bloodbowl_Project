@@ -1,46 +1,39 @@
 import { test, expect, type Page } from "@playwright/test";
 
 /**
- * Delete-flow E2E (AUTH_MODE=local so teams live in the LocalStorage store).
+ * Delete-flow E2E (AUTH_MODE=local so teams live in the shared in-memory store).
  *
  * Verifies the home delete journey: a team card's Delete control opens the
  * confirmation modal with the irreversible Spanish copy; Cancelar keeps the
- * team; Eliminar archives/removes it so the list no longer shows it.
+ * team; Eliminar removes it so the list no longer shows it.
+ *
+ * Local mode persists nothing (localStorage seeding is gone), so teams are
+ * created through the UI and survive only client-side navigation within the
+ * same tab session — never a reload.
  */
 
-const TEAM = {
-  id: "e2e-delete-team",
-  name: "Doomed Reavers",
-  raceId: "human",
-  leagueId: null,
-  roster: [
-    { id: "d1", name: "Player 1", positionalKey: "lineman" },
-    { id: "d2", name: "Player 2", positionalKey: "lineman" },
-    { id: "d3", name: "Player 3", positionalKey: "blitzer" },
-  ],
-  coaching: {
-    rerolls: 2,
-    dedicatedFans: 1,
-    assistantCoaches: 0,
-    cheerleaders: 0,
-    apothecary: false,
-  },
-};
-
-async function seedAndGoHome(page: Page) {
-  await page.goto("/");
-  await page.evaluate((team) => {
-    localStorage.setItem("bb_teams_v1", JSON.stringify([team]));
-  }, TEAM);
-  await page.reload();
+/**
+ * Creates a team via the wizard from the home dashboard using client-side
+ * navigation so the shared in-memory store is preserved.
+ */
+async function createTeamViaUi(page: Page, name: string) {
+  await page.getByRole("link", { name: "Create team" }).first().click();
+  await page.getByLabel("Team name", { exact: true }).fill(name);
+  await page.getByLabel("Race").selectOption("human");
+  await page.getByRole("button", { name: "Next →" }).click();
+  const addLineman = page.getByRole("button", { name: "Add Human Lineman" }).first();
+  for (let i = 0; i < 11; i++) await addLineman.click();
+  await page.getByRole("button", { name: /create team/i }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByText(name)).toBeVisible();
 }
 
 test.describe("Delete Team — E2E", () => {
   test("home card delete opens the modal with Spanish copy and Cancelar keeps the team", async ({
     page,
   }) => {
-    await seedAndGoHome(page);
-    await expect(page.getByText("Doomed Reavers")).toBeVisible();
+    await page.goto("/");
+    await createTeamViaUi(page, "Doomed Reavers");
 
     // The card exposes a Delete control with the team name in its accessible name.
     await page.getByRole("button", { name: "Delete Doomed Reavers" }).click();
@@ -58,31 +51,15 @@ test.describe("Delete Team — E2E", () => {
   });
 
   test("Eliminar removes the team from the list", async ({ page }) => {
-    await seedAndGoHome(page);
-    await expect(page.getByText("Doomed Reavers")).toBeVisible();
-
-    await page.getByRole("button", { name: "Delete Doomed Reavers" }).click();
-
+    await page.goto("/");
+    await createTeamViaUi(page, "Doomed Reavers");
     // A second team makes the removal observable in the list grid.
-    await page.evaluate((team) => {
-      const raw = localStorage.getItem("bb_teams_v1") ?? "[]";
-      const teams = JSON.parse(raw) as Array<Record<string, unknown>>;
-      teams.push({
-        ...team,
-        id: "e2e-survivor",
-        name: "Survivor Orcs",
-        raceId: "orc",
-      });
-      localStorage.setItem("bb_teams_v1", JSON.stringify(teams));
-    }, TEAM);
-    await page.reload();
-    await expect(page.getByText("Doomed Reavers")).toBeVisible();
-    await expect(page.getByText("Survivor Orcs")).toBeVisible();
+    await createTeamViaUi(page, "Survivor Orcs");
 
     await page.getByRole("button", { name: "Delete Doomed Reavers" }).click();
     await page.getByRole("button", { name: "Eliminar" }).click();
 
-    // The archived team disappears; the other team remains.
+    // The removed team disappears; the other team remains.
     await expect(page.getByText("Doomed Reavers")).not.toBeVisible();
     await expect(page.getByText("Survivor Orcs")).toBeVisible();
   });
