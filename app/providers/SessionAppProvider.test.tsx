@@ -47,7 +47,7 @@ describe("SessionAppProvider", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/teams"));
   });
 
-  it("falls back to local storage when unauthenticated (no API call)", () => {
+  it("falls back to the in-memory local store when unauthenticated (no API call)", () => {
     fetchMock.mockClear();
     renderGate("unauthenticated");
     expect(screen.getByText("content")).toBeTruthy();
