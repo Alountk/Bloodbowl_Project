@@ -4,11 +4,15 @@ import { test, expect, type Page } from "@playwright/test";
  * RAU-58 per-account locale E2E (AUTH_MODE=auth + real Postgres). Pins:
  *
  *  1. signed-in account wins over the browser: a user whose account locale is
- *     es renders the app in Spanish even when the `bb-locale` cookie says en
- *     (the SSR layout prefers the account locale read from the DB);
+ *     es (set via the profile PATCH) renders the app in Spanish even when the
+ *     `bb-locale` cookie says en (the SSR layout prefers the account locale
+ *     read from the DB);
  *  2. the /profile Idioma selector persists the choice to the account (PATCH
  *     /api/me), reflects it immediately, and survives reload + re-login;
  *  3. anonymous visitors keep the cookie-driven behavior (no account to win).
+ *
+ * The account inherits the signup language (the signup route captures the
+ * `bb-locale` cookie), so an English-context signup starts with an en account.
  *
  * Auth-only: requires the real Postgres + AUTH_MODE=auth, so it is excluded
  * from the default local `test:e2e` config and included in
@@ -65,28 +69,24 @@ async function setLocaleCookie(page: Page, value: string) {
 test.describe("signed-in: the account locale wins over the cookie", () => {
   test.use({ locale: "en-US" });
 
-  test("account es + browser cookie en → the app renders in es (SSR precedence)", async ({
+  test("account es (set via PATCH) + browser cookie en → the app renders in es", async ({
     page,
   }) => {
     // This browser prefers English: navigator language AND the `bb-locale`
-    // cookie say "en". The account's locale (es, the signup default) must still
-    // win whenever the user is signed in — the language follows the account.
+    // cookie say "en", so the new account inherits en at signup.
     await setLocaleCookie(page, "en");
     await signupEn(page, uniqueEmail("loc-acct-beats-cookie"));
 
+    // The profile selector persists the account to es via PATCH /api/me.
     await page.goto("/profile");
-    await expect(page.getByRole("heading", { name: "Mi Perfil" })).toBeVisible();
-    await expect(page.locator("html")).toHaveAttribute("lang", "es");
-
+    await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
     const group = page.getByTestId("profile-locale");
-    await expect(group.getByRole("button", { name: "ES" })).toHaveAttribute(
+    await expect(group.getByRole("button", { name: "EN" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await expect(group.getByRole("button", { name: "EN" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    await group.getByRole("button", { name: "ES" }).click();
+    await expect(page.getByRole("heading", { name: "Mi Perfil" })).toBeVisible();
 
     // Force the cookie back to "en": the SSR still reads the account (DB)
     // locale on every request, so the cookie never wins while signed in.
@@ -94,6 +94,10 @@ test.describe("signed-in: the account locale wins over the cookie", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "Mi Perfil" })).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
+    await expect(page.getByTestId("profile-locale").getByRole("button", { name: "ES" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });
 
@@ -115,14 +119,14 @@ test.describe("signed-in: the selector persists to the account", () => {
       "true",
     );
 
-    // Switch to EN: the PATCH persists to the account and the page flips now.
+    // Switch to EN: the PATCH persists to the account and the page flips now
+    // (the <html lang> attribute is SSR-only, so it changes on the next reload).
     await group.getByRole("button", { name: "EN" }).click();
     await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
     await expect(group.getByRole("button", { name: "EN" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await expect(page.locator("html")).toHaveAttribute("lang", "en");
 
     // Survives a full reload (SSR re-reads the account locale from the DB).
     await page.reload();
