@@ -49,7 +49,9 @@ export function AppNav({
   const links = isDeveloper
     ? [...NAV_LINKS, { href: "/dev/rulesets", label: t("nav.devRulesets") }]
     : NAV_LINKS;
-  const displayName = session?.user?.name ?? session?.user?.email ?? "?";
+  // `||` (not `??`): an EMPTY name must fall back to the email so the pill
+  // never renders blank/"?" for accounts registered without a name.
+  const displayName = session?.user?.name?.trim() || session?.user?.email || "?";
 
   const openAuth = () => {
     setAuthOpen(true);

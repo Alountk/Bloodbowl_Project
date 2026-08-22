@@ -68,6 +68,12 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
     event.preventDefault();
     setError(null);
     setForgotNote(false);
+    // Signup requires a coach name (the nav pill shows it; without it the user
+    // menu falls back to the email). Login never needs it.
+    if (mode === "signup" && !name.trim()) {
+      setError(t("auth.errors.nameRequired"));
+      return;
+    }
     setIsSubmitting(true);
     try {
       const outcome = await submitAuth({ mode, email, password, name });

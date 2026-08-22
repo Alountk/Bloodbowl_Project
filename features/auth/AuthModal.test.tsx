@@ -127,6 +127,7 @@ describe("AuthModal", () => {
     );
     renderModal({ initialMode: "signup" });
 
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Coach" } });
     fireEvent.change(screen.getByLabelText("Correo electrónico"), {
       target: { value: "taken@example.com" },
     });
