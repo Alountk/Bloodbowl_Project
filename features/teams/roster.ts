@@ -1,5 +1,6 @@
 import type { CoachingStaff, PlayerEntry, Race, Team } from "./types";
 import { DEFAULT_LOCALE, t as translate, type Locale } from "@/lib/i18n/dictionaries";
+import { isReadyToImprove } from "@/lib/rules/improvements";
 
 export const STARTING_TREASURY = 1_000_000;
 export const MIN_PLAYERS = 11;
@@ -104,6 +105,25 @@ export function computeSpendableBalance(
 
 export function countPlayersFromEntries(players: PlayerEntry[]): number {
   return players.length;
+}
+
+/** The subset of progression a ready-to-improve check needs. */
+interface ReadyProgressionSubset {
+  pe: number;
+  alive: boolean;
+  improvements: number;
+}
+
+/**
+ * Counts the roster players ready for their next improvement (alive with PE at
+ * or above their next cheapest cost). Drives the card hint "X listos para
+ * mejorar" — team-level, count only, never names individual players.
+ */
+export function countReadyToImprove(entries: readonly ReadyProgressionSubset[]): number {
+  return entries.reduce(
+    (total, entry) => total + (isReadyToImprove(entry) ? 1 : 0),
+    0,
+  );
 }
 
 export function summarizeRosterFromEntries(team: Team, races: Race[], locale: Locale = DEFAULT_LOCALE): string {
