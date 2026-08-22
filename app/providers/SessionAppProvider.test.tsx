@@ -61,6 +61,8 @@ describe("SessionAppProvider", () => {
     render(<SessionAppProvider>content</SessionAppProvider>);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
+    // Logout now lives in the user menu: open the avatar menu, then log out.
+    fireEvent.click(screen.getByRole("button", { name: "Menú de usuario" }));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
     await waitFor(() => expect(signOutMock).toHaveBeenCalledWith({ redirect: false }));
     // Event-handler router.push (lint-approved) to the landing "/", and only
@@ -77,7 +79,8 @@ describe("SessionAppProvider", () => {
 
     // No shell chrome, no session gate: the page renders raw for the landing.
     expect(screen.getByText("landing content")).toBeTruthy();
-    expect(screen.queryByLabelText("Sidebar")).toBeNull();
+    expect(screen.queryByRole("banner")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Main navigation" })).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
     nav.pathname = "/teams";
