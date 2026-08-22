@@ -25,15 +25,15 @@ describe("resolveServerLocale (SSR precedence)", () => {
     expect(resolveServerLocale({ cookieLocale: "en" })).toBe("en");
   });
 
-  it("falls back to the Spanish default when nothing is set", () => {
-    expect(resolveServerLocale({})).toBe("es");
-    expect(resolveServerLocale({ cookieLocale: null, sessionLocale: null, dbLocale: null })).toBe("es");
+  it("falls back to the browser language on the client when nothing is set", () => {
+    expect(resolveServerLocale({})).toBeUndefined();
+    expect(resolveServerLocale({ cookieLocale: null, sessionLocale: null, dbLocale: null })).toBeUndefined();
   });
 
   it("ignores invalid locale values (drift/typos) and keeps the precedence", () => {
     expect(resolveServerLocale({ cookieLocale: "fr", sessionLocale: "de", dbLocale: "es" })).toBe("es");
-    expect(resolveServerLocale({ cookieLocale: "fr" })).toBe("es");
-    expect(resolveServerLocale({ cookieLocale: "ES" })).toBe("es");
-    expect(resolveServerLocale({ dbLocale: "EN" })).toBe("es");
+    expect(resolveServerLocale({ cookieLocale: "fr" })).toBeUndefined();
+    expect(resolveServerLocale({ cookieLocale: "ES" })).toBeUndefined();
+    expect(resolveServerLocale({ dbLocale: "EN" })).toBeUndefined();
   });
 });

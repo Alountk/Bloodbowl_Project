@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE, type Locale } from "./dictionaries";
+import type { Locale } from "./dictionaries";
 
 /** Narrower type guard: any value is a valid UI locale only when es|en. */
 export function isLocale(value: unknown): value is Locale {
@@ -21,14 +21,15 @@ export interface ServerLocaleSources {
  *      on the very next request, no re-login needed);
  *   2. the JWT session snapshot (used when the DB read is unavailable);
  *   3. the `bb-locale` cookie (anonymous visitors / per-browser preference);
- *   4. the Spanish default.
+ *   4. `undefined` when nothing is set — the client then falls back to the
+ *      browser language, preserving the pre-RAU-58 anonymous behavior.
  *
  * The account always wins over the browser cookie whenever the user is signed
  * in, so the language follows the user across devices.
  */
-export function resolveServerLocale(sources: ServerLocaleSources = {}): Locale {
+export function resolveServerLocale(sources: ServerLocaleSources = {}): Locale | undefined {
   if (isLocale(sources.dbLocale)) return sources.dbLocale;
   if (isLocale(sources.sessionLocale)) return sources.sessionLocale;
   if (isLocale(sources.cookieLocale)) return sources.cookieLocale;
-  return DEFAULT_LOCALE;
+  return undefined;
 }
