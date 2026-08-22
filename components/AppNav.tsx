@@ -91,7 +91,9 @@ export function AppNav({
           </div>
 
           {authenticated ? (
-            <UserMenu displayName={displayName} onLogout={onLogout} />
+            <div className="hidden md:block">
+              <UserMenu displayName={displayName} onLogout={onLogout} />
+            </div>
           ) : showSignIn ? (
             <button
               type="button"

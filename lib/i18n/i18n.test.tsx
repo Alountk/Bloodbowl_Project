@@ -108,7 +108,7 @@ describe("I18nProvider", () => {
     expect(screen.getByTestId("nav-teams").textContent).toBe("Equipos");
   });
 
-  it("switches locale and persists the choice to localStorage", () => {
+  it("switches locale and persists the choice to the cookie", () => {
     window.localStorage.setItem(STORAGE_KEY, "es");
     render(
       <I18nProvider>
@@ -121,7 +121,9 @@ describe("I18nProvider", () => {
 
     expect(screen.getByTestId("locale").textContent).toBe("en");
     expect(screen.getByTestId("nav-teams").textContent).toBe("Teams");
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("en");
+    // The cookie is the persisted source of truth now (localStorage no longer written).
+    expect(document.cookie).toContain("bb-locale=en");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe("es");
   });
 });
 
