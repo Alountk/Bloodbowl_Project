@@ -478,6 +478,18 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(
       awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }),
     ).toBeVisible();
+    // RECURRING REGRESSION (RAU-47): the ★2 the CAUSER earns must show on the
+    // causer's action card AND the victim's injury card — in BOTH coaches'
+    // feeds (the timeline renders the full event set for every coach). The
+    // e2e roll16 is 9 → apaleado → a lasting band (★2), never hidden.
+    for (const page of [awayCoach, homeCoach]) {
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: "hace una herida a" }).filter({ hasText: "(★2)" }),
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }).filter({ hasText: "(★2)" }),
+      ).toBeVisible();
+    }
 
     // [B] ACTIVE (away) coach records a Pase completo (completion ★1) through the
     // FAB mini-form → a completion Design-A row (★1) streams into both feeds.
