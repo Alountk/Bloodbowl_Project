@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { DEFAULT_LOCALE, dictionaries, t } from "./dictionaries";
 import { I18nProvider, useI18n } from "./index";
-import { LocaleSwitcher } from "./LocaleSwitcher";
 
 const COOKIE_KEY = "bb-locale";
 
@@ -141,27 +140,5 @@ describe("I18nProvider", () => {
     // The cookie is the only persisted source of truth now.
     expect(document.cookie).toContain("bb-locale=en");
     expect(window.localStorage.getItem("bb-locale")).toBeNull();
-  });
-});
-
-describe("LocaleSwitcher", () => {
-  it("reflects the provider locale and switches it", () => {
-    // No cookie + a non-English browser language → the default (es) start.
-    stubNavigatorLanguage("fr-FR");
-    render(
-      <I18nProvider>
-        <LocaleSwitcher />
-        <Probe />
-      </I18nProvider>,
-    );
-
-    const group = screen.getByRole("group", { name: "Idioma" });
-    const esButton = group.querySelector('button[aria-pressed="true"]');
-    expect(esButton?.textContent).toBe("ES");
-
-    fireEvent.click(screen.getByRole("button", { name: "EN" }));
-
-    expect(screen.getByTestId("locale").textContent).toBe("en");
-    expect(screen.getByRole("button", { name: "EN" }).getAttribute("aria-pressed")).toBe("true");
   });
 });

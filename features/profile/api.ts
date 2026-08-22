@@ -6,12 +6,16 @@
  * coordinates) in the `avatar` multipart field.
  */
 
+import type { Locale } from "@/lib/i18n/dictionaries";
+
 /** The session user profile as returned by GET/PATCH /api/me. */
 export interface Profile {
   id: string;
   name: string | null;
   email: string;
   avatar: string | null;
+  /** RAU-58: the account-level UI language (es|en). */
+  locale: Locale;
 }
 
 /** Career stats as served by GET /api/me/stats. */
@@ -40,17 +44,21 @@ async function readJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** GET /api/me — returns id, name, email, and the stored adapter avatar value. */
+/** GET /api/me — returns id, name, email, avatar, and the account locale. */
 export async function getMe(): Promise<Profile> {
   return readJson<Profile>(await fetch("/api/me"));
 }
 
 /**
- * PATCH /api/me — updates only `name` (free text) or `avatar` (null to clear,
- * or the current adapter-issued value). Any other field or a `data:`/external
- * avatar returns 400.
+ * PATCH /api/me — updates only `name` (free text), `avatar` (null to clear, or
+ * the current adapter-issued value), or `locale` (`"es"` | `"en"`). Any other
+ * field, an invalid locale, or a `data:`/external avatar returns 400.
  */
-export async function patchMe(patch: { name?: string; avatar?: string | null }): Promise<Profile> {
+export async function patchMe(patch: {
+  name?: string;
+  avatar?: string | null;
+  locale?: Locale;
+}): Promise<Profile> {
   const res = await fetch("/api/me", {
     method: "PATCH",
     headers: { "content-type": "application/json" },

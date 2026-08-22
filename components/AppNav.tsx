@@ -7,12 +7,13 @@ import { useI18n } from "@/lib/i18n";
 import { LocaleSwitcher } from "@/lib/i18n/LocaleSwitcher";
 import { AuthModal } from "@/features/auth/AuthModal";
 
-/** Nav links shared by the desktop bar and the mobile drawer (home chrome). */
-const NAV_LINKS = [
-  { href: "/leagues", label: "Matches" },
-  { href: "/", label: "Teams" },
-  { href: "/leagues", label: "Leagues" },
-] as const;
+/**
+ * Nav links shared by the desktop bar and the mobile drawer (home chrome).
+ * Only WORKING links ship: Teams and Matches are hidden until dedicated pages
+ * exist (backlog RAU-60), so the single "Leagues" entry (plus the developer
+ * Rulesets link appended below) is what the user sees.
+ */
+const NAV_LINKS = [{ href: "/leagues", label: "Leagues" }] as const;
 
 interface AppNavProps {
   /** True when a session is present: shows the avatar + user menu instead of Sign in. */

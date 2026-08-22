@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ProfilePanel } from "./ProfilePanel";
+import { I18nProvider } from "@/lib/i18n";
 
 /**
  * ProfilePanel renders the Spanish profile copy, the current avatar (from
@@ -13,21 +14,24 @@ import { ProfilePanel } from "./ProfilePanel";
 const getMeMock = vi.hoisted(() => vi.fn());
 const getStatsMock = vi.hoisted(() => vi.fn());
 const changePasswordMock = vi.hoisted(() => vi.fn());
+const patchMeMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./api", () => ({
   getMe: (...args: unknown[]) => getMeMock(...args),
   getStats: (...args: unknown[]) => getStatsMock(...args),
   changePassword: (...args: unknown[]) => changePasswordMock(...args),
+  patchMe: (...args: unknown[]) => patchMeMock(...args),
 }));
 
 afterEach(() => {
   getMeMock.mockReset();
   getStatsMock.mockReset();
   changePasswordMock.mockReset();
+  patchMeMock.mockReset();
 });
 
-function profile(overrides: Partial<{ avatar: string | null }> = {}) {
-  return { id: "u1", name: "Coach", email: "c@x.com", avatar: null, ...overrides };
+function profile(overrides: Partial<{ avatar: string | null; locale: "es" | "en" }> = {}) {
+  return { id: "u1", name: "Coach", email: "c@x.com", avatar: null, locale: "es", ...overrides };
 }
 
 function zeroStats() {
@@ -234,5 +238,75 @@ describe("ProfilePanel — change password", () => {
     fillPasswordForm("old-password", "new-password-1", "new-password-1");
 
     hasText(await screen.findByRole("alert"), "No se pudo cambiar la contraseña.");
+  });
+});
+
+describe("ProfilePanel — language selector (RAU-58)", () => {
+  it("renders the ES|EN selector bound to the account locale", async () => {
+    getMeMock.mockResolvedValue(profile({ locale: "es" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+
+    render(<ProfilePanel />);
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Idioma" });
+    expect(group.querySelector('button[aria-pressed="true"]')?.textContent).toBe("ES");
+    expect(
+      screen.getByText("Se aplicará a tu cuenta en todos tus dispositivos."),
+    ).toBeTruthy();
+  });
+
+  it("PATCHes the new locale and reflects the account change in the selector", async () => {
+    getMeMock.mockResolvedValue(profile({ locale: "es" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+    patchMeMock.mockResolvedValue(profile({ locale: "en" }));
+
+    render(<ProfilePanel />);
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Idioma" });
+    fireEvent.click(within(group).getByRole("button", { name: "EN" }));
+
+    await waitFor(() => {
+      expect(patchMeMock).toHaveBeenCalledWith({ locale: "en" });
+    });
+    await waitFor(() => {
+      const updated = screen.getByRole("group", { name: "Idioma" });
+      expect(updated.querySelector('button[aria-pressed="true"]')?.textContent).toBe("EN");
+    });
+  });
+
+  it("flips the whole page language immediately when the PATCH succeeds", async () => {
+    getMeMock.mockResolvedValue(profile({ locale: "es" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+    patchMeMock.mockResolvedValue(profile({ locale: "en" }));
+
+    render(
+      <I18nProvider initialLocale="es">
+        <ProfilePanel />
+      </I18nProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Idioma" });
+    fireEvent.click(within(group).getByRole("button", { name: "EN" }));
+
+    expect(await screen.findByRole("heading", { name: "My Profile" })).toBeTruthy();
+  });
+
+  it("shows a Spanish error when the PATCH fails and keeps the current locale", async () => {
+    getMeMock.mockResolvedValue(profile({ locale: "es" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+    patchMeMock.mockRejectedValue(new Error("network"));
+
+    render(<ProfilePanel />);
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Idioma" });
+    fireEvent.click(within(group).getByRole("button", { name: "EN" }));
+
+    hasText(await screen.findByRole("alert"), "No se pudo guardar el idioma.");
+    const still = screen.getByRole("group", { name: "Idioma" });
+    expect(still.querySelector('button[aria-pressed="true"]')?.textContent).toBe("ES");
   });
 });

@@ -30,6 +30,7 @@ export default defineConfig({
     "**/live-resolution.spec.ts",
     "**/rulesets.spec.ts",
     "**/profile.spec.ts",
+    "**/locale.spec.ts",
   ],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

@@ -12,6 +12,7 @@ const es: Dict = {
   "nav.openMenu": "Abrir menú de navegación",
   "nav.closeMenu": "Cerrar menú",
   "nav.locale": "Idioma",
+  "nav.localeError": "No se pudo guardar el idioma.",
   "nav.userMenu": "Menú de usuario",
   "topbar.searchLabel": "Buscar equipos",
   "topbar.searchPlaceholder": "Buscar equipos…",
@@ -202,6 +203,11 @@ const es: Dict = {
   "profile.save": "Guardar",
   "profile.cropDialogLabel": "Recortar foto",
 
+  // RAU-58 — per-account UI language selector
+  "profile.locale.title": "Idioma",
+  "profile.locale.hint": "Se aplicará a tu cuenta en todos tus dispositivos.",
+  "profile.locale.error": "No se pudo guardar el idioma.",
+
   // RAU-57 — My Profile: career stats + self-service password change
   "profile.stats.title": "Estadísticas de carrera",
   "profile.stats.subtitle": "Tu historial en Blood Bowl.",
@@ -348,6 +354,11 @@ const es: Dict = {
   "rulesets.carousel.next": "Ver más tipos",
 
   "nav.devRulesets": "Tipos de reglas",
+
+  // RAU-59 — dev section 403 panel (server-rendered)
+  "dev.deniedTitle": "Acceso restringido",
+  "dev.deniedBody": "Esta sección es exclusiva para desarrolladores.",
+  "dev.backHome": "Volver al inicio",
 
   "leagues.start.title": "Iniciar liga",
   "leagues.start.closeAria": "Close start league",
@@ -620,6 +631,7 @@ const en: Dict = {
   "nav.openMenu": "Open navigation menu",
   "nav.closeMenu": "Close menu",
   "nav.locale": "Language",
+  "nav.localeError": "Could not save the language.",
   "nav.userMenu": "User menu",
   "topbar.searchLabel": "Search teams",
   "topbar.searchPlaceholder": "Search teams…",
@@ -808,6 +820,11 @@ const en: Dict = {
   "profile.save": "Save",
   "profile.cropDialogLabel": "Crop photo",
 
+  // RAU-58 — per-account UI language selector
+  "profile.locale.title": "Language",
+  "profile.locale.hint": "Applies to your account on all your devices.",
+  "profile.locale.error": "Could not save the language.",
+
   // RAU-57 — My Profile: career stats + self-service password change
   "profile.stats.title": "Career stats",
   "profile.stats.subtitle": "Your Blood Bowl history.",
@@ -952,6 +969,11 @@ const en: Dict = {
   "rulesets.carousel.label": "Rulesets",
   "rulesets.carousel.previous": "Previous rulesets",
   "rulesets.carousel.next": "Next rulesets",
+
+  // RAU-59 — dev section 403 panel (server-rendered)
+  "dev.deniedTitle": "Restricted access",
+  "dev.deniedBody": "This section is exclusive to developers.",
+  "dev.backHome": "Back to home",
 
   "leagues.start.title": "Start league",
   "leagues.start.closeAria": "Close start league",

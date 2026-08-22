@@ -33,6 +33,7 @@ export default defineConfig({
         "**/live-resolution.spec.ts",
         "**/rulesets.spec.ts",
         "**/profile.spec.ts",
+        "**/locale.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
