@@ -58,7 +58,8 @@ describe("UpcomingMatchCard", () => {
   it("renders the no-date placeholder when the fixture is undated", () => {
     renderCard(upcoming({ scheduledAt: null, status: "pending" }));
 
-    expect(screen.getByText("No date set")).toBeTruthy();
+    // The localized `matches.noDate` placeholder (default es: "Sin fecha").
+    expect(screen.getByText("Sin fecha")).toBeTruthy();
     expect(screen.queryByText(/23\/08\/2026/)).toBeNull();
   });
 
