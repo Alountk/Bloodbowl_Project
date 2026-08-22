@@ -73,10 +73,11 @@ export function I18nProvider({
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, locale);
+      // The cookie is the persisted source of truth (SSR reads it in the
+      // layout); localStorage is no longer written (legacy reads still work).
       document.cookie = `${COOKIE_KEY}=${locale}; path=/; max-age=31536000; SameSite=Lax`;
     } catch {
-      // Storage unavailable: the locale still applies for this session.
+      // Cookie access can throw in restricted contexts: ignore it.
     }
   }, [locale]);
 
