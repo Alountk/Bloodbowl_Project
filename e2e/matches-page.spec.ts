@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Matches page auth E2E (run via `pnpm run test:e2e:auth` with AUTH_MODE=auth
