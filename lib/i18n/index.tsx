@@ -19,7 +19,6 @@ export interface I18nContextValue {
 
 export const I18nContext = createContext<I18nContextValue | null>(null);
 
-const STORAGE_KEY = "bb-locale";
 const COOKIE_KEY = "bb-locale";
 
 /** Reads the persisted locale from the `bb-locale` cookie (client-side). */
@@ -40,7 +39,8 @@ function readLocaleCookie(): Locale | null {
  * Resolves the initial locale: the SSR-provided `initialLocale` (from the
  * `bb-locale` cookie read server-side) wins — this is what makes SSR and the
  * client agree and kills the hydration language mix. Standalone client mounts
- * fall back to the cookie, then localStorage, then the browser language.
+ * fall back to the cookie, then the browser language. The cookie is the ONLY
+ * persisted source of the locale (localStorage is deprecated).
  */
 function resolveInitialLocale(initialLocale?: Locale): Locale {
   if (initialLocale === "es" || initialLocale === "en") return initialLocale;
@@ -48,10 +48,8 @@ function resolveInitialLocale(initialLocale?: Locale): Locale {
   try {
     const cookieLocale = readLocaleCookie();
     if (cookieLocale) return cookieLocale;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "es" || stored === "en") return stored;
   } catch {
-    // Storage unavailable: ignore it.
+    // Cookie access can throw in restricted contexts: ignore it.
   }
   const lang = typeof window.navigator !== "undefined" ? window.navigator.language : "";
   return lang.toLowerCase().startsWith("en") ? "en" : DEFAULT_LOCALE;
@@ -73,8 +71,7 @@ export function I18nProvider({
 
   useEffect(() => {
     try {
-      // The cookie is the persisted source of truth (SSR reads it in the
-      // layout); localStorage is no longer written (legacy reads still work).
+      // The cookie is the persisted source of truth (SSR reads it in the layout).
       document.cookie = `${COOKIE_KEY}=${locale}; path=/; max-age=31536000; SameSite=Lax`;
     } catch {
       // Cookie access can throw in restricted contexts: ignore it.
