@@ -31,6 +31,14 @@ const es: Dict = {
   "teams.summaryNone": "0 jugadores",
   "teams.summaryOne": "{count} jugador",
   "teams.summaryMany": "{count} jugadores",
+
+  // Matches dedicated page (MP-5 / Design B — date-grouped upcoming fixtures)
+  "matches.heading": "Partidos",
+  "matches.empty": "No tienes partidos próximos.",
+  "matches.noDate": "Sin fecha",
+  "matches.today": "Hoy",
+  "matches.unplanned": "Sin programar",
+
   "match.turnOf": "Turno de {team}",
 
   "create.step1Title": "Paso 1 · Datos del equipo",
@@ -655,6 +663,14 @@ const en: Dict = {
   "teams.summaryNone": "0 players",
   "teams.summaryOne": "{count} player",
   "teams.summaryMany": "{count} players",
+
+  // Matches dedicated page (MP-5 / Design B — date-grouped upcoming fixtures)
+  "matches.heading": "Matches",
+  "matches.empty": "No upcoming matches.",
+  "matches.noDate": "No date set",
+  "matches.today": "Today",
+  "matches.unplanned": "Unplanned",
+
   "match.turnOf": "{team}'s turn",
 
   "create.step1Title": "Step 1 · Team details",
