@@ -53,6 +53,25 @@ describe("patchUserData (pure allowlist)", () => {
     ).toEqual({ ok: true, data: { avatar: "/uploads/avatars/x.webp" } });
   });
 
+  it("keeps the account locale es or en", () => {
+    expect(patchUserData({ locale: "es" }, { locale: "en" })).toEqual({
+      ok: true,
+      data: { locale: "es" },
+    });
+    expect(patchUserData({ locale: "en" }, { locale: "es" })).toEqual({
+      ok: true,
+      data: { locale: "en" },
+    });
+  });
+
+  it("rejects an invalid locale (fr, uppercase, non-string)", () => {
+    for (const bad of ["fr", "ES", "e s", 42, null, ["es"]]) {
+      const res = patchUserData({ locale: bad }, { locale: "es" });
+      if (res.ok) throw new Error(`expected rejection for ${JSON.stringify(bad)}`);
+      expect(res.error).toContain("locale");
+    }
+  });
+
   it("rejects an unknown field", () => {
     const res = patchUserData({ email: "h@x.co" }, {});
     if (res.ok) throw new Error("expected rejection");
@@ -90,13 +109,14 @@ describe("GET /api/me", () => {
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it("returns id, name, email, avatar for an authenticated user", async () => {
+  it("returns id, name, email, avatar, locale for an authenticated user", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.user.findUnique.mockResolvedValue({
       id: "user-1",
       name: "Ada",
       email: "ada@example.com",
       avatar: "/uploads/avatars/u.webp",
+      locale: "en",
     });
 
     const res = await getRequest();
@@ -106,6 +126,7 @@ describe("GET /api/me", () => {
     expect(body.name).toBe("Ada");
     expect(body.email).toBe("ada@example.com");
     expect(body.avatar).toBe("/uploads/avatars/u.webp");
+    expect(body.locale).toBe("en");
   });
 
   it("returns avatar null for a fresh user without an avatar", async () => {
@@ -115,11 +136,14 @@ describe("GET /api/me", () => {
       name: "Ada",
       email: "ada@example.com",
       avatar: null,
+      locale: "es",
     });
 
     const res = await getRequest();
     expect(res.status).toBe(200);
-    expect((await res.json()).avatar).toBeNull();
+    const body = await res.json();
+    expect(body.avatar).toBeNull();
+    expect(body.locale).toBe("es");
   });
 });
 
@@ -206,6 +230,48 @@ describe("PATCH /api/me", () => {
     });
 
     const res = await patchRequest({ avatar: "https://evil.example/x.svg" });
+    expect(res.status).toBe(400);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("updates the account locale", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+      avatar: null,
+      locale: "es",
+    });
+    prismaMock.user.update.mockResolvedValue({
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+      avatar: null,
+      locale: "en",
+    });
+
+    const res = await patchRequest({ locale: "en" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.locale).toBe("en");
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { locale: "en" },
+    });
+  });
+
+  it("rejects an invalid locale with 400 and leaves the stored value unchanged", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+      avatar: null,
+      locale: "es",
+    });
+
+    const res = await patchRequest({ locale: "fr" });
     expect(res.status).toBe(400);
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });

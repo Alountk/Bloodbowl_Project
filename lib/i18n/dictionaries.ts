@@ -202,6 +202,11 @@ const es: Dict = {
   "profile.save": "Guardar",
   "profile.cropDialogLabel": "Recortar foto",
 
+  // RAU-58 — per-account UI language selector
+  "profile.locale.title": "Idioma",
+  "profile.locale.hint": "Se aplicará a tu cuenta en todos tus dispositivos.",
+  "profile.locale.error": "No se pudo guardar el idioma.",
+
   // RAU-57 — My Profile: career stats + self-service password change
   "profile.stats.title": "Estadísticas de carrera",
   "profile.stats.subtitle": "Tu historial en Blood Bowl.",
@@ -807,6 +812,11 @@ const en: Dict = {
   "profile.zoom": "Zoom",
   "profile.save": "Save",
   "profile.cropDialogLabel": "Crop photo",
+
+  // RAU-58 — per-account UI language selector
+  "profile.locale.title": "Language",
+  "profile.locale.hint": "Applies to your account on all your devices.",
+  "profile.locale.error": "Could not save the language.",
 
   // RAU-57 — My Profile: career stats + self-service password change
   "profile.stats.title": "Career stats",
