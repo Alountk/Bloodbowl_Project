@@ -21,7 +21,7 @@ describe("Login page (AuthModal fallback)", () => {
 
     fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "coach@example.com" } });
     fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "SuperSecret123!" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Iniciar sesión" }).at(-1)!);
 
     await waitFor(() => {
       expect(signInMock).toHaveBeenCalledWith("credentials", {
@@ -44,7 +44,7 @@ describe("Login page (AuthModal fallback)", () => {
 
     fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "coach@example.com" } });
     fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "wrong-password" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "Sign in" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Iniciar sesión" }).at(-1)!);
 
     await waitFor(() =>
       expect(screen.getByText("Email o contraseña no válidos")).toBeTruthy(),

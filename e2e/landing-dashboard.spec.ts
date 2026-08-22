@@ -135,12 +135,12 @@ test.describe("Auth modal (auth mode)", () => {
     // Anonymous landing: the nav "Sign in" opens the modal in place (no /login).
     await page.goto("/");
     await page.getByRole("button", { name: "Sign in" }).click();
-    const dialog = page.getByRole("dialog", { name: "Sign in" });
+    const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await expect(page).toHaveURL("/");
 
     // Switch to the Sign up tab and create the account inside the modal.
-    await dialog.getByRole("button", { name: "Sign up" }).click();
+    await dialog.getByRole("button", { name: "Sign up" }).first().click();
     await dialog.getByLabel("Email").fill(email);
     await dialog.getByLabel("Password").fill(password);
     await dialog.getByRole("button", { name: "Sign up" }).last().click();
@@ -157,16 +157,16 @@ test.describe("Auth modal (auth mode)", () => {
 
     // Log back in through the modal.
     await page.getByRole("button", { name: "Sign in" }).click();
-    const loginDialog = page.getByRole("dialog", { name: "Sign in" });
+    const loginDialog = page.getByRole("dialog");
     await loginDialog.getByLabel("Email").fill(email);
     await loginDialog.getByLabel("Password").fill(password);
-    await loginDialog.getByRole("button", { name: "Sign in" }).last().click();
+    await loginDialog.getByRole("button", { name: "Log in" }).last().click();
     await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
   });
 
   test("/login deep link mounts the same auth modal", async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByRole("dialog", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Log in" })).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
     await expect(page.getByLabel("Password")).toBeVisible();
   });

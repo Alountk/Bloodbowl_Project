@@ -104,6 +104,7 @@ const es: Dict = {
   "auth.noAccount": "¿No tienes cuenta?",
   "auth.hasAccount": "¿Ya tienes cuenta?",
   "auth.name": "Nombre",
+  "auth.forgotPassword": "¿Olvidaste tu contraseña?",
   "auth.forgotNote": "El restablecimiento de contraseña aún no está disponible. Pide ayuda al administrador de tu liga.",
 
   "detail.plantilla": "Plantilla",
@@ -687,6 +688,7 @@ const en: Dict = {
   "auth.noAccount": "No account?",
   "auth.hasAccount": "Already have an account?",
   "auth.name": "Name",
+  "auth.forgotPassword": "Forgot your password?",
   "auth.forgotNote": "Password reset isn't available yet. Ask your league admin for help.",
 
   "detail.plantilla": "Roster",

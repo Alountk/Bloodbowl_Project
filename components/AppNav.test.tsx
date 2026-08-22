@@ -42,7 +42,7 @@ describe("AppNav public variant (landing)", () => {
     expect(within(nav).getByRole("link", { name: "Leagues" }).getAttribute("href")).toBe("/leagues");
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(screen.getByRole("dialog", { name: "Sign in" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();
   });
 
   it("shows no user menu when not authenticated", () => {
@@ -106,7 +106,7 @@ describe("AppNav mobile drawer", () => {
 
     // The public drawer Sign in opens the same auth modal.
     fireEvent.click(within(drawer).getByRole("button", { name: "Sign in" }));
-    expect(screen.getByRole("dialog", { name: "Sign in" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();
     expect(screen.queryByRole("complementary", { name: "Mobile navigation" })).toBeNull();
   });
 

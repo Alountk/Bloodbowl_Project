@@ -19,7 +19,7 @@ describe("Landing", () => {
     expect(within(nav).getAllByRole("link")).toHaveLength(3);
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(screen.getByRole("dialog", { name: "Sign in" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();
   });
 
   it("renders the hero with both CTAs", () => {
