@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/email";
-
-const PASSWORD_SALT_ROUNDS = 10;
-const MIN_PASSWORD_LENGTH = 8;
+import { isPasswordLongEnough, PASSWORD_SALT_ROUNDS } from "@/lib/password";
 
 /** Simple email validation (RFC-loose: something @ something . something). */
 function isValidEmail(email: string): boolean {
@@ -31,7 +29,7 @@ export async function POST(req: Request) {
   const password = body.password ?? "";
   const name = typeof body.name === "string" ? body.name.trim() : "";
 
-  if (!isValidEmail(email) || password.length < MIN_PASSWORD_LENGTH) {
+  if (!isValidEmail(email) || !isPasswordLongEnough(password)) {
     return NextResponse.json(
       { error: "A valid email and a password of at least 8 characters are required" },
       { status: 400 },
