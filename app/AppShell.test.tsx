@@ -22,10 +22,8 @@ describe("AppShell unified nav", () => {
     );
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getByRole("link", { name: "Matches" })).toBeTruthy();
-    expect(within(nav).getByRole("link", { name: "Teams" })).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Leagues" })).toBeTruthy();
-    expect(within(nav).getAllByRole("link")).toHaveLength(3);
+    expect(within(nav).getAllByRole("link")).toHaveLength(1);
   });
 
   it("renders the unified nav without a topbar search (search lives in the teams section)", () => {
@@ -107,9 +105,9 @@ describe("AppShell mobile drawer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir menú de navegación" }));
     const drawer = screen.getByRole("complementary", { name: "Mobile navigation" });
-    expect(within(drawer).getByRole("link", { name: "Matches" })).toBeTruthy();
+    expect(within(drawer).getByRole("link", { name: "Leagues" })).toBeTruthy();
 
-    fireEvent.click(within(drawer).getByRole("link", { name: "Matches" }));
+    fireEvent.click(within(drawer).getByRole("link", { name: "Leagues" }));
 
     expect(screen.queryByRole("complementary", { name: "Mobile navigation" })).toBeNull();
     expect(screen.queryByTestId("drawer-scrim")).toBeNull();
