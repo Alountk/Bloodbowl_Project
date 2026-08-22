@@ -41,6 +41,12 @@ async function createLeague(page: Page, name: string) {
   await expect(page.getByText(name)).toBeVisible();
 }
 
+/** Logs out through the avatar user menu in the unified nav. */
+async function logout(page: Page) {
+  await page.getByRole("button", { name: "User menu" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+}
+
 test.describe("Landing for anonymous users (auth mode)", () => {
   test("GET / renders the public landing instead of redirecting to /login", async ({ page }) => {
     await page.goto("/");
@@ -50,7 +56,8 @@ test.describe("Landing for anonymous users (auth mode)", () => {
       page.getByRole("heading", { name: "Your league, in your pocket." }),
     ).toBeVisible();
     await expect(page.getByRole("link", { name: "Sign up free" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+    // "Sign in" is a button that opens the auth modal (no /login navigation).
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
   });
 
   test("the collapsible How it works toggles with Hide/Show", async ({ page }) => {
@@ -108,12 +115,59 @@ test.describe("Dashboard for logged-in users (auth mode)", () => {
     await expect(page.getByText(leagueName)).toBeVisible();
 
     // Logout → the public landing, no dashboard/team data visible.
-    await page.getByRole("button", { name: "Log out" }).click();
+    await logout(page);
     await expect(page).toHaveURL("/");
     await expect(
       page.getByRole("heading", { name: "Your league, in your pocket." }),
     ).toBeVisible();
     await expect(page.getByText(teamName)).not.toBeVisible();
     await expect(page.getByText(leagueName)).not.toBeVisible();
+  });
+});
+
+test.describe("Auth modal (auth mode)", () => {
+  test("signup and login happen inside the modal from the landing; the user menu logs out", async ({
+    page,
+  }) => {
+    const email = uniqueEmail();
+    const password = "password-123";
+
+    // Anonymous landing: the nav "Sign in" opens the modal in place (no /login).
+    await page.goto("/");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    const dialog = page.getByRole("dialog", { name: "Sign in" });
+    await expect(dialog).toBeVisible();
+    await expect(page).toHaveURL("/");
+
+    // Switch to the Sign up tab and create the account inside the modal.
+    await dialog.getByRole("button", { name: "Sign up" }).click();
+    await dialog.getByLabel("Email").fill(email);
+    await dialog.getByLabel("Password").fill(password);
+    await dialog.getByRole("button", { name: "Sign up" }).last().click();
+
+    // Signed in → the dashboard renders.
+    await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
+
+    // The avatar user menu logs out back to the landing.
+    await logout(page);
+    await expect(page).toHaveURL("/");
+    await expect(
+      page.getByRole("heading", { name: "Your league, in your pocket." }),
+    ).toBeVisible();
+
+    // Log back in through the modal.
+    await page.getByRole("button", { name: "Sign in" }).click();
+    const loginDialog = page.getByRole("dialog", { name: "Sign in" });
+    await loginDialog.getByLabel("Email").fill(email);
+    await loginDialog.getByLabel("Password").fill(password);
+    await loginDialog.getByRole("button", { name: "Sign in" }).last().click();
+    await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
+  });
+
+  test("/login deep link mounts the same auth modal", async ({ page }) => {
+    await page.goto("/login");
+    await expect(page.getByRole("dialog", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByLabel("Email")).toBeVisible();
+    await expect(page.getByLabel("Password")).toBeVisible();
   });
 });
