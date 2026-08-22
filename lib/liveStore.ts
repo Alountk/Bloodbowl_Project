@@ -70,7 +70,6 @@ import { getRaceById } from "@/features/teams/data/races";
 import {
   computeRosterCostFromPlayers,
   computeCoachingCost,
-  computeSpendableBalance,
   MAX_PLAYERS,
 } from "@/features/teams/roster";
 import { createId } from "@/features/teams/id";
@@ -1715,17 +1714,19 @@ export interface HireJourneymanInput {
  * Guards: 404 no live row / team; 400 unknown journeyman (the match never
  * persisted journeymen or the JSON is malformed); 409 the journeyman is not in
  * the persisted list (already hired-or-gone) or the match is NOT resolved yet
- * (`MatchResult` must exist); 409 roster at the 16 cap; 409 insufficient
- * spendable balance (the RAU-11 formula — the lineman cost must fit). Double-
- * hire is impossible: removing the id from the list plus the optimistic `seq`
- * guard on the row (a concurrent decision on the SAME journeyman loses the
- * guard → 409).
+ * (`MatchResult` must exist); 409 roster at the 16 cap; 409 the treasury
+ * cannot cover the lineman cost (the hire is PAID in cash from the treasury —
+ * RAU-52: the cost is subtracted from the treasury AFTER the match winnings
+ * were collected). Double-hire is impossible: removing the id from the list
+ * plus the optimistic `seq` guard on the row (a concurrent decision on the
+ * SAME journeyman loses the guard → 409).
  *
  * Effect in ONE transaction: the journeyman is removed from
  * `LiveMatch.journeymen`; a hire ALSO appends a `PlayerEntry { id: createId(),
  * name: <the persisted journeyman name>, positionalKey: <race Lineman key> }`
- * to the roster and creates the matching Player row with the match's earned PE
- * + injuries. Returns the remaining journeymen + the updated team surface.
+ * to the roster, decrements the treasury by the lineman cost, and creates the
+ * matching Player row with the match's earned PE + injuries. Returns the
+ * remaining journeymen + the updated team surface.
  */
 export async function hireJourneymanLiveMatch(
   input: HireJourneymanInput,
@@ -1801,15 +1802,10 @@ export async function hireJourneymanLiveMatch(
     if (roster.length >= MAX_PLAYERS) {
       throw Object.assign(new Error("roster full"), { status: 409 });
     }
-    const balance = computeSpendableBalance(
-      {
-        treasury: team.treasury,
-        roster,
-        coaching: isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING,
-      },
-      race,
-    );
-    if (lineman.cost > balance) {
+    // RAU-52: the hire is PAID in CASH from the treasury (after the match
+    // winnings were collected at resolve) — the guard is the affordability of
+    // the lineman cost against the treasury itself.
+    if (lineman.cost > team.treasury) {
       throw Object.assign(new Error("not enough treasury"), { status: 409 });
     }
 
@@ -1826,13 +1822,13 @@ export async function hireJourneymanLiveMatch(
       },
     });
     if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
-    // RAU-14: hiring is PAID via the spendable-balance formula — appending the
-    // roster player grows rosterCost, so `computeSpendableBalance` drops by the
-    // lineman cost automatically. The treasury ledger is NOT decremented (that
-    // would double-count the payment; RAU-11 hire follows the same convention).
+    // RAU-52: the hire is PAID from the treasury ledger — the lineman cost is
+    // subtracted AFTER the resolve already applied the match winnings. The
+    // roster growth separately raises the team TV; the treasury decrement is
+    // the cash payment.
     await tx.team.updateMany({
       where: { id: input.teamId },
-      data: { roster: nextRoster as never },
+      data: { roster: nextRoster as never, treasury: { decrement: lineman.cost } },
     });
 
     // RAU-13: the hire CARRIES the match into the journeyman's new `Player`
@@ -1871,7 +1867,7 @@ export async function hireJourneymanLiveMatch(
 
     return {
       journeymen: nextJourneymen,
-      team: { id: input.teamId, roster: nextRoster, treasury: team.treasury },
+      team: { id: input.teamId, roster: nextRoster, treasury: team.treasury - lineman.cost },
     };
   });
 }
