@@ -4,6 +4,8 @@ import {
   IMPROVEMENT_KINDS,
   attributeOptionsForRoll,
   PLAYER_ATTRIBUTES,
+  isReadyToImprove,
+  nextImprovementCost,
 } from "./improvements";
 import { computeWinnings } from "./winnings";
 import { postMatchFanFactor, preMatchFanFactor } from "./fanFactor";
@@ -46,6 +48,41 @@ describe("improvement cost table (bb2025-rules R2)", () => {
   it("reuses the 6ª cost for improvements beyond six", () => {
     expect(improvementCost(8, "primary")).toBe(30);
     expect(improvementCost(12, "attribute")).toBe(38);
+  });
+});
+
+describe("nextImprovementCost (cheapest next 1ª..6ª random cost)", () => {
+  it("returns the 1ª..6ª random-row costs for each improvement count", () => {
+    // acquisitions → next cost (random row: 3/4/6/8/10/15)
+    expect(nextImprovementCost(0)).toBe(3);
+    expect(nextImprovementCost(1)).toBe(4);
+    expect(nextImprovementCost(4)).toBe(10);
+    expect(nextImprovementCost(5)).toBe(15);
+  });
+
+  it("caps the 6ª cost once the player is already at the sixth improvement", () => {
+    expect(nextImprovementCost(6)).toBe(15);
+    expect(nextImprovementCost(9)).toBe(15);
+  });
+});
+
+describe("isReadyToImprove", () => {
+  it("flags an alive player whose PE reaches the next improvement cost", () => {
+    // 0 acquisitions → next cost 3; pe 3 meets it.
+    expect(isReadyToImprove({ pe: 3, alive: true, improvements: 0 })).toBe(true);
+    // 1 acquisition → next cost 4; pe 4 meets it.
+    expect(isReadyToImprove({ pe: 4, alive: true, improvements: 1 })).toBe(true);
+  });
+
+  it("flags not-ready when PE is below the next improvement cost", () => {
+    expect(isReadyToImprove({ pe: 2, alive: true, improvements: 0 })).toBe(false);
+    // 5 acquisitions → next cost 15; pe 14 is short by one.
+    expect(isReadyToImprove({ pe: 14, alive: true, improvements: 5 })).toBe(false);
+  });
+
+  it("never flags a dead player as ready, regardless of PE", () => {
+    expect(isReadyToImprove({ pe: 20, alive: false, improvements: 0 })).toBe(false);
+    expect(isReadyToImprove({ pe: 0, alive: false, improvements: 2 })).toBe(false);
   });
 });
 

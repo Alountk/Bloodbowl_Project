@@ -68,3 +68,26 @@ export function improvementCost(improvementNumber: number, kind: ImprovementKind
   const row = Math.min(improvementNumber, 6);
   return COSTS[KIND_INDEX[kind]][row - 1];
 }
+
+/**
+ * The PE cost of a player's NEXT random (cheapest) improvement, given how many
+ * improvements they have already acquired. Random is the baseline the "ready to
+ * improve" flag compares against (row 6ª caps any further acquisitions).
+ */
+export function nextImprovementCost(improvements: number): number {
+  return improvementCost(improvements + 1, "random");
+}
+
+/**
+ * Whether a roster player is ready for their next improvement: alive AND with
+ * enough PE to afford the cheapest (random) next improvement. Dead players are
+ * never ready regardless of accumulated PE.
+ */
+export function isReadyToImprove(player: {
+  pe: number;
+  alive: boolean;
+  improvements: number;
+}): boolean {
+  if (!player.alive) return false;
+  return player.pe >= nextImprovementCost(player.improvements);
+}
