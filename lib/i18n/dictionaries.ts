@@ -355,6 +355,11 @@ const es: Dict = {
 
   "nav.devRulesets": "Tipos de reglas",
 
+  // RAU-59 — dev section 403 panel (server-rendered)
+  "dev.deniedTitle": "Acceso restringido",
+  "dev.deniedBody": "Esta sección es exclusiva para desarrolladores.",
+  "dev.backHome": "Volver al inicio",
+
   "leagues.start.title": "Iniciar liga",
   "leagues.start.closeAria": "Close start league",
   "leagues.start.howMany": "¿Cuántas jornadas?",
@@ -964,6 +969,11 @@ const en: Dict = {
   "rulesets.carousel.label": "Rulesets",
   "rulesets.carousel.previous": "Previous rulesets",
   "rulesets.carousel.next": "Next rulesets",
+
+  // RAU-59 — dev section 403 panel (server-rendered)
+  "dev.deniedTitle": "Restricted access",
+  "dev.deniedBody": "This section is exclusive to developers.",
+  "dev.backHome": "Back to home",
 
   "leagues.start.title": "Start league",
   "leagues.start.closeAria": "Close start league",
