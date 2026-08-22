@@ -233,10 +233,11 @@ async function consentAndBegin(
   await liveCommand(homePage, leagueId, fixtureId, { type: "begin" });
 }
 
-/** Drives 15 end-turns (half 2 turn 8) then scores a TD by the HOME side,
- * which auto-finishes the match (D5). Every command is posted from the ACTIVE
- * side's own coach page (the route enforces the caller-side turn gate).
- * Returns the final view. */
+/** Drives end-turns until half 2 turn 8 with the HOME side active (the last
+ * turn of the match: half 1 = 16 turns home/away, half 2 starts with the away
+ * side), then scores a HOME TD which auto-finishes the match (D5). Every
+ * command is posted from the ACTIVE side's own coach page (the route enforces
+ * the caller-side turn gate). Returns the final view. */
 async function autoFinishByTurnEightTd(
   homePage: Page,
   awayPage: Page,
@@ -245,14 +246,17 @@ async function autoFinishByTurnEightTd(
   homeScorerId: string,
 ): Promise<{ status: string; half: number; turnNumber: number }> {
   let view = await liveCommand(homePage, leagueId, fixtureId, { type: "endTurn", side: "home" });
-  for (let i = 0; i < 14; i++) {
+  // 31 end-turns reach home T8 in half 2 under the round-shared turn semantics
+  // (home T1 → away T1 → home T2 … away T8 half 1 → away T1 half 2 … away T8 →
+  // home T8); drive to the target state defensively.
+  for (let i = 0; i < 40; i++) {
+    if (view.half === 2 && view.turnNumber === 8 && view.activeSide === "home") break;
     const page = view.activeSide === "home" ? homePage : awayPage;
     view = await liveCommand(page, leagueId, fixtureId, {
       type: "endTurn",
       side: view.activeSide,
     });
   }
-  // After 15 end-turns the state is half 2, turn 8 with HOME active.
   expect(view.half).toBe(2);
   expect(view.turnNumber).toBe(8);
   expect(view.activeSide).toBe("home");
@@ -419,7 +423,8 @@ test("auto-finish (TD in half-2 turn 8) → the resolve closure still runs", asy
     const { fixtureId, homeTeamName, awayTeamName, homeScorerId, homePage, awayPage } = await roundOne(admin, leagueId, teams);
     await consentAndBegin(homePage, awayPage, leagueId, fixtureId);
 
-    // 15 end-turns then a HOME TD on half-2 turn 8 → the match AUTO-finishes.
+    // Drive to half 2 turn 8 (home active) then a HOME TD → the match AUTO-
+    // finishes (D5).
     const afterTd = await autoFinishByTurnEightTd(homePage, awayPage, leagueId, fixtureId, homeScorerId);
     expect(afterTd.status).toBe("finished");
 

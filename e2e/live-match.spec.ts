@@ -393,13 +393,17 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(passButton).toBeVisible();
     const box = (await passButton.boundingBox())!;
     await homeCoach.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
-    await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
-    await expect(awayCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
-    // Regression: exactly one flip — turn 3 never appears, the away coach is
+    // Correct BB2025 turn semantics (recurring regression): the turn number
+    // names the ROUND shared by both sides — home T1 → away T1 → home T2. The
+    // away side takes their TURN 1, so the header reads "Mitad 1 · Turno 1"
+    // (NOT 2) on both coaches' pages.
+    await expect(homeCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
+    await expect(awayCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
+    // Regression: exactly one flip — turn 2 never appears, the away coach is
     // the one now active ("Turno {awayTeamName}"), and the home coach's status
     // is gone.
     await expect(awayCoach.getByRole("status")).toHaveText(`Turno ${awayTeamName}`);
-    await expect(homeCoach.getByText(/Mitad 1 · Turno 3/)).toHaveCount(0);
+    await expect(homeCoach.getByText(/Mitad 1 · Turno 2/)).toHaveCount(0);
     await expect(homeCoach.getByRole("status")).toHaveCount(0);
 
     // LM-13: the now-NON-active coach (home) clicks "Pedir turno" → the
@@ -412,7 +416,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(homeCoach.getByText("Tu rival pide el turno")).toHaveCount(0);
 
     // DESIGN-A feed (LM-17) + EventControls (LM-20/D26) — recorded through the
-    // REAL "+" FAB. At Turn 2 the AWAY coach is ACTIVE and the HOME coach is
+    // REAL "+" FAB. At Turn 1 the AWAY coach is ACTIVE and the HOME coach is
     // NON-active, so each role's menu is exercised deterministically (home/away
     // side is resolved above; the player names come from the fixture rosters).
     //
@@ -507,27 +511,29 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     ).toBeVisible();
     // The away TD lands on the away side → hero reads "0 : 1" (home : away).
     await expect(awayCoach.getByTestId("live-score")).toHaveText(/0\s*:\s*1/);
-    // Turn2 away active → after the away TD the active side flips home.
-    await expect(homeCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    // Turn1 away active → after the away TD the active side flips home; the TD
+    // auto-end does NOT advance the round (home resumes their TURN 1 — the
+    // round advances only when the round starter comes back after an end-turn).
+    await expect(homeCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
 
     // [D] RELOAD persistence (LM-17): re-render the match page from the persisted
     // history → the Design-A rows (start / Herida / completion / TD) survive, and
     // no turn-pass row ever appears (turn kinds are filtered live-only, LM-16).
     await awayCoach.reload();
-    await expect(awayCoach.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    await expect(awayCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
     for (const text of ["Inicio del partido", homeScorerName, "Pase completo", "★3"]) {
       await expect(awayCoach.getByText(new RegExp(text)).first()).toBeVisible();
     }
     await expect(awayCoach.getByText("Fin de turno")).toHaveCount(0);
 
     // New-device recovery: B logs in from a FRESH context (same user, a new
-    // device equivalent) and gets a snapshot-first live view (turn 2 persisted).
+    // device equivalent) and gets a snapshot-first live view (turn 1 persisted).
     const freshContext = await browser.newContext({ locale: "es-ES" });
     const freshB = tight(await freshContext.newPage());
     await login(freshB, rivalEmail);
     await freshB.goto(matchUrl);
     // Snapshot-first: the fresh device converges to the current live state.
-    await expect(freshB.getByText(/Mitad 1 · Turno 2/).first()).toBeVisible();
+    await expect(freshB.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
     await freshContext.close();
 
     // Finish the match (lifecycle, admin MayEnd). The finished live DTO then
