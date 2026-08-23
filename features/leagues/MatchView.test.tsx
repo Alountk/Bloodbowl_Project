@@ -1861,9 +1861,11 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
     renderPlayed();
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
 
-    // The persistent banner keeps the resolution reachable.
-    const resolveButton = screen.getByRole("button", { name: "Resolver partido" });
-    expect(screen.getByText("El partido terminó. Falta resolver el resultado.")).toBeTruthy();
+    // The persistent "Informar del fin del partido" card keeps the resolution
+    // reachable and surfaces the current wizard step (resume-at-step).
+    const resolveButton = screen.getByRole("button", { name: "Reanudar" });
+    expect(screen.getByText("Informar del fin del partido")).toBeTruthy();
+    expect(screen.getByText("Paso actual: Ganancias y mantenimiento")).toBeTruthy();
 
     fireEvent.click(resolveButton);
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
@@ -1881,8 +1883,26 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
     stubMatch(finishedLiveDetail()); // playedDetail carries a result
     renderPlayed();
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "Resolver partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reanudar" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
+  });
+
+  it("shows the 'Informar del fin del partido' card with the CURRENT persisted step — the modal resumes there (resume-at-step)", async () => {
+    const detail = unresolvedFinishedDetail();
+    detail.live = {
+      ...detail.live!,
+      viewerSide: "home",
+      resolutionState: {
+        home: { step: "casualties", fansDone: true, fans: { roll: 4, before: 2, after: 3, direction: "up" }, mvpConfirmed: true, mvpRolled: true, casualtiesDone: false, journeymenDone: false },
+        away: { step: "mvp-done", fansDone: true, fans: { roll: 2, before: 2, after: 2, direction: "stay" }, mvpConfirmed: true, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+      },
+    };
+    stubMatch(detail);
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+    // The card surfaces the OWN side's persisted step — the exact resume target.
+    expect(screen.getByText("Informar del fin del partido")).toBeTruthy();
+    expect(screen.getByText("Paso actual: MVP y bajas")).toBeTruthy();
   });
 
   it("auto-opens the resolution modal once when the live match finishes via SSE", async () => {
@@ -1947,7 +1967,7 @@ describe("MatchView — RAU-14 post-resolve JourneymenHirePanel gating", () => {
     // The match was reported → the resolution modal is gone and NO separate
     // post-report panel renders: the post-match hire is the LAST STEP of the
     // resolution sequence (inside the modal), not a standalone panel.
-    expect(screen.queryByRole("button", { name: "Resolver partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reanudar" })).toBeNull();
     expect(screen.queryByTestId("journeymen-hire")).toBeNull();
     expect(screen.queryByRole("button", { name: "Contratar marcados" })).toBeNull();
   });
@@ -1960,7 +1980,7 @@ describe("MatchView — RAU-14 post-resolve JourneymenHirePanel gating", () => {
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
 
     expect(screen.queryByTestId("journeymen-hire")).toBeNull();
-    expect(screen.getByRole("button", { name: "Resolver partido" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reanudar" })).toBeTruthy();
   });
 
   it("renders NO hire panel when the viewer's side fielded no journeymen (only the rival's offers exist)", async () => {
