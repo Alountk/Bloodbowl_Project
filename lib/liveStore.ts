@@ -36,11 +36,16 @@ import {
   toLiveViewState,
   isStartableFixture,
   parseMvpNominations,
+  parseMvpGrantees,
+  parseResolutionState,
   EMPTY_MVP_NOMINATIONS,
+  EMPTY_RESOLUTION_STATE,
   type FixtureStartState,
   type LiveMatchState,
   type MvpNominations,
   type PendingCasualty,
+  type ResolutionSideState,
+  type ResolutionState,
   type TeamSide,
 } from "./liveMatch";
 import type { CasualtyCause } from "./livePhase";
@@ -59,6 +64,7 @@ import {
   addMvpPe,
   casualtyVictimsFromEvents,
   deriveLivePeAwards,
+  journeymanMatchEarned,
   journeymanSnapshotEarned,
   validateMvpNominations,
   validateSingleMvpNomination,
@@ -245,6 +251,9 @@ interface LiveMatchRowFields {
   /** RAU-51: the persisted per-side MJP nominations JSON (`{ home, away }`,
    * null per side = that coach has not nominated yet). */
   mvpNominations: Prisma.JsonValue | null;
+  /** The persisted per-side resolution wizard cursor JSON (`{ home, away }`),
+   * null until the wizard's FIRST action persists it. */
+  resolutionState: Prisma.JsonValue | null;
 }
 
 /** Defensively parses a persisted `pendingCasualty` JSON value into the pure
@@ -298,6 +307,7 @@ export function liveMatchRowToState(
     concedeProposedBy: row.concedeProposedBy,
     pendingCasualty: toPendingCasualty(row.pendingCasualty ?? null),
     mvpNominations: parseMvpNominations(row.mvpNominations ?? null),
+    resolutionState: parseResolutionState(row.resolutionState ?? null),
     events: [],
   };
 }
@@ -326,6 +336,9 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue,
     mvpNominations: next.mvpNominations as unknown as
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue,
+    resolutionState: next.resolutionState as unknown as
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue,
   };
@@ -594,6 +607,7 @@ async function createFirstConsent(
     concedeProposedBy: null,
     pendingCasualty: null,
     mvpNominations: EMPTY_MVP_NOMINATIONS,
+    resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
   };
 
@@ -1098,12 +1112,15 @@ function eligibleMvpIds(
 
 /** The rolled resolution the preview persists for the commit to reuse (RAU-49
  * fix): the chosen nominee rosterPlayerIds + the post-match FF totals + the
- * 1D6 FF rolls per side — ALL from the SAME server roll the modal previewed. */
+ * 1D6 FF rolls per side — ALL from the SAME server roll the modal previewed.
+ * The per-side WIZARD flow only persists `mvp` (the reveal); `postFf`/`ffRoll`
+ * then live in `resolutionState.fans` per side (the legacy direct flow fills
+ * all three). */
 export interface PendingResolution {
   mvp: { home: string; away: string };
-  postFf: { home: number; away: number };
+  postFf?: { home: number; away: number };
   /** The 1D6 fan-factor roll per side (rulebook p. 103). */
-  ffRoll: { home: number; away: number };
+  ffRoll?: { home: number; away: number };
 }
 
 /** The per-side post-match fan-factor roll surfaced in the resolution summary
@@ -1113,32 +1130,28 @@ export interface FanFactorRoll {
   direction: FanFactorDirection;
 }
 
-/** Defensive parse of the persisted `pendingResolution` JSON: a malformed or
- * legacy shape (missing the FF rolls) returns null so `resolveLiveMatch` falls
- * back to a fresh roll. */
+/** Defensive parse of the persisted `pendingResolution` JSON: the MVP grantees
+ * are REQUIRED (the reveal/legacy preview always carry them); `postFf`/`ffRoll`
+ * are optional (the wizard flow keeps those in `resolutionState.fans`). A
+ * malformed or legacy shape without the grantees returns null so the caller
+ * falls back to a fresh roll. */
 function parsePendingResolution(value: Prisma.JsonValue | null | undefined): PendingResolution | null {
   if (typeof value !== "object" || value === null) return null;
   const pending = value as Record<string, unknown>;
   const mvp = pending.mvp as Record<string, unknown> | undefined;
-  const postFf = pending.postFf as Record<string, unknown> | undefined;
-  const ffRoll = pending.ffRoll as Record<string, unknown> | undefined;
-  if (
-    !mvp ||
-    typeof mvp.home !== "string" ||
-    typeof mvp.away !== "string" ||
-    !postFf ||
-    typeof postFf.home !== "number" ||
-    typeof postFf.away !== "number" ||
-    !ffRoll ||
-    typeof ffRoll.home !== "number" ||
-    typeof ffRoll.away !== "number"
-  ) {
+  if (!mvp || typeof mvp.home !== "string" || typeof mvp.away !== "string") {
     return null;
   }
+  const postFf = pending.postFf as Record<string, unknown> | undefined;
+  const ffRoll = pending.ffRoll as Record<string, unknown> | undefined;
   return {
     mvp: { home: mvp.home, away: mvp.away },
-    postFf: { home: postFf.home, away: postFf.away },
-    ffRoll: { home: ffRoll.home, away: ffRoll.away },
+    ...(postFf && typeof postFf.home === "number" && typeof postFf.away === "number"
+      ? { postFf: { home: postFf.home, away: postFf.away } }
+      : {}),
+    ...(ffRoll && typeof ffRoll.home === "number" && typeof ffRoll.away === "number"
+      ? { ffRoll: { home: ffRoll.home, away: ffRoll.away } }
+      : {}),
   };
 }
 
@@ -1402,13 +1415,18 @@ export interface ResolveLiveOutcome {
  *    walkover) and runs `maybeCloseLeague` — the resolve IS the closure, fixing
  *  - the never-closed normally-finished live match; the fixture played +
  *    MatchResult presence are the terminal guard.
- * Guards: 404 no live row/team, 409 not-finished / already-resolved /
- * already-played-with-result / BOTH sides have not nominated yet (RAU-51: the
- * resolve rolls from the persisted per-side `mvpNominations`), 400 invalid
- * persisted nominations. A conceded match (fixture closed by
- * `acceptConcedeLiveMatch`, no MatchResult yet) is ALLOWED: the fixture-close
- * part is skipped, the awards + report still write.
- */
+  * Guards: 404 no live row/team, 409 not-finished / already-resolved /
+  * already-played-with-result / BOTH sides have not nominated yet (RAU-51: the
+  * resolve rolls from the persisted per-side `mvpNominations`), 400 invalid
+  * persisted nominations. A conceded match (fixture closed by
+  * `acceptConcedeLiveMatch`, no MatchResult yet) is ALLOWED: the fixture-close
+  * part is skipped, the awards + report still write.
+  *
+  * WIZARD path (a `resolutionState` cursor exists): the close runs ONLY when
+  * BOTH sides reached the "done" step — `runWizardClose` reuses the per-side
+  * persisted rolls (never re-applies the fans/casualties the steps already
+  * applied). LEGACY path (no cursor): the full old close as before.
+  */
 export async function resolveLiveMatch(
   input: ResolveLiveMatchInput,
   deps: StoreDeps,
@@ -1421,13 +1439,28 @@ export async function resolveLiveMatch(
   if (row.status !== "finished") {
     throw Object.assign(new Error("match not finished"), { status: 409 });
   }
+  const wizardRaw = row.resolutionState;
+  const wizard = parseResolutionState(wizardRaw);
+  if (wizardRaw != null) {
+    // WIZARD path: the match closes ONLY when BOTH sides reached "done".
+    if (wizard.home.step !== "done" || wizard.away.step !== "done") {
+      throw Object.assign(new Error("resolution incomplete"), { status: 409 });
+    }
+    const closed = await deps.prisma.$transaction((tx) =>
+      runWizardClose(tx, row as LiveMatch & { events: LiveEvent[] }, input, wizard, deps),
+    );
+    return closed.outcome;
+  }
+
+  // ── LEGACY path (a pre-wizard row): the full old close — both sides must
+  // have nominated; the dedicated-fans apply + the casualty writes + the
+  // clear-then-set all happen HERE (nothing was applied per-side).
   const nominations = parseMvpNominations(row.mvpNominations);
   if (!nominations.home || !nominations.away) {
     throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
   }
   const homeNom = nominations.home;
   const awayNom = nominations.away;
-
   const roll6 = deps.rollD6 ?? rollD6;
 
   return deps.prisma.$transaction(async (tx) => {
@@ -1496,7 +1529,7 @@ export async function resolveLiveMatch(
     let awayFfRoll6: number;
     let homeMvp: string;
     let awayMvp: string;
-    if (pending) {
+    if (pending?.postFf && pending?.ffRoll) {
       homeMvp = pending.mvp.home;
       awayMvp = pending.mvp.away;
       postHomeFf = pending.postFf.home;
@@ -1507,16 +1540,8 @@ export async function resolveLiveMatch(
       // Rulebook p. 103 ("ACTUALIZAR HINCHAS"): the 1D6 compares against the
       // dedicated-fans ATTRIBUTE (not the attendance 1D3) and the verdict
       // UP/STAY/DOWN derives from the same roll.
-      const homeFf = rollPostMatchFanFactor({
-        ff: homeFfBefore,
-        result: homeOutcome,
-        roll6: roll6(),
-      });
-      const awayFf = rollPostMatchFanFactor({
-        ff: awayFfBefore,
-        result: awayOutcome,
-        roll6: roll6(),
-      });
+      const homeFf = rollPostMatchFanFactor({ ff: homeFfBefore, result: homeOutcome, roll6: roll6() });
+      const awayFf = rollPostMatchFanFactor({ ff: awayFfBefore, result: awayOutcome, roll6: roll6() });
       postHomeFf = homeFf.after;
       postAwayFf = awayFf.after;
       homeFfRoll6 = homeFf.roll6;
@@ -1711,6 +1736,231 @@ export async function resolveLiveMatch(
 }
 
 /**
+ * The WIZARD-path close (shared by the explicit `resolveMatch` AND the
+ * auto-close that fires inside `resolutionJourneymenDone` when BOTH sides are
+ * done). Reuses the reveal's MVP grantees + the persisted per-side fan rolls —
+ * the coaches saw exactly what gets reported (defensive fresh rolls when a
+ * malformed cursor is missing them). The fans/casualties/clear were ALREADY
+ * applied per-side by the wizard steps, so the close only: writes the
+ * MatchResult + scoreboard, closes the fixture (idempotent), runs
+ * `maybeCloseLeague` (RAU-40), applies the treasury winnings + the PE awards
+ * and appends the MVP events. All in the caller's transaction.
+ */
+async function runWizardClose(
+  tx: StoreTx,
+  row: LiveMatch & { events: LiveEvent[] },
+  input: ResolveLiveMatchInput,
+  wizard: ResolutionState,
+  deps: StoreDeps,
+): Promise<{ outcome: ResolveLiveOutcome; seq: number }> {
+  const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+  if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+
+  const fixture = await tx.fixture.findUnique({
+    where: { id: input.fixtureId },
+    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+  });
+  if (!fixture) throw Object.assign(new Error("not found"), { status: 404 });
+
+  const teams = await tx.team.findMany({
+    where: { id: { in: [input.homeTeamId, input.awayTeamId] } },
+    select: {
+      id: true,
+      raceId: true,
+      roster: true,
+      coaching: true,
+      treasury: true,
+      players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
+    },
+  });
+  const byTeamId = new Map(teams.map((team) => [team.id, team]));
+  const homeTeam = byTeamId.get(input.homeTeamId);
+  const awayTeam = byTeamId.get(input.awayTeamId);
+  if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
+
+  const nominations = parseMvpNominations(row.mvpNominations);
+  const homeNom = nominations.home ?? [];
+  const awayNom = nominations.away ?? [];
+
+  const homeScore = fixture.homeScore ?? row.homeScore;
+  const awayScore = fixture.awayScore ?? row.awayScore;
+  const winnerId =
+    deriveWinnerId(homeScore, awayScore, input.homeTeamId, input.awayTeamId) ??
+    fixture.winnerId ??
+    null;
+  const homeOutcome: MatchOutcome = homeScore > awayScore ? "win" : homeScore < awayScore ? "loss" : "draw";
+  const awayOutcome: MatchOutcome = awayScore > homeScore ? "win" : awayScore < homeScore ? "loss" : "draw";
+
+  const pending = parsePendingResolution(row.pendingResolution);
+  const homeFfBefore = dedicatedFansOf(homeTeam.coaching);
+  const awayFfBefore = dedicatedFansOf(awayTeam.coaching);
+  const roll6 = deps.rollD6 ?? rollD6;
+
+  // MVP: reuse the reveal's persisted grantees (defensive: fresh roll).
+  let homeMvp: string;
+  let awayMvp: string;
+  if (pending) {
+    homeMvp = pending.mvp.home;
+    awayMvp = pending.mvp.away;
+  } else if (homeNom.length && awayNom.length) {
+    homeMvp = computeMvpGrantee(homeNom, roll6());
+    awayMvp = computeMvpGrantee(awayNom, roll6());
+  } else {
+    throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
+  }
+
+  // Fans: reuse the persisted per-side rolls (defensive: fresh).
+  const homeFans = wizard.home.fans;
+  const awayFans = wizard.away.fans;
+  let postHomeFf: number;
+  let postAwayFf: number;
+  let homeFfRoll6: number;
+  let awayFfRoll6: number;
+  if (homeFans && awayFans) {
+    postHomeFf = homeFans.after;
+    postAwayFf = awayFans.after;
+    homeFfRoll6 = homeFans.roll;
+    awayFfRoll6 = awayFans.roll;
+  } else {
+    const homeFf = rollPostMatchFanFactor({ ff: homeFfBefore, result: homeOutcome, roll6: roll6() });
+    const awayFf = rollPostMatchFanFactor({ ff: awayFfBefore, result: awayOutcome, roll6: roll6() });
+    postHomeFf = homeFf.after;
+    postAwayFf = awayFf.after;
+    homeFfRoll6 = homeFf.roll6;
+    awayFfRoll6 = awayFf.roll6;
+  }
+  const homeFfDirection: FanFactorDirection = postHomeFf > homeFfBefore ? "up" : postHomeFf < homeFfBefore ? "down" : "stay";
+  const awayFfDirection: FanFactorDirection = postAwayFf > awayFfBefore ? "up" : postAwayFf < awayFfBefore ? "down" : "stay";
+
+  const winnings = parseWinningsJson(row.winnings) ?? { home: 0, away: 0 };
+  const events = resolveEventsOf((row as { events?: unknown[] }).events ?? []);
+  const homeAwards = addMvpPe(deriveLivePeAwards(events).home, homeMvp);
+  const awayAwards = addMvpPe(deriveLivePeAwards(events).away, awayMvp);
+  const casualties = casualtyVictimsFromEvents(events);
+
+  const homeParts = raceTvParts(homeTeam);
+  const awayParts = raceTvParts(awayTeam);
+  const pettyCash = computePettyCash(
+    computeTeamTv(homeParts.rosterCost, homeParts.coachingCost, homeParts.valueBonus),
+    computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus),
+  );
+
+  const scoreboard = {
+    home: {
+      score: homeScore,
+      postFf: postHomeFf,
+      winnings: winnings.home,
+      casualties: casualties
+        .filter((c) => c.team === "home")
+        .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
+      pe: homeAwards,
+    },
+    away: {
+      score: awayScore,
+      postFf: postAwayFf,
+      winnings: winnings.away,
+      casualties: casualties
+        .filter((c) => c.team === "away")
+        .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
+      pe: awayAwards,
+    },
+    winnerId,
+    mvp: { home: homeMvp, away: awayMvp },
+  };
+
+  const agg = await tx.liveEvent.aggregate({
+    where: { liveMatchId: row.id },
+    _max: { seq: true },
+  });
+  const maxSeq = agg._max?.seq ?? 0;
+  const homeSeq = maxSeq + 1;
+  const awaySeq = maxSeq + 2;
+  const atMs = row.finishedAt ? new Date(row.finishedAt).getTime() : input.now;
+  await tx.liveEvent.createMany({
+    data: [
+      {
+        liveMatchId: row.id,
+        seq: homeSeq,
+        kind: "mvp",
+        side: "home",
+        playerRosterId: homeMvp,
+        half: row.half,
+        turnNumber: row.turnNumber,
+        payload: {},
+        createdAt: new Date(atMs),
+      },
+      {
+        liveMatchId: row.id,
+        seq: awaySeq,
+        kind: "mvp",
+        side: "away",
+        playerRosterId: awayMvp,
+        half: row.half,
+        turnNumber: row.turnNumber,
+        payload: {},
+        createdAt: new Date(atMs),
+      },
+    ],
+  });
+  await tx.liveMatch.updateMany({ where: { id: row.id }, data: { seq: awaySeq } });
+
+  if (fixture.homeScore == null && fixture.awayScore == null) {
+    await tx.fixture.update({
+      where: { id: input.fixtureId },
+      data: { homeScore, awayScore, winnerId },
+    });
+  }
+  // RAU-40: the close IS the closure — when this was the season's LAST fixture
+  // the league closes atomically here (finished + champion).
+  await maybeCloseLeague(tx, input.leagueId);
+
+  const report = await tx.matchResult.create({
+    data: {
+      fixtureId: input.fixtureId,
+      weather: null,
+      scores: scoreboard as never,
+      pettyCash,
+      loadedBy: input.loadedBy,
+    },
+  });
+
+  // PE awards (the per-side steps already applied the dedicated-fans change,
+  // the casualty Player rows AND the finish-time winnings collected at step 1
+  // — the wizard close never re-applies them).
+  for (const award of homeAwards) {
+    await tx.player.updateMany({
+      where: { teamId: input.homeTeamId, rosterPlayerId: award.rosterPlayerId },
+      data: { pe: { increment: award.pe } },
+    });
+  }
+  for (const award of awayAwards) {
+    await tx.player.updateMany({
+      where: { teamId: input.awayTeamId, rosterPlayerId: award.rosterPlayerId },
+      data: { pe: { increment: award.pe } },
+    });
+  }
+
+  return {
+    outcome: {
+      fixtureId: input.fixtureId,
+      status: "played" as const,
+      homeScore,
+      awayScore,
+      winnerId,
+      winnings,
+      postFf: { home: postHomeFf, away: postAwayFf },
+      ffRoll: {
+        home: { roll: homeFfRoll6, direction: homeFfDirection },
+        away: { roll: awayFfRoll6, direction: awayFfDirection },
+      },
+      mvp: { home: homeMvp, away: awayMvp },
+      resultId: report.id,
+    },
+    seq: awaySeq,
+  };
+}
+
+/**
  * Appends each casualty victim's persisted band to their Player row, marking a
  * `dead` victim not alive and flagging a lasting band as unavailable for the
  * NEXT match (RAU-12). Mirrors the result route's `persistCasualtyOutcomes`:
@@ -1806,7 +2056,10 @@ export async function hireJourneymanLiveMatch(
   journeymen: PersistedJourneymen;
   team: { id: string; roster: PlayerEntry[]; treasury: number };
 }> {
-  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  const row = await deps.prisma.liveMatch.findFirst({
+    where: { fixtureId: input.fixtureId },
+    include: { events: { orderBy: { seq: "asc" } } },
+  });
   if (!row) throw Object.assign(new Error("not found"), { status: 404 });
 
   const current = parsePersistedJourneymen(row.journeymen);
@@ -1825,10 +2078,16 @@ export async function hireJourneymanLiveMatch(
   }
 
   return deps.prisma.$transaction(async (tx) => {
-    // 409 not resolved yet: hiring is a POST-resolve decision — the match must
-    // be reported (`MatchResult` exists) before a journeyman can stay.
+    // WIZARD flow: the hire is step 5 of the per-side resolution — the side
+    // must be AT the "journeymen" step (pre-close). LEGACY post-resolve flow
+    // (pre-wizard rows): the match must be reported (`MatchResult` exists).
+    // Either guard passes; anything else is 409.
     const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
-    if (!existing) throw Object.assign(new Error("match not resolved"), { status: 409 });
+    const sideWizard = parseResolutionState(row.resolutionState)[input.side];
+    const atJourneymenStep = sideWizard.step === "journeymen" && !sideWizard.journeymenDone;
+    if (!existing && !atJourneymenStep) {
+      throw Object.assign(new Error("journeymen step first"), { status: 409 });
+    }
 
     const nextJourneymen: PersistedJourneymen = {
       ...current,
@@ -1908,18 +2167,25 @@ export async function hireJourneymanLiveMatch(
     // RAU-13: the hire CARRIES the match into the journeyman's new `Player`
     // row — the PE they EARNED during the match (TD ★3 / completion ★1 /
     // lasting casualty ★2 plus the MJP +4 when granted) and every casualty band
-    // they SUFFERED. Both come from the persisted `MatchResult` snapshot: the
-    // resolve already wrote it, so it is the single source of truth at hire
-    // time. A lasting band starts their RAU-12 suspension; a dead band sets
-    // `alive: false`. The row is keyed `(teamId, rosterPlayerId)` with the NEW
-    // roster entry id — `ensurePlayersForTeam` never touched the journeyman
-    // (they are not on the roster until now), so this is the ONLY place the
-    // match's awards land for a hired Novato.
-    const scoreboard = (existing.scores ?? {}) as Record<string, unknown>;
-    const earned = journeymanSnapshotEarned(
-      scoreboard[input.side] as SnapshotSideLike | undefined,
-      input.journeymanId,
-    );
+    // they SUFFERED. WIZARD flow (hire at step 5, BEFORE the close wrote the
+    // snapshot): derived from the LIVE EVENTS + the revealed MVP grantees —
+    // the single source of truth at hire time. Legacy post-resolve flow: the
+    // persisted `MatchResult` snapshot. A lasting band starts their RAU-12
+    // suspension; a dead band sets `alive: false`. The row is keyed
+    // `(teamId, rosterPlayerId)` with the NEW roster entry id —
+    // `ensurePlayersForTeam` never touched the journeyman (they are not on the
+    // roster until now), so this is the ONLY place the match's awards land for
+    // a hired Novato.
+    const events = resolveEventsOf((row as { events?: unknown[] }).events ?? []);
+    const earned = atJourneymenStep
+      ? journeymanMatchEarned(events, input.side, parseMvpGrantees(row.pendingResolution), input.journeymanId)
+      : (() => {
+          const scoreboard = (existing?.scores ?? {}) as Record<string, unknown>;
+          return journeymanSnapshotEarned(
+            scoreboard[input.side] as SnapshotSideLike | undefined,
+            input.journeymanId,
+          );
+        })();
     const injuries = earned.injuries.map((kind) => ({ kind }));
     const alive = !injuries.some((injury) => injury.kind === "dead");
     await tx.player.create({
@@ -1944,4 +2210,524 @@ export async function hireJourneymanLiveMatch(
       team: { id: input.teamId, roster: nextRoster, treasury: team.treasury - lineman.cost },
     };
   });
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The per-side RESOLUTION WIZARD commands (RAU-52 rework).
+ *
+ * Each coach advances THEIR OWN side independently through the persisted step
+ * cursor (`LiveMatch.resolutionState[side].step`): winnings → fans → mvp →
+ * mvp-done → casualties → journeymen → done. Every action persists the side's
+ * progress server-side (the fixture GET resumes at the persisted step after a
+ * close/refresh). Only the MVP REVEAL waits for BOTH sides; the rest is
+ * independent. The match closes when BOTH sides reach "done" (see
+ * `resolveLiveMatch` — the wizard path — and the auto-close in
+ * `resolutionJourneymenDone`). Each command is idempotent: re-sending it after
+ * the side already advanced past its effect returns the current view (never a
+ * double mutation).
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+/** The shared per-side wizard command input (the route resolves the caller's
+ * OWN side's team id from the session, like `nominateMvp`). The optional close
+ * context lets `resolutionJourneymenDone` AUTO-CLOSE the match the moment BOTH
+ * sides reach "done" (the LAST command wins the close atomically). */
+export interface ResolutionWizardInput {
+  fixtureId: string;
+  side: TeamSide;
+  teamId: string;
+  now: number;
+  leagueId?: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
+  loadedBy?: string;
+}
+
+/** Loads the LiveMatch row or throws 404. */
+async function loadResolutionRow(
+  fixtureId: string,
+  deps: StoreDeps,
+): Promise<LiveMatch> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  return row;
+}
+
+/** Persists the next per-side cursor under the optimistic `seq` guard (0 rows →
+ * concurrent double-action → 409). Optional extra `data` rides the SAME write
+ * (e.g. the reveal's `pendingResolution`). */
+async function persistResolutionCursor(
+  input: {
+    liveMatchId: string;
+    seq: number;
+    next: ResolutionState;
+    data?: Record<string, unknown>;
+  },
+  tx: StoreTx,
+): Promise<void> {
+  const updated = await tx.liveMatch.updateMany({
+    where: { id: input.liveMatchId, seq: input.seq },
+    data: {
+      resolutionState: input.next as unknown as Prisma.InputJsonValue,
+      seq: input.seq + 1,
+      ...(input.data ?? {}),
+    },
+  });
+  if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
+}
+
+/** Step 1 advance: "Ganancias y mantenimiento" → "Tirada de fans". The
+ * winnings/maintenance display is pure UI; this persists the cursor AND
+ * COLLECTS the side's finish-time winnings into its treasury (per-side,
+ * independent of the rival — so the step-5 hire can afford the lineman cost
+ * with the match money already collected). Idempotent: once past the step,
+ * the winnings are never applied again. */
+export async function resolutionWinningsSeen(
+  input: ResolutionWizardInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await loadResolutionRow(input.fixtureId, deps);
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = parseResolutionState(row.resolutionState);
+  if (current[input.side].step !== "winnings") {
+    // Idempotent: already past the winnings step.
+    return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }) };
+  }
+  const winnings = parseWinningsJson(row.winnings)?.[input.side] ?? 0;
+  const next: ResolutionState = {
+    ...current,
+    [input.side]: { ...current[input.side], step: "fans" },
+  };
+  await deps.prisma.$transaction(async (tx) => {
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+    await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+    // RAU-44: the finish-time winnings are collected HERE (per-side), so the
+    // both-done close never re-applies them (the wizard path skips the
+    // treasury increment).
+    if (winnings > 0) {
+      await tx.team.updateMany({
+        where: { id: input.teamId },
+        data: { treasury: { increment: winnings } },
+      });
+    }
+  });
+  const view = toLiveViewState(
+    { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: next },
+    input.now,
+    { viewerSide: input.side },
+  );
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: row.seq + 1, view };
+}
+
+/** Step 2: the SERVER-OWNED dedicated-fans roll (rulebook p. 103). Rolls the
+ * 1D6 over the side's match outcome, PERSISTS the roll in the cursor and
+ * APPLIES the new value to the team's `coaching.dedicatedFans` (the Hinchas
+ * attribute change is per-side and immediate — the rest of the wizard is
+ * independent of the rival). The step stays "fans" so the coach sees the roll
+ * before continuing. Idempotent: once `fansDone`, returns the persisted roll. */
+export async function resolutionFanRoll(
+  input: ResolutionWizardInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState>; fans: ResolutionSideState["fans"] }> {
+  const row = await loadResolutionRow(input.fixtureId, deps);
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = parseResolutionState(row.resolutionState);
+  if (current[input.side].fansDone) {
+    return {
+      seq: row.seq,
+      view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }),
+      fans: current[input.side].fans,
+    };
+  }
+  const roll6 = deps.rollD6 ?? rollD6;
+  return deps.prisma.$transaction(async (tx) => {
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+
+    const fixture = await tx.fixture.findUnique({
+      where: { id: input.fixtureId },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+    });
+    const teams = await tx.team.findMany({
+      where: { id: { in: [input.teamId] } },
+      select: {
+        id: true,
+        raceId: true,
+        roster: true,
+        coaching: true,
+        treasury: true,
+        players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
+      },
+    });
+    const team = teams[0];
+    if (!team) throw Object.assign(new Error("not found"), { status: 404 });
+
+    const homeScore = fixture?.homeScore ?? row.homeScore;
+    const awayScore = fixture?.awayScore ?? row.awayScore;
+    const outcome: MatchOutcome =
+      input.side === "home"
+        ? homeScore > awayScore
+          ? "win"
+          : homeScore < awayScore
+            ? "loss"
+            : "draw"
+        : awayScore > homeScore
+          ? "win"
+          : awayScore < homeScore
+            ? "loss"
+            : "draw";
+
+    const rolled = rollPostMatchFanFactor({
+      ff: dedicatedFansOf(team.coaching),
+      result: outcome,
+      roll6: roll6(),
+    });
+    const fans: ResolutionSideState["fans"] = {
+      roll: rolled.roll6,
+      before: rolled.before,
+      after: rolled.after,
+      direction: rolled.direction,
+    };
+
+    // Rulebook p.103: the change applies to the team's dedicated-fans attribute
+    // NOW (per-side, independent of the rival) — the close reuses this value.
+    const coaching = isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING;
+    await tx.team.updateMany({
+      where: { id: input.teamId },
+      data: { coaching: { ...coaching, dedicatedFans: fans.after } as never },
+    });
+
+    const next: ResolutionState = {
+      ...current,
+      [input.side]: { ...current[input.side], step: "fans", fansDone: true, fans },
+    };
+    await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+    return { fans };
+  }).then(async ({ fans }) => {
+    const view = toLiveViewState(
+      { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: parseResolutionState({ ...current, [input.side]: { ...current[input.side], step: "fans", fansDone: true, fans } }) },
+      input.now,
+      { viewerSide: input.side },
+    );
+    deps.hub.publish(input.fixtureId, { ...view, events: [] });
+    return { seq: row.seq + 1, view, fans };
+  });
+}
+
+/** Step advance between the display steps: winnings → fans and fans → mvp. The
+ * MVP step requires the fan roll to have happened (`fansDone`). Idempotent. */
+export async function resolutionAdvance(
+  input: ResolutionWizardInput & { step: "fans" | "mvp" },
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await loadResolutionRow(input.fixtureId, deps);
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = parseResolutionState(row.resolutionState);
+  const side = current[input.side];
+  let nextStep: ResolutionSideState["step"];
+  if (input.step === "fans") {
+    if (side.step !== "winnings") {
+      return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }) };
+    }
+    nextStep = "fans";
+  } else {
+    if (side.step === "mvp") {
+      return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }) };
+    }
+    if (side.step !== "fans" || !side.fansDone) {
+      throw Object.assign(new Error("fan roll first"), { status: 409 });
+    }
+    nextStep = "mvp";
+  }
+  const next: ResolutionState = { ...current, [input.side]: { ...side, step: nextStep } };
+  await deps.prisma.$transaction(async (tx) => {
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+    await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+  });
+  const view = toLiveViewState(
+    { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: next },
+    input.now,
+    { viewerSide: input.side },
+  );
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: row.seq + 1, view };
+}
+
+/** Step 3: the FINAL MVP confirm — locks the coach's own six nominations
+ * irrevocably (step "mvp" → "mvp-done"). Requires the side to have SENT its
+ * nominations first. There is NO un-confirm command (no going back). */
+export async function resolutionMvpConfirm(
+  input: ResolutionWizardInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await loadResolutionRow(input.fixtureId, deps);
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = parseResolutionState(row.resolutionState);
+  const side = current[input.side];
+  if (side.mvpConfirmed) {
+    return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }) };
+  }
+  if (side.step !== "mvp") {
+    throw Object.assign(new Error("confirm only at the mvp step"), { status: 409 });
+  }
+  const nominations = parseMvpNominations(row.mvpNominations);
+  const ownNomination = nominations[input.side];
+  if (!ownNomination || ownNomination.length === 0) {
+    throw Object.assign(new Error("nominate first"), { status: 409 });
+  }
+  const next: ResolutionState = {
+    ...current,
+    [input.side]: { ...side, mvpConfirmed: true, step: "mvp-done" },
+  };
+  await deps.prisma.$transaction(async (tx) => {
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+    await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+  });
+  const view = toLiveViewState(
+    { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: next },
+    input.now,
+    { viewerSide: input.side },
+  );
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: row.seq + 1, view };
+}
+
+/** Step 4 gate — the MVP REVEAL: waits for BOTH sides' confirms, then rolls the
+ * server-owned 1D6 per team over the PERSISTED nominations, persists the
+ * grantees as `pendingResolution.mvp` (the close reuses them) and advances
+ * BOTH sides to the "casualties" step. Idempotent once revealed. */
+export async function resolutionMvpReveal(
+  input: ResolutionWizardInput,
+  deps: StoreDeps,
+): Promise<{
+  seq: number;
+  view: ReturnType<typeof toLiveViewState>;
+  mvp: { home: string; away: string };
+}> {
+  const row = await loadResolutionRow(input.fixtureId, deps);
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = parseResolutionState(row.resolutionState);
+  const nominations = parseMvpNominations(row.mvpNominations);
+  if (!nominations.home || !nominations.away) {
+    throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
+  }
+  const homeNom = nominations.home;
+  const awayNom = nominations.away;
+  if (!current.home.mvpConfirmed || !current.away.mvpConfirmed) {
+    throw Object.assign(new Error("both sides must confirm"), { status: 409 });
+  }
+  const existing = parseMvpGrantees(row.pendingResolution);
+  if (existing.home && existing.away) {
+    const mvp = { home: existing.home, away: existing.away };
+    return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }), mvp };
+  }
+  const roll6 = deps.rollD6 ?? rollD6;
+  return deps.prisma.$transaction(async (tx) => {
+    const resolved = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (resolved) throw Object.assign(new Error("already resolved"), { status: 409 });
+    const mvp = {
+      home: computeMvpGrantee(homeNom, roll6()),
+      away: computeMvpGrantee(awayNom, roll6()),
+    };
+    const next: ResolutionState = {
+      ...current,
+      home: { ...current.home, mvpRolled: true, step: "casualties" },
+      away: { ...current.away, mvpRolled: true, step: "casualties" },
+    };
+    // The grantees persist as pendingResolution.mvp (reused verbatim at the
+    // close — what the reveal showed IS what gets reported).
+    await tx.liveMatch.updateMany({
+      where: { id: row.id },
+      data: { pendingResolution: { mvp } as never },
+    });
+    await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+    return { mvp };
+  }).then(async ({ mvp }) => {
+    const next: ResolutionState = {
+      ...current,
+      home: { ...current.home, mvpRolled: true, step: "casualties" },
+      away: { ...current.away, mvpRolled: true, step: "casualties" },
+    };
+    const view = toLiveViewState(
+      { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: next },
+      input.now,
+      { viewerSide: input.side },
+    );
+    deps.hub.publish(input.fixtureId, { ...view, events: [] });
+    return { seq: row.seq + 1, view, mvp };
+  });
+}
+
+/** Applies ONE side's casualty outcomes to that team's Player rows (visible
+ * roster-state update at step 4): clears the team's pre-match suspensions
+ * (RAU-12 clear-then-set) then re-flags THIS match's lasting victims
+ * (missNextMatch / alive) + appends their injury bands. Skips unknown rows and
+ * already-dead players (result-route semantics). */
+async function persistSideCasualtyOutcomes(
+  tx: StoreTx,
+  teamId: string,
+  casualties: ReturnType<typeof casualtyVictimsFromEvents>,
+): Promise<void> {
+  const deduped = Array.from(new Map(casualties.map((c) => [c.rosterPlayerId, c])).values());
+  if (deduped.length === 0) return;
+  const existing = await tx.player.findMany({
+    where: { OR: deduped.map((c) => ({ teamId, rosterPlayerId: c.rosterPlayerId })) },
+  });
+  const rowByKey = new Map(existing.map((row) => [`${row.teamId}:${row.rosterPlayerId}`, row]));
+  for (const c of deduped) {
+    const row = rowByKey.get(`${teamId}:${c.rosterPlayerId}`);
+    if (!row) continue; // unknown roster id — not backfilled → skip
+    if (!row.alive) continue; // already dead → skip (no revive / re-append)
+    const injuries = Array.isArray(row.injuries) ? row.injuries : [];
+    await tx.player.updateMany({
+      where: { teamId, rosterPlayerId: c.rosterPlayerId },
+      data: {
+        injuries: [...injuries, { kind: c.band }] as never,
+        ...injurySuspensionUpdate(c.band, row.alive),
+      },
+    });
+  }
+}
+
+/** Step 4 advance: the casualties were SEEN — applies the side's casualty
+ * outcomes visibly to its Player rows and moves to the journeymen step. */
+export async function resolutionCasualtiesDone(
+  input: ResolutionWizardInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({
+    where: { fixtureId: input.fixtureId },
+    include: { events: { orderBy: { seq: "asc" } } },
+  });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = parseResolutionState(row.resolutionState);
+  const side = current[input.side];
+  if (side.casualtiesDone) {
+    return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }) };
+  }
+  if (side.step !== "casualties") {
+    throw Object.assign(new Error("casualties step first"), { status: 409 });
+  }
+  await deps.prisma.$transaction(async (tx) => {
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+    const events = resolveEventsOf((row as { events?: unknown[] }).events ?? []);
+    const casualties = casualtyVictimsFromEvents(events).filter((c) => c.team === input.side);
+    // RAU-12 clear-then-set for THIS team: the pre-match suspensions are served
+    // by this resolution and the new lasting victims start theirs after it.
+    await tx.player.updateMany({
+      where: { teamId: input.teamId },
+      data: clearSuspensionUpdate(),
+    });
+    await persistSideCasualtyOutcomes(tx, input.teamId, casualties);
+    const next: ResolutionState = {
+      ...current,
+      [input.side]: { ...side, casualtiesDone: true, step: "journeymen" },
+    };
+    await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+  });
+  const next: ResolutionState = {
+    ...current,
+    [input.side]: { ...side, casualtiesDone: true, step: "journeymen" },
+  };
+  const view = toLiveViewState(
+    { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: next },
+    input.now,
+    { viewerSide: input.side },
+  );
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: row.seq + 1, view };
+}
+
+/** Step 5 (LAST): the journeymen step is COMPLETE once every fielded Novato
+ * was decided (hired or let go — the hire/let-go commands remove entries from
+ * `LiveMatch.journeymen`). Rejects "done" while undecided novatos remain.
+ *
+ * BOTH-SIDES CLOSE: when this completion makes BOTH sides "done", the final
+ * close (`runWizardClose`) runs IN THE SAME TRANSACTION — the LAST coach to
+ * finish the wizard closes the match atomically (MatchResult + maybeCloseLeague
+ * + treasury winnings + PE awards + the MVP events), so there is never a
+ * "both done but not reported" window and no extra click. The explicit
+ * `resolveMatch` command stays as a belt-and-suspenders path. */
+export async function resolutionJourneymenDone(
+  input: ResolutionWizardInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({
+    where: { fixtureId: input.fixtureId },
+    include: { events: { orderBy: { seq: "asc" } } },
+  });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  if (row.status !== "finished") {
+    throw Object.assign(new Error("match not finished"), { status: 409 });
+  }
+  const current = parseResolutionState(row.resolutionState);
+  const side = current[input.side];
+  if (side.step === "done") {
+    return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }) };
+  }
+  if (side.step !== "journeymen") {
+    throw Object.assign(new Error("journeymen step first"), { status: 409 });
+  }
+  const remaining = parsePersistedJourneymen(row.journeymen)?.[input.side] ?? [];
+  if (remaining.length > 0) {
+    throw Object.assign(new Error("decide the novatos first"), { status: 409 });
+  }
+  const next: ResolutionState = {
+    ...current,
+    [input.side]: { ...side, journeymenDone: true, step: "done" },
+  };
+  const bothDone = next.home.step === "done" && next.away.step === "done";
+  // The LAST command to reach both-done runs the close in the SAME transaction
+  // (requires the route-provided close context).
+  const closeContext = input.leagueId && input.homeTeamId && input.awayTeamId && input.loadedBy;
+  let finalSeq = row.seq + 1;
+  await deps.prisma.$transaction(async (tx) => {
+    const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+    if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+    await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+    if (bothDone && closeContext) {
+      const closed = await runWizardClose(
+        tx,
+        row as LiveMatch & { events: LiveEvent[] },
+        {
+          fixtureId: input.fixtureId,
+          leagueId: input.leagueId!,
+          homeTeamId: input.homeTeamId!,
+          awayTeamId: input.awayTeamId!,
+          loadedBy: input.loadedBy!,
+          now: input.now,
+        },
+        next,
+        deps,
+      );
+      // The close bumped the row seq past the appended mvp events.
+      finalSeq = closed.seq;
+    }
+  });
+  const view = toLiveViewState(
+    { ...liveMatchRowToState(row), seq: finalSeq, resolutionState: next },
+    input.now,
+    { viewerSide: input.side },
+  );
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: finalSeq, view };
 }

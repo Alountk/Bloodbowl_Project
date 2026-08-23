@@ -216,3 +216,26 @@ export function journeymanSnapshotEarned(
   }
   return { pe, injuries };
 }
+
+/**
+ * The PE a Journeyman EARNED during the match + the injury bands they SUFFERED,
+ * derived directly from the LIVE EVENTS (the WIZARD hire runs at step 5, BEFORE
+ * the close writes the `MatchResult` snapshot — so the events + the revealed MVP
+ * grantees are the single source of truth at hire time). PE covers the
+ * TD/completion/lasting-casualty awards plus the MJP +4 when the reveal granted
+ * it; injuries are every casualty band where they were the victim.
+ */
+export function journeymanMatchEarned(
+  events: readonly ResolveEventLike[],
+  side: "home" | "away",
+  mvp: { home: string | null; away: string | null } | null,
+  journeymanId: string,
+): { pe: number; injuries: string[] } {
+  const derived = deriveLivePeAwards(events)[side];
+  const earned = derived.find((a) => a.rosterPlayerId === journeymanId)?.pe ?? 0;
+  const mvpPe = mvp?.[side] === journeymanId ? PE_MVP : 0;
+  const injuries = casualtyVictimsFromEvents(events)
+    .filter((c) => c.team === side && c.rosterPlayerId === journeymanId)
+    .map((c) => c.band);
+  return { pe: earned + mvpPe, injuries };
+}

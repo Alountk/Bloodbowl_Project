@@ -416,7 +416,7 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
@@ -479,7 +479,7 @@ function finishedLiveDetail(): MatchDetail {
       finishedAt: 5000,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -911,7 +911,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
     stubMatch(detail);
@@ -944,7 +944,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
     stubMatch(detail);
@@ -976,7 +976,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
     const fetchMock = vi.fn((url: string) =>
@@ -1749,7 +1749,7 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
       finishedAt: 9000,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 6, kind: "concede", side: "home", playerRosterId: null, half: 1, turnNumber: 3, payload: { winnerSide: "away" }, at: 9000 },
@@ -1861,28 +1861,44 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
     renderPlayed();
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
 
-    // The persistent banner keeps the resolution reachable.
-    const resolveButton = screen.getByRole("button", { name: "Resolver partido" });
-    expect(screen.getByText("El partido terminó. Falta resolver el resultado.")).toBeTruthy();
+    // The persistent "Informar del fin del partido" card keeps the resolution
+    // reachable and surfaces the current wizard step (resume-at-step).
+    const resolveButton = screen.getByRole("button", { name: "Reanudar" });
+    expect(screen.getByText("Informar del fin del partido")).toBeTruthy();
+    expect(screen.getByText("Paso actual: Ganancias y mantenimiento")).toBeTruthy();
 
     fireEvent.click(resolveButton);
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // RAU-52: the viewer's OWN side renders CHECKBOXES (not the old numbered
-    // selects); the rival is a read-only status (no checkboxes). The roll
-    // stays gated on BOTH sides.
-    expect(within(dialog).getByRole("checkbox", { name: "Blitzer A (Human Blitzer · #1)" })).toBeTruthy();
-    expect(within(dialog).getByRole("checkbox", { name: "Thrower A (Human Thrower · #2)" })).toBeTruthy();
-    expect(within(dialog).queryByRole("checkbox", { name: /Blitzer B/ })).toBeNull();
-    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
+    // The wizard RESUMES at the persisted step — a fresh finish opens at the
+    // FIRST step (Ganancias y mantenimiento) with its Continuar action.
+    expect(within(dialog).getByText("Paso: Ganancias y mantenimiento")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Continuar" })).toBeTruthy();
   });
 
   it("hides the resolve banner once the match is resolved (result present)", async () => {
     stubMatch(finishedLiveDetail()); // playedDetail carries a result
     renderPlayed();
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "Resolver partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reanudar" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
+  });
+
+  it("shows the 'Informar del fin del partido' card with the CURRENT persisted step — the modal resumes there (resume-at-step)", async () => {
+    const detail = unresolvedFinishedDetail();
+    detail.live = {
+      ...detail.live!,
+      viewerSide: "home",
+      resolutionState: {
+        home: { step: "casualties", fansDone: true, fans: { roll: 4, before: 2, after: 3, direction: "up" }, mvpConfirmed: true, mvpRolled: true, casualtiesDone: false, journeymenDone: false },
+        away: { step: "mvp-done", fansDone: true, fans: { roll: 2, before: 2, after: 2, direction: "stay" }, mvpConfirmed: true, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+      },
+    };
+    stubMatch(detail);
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+    // The card surfaces the OWN side's persisted step — the exact resume target.
+    expect(screen.getByText("Informar del fin del partido")).toBeTruthy();
+    expect(screen.getByText("Paso actual: MVP y bajas")).toBeTruthy();
   });
 
   it("auto-opens the resolution modal once when the live match finishes via SSE", async () => {
@@ -1947,7 +1963,7 @@ describe("MatchView — RAU-14 post-resolve JourneymenHirePanel gating", () => {
     // The match was reported → the resolution modal is gone and NO separate
     // post-report panel renders: the post-match hire is the LAST STEP of the
     // resolution sequence (inside the modal), not a standalone panel.
-    expect(screen.queryByRole("button", { name: "Resolver partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reanudar" })).toBeNull();
     expect(screen.queryByTestId("journeymen-hire")).toBeNull();
     expect(screen.queryByRole("button", { name: "Contratar marcados" })).toBeNull();
   });
@@ -1960,7 +1976,7 @@ describe("MatchView — RAU-14 post-resolve JourneymenHirePanel gating", () => {
     await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
 
     expect(screen.queryByTestId("journeymen-hire")).toBeNull();
-    expect(screen.getByRole("button", { name: "Resolver partido" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reanudar" })).toBeTruthy();
   });
 
   it("renders NO hire panel when the viewer's side fielded no journeymen (only the rival's offers exist)", async () => {

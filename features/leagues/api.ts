@@ -542,6 +542,10 @@ export interface LiveMatchView extends LiveMatchViewState {
    * post-resolve HIRE flow can read them; null when the row has none. Absent
    * on SSE/hub frames (only the fixture GET sets it). */
   journeymen?: JourneymenState | null;
+  /** The revealed MVP grantees (`{ home, away }` rosterPlayerIds), persisted by
+   * the BOTH-sides reveal — the casualties step shows them; null per side until
+   * the reveal runs. Fixture-GET only (SSE/hub frames omit it). */
+  mvpGrantees?: { home: string | null; away: string | null };
 }
 
 /**
@@ -597,10 +601,32 @@ export interface LiveMatchViewState {
     roll16: number;
     roll6?: number;
   } | null;
-  /** RAU-51: the persisted per-side MJP nominations (null per side = that coach
-   * has not nominated yet) — the resolution modal renders the per-coach pickers
-   * and gates the server roll on BOTH sides. */
-  mvpNominations: { home: string[] | null; away: string[] | null };
+/** RAU-51: the persisted per-side MJP nominations (null per side = that coach
+ * has not nominated yet) — the resolution modal renders the per-coach pickers
+ * and gates the server roll on BOTH sides. */
+mvpNominations: { home: string[] | null; away: string[] | null };
+/** The per-side resolution wizard cursor — the modal resumes at the persisted
+ * step after a close/refresh (defaults to "winnings" while never started). */
+resolutionState: ResolutionState;
+}
+
+/** The per-side resolution wizard step cursor (see the store's `ResolutionState`
+ * for the full contract). The modal advances the side through the steps and
+ * resumes at the persisted step after a close/refresh. */
+export interface ResolutionSideState {
+  step: "winnings" | "fans" | "mvp" | "mvp-done" | "casualties" | "journeymen" | "done";
+  fansDone: boolean;
+  fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } | null;
+  mvpConfirmed: boolean;
+  mvpRolled: boolean;
+  casualtiesDone: boolean;
+  journeymenDone: boolean;
+}
+
+/** The persisted per-side resolution state exposed by the fixture GET. */
+export interface ResolutionState {
+  home: ResolutionSideState;
+  away: ResolutionSideState;
 }
 
 /** A chronological live event delivered by the hub (LM-6). */
@@ -674,8 +700,56 @@ export type LiveCommand =
   | {
       /** RAU-49: THE end-of-match closure — persists the PE awards, treasuries,
        * post-match FF, the MatchResult row, closes the fixture (idempotent for
-       * the concede walkover) and runs `maybeCloseLeague` in ONE transaction. */
+       * the concede walkover) and runs `maybeCloseLeague` in ONE transaction.
+       * RAU-51: rolls/reuses the persisted per-side nominations, never a body.
+       * Wizard gate: BOTH sides must have reached the "done" step. */
       type: "resolveMatch";
+    }
+  | {
+      /** Per-side wizard step 1 advance: "Ganancias y mantenimiento" → fans.
+       * Persists the side's cursor (display-only step). */
+      type: "resolutionWinningsSeen";
+      side: "home" | "away";
+    }
+  | {
+      /** Per-side wizard step 2: the SERVER-OWNED dedicated-fans 1D6 roll,
+       * applied to the team's `coaching.dedicatedFans` + persisted in the
+       * cursor (the side stays on "fans" so the roll is visible). */
+      type: "resolutionFanRoll";
+      side: "home" | "away";
+    }
+  | {
+      /** Per-side wizard step advance: fans → mvp (requires the fan roll). */
+      type: "resolutionAdvance";
+      side: "home" | "away";
+      step: "fans" | "mvp";
+    }
+  | {
+      /** Per-side wizard step 3: the FINAL MVP confirm — locks the coach's own
+       * six nominations irrevocably (step → "mvp-done"). No going back. */
+      type: "resolutionMvpConfirm";
+      side: "home" | "away";
+    }
+  | {
+      /** Wizard step 4 gate: the MVP REVEAL — waits for BOTH sides' confirms,
+       * rolls the server-owned 1D6 per team over the persisted nominations and
+       * advances both sides to the "casualties" step. Idempotent. */
+      type: "resolutionMvpReveal";
+      side: "home" | "away";
+    }
+  | {
+      /** Per-side wizard step 4 advance: the casualties were SEEN — applies the
+       * side's casualty outcomes to its Player rows (visible) + step →
+       * "journeymen". */
+      type: "resolutionCasualtiesDone";
+      side: "home" | "away";
+    }
+  | {
+      /** Per-side wizard step 5 (LAST): the journeymen step is complete (every
+       * fielded Novato decided) — step → "done". When BOTH sides are done the
+       * match closes. */
+      type: "resolutionJourneymenDone";
+      side: "home" | "away";
     };
 
 /**
@@ -812,7 +886,8 @@ export async function rollLiveMvp(
 
 /** Resolves a finished live match (THE closure): PE + treasuries + FF + the
  * MatchResult row + the idempotent fixture close + `maybeCloseLeague`. The
- * nominations come from the PERSISTED per-side state (RAU-51). */
+ * nominations come from the PERSISTED per-side state (RAU-51). Wizard gate:
+ * BOTH sides must have reached the "done" step. */
 export async function resolveLiveMatch(
   leagueId: string,
   fixtureId: string,
@@ -827,4 +902,108 @@ export async function resolveLiveMatch(
   );
   const body = await readJson<{ resolved: ResolveOutcome }>(res);
   return body.resolved;
+}
+
+/** Posts one per-side RESOLUTION WIZARD command (own side only — the route
+ * enforces the caller owns that side's team) and returns the new view. */
+async function resolutionCommand(
+  leagueId: string,
+  fixtureId: string,
+  command: Extract<LiveCommand, { side: "home" | "away" }> & { type: string },
+): Promise<LiveMatchViewState> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+    },
+  );
+  const body = await readJson<{ view: LiveMatchViewState }>(res);
+  return body.view;
+}
+
+/** Wizard step 1: the winnings display was seen → advance to the fans step. */
+export async function resolutionWinningsSeen(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+): Promise<LiveMatchViewState> {
+  return resolutionCommand(leagueId, fixtureId, { type: "resolutionWinningsSeen", side });
+}
+
+/** The server-owned dedicated-fans roll (step 2). Returns the persisted roll. */
+export async function resolutionFanRoll(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+): Promise<{ fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } }> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "resolutionFanRoll", side }),
+    },
+  );
+  const body = await readJson<{
+    view: LiveMatchViewState;
+    fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" };
+  }>(res);
+  return { fans: body.fans };
+}
+
+/** Wizard step advance: fans → mvp (requires the fan roll). */
+export async function resolutionAdvance(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+  step: "fans" | "mvp",
+): Promise<LiveMatchViewState> {
+  return resolutionCommand(leagueId, fixtureId, { type: "resolutionAdvance", side, step });
+}
+
+/** Wizard step 3: the FINAL MVP confirm (irrevocable). */
+export async function resolutionMvpConfirm(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+): Promise<LiveMatchViewState> {
+  return resolutionCommand(leagueId, fixtureId, { type: "resolutionMvpConfirm", side });
+}
+
+/** Wizard step 4 gate: the MVP REVEAL (waits for BOTH sides' confirms). */
+export async function resolutionMvpReveal(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+): Promise<{ mvp: { home: string; away: string } }> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/live`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "resolutionMvpReveal", side }),
+    },
+  );
+  const body = await readJson<{ view: LiveMatchViewState; mvp: { home: string; away: string } }>(res);
+  return { mvp: body.mvp };
+}
+
+/** Wizard step 4 advance: the casualties were seen (Player rows updated). */
+export async function resolutionCasualtiesDone(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+): Promise<LiveMatchViewState> {
+  return resolutionCommand(leagueId, fixtureId, { type: "resolutionCasualtiesDone", side });
+}
+
+/** Wizard step 5 (LAST): the journeymen step is complete (side → "done"). */
+export async function resolutionJourneymenDone(
+  leagueId: string,
+  fixtureId: string,
+  side: "home" | "away",
+): Promise<LiveMatchViewState> {
+  return resolutionCommand(leagueId, fixtureId, { type: "resolutionJourneymenDone", side });
 }

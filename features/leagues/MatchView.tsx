@@ -32,14 +32,22 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const { t } = useI18n();
+  // Monotonic request seq: a STALE refresh response (an older request landing
+  // after a newer one — the wizard fires refreshes concurrently with the
+  // modal's poll/actions) must never regress the detail (which would remount
+  // the wizard steps mid-flow).
+  const seqRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const seq = ++seqRef.current;
     try {
       const match = await getMatchDetail(leagueId, fixtureId);
+      if (seq !== seqRef.current) return;
       setDetail(match);
       setError(null);
       setNotFound(false);
     } catch (e) {
+      if (seq !== seqRef.current) return;
       const status = (e as { status?: number }).status;
       if (status === 404) {
         setNotFound(true);
@@ -47,7 +55,7 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
         setError(e instanceof Error ? e.message : t("match.loadError"));
       }
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   }, [leagueId, fixtureId, t]);
 
@@ -128,6 +136,7 @@ function emptyPendingView(): LiveMatchViewState {
     concedeProposedBy: null,
     pendingCasualty: null,
     mvpNominations: { home: null, away: null },
+    resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
   };
 }
 
@@ -970,6 +979,28 @@ function JourneymenNotice({
   );
 }
 
+/** The i18n key for a resolution wizard step label (the resume card copy). */
+function resolutionStepKey(step: string): string {
+  switch (step) {
+    case "winnings":
+      return "match.resolve.stepWinnings";
+    case "fans":
+      return "match.resolve.stepFans";
+    case "mvp":
+      return "match.resolve.stepMvp";
+    case "mvp-done":
+      return "match.resolve.stepMvpDone";
+    case "casualties":
+      return "match.resolve.stepCasualties";
+    case "journeymen":
+      return "match.resolve.stepJourneymen";
+    case "done":
+      return "match.resolve.stepDone";
+    default:
+      return "match.resolve.stepUnknown";
+  }
+}
+
 /** The live-session control: consent → ready → begin → live clock + controls. */
 function LiveActiveMatch({
   live,
@@ -1321,13 +1352,21 @@ function FinishedLiveView({
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
   leagueId: string;
-  /** RAU-49: when set, the finished live match is NOT resolved yet — a clear
-   * "Resolver partido" banner renders above the feed so the resolution is never
-   * stuck behind a dismissed modal. */
+  /** When set, the finished live match is NOT resolved yet — the persistent
+   * "Informar del fin del partido" card renders above the feed showing the
+   * current wizard step with a Reanudar button (resume-at-step, never stuck
+   * behind a dismissed modal). */
   onResolve?: () => void;
 }) {
   const clock = useLiveClock(live);
   const { t } = useI18n();
+  // The resume card surfaces the VIEWER's OWN side's wizard step (the fixture
+  // GET carries the per-viewer side); a no-side viewer sees the home side's.
+  const viewerSide = live.viewerSide ?? null;
+  const ownStep = viewerSide
+    ? (live.resolutionState?.[viewerSide]?.step ?? "winnings")
+    : (live.resolutionState?.home?.step ?? "winnings");
+  const stepLabel = t(resolutionStepKey(ownStep));
   return (
     <div className="bg-white border border-[#e2e8f0]">
       <TourplayHeader
@@ -1346,14 +1385,20 @@ function FinishedLiveView({
         turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
       />
       {onResolve ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e2e8f0] bg-[#f8fafc] px-3.5 py-2">
-          <p className="text-sm font-semibold text-slate-700">{t("match.resolve.banner")}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d11938] bg-[#f8fafc] px-3.5 py-2">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-[#12225a]">{t("match.resolve.resumeTitle")}</p>
+            <p className="text-xs text-slate-600">{t("match.resolve.resumeHint")}</p>
+            <p className="mt-0.5 text-xs font-semibold text-slate-500">
+              {t("match.resolve.resumeStep", { step: stepLabel })}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onResolve}
             className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d]"
           >
-            {t("match.resolve.action")}
+            {t("match.resolve.resumeAction")}
           </button>
         </div>
       ) : null}
@@ -1584,10 +1629,9 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
               open={resolveOpen}
               detail={detail}
               onClose={() => setResolveOpen(false)}
-              // RAU-14: the resolve commits THE closure; the modal STAYS open
-              // for the LAST step of the sequence — the post-match journeyman
-              // hire step — and closes itself once nothing remains to hire.
-              onResolved={refresh}
+              // RAU-52 rework: every wizard action refreshes the detail (the
+              // persisted step + the rival's progress); once the match closes
+              // (BOTH sides done) the modal closes itself via the result.
               onNominated={refresh}
             />
           ) : null}

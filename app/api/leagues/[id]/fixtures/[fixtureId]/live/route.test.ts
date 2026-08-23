@@ -2016,7 +2016,9 @@ describe("POST .../live — RAU-14 post-resolve journeyman hire (hireJourneyman)
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "Cannot hire in current state" });
+    // The route surfaces the STORE's specific guard message (the client retries
+    // a "seq conflict" — so the exact message matters).
+    expect(await res.json()).toEqual({ error: "match not resolved" });
   });
 
   it("rejects a malformed hireJourneyman body (bad side / missing hire flag) with 400", async () => {

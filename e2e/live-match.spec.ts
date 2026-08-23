@@ -25,13 +25,15 @@ test.use({ locale: "es-ES" });
  *      offers ONLY Herida and records a casualty to their own player (LM-12);
  *   6. reload persistence: the match page re-renders the same Design-A history
  *      from the persisted events (no turn rows, a reload does not drop them);
- *   7. a finished live match shows the RAU-49 guided RESOLUTION flow — the
- *      persistent "Resolver partido" banner + the two-step modal (six MJP
- *      nominations per team, a server-owned roll, then "Guardar y reportar") —
- *      and, once resolved, the finished feed carries the home+away mvp rows
- *      (★4), the snapshot summary rows, the fixture is PLAYED with the recorded
- *      score and the single jornada completes (the resolve command IS the
- *      closure, replacing the old result-modal prefill flow).
+  *   7. a finished live match shows the RAU-49/RAU-52 guided RESOLUTION flow —
+  *      the persistent "Informar del fin del partido" card (resume-at-step) +
+  *      the PER-SIDE 5-step WIZARD (ganancias → fans → MVP → reveal+bajas →
+  *      novatos; each coach advances their own side; the reveal waits for both;
+  *      the LAST completion closes the match) — and, once resolved, the
+  *      finished feed carries the home+away mvp rows (★4), the snapshot summary
+  *      rows, the fixture is PLAYED with the recorded score and the single
+  *      jornada completes (the close command IS the closure, replacing the old
+  *      result-modal prefill flow).
  *
  * Tourplay redesign guards (MVT-1/2/3/4) are asserted against the REAL UI:
  * the sticky header back arrow + horizontal timeline bar (MVT-2/MVT-3), the
@@ -254,10 +256,66 @@ async function openResolution(page: Page, matchUrl: string) {
   try {
     await dialog.waitFor({ state: "visible", timeout: 8_000 });
   } catch {
-    await page.getByRole("button", { name: "Resolver partido" }).click();
+    await page.getByRole("button", { name: "Reanudar" }).click();
     await expect(dialog).toBeVisible();
   }
   return dialog;
+}
+
+/**
+ * RAU-52 rework: drives a coach's OWN side through steps 1–3 (winnings →
+ * fans → MVP) independently of the rival — the server-owned 1D6 fan roll, the
+ * six checkbox nominations + the SEND + the FINAL confirm (irrevocable).
+ * Returns the dialog (now at the "mvp-done" waiting step).
+ */
+async function driveWinningsFansMvp(page: Page, matchUrl: string) {
+  const dialog = await openResolution(page, matchUrl);
+  await expect(dialog.getByText("Paso: Ganancias y mantenimiento")).toBeVisible({ timeout: 25_000 });
+  await dialog.getByRole("button", { name: "Continuar" }).click();
+  await expect(dialog.getByText("Paso: Tirada de fans")).toBeVisible({ timeout: 25_000 });
+  await dialog.getByRole("button", { name: "Tirar 1D6" }).click();
+  await expect(dialog.getByText(/factor fan/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Continuar" }).click();
+  await expect(dialog.getByText("Paso: Nominaciones al MVP")).toBeVisible({ timeout: 25_000 });
+  await expect(dialog.getByRole("checkbox").first()).toBeVisible();
+  for (let i = 0; i < 6; i++) {
+    await dialog.getByRole("checkbox").nth(i).check();
+  }
+  await dialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
+  await expect(dialog.getByText("Nominaciones enviadas")).toBeVisible();
+  await dialog.getByRole("button", { name: "Confirmar" }).click();
+  await expect(dialog.getByText("¿Estás seguro?")).toBeVisible({ timeout: 25_000 });
+  await dialog.getByRole("button", { name: "Sí, confirmar" }).click();
+  await expect(
+      dialog.getByText(/Paso: (MVP confirmado|MVP y bajas)/),
+    ).toBeVisible({ timeout: 30_000 });
+  return dialog;
+}
+
+/** Advances a coach's own side past step 4 (the MVP REVEAL + the visible
+ * casualties). The reveal fires automatically once BOTH sides confirmed. */
+async function driveRevealAndCasualties(page: Page, dialog: ReturnType<Page["getByRole"]>) {
+  await expect(dialog.getByText("Paso: MVP y bajas")).toBeVisible({ timeout: 35_000 });
+  await dialog.getByRole("button", { name: "Continuar" }).click();
+}
+
+/** Finishes step 5 (journeymen) — the ≥11-healthy sides here have nothing to
+ * decide → completes the side ("Continuar"). */
+async function driveJourneymenDone(dialog: ReturnType<Page["getByRole"]>) {
+  await expect(dialog.getByText("Paso: Novatos")).toBeVisible({ timeout: 20_000 });
+  const hire = dialog.getByTestId("journeymen-hire");
+  if ((await hire.count()) > 0) {
+    while ((await hire.getByRole("button", { name: "Dejar ir" }).count()) > 0) {
+      const remaining = await hire.getByRole("button", { name: "Dejar ir" }).count();
+      const letGo = hire.getByRole("button", { name: "Dejar ir" }).first();
+      await expect(letGo).toBeEnabled({ timeout: 15_000 });
+      await letGo.dispatchEvent("click");
+      if (remaining > 1) {
+        await expect(dialog.getByRole("button", { name: "Continuar" })).toBeDisabled();
+      }
+    }
+  }
+  await dialog.getByRole("button", { name: "Continuar" }).click();
 }
 
 /**
@@ -543,50 +601,29 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const afterEnd = await liveCommand(admin, leagueId, fixtureId, { type: "endMatch" });
     expect(afterEnd.view.status).toBe("finished");
 
-    // RAU-51: a finished live match with no result shows the PER-SIDE guided
-    // resolution flow (the manual result form is gone for live matches). Each
-    // coach nominates ONLY their OWN team from their OWN page; the rival side
-    // is a read-only status (never their players); the roll is gated on BOTH
-    // sides' submissions, then the server-owned roll → resolve close the match.
+    // RAU-51/RAU-52 rework: a finished live match with no result shows the
+    // PER-SIDE RESOLUTION WIZARD (the manual result form is gone for live
+    // matches). Each coach advances their OWN side independently through the
+    // 5 steps; the reveal waits for both confirms; the LAST completion closes.
     await admin.goto(matchUrl);
-    await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
+    await expect(admin.getByRole("button", { name: "Reanudar" })).toBeVisible();
 
-    // Coach A (whichever team is home) nominates their OWN six via CHECKBOXES.
-    await homeCoach.goto(matchUrl);
-    const homeDialog = await openResolution(homeCoach, matchUrl);
-    await expect(homeDialog.getByRole("checkbox")).toHaveCount(11);
-    for (let i = 0; i < 6; i++) {
-      await homeDialog.getByRole("checkbox").nth(i).check();
-    }
-    await expect(homeDialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
-    await homeDialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
-    await expect(homeDialog.getByText("Nominaciones enviadas")).toBeVisible();
-    // The home coach's own modal shows the rival as a read-only status.
-    await expect(homeDialog.getByText("El rival aún no ha nominado")).toBeVisible();
+    // Coach A (whichever team is home) drives their OWN side: winnings → fans
+    // (server-owned 1D6) → MVP checkboxes → Send → the FINAL confirm.
+    const homeDialog = await driveWinningsFansMvp(homeCoach, matchUrl);
+    // Coach B drives THEIR own side the same way.
+    const awayDialog = await driveWinningsFansMvp(awayCoach, matchUrl);
 
-    // Coach B nominates their OWN six on their OWN page.
-    const awayDialog = await openResolution(awayCoach, matchUrl);
-    await expect(awayDialog.getByText("El rival nominó 6 jugadores")).toBeVisible();
-    await expect(awayDialog.getByRole("checkbox")).toHaveCount(11);
-    await expect(awayDialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
-    for (let i = 0; i < 6; i++) {
-      await awayDialog.getByRole("checkbox").nth(i).check();
-    }
-    await awayDialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
-    await expect(awayDialog.getByText("Nominaciones enviadas")).toBeVisible();
+    // BOTH confirmed → the reveal fires automatically → both sides advance to
+    // the casualties step (the reveal is the ONLY joint wait).
+    await driveRevealAndCasualties(homeCoach, homeDialog);
+    await driveRevealAndCasualties(awayCoach, awayDialog);
 
-    // Both sides nominated → the SERVER-owned 1D6 MVP roll is enabled. The
-    // FINAL confirm ("¿Estás seguro?") locks the picks; "Sí, tirar el MVP"
-    // reveals the grantees + the summary (winnings → the finish-time persisted
-    // values, the fan-factor roll, match PE). "Guardar y reportar" is THE
-    // closure (the modal closes itself — no journeymen were fielded here).
-    await expect(awayDialog.getByRole("button", { name: "Tirar MVP" })).toBeEnabled();
-    await awayDialog.getByRole("button", { name: "Tirar MVP" }).click();
-    await expect(awayDialog.getByText("¿Estás seguro?")).toBeVisible();
-    await awayDialog.getByRole("button", { name: "Sí, tirar el MVP" }).click();
-    await expect(awayDialog.getByText("Resumen de la resolución")).toBeVisible();
-    await awayDialog.getByRole("button", { name: "Guardar y reportar" }).click();
-    await expect(awayDialog).not.toBeVisible();
+    // Step 5 (journeymen): no novatos were fielded (11 healthy) → complete.
+    await driveJourneymenDone(homeDialog);
+    await driveJourneymenDone(awayDialog);
+    // The LAST completion closes the match → the modal closes itself.
+    await expect(awayDialog).not.toBeVisible({ timeout: 20_000 });
 
     // The admin page re-loads the RESOLVED match (whichever coach did the final
     // save) so the feed shows the closure summary deterministically.

@@ -615,7 +615,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-      mvpNominations: { home: null, away: null },
+      mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     };
     expect(live.status).toBe("pending");
     expect(live.homeConsented).toBe(true);
@@ -649,7 +649,7 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-      mvpNominations: { home: null, away: null },
+      mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     };
     expect(live.homeTurnMs).toBe(5100);
     expect(live.awayTurnMs).toBe(3000);
@@ -680,7 +680,7 @@ describe("sendLiveCommand", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-      mvpNominations: { home: null, away: null },
+      mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     };
     vi.stubGlobal(
       "fetch",
@@ -837,7 +837,7 @@ describe("LiveCommand — RAU-38 concede propose / respond", () => {
     finishedAt: null,
     concedeProposedBy: null,
     pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
   };
 
   it("sends { type: 'concede' } on the wire", async () => {

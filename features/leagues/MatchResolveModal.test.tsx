@@ -1,19 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MatchResolveModal } from "./MatchResolveModal";
-import type { LiveMatchView, MatchDetail } from "./api";
+import type { LiveMatchView, MatchDetail, ResolutionState } from "./api";
 
 /**
- * RAU-52 resolution modal tests: the PER-SIDE end-of-match sequence for a
- * finished live match. Each coach nominates ONLY their own team from
- * CHECKBOXES (dead/suspended players excluded), the rulebook MAX (6) is
- * enforced (a 7th player cannot be checked), the send/confirm reaches the
- * rival WITHOUT a reload (the modal polls the persisted detail), and once BOTH
- * sides nominated there is a FINAL confirm ("¿Estás seguro?") with NO going
- * back after it. The modal exercises the REAL `nominateMvp` / `rollLiveMvp` /
- * `resolveLiveMatch` api wrappers through a stubbed global fetch (repo
- * convention); the server owns the roll — the modal never sends nominations in
- * the roll/resolve bodies.
+ * RAU-52 resolution WIZARD modal tests: the PER-SIDE, RESUMABLE end-of-match
+ * sequence for a finished live match. Each coach advances their OWN side
+ * independently through the persisted step cursor (winnings → fans → mvp →
+ * mvp-done → casualties → journeymen → done); a refresh resumes AT THE CURRENT
+ * STEP. The fan roll is server-owned (`resolutionFanRoll`), the MVP confirm is
+ * irrevocable, the reveal waits for BOTH sides, and the match closes only when
+ * both sides are done. The modal exercises the REAL api wrappers through a
+ * stubbed global fetch (repo convention).
  */
 
 function player(rosterPlayerId: string, name: string) {
@@ -29,12 +27,43 @@ function homeLabel(name: string, dorsal: number) {
   return `${name} (Human Lineman · #${dorsal})`;
 }
 
+function emptySide(overrides: Partial<ResolutionState["home"]> = {}): ResolutionState["home"] {
+  return {
+    step: "winnings",
+    fansDone: false,
+    fans: null,
+    mvpConfirmed: false,
+    mvpRolled: false,
+    casualtiesDone: false,
+    journeymenDone: false,
+    ...overrides,
+  };
+}
+
+function resolutionState(overrides: {
+  home?: Partial<ResolutionState["home"]>;
+  away?: Partial<ResolutionState["away"]>;
+} = {}): ResolutionState {
+  return {
+    home: emptySide(overrides.home),
+    away: emptySide(overrides.away),
+  };
+}
+
 function baseDetail(overrides: {
   viewerSide?: "home" | "away" | null;
+  resolutionState?: ResolutionState;
   mvpNominations?: { home: string[] | null; away: string[] | null };
+  mvpGrantees?: { home: string | null; away: string | null };
   homePlayers?: ReturnType<typeof sixRoster>;
 } = {}): MatchDetail {
-  const { viewerSide = "home", mvpNominations = { home: null, away: null }, homePlayers = sixRoster("h", "Hugo") } = overrides;
+  const {
+    viewerSide = "home",
+    resolutionState: rs = resolutionState(),
+    mvpNominations = { home: null, away: null },
+    mvpGrantees = { home: null, away: null },
+    homePlayers = sixRoster("h", "Hugo"),
+  } = overrides;
   return {
     fixture: {
       id: "f1",
@@ -87,12 +116,15 @@ function baseDetail(overrides: {
       concedeProposedBy: null,
       pendingCasualty: null,
       mvpNominations,
+      resolutionState: rs,
+      mvpGrantees,
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
         { seq: 3, kind: "td", side: "home", playerRosterId: "h2", half: 1, turnNumber: 4, payload: {}, at: 2500 },
         { seq: 4, kind: "completion", side: "home", playerRosterId: "h3", half: 2, turnNumber: 6, payload: {}, at: 3000 },
-        { seq: 5, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, at: 4000 },
+        { seq: 5, kind: "casualty", side: "home", playerRosterId: "h4", half: 2, turnNumber: 7, payload: { victimRosterId: "h4", band: "apaleado" }, at: 3500 },
+        { seq: 6, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, at: 4000 },
       ],
     } as LiveMatchView,
     liveWinnings: { home: 55000, away: 45000 },
@@ -110,95 +142,156 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** Checks six distinct OWN-side players via the checkboxes. */
-function checkOwnNominations(dialog: HTMLElement) {
-  for (let i = 1; i <= 6; i++) {
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: homeLabel(`Hugo${i}`, i) }));
-  }
+/** Stubs fetch so every wizard command resolves 200 (view + optional payload). */
+function stubFetch() {
+  const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    const view = { seq: 13, resolutionState: baseDetail().live?.resolutionState };
+    const payload: Record<string, unknown> = { view };
+    if (body.type === "resolutionFanRoll") {
+      payload.fans = { roll: 4, before: 2, after: 3, direction: "up" };
+    }
+    if (body.type === "resolutionMvpReveal") {
+      payload.mvp = { home: "h2", away: "a4" };
+    }
+    if (body.type === "resolveMatch") {
+      payload.resolved = { resultId: "mr-1" };
+    }
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload) });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
-/** The "Tirar MVP" → "Sí, tirar el MVP" final-confirm path to the summary. */
-async function confirmRoll(dialog: HTMLElement) {
-  fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "Sí, tirar el MVP" }));
-  await waitFor(() => expect(within(dialog).getByText("Resumen de la resolución")).toBeTruthy());
+/** The body of the fetch call whose `type` matches. */
+function commandBody(fetchMock: ReturnType<typeof vi.fn>, type: string) {
+  const call = fetchMock.mock.calls.find(([, init]) =>
+    String((init as RequestInit).body).includes(`"type":"${type}"`),
+  );
+  expect(call).toBeTruthy();
+  return JSON.parse((call![1] as RequestInit).body as string);
 }
 
 function renderModal(props: Partial<Parameters<typeof MatchResolveModal>[0]> = {}) {
-  const onResolved = vi.fn().mockResolvedValue(undefined);
-  const onNominated = vi.fn().mockResolvedValue(undefined);
+    const onNominated = vi.fn().mockResolvedValue(undefined);
   const onClose = vi.fn();
   render(
     <MatchResolveModal
       open
       detail={baseDetail()}
       onClose={onClose}
-      onResolved={onResolved}
+      
       onNominated={onNominated}
       {...props}
     />,
   );
-  return { onResolved, onNominated, onClose };
+  return { onNominated, onClose };
 }
 
-describe("MatchResolveModal", () => {
-  it("RAU-52: a coach sees ONLY their OWN side's CHECKBOXES — the rival is a read-only status, never their players", () => {
-    renderModal();
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // CHECKBOXES (not the old numbered <select> pickers).
-    expect(dialog.querySelectorAll("select")).toHaveLength(0);
-    for (let i = 1; i <= 6; i++) {
-      expect(within(dialog).getByRole("checkbox", { name: homeLabel(`Hugo${i}`, i) })).toBeTruthy();
-    }
-    for (let i = 1; i <= 6; i++) {
-      expect(within(dialog).queryByRole("checkbox", { name: new RegExp(`Aurora${i}`) })).toBeNull();
-    }
-    // The rival side renders a status only ("El rival aún no ha nominado").
-    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
-    // The roll is gated on BOTH sides' PERSISTED nominations.
-    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
+function dialog() {
+  return screen.getByRole("dialog", { name: "Resolver partido" });
+}
+
+describe("MatchResolveModal — the per-side 5-step WIZARD", () => {
+  it("resumes at the CURRENT step: a 'casualties' cursor renders the MVP reveal + the casualty outcomes directly", () => {
+    renderModal({
+      detail: baseDetail({
+        viewerSide: "home",
+        resolutionState: resolutionState({
+          home: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+          away: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+        }),
+        mvpGrantees: { home: "h2", away: "a4" },
+      }),
+    });
+    const dlg = dialog();
+    expect(within(dlg).getByText("Paso: MVP y bajas")).toBeTruthy();
+    // The MVP reveal (both sides' grantees) + the visible casualty outcomes.
+    expect(within(dlg).getByText("Hugo2 · +4 PE")).toBeTruthy();
+    expect(within(dlg).getByText("Aurora4 · +4 PE")).toBeTruthy();
+    expect(within(dlg).getByText("Apaleado")).toBeTruthy();
   });
 
-  it("RAU-52: the max (6) is enforced — the 7th alive player cannot be checked", () => {
+  it("step 1 (winnings): shows the winnings + the maintenance placeholder (0) and Continuar fires resolutionWinningsSeen", async () => {
+    const fetchMock = stubFetch();
+    const { onNominated } = renderModal();
+    const dlg = dialog();
+    expect(within(dlg).getByText("Paso: Ganancias y mantenimiento")).toBeTruthy();
+    expect(within(dlg).getByText("55.000 gp.")).toBeTruthy();
+    expect(within(dlg).getByText("0 gp.")).toBeTruthy();
+    expect(within(dlg).getByText(/mantenimiento no está implementado/)).toBeTruthy();
+
+    fireEvent.click(within(dlg).getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    expect(commandBody(fetchMock, "resolutionWinningsSeen")).toEqual({
+      type: "resolutionWinningsSeen",
+      side: "home",
+    });
+  });
+
+  it("step 2 (fans): 'Tirar 1D6' fires the SERVER-owned roll; once fansDone the persisted roll shows and Continuar advances to the MVP", async () => {
+    const fetchMock = stubFetch();
+    const { onNominated } = renderModal({
+      detail: baseDetail({
+        resolutionState: resolutionState({ home: { step: "fans" } }),
+      }),
+    });
+    const dlg = dialog();
+    expect(within(dlg).getByRole("button", { name: "Tirar 1D6" })).toBeTruthy();
+    fireEvent.click(within(dlg).getByRole("button", { name: "Tirar 1D6" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    expect(commandBody(fetchMock, "resolutionFanRoll")).toEqual({ type: "resolutionFanRoll", side: "home" });
+  });
+
+  it("step 2 (fans): a fansDone cursor shows the PERSISTED roll and Continuar fires resolutionAdvance(mvp)", async () => {
+    const fetchMock = stubFetch();
+    const { onNominated } = renderModal({
+      detail: baseDetail({
+        resolutionState: resolutionState({
+          home: { step: "fans", fansDone: true, fans: { roll: 4, before: 2, after: 3, direction: "up" } },
+        }),
+      }),
+    });
+    const dlg = dialog();
+    expect(within(dlg).getByText("Tirada 4: factor fan 2 → 3 (↑)")).toBeTruthy();
+    fireEvent.click(within(dlg).getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    expect(commandBody(fetchMock, "resolutionAdvance")).toEqual({
+      type: "resolutionAdvance",
+      side: "home",
+      step: "mvp",
+    });
+  });
+
+  it("step 3 (mvp): a coach sees ONLY their OWN side's CHECKBOXES — the rival is a status, never their players; the max (6) is enforced", () => {
+    renderModal({ detail: baseDetail({ resolutionState: resolutionState({ home: { step: "mvp" } }) }) });
+    const dlg = dialog();
+    expect(dlg.querySelectorAll("select")).toHaveLength(0);
+    for (let i = 1; i <= 6; i++) {
+      expect(within(dlg).getByRole("checkbox", { name: homeLabel(`Hugo${i}`, i) })).toBeTruthy();
+    }
+    expect(within(dlg).queryByRole("checkbox", { name: /Aurora/ })).toBeNull();
+    // The rival status + the roll gate is GONE — the confirm replaces it.
+    expect(within(dlg).getByText("El rival aún no ha nominado")).toBeTruthy();
+  });
+
+  it("step 3 (mvp): the MAX (6) is enforced — the 7th alive player cannot be checked", () => {
     const homePlayers = [...sixRoster("h", "Hugo"), player("h7", "Hugo7")];
-    renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    checkOwnNominations(dialog);
-    // The counter reflects the six picks and the 7th checkbox is disabled.
-    expect(within(dialog).getByText("6/6 seleccionados")).toBeTruthy();
-    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo7", 7) })).toHaveProperty("disabled", true);
-    // Un-checking one frees the slot again.
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo1", 1) }));
-    expect(within(dialog).getByText("5/6 seleccionados")).toBeTruthy();
-    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo7", 7) })).toHaveProperty("disabled", false);
-  });
-
-  it("RAU-52: the roll stays disabled until BOTH sides have submitted; the status flips once the rival did", () => {
     renderModal({
-      detail: baseDetail({
-        viewerSide: "home",
-        mvpNominations: { home: homeNom, away: null },
-      }),
+      detail: baseDetail({ resolutionState: resolutionState({ home: { step: "mvp" } }), homePlayers }),
     });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    expect(within(dialog).getByText("Nominaciones enviadas")).toBeTruthy();
-    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
+    const dlg = dialog();
+    for (let i = 1; i <= 6; i++) {
+      fireEvent.click(within(dlg).getByRole("checkbox", { name: homeLabel(`Hugo${i}`, i) }));
+    }
+    expect(within(dlg).getByText("6/6 seleccionados")).toBeTruthy();
+    expect(within(dlg).getByRole("checkbox", { name: homeLabel("Hugo7", 7) })).toHaveProperty("disabled", true);
+    fireEvent.click(within(dlg).getByRole("checkbox", { name: homeLabel("Hugo1", 1) }));
+    expect(within(dlg).getByText("5/6 seleccionados")).toBeTruthy();
+    expect(within(dlg).getByRole("checkbox", { name: homeLabel("Hugo7", 7) })).toHaveProperty("disabled", false);
   });
 
-  it("RAU-52: the roll is enabled once BOTH sides nominated (persisted state)", () => {
-    renderModal({
-      detail: baseDetail({
-        viewerSide: "home",
-        mvpNominations: { home: homeNom, away: awayNom },
-      }),
-    });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    expect(within(dialog).getByText("El rival nominó 6 jugadores")).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", false);
-  });
-
-  it("RAU-52: excludes dead/suspended players from the OWN checkboxes (RAU-12)", () => {
+  it("step 3 (mvp): excludes dead/suspended players from the OWN checkboxes (RAU-12)", () => {
     const homePlayers = [
       player("h1", "Hugo1"),
       player("h2", "Hugo2"),
@@ -208,393 +301,265 @@ describe("MatchResolveModal", () => {
       player("h6", "Hugo6"),
       player("h7", "Hugo7"),
     ];
-    renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo1", 1) })).toBeTruthy();
-    expect(within(dialog).queryByRole("checkbox", { name: homeLabel("Hugo3", 3) })).toBeNull();
-    expect(within(dialog).queryByRole("checkbox", { name: homeLabel("Hugo4", 4) })).toBeNull();
-    // RAU-13: the dorsal (served-array index + 1) sits next to the position.
-    expect(within(dialog).getByRole("checkbox", { name: homeLabel("Hugo5", 5) })).toBeTruthy();
-  });
-
-  it("RAU-13: includes a Journeyman in the OWN checkboxes, labeled Novato (MVP-eligible)", () => {
-    const homePlayers = [
-      ...sixRoster("h", "Hugo"),
-      { ...player("journeyman-th-1", "Aldric"), journeyman: true },
-    ];
-    renderModal({ detail: baseDetail({ viewerSide: "home", homePlayers }) });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // The Novato is selectable and keeps the "Novato" marker + its dorsal.
-    expect(within(dialog).getByRole("checkbox", { name: "Aldric (Novato · #7)" })).toBeTruthy();
-  });
-
-  it("RAU-52: polls the persisted detail while the nomination step is open — the rival's confirmation arrives WITHOUT a reload", () => {
-    vi.useFakeTimers();
-    const onNominated = vi.fn().mockResolvedValue(undefined);
-    const onClose = vi.fn();
-    const onResolved = vi.fn().mockResolvedValue(undefined);
-    const initial = baseDetail({ viewerSide: "home", mvpNominations: { home: null, away: null } });
-    const { rerender } = render(
-      <MatchResolveModal open detail={initial} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
-    );
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
-
-    // The next poll tick refreshes the match detail (the send/confirm is
-    // persisted server-side — the modal pulls it, the hub can't reach a
-    // FINISHED match, hence the poll).
-    vi.advanceTimersByTime(4000);
-    expect(onNominated).toHaveBeenCalledTimes(1);
-
-    // The refreshed detail carries the rival's confirmation → the modal flips
-    // the rival status automatically.
-    const withRival = baseDetail({ viewerSide: "home", mvpNominations: { home: null, away: awayNom } });
-    rerender(
-      <MatchResolveModal open detail={withRival} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
-    );
-    expect(within(screen.getByRole("dialog", { name: "Resolver partido" })).getByText("El rival nominó 6 jugadores")).toBeTruthy();
-  });
-
-  it("RAU-52: 'Guardar mis nominaciones' POSTs nominateMvp for the OWN side and refreshes (onNominated)", async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
-      void _url;
-      void init;
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            view: { seq: 13, mvpNominations: { home: homeNom, away: null } },
-          }),
-      });
+    renderModal({
+      detail: baseDetail({ resolutionState: resolutionState({ home: { step: "mvp" } }), homePlayers }),
     });
-    vi.stubGlobal("fetch", fetchMock);
+    const dlg = dialog();
+    expect(within(dlg).queryByRole("checkbox", { name: homeLabel("Hugo3", 3) })).toBeNull();
+    expect(within(dlg).queryByRole("checkbox", { name: homeLabel("Hugo4", 4) })).toBeNull();
+    expect(within(dlg).getByRole("checkbox", { name: homeLabel("Hugo5", 5) })).toBeTruthy();
+  });
 
-    const { onNominated } = renderModal();
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    checkOwnNominations(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar mis nominaciones" }));
-
+  it("step 3 (mvp): 'Guardar mis nominaciones' POSTs nominateMvp for the OWN side; the FINAL confirm then fires resolutionMvpConfirm (irrevocable)", async () => {
+    const fetchMock = stubFetch();
+    const { onNominated } = renderModal({
+      detail: baseDetail({ resolutionState: resolutionState({ home: { step: "mvp" } }) }),
+    });
+    const dlg = dialog();
+    for (let i = 1; i <= 6; i++) {
+      fireEvent.click(within(dlg).getByRole("checkbox", { name: homeLabel(`Hugo${i}`, i) }));
+    }
+    fireEvent.click(within(dlg).getByRole("button", { name: "Guardar mis nominaciones" }));
     await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
-    const nominateCall = fetchMock.mock.calls.find(([, init]) =>
-      String((init as RequestInit).body).includes("nominateMvp"),
-    );
-    expect(nominateCall).toBeTruthy();
-    const body = JSON.parse((nominateCall![1] as RequestInit).body as string);
-    expect(body).toEqual({ type: "nominateMvp", side: "home", players: homeNom });
+    expect(commandBody(fetchMock, "nominateMvp")).toEqual({ type: "nominateMvp", side: "home", players: homeNom });
   });
 
-  it("RAU-52: once BOTH sides nominated, 'Tirar MVP' arms the FINAL confirm ('¿Estás seguro?') and the roll only fires on 'Sí, tirar el MVP'", async () => {
-    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
-      void _url;
-      void _init;
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            view: {},
-            roll: {
-              mvp: { home: "h2", away: "a4" },
-              postFf: { home: 4, away: 3 },
-              ffRoll: {
-                home: { roll: 4, direction: "up" },
-                away: { roll: 3, direction: "stay" },
-              },
-            },
-          }),
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderModal({
-      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
-    });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // First click arms the confirm state — the roll has NOT been called yet.
-    fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
-    expect(within(dialog).getByText("¿Estás seguro?")).toBeTruthy();
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    // "Cancelar" disarms back to the roll button.
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
-    expect(within(dialog).queryByText("¿Estás seguro?")).toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toBeTruthy();
-
-    // "Sí, tirar el MVP" fires the server-owned roll and reveals the summary.
-    fireEvent.click(within(dialog).getByRole("button", { name: "Tirar MVP" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, tirar el MVP" }));
-    await waitFor(() =>
-      expect(within(dialog).getByText("Resumen de la resolución")).toBeTruthy(),
-    );
-
-    // RAU-51: the roll body carries NO nominations — the server rolls from the
-    // persisted per-side state.
-    const rollCall = fetchMock.mock.calls.find(([, init]) =>
-      String((init as RequestInit).body).includes("rollMvp"),
-    );
-    expect(rollCall).toBeTruthy();
-    const body = JSON.parse((rollCall![1] as RequestInit).body as string);
-    expect(body).toEqual({ type: "rollMvp" });
-
-    // Summary: MVP winners (h2 / a4, +4 PE), winnings (→ treasury), FF and the
-    // PE derived from the events + the MVP grant.
-    const homeSection = within(dialog).getByLabelText(homeName);
-    expect(within(homeSection).getByText("Hugo2 · +4 PE")).toBeTruthy();
-    expect(within(homeSection).getByText("55.000 gp.")).toBeTruthy();
-    expect(within(homeSection).getByText("↑ (tirada 4)")).toBeTruthy();
-    expect(within(homeSection).getByText("+3 PE · Hugo1")).toBeTruthy();
-    expect(within(homeSection).getByText("+7 PE · Hugo2")).toBeTruthy();
-    expect(within(homeSection).getByText("+1 PE · Hugo3")).toBeTruthy();
-
-    const awaySection = within(dialog).getByLabelText(awayName);
-    expect(within(awaySection).getByText("Aurora4 · +4 PE")).toBeTruthy();
-    expect(within(awaySection).getByText("45.000 gp.")).toBeTruthy();
-    expect(within(awaySection).getByText("= (tirada 3)")).toBeTruthy();
-  });
-
-  it("RAU-52: NO going back after the final confirm — the summary has no 'Cambiar nominaciones'", async () => {
-    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
-      void _url;
-      void _init;
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            view: {},
-            roll: {
-              mvp: { home: "h2", away: "a4" },
-              postFf: { home: 4, away: 3 },
-              ffRoll: {
-                home: { roll: 4, direction: "up" },
-                away: { roll: 3, direction: "stay" },
-              },
-            },
-          }),
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderModal({
-      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
-    });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    await confirmRoll(dialog);
-    // The picks are locked: the summary only offers the closure — no back.
-    expect(within(dialog).queryByRole("button", { name: "Cambiar nominaciones" })).toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Guardar y reportar" })).toBeTruthy();
-  });
-
-  it("saves through the resolveMatch POST (no nominations body) and calls onResolved on success", async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
-      if (body.type === "rollMvp") {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ view: {}, roll: {
-              mvp: { home: "h1", away: "a1" },
-              postFf: { home: 4, away: 3 },
-              ffRoll: {
-                home: { roll: 4, direction: "up" },
-                away: { roll: 3, direction: "stay" },
-              },
-            } }),
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            view: {},
-            resolved: {
-              fixtureId: "f1",
-              status: "played",
-              homeScore: 2,
-              awayScore: 1,
-              winnerId: "th",
-              winnings: { home: 55000, away: 45000 },
-              postFf: { home: 4, away: 3 },
-              mvp: { home: "h1", away: "a1" },
-              resultId: "mr-1",
-            },
-          }),
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { onResolved } = renderModal({
-      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
-    });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    await confirmRoll(dialog);
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar y reportar" }));
-    await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
-
-    const resolveCall = fetchMock.mock.calls.find(([, init]) =>
-      String((init as RequestInit).body).includes("resolveMatch"),
-    );
-    expect(resolveCall).toBeTruthy();
-    const body = JSON.parse((resolveCall![1] as RequestInit).body as string);
-    expect(body).toEqual({ type: "resolveMatch" });
-  });
-
-  it("surfaces a resolveMatch rejection (409 already resolved) in the modal and does NOT call onResolved", async () => {
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
-      if (body.type === "rollMvp") {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ view: {}, roll: {
-              mvp: { home: "h1", away: "a1" },
-              postFf: { home: 4, away: 3 },
-              ffRoll: {
-                home: { roll: 4, direction: "up" },
-                away: { roll: 3, direction: "stay" },
-              },
-            } }),
-        });
-      }
-      return Promise.resolve({
-        ok: false,
-        status: 409,
-        json: () => Promise.resolve({ error: "Cannot resolve match in current state" }),
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { onResolved } = renderModal({
-      detail: baseDetail({ mvpNominations: { home: homeNom, away: awayNom } }),
-    });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    await confirmRoll(dialog);
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar y reportar" }));
-    await waitFor(() =>
-      expect(within(dialog).getByRole("alert").textContent).toMatch(/Cannot resolve match/),
-    );
-    expect(onResolved).not.toHaveBeenCalled();
-  });
-
-  it("RAU-52: an admin/bye viewer (no side) sees BOTH sides as read-only statuses — no checkboxes", () => {
-    renderModal({
+  it("step 3 (mvp): the SEND + the FINAL confirm ('¿Estás seguro?') — the confirm locks the picks (resolutionMvpConfirm), NO going back after it", async () => {
+    const fetchMock = stubFetch();
+    const { onNominated } = renderModal({
       detail: baseDetail({
-        viewerSide: null,
-        mvpNominations: { home: homeNom, away: null },
+        resolutionState: resolutionState({ home: { step: "mvp" } }),
+        mvpNominations: { home: homeNom, away: awayNom },
       }),
     });
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    expect(within(dialog).queryAllByRole("checkbox")).toHaveLength(0);
-    expect(within(dialog).getByText("6 jugadores nominados")).toBeTruthy();
-    expect(within(dialog).getByText("Pendiente")).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
+    const dlg = dialog();
+    // Saved picks → the confirm control appears.
+    expect(within(dlg).getByText("Nominaciones enviadas")).toBeTruthy();
+    fireEvent.click(within(dlg).getByRole("button", { name: "Confirmar" }));
+    // The FINAL confirm arms.
+    expect(within(dlg).getByText("¿Estás seguro?")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+    fireEvent.click(within(dlg).getByRole("button", { name: "Sí, confirmar" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    expect(commandBody(fetchMock, "resolutionMvpConfirm")).toEqual({ type: "resolutionMvpConfirm", side: "home" });
   });
 
-  it("RAU-14: the hire step appears AFTER the final save (the LAST step of the sequence) with checkboxes, and the modal closes itself once nothing remains to hire", async () => {
-    const detail = baseDetail({
-      viewerSide: "home",
-      mvpNominations: { home: homeNom, away: awayNom },
-    });
-    detail.live = {
-      ...detail.live!,
-      journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric Martillo" }], away: [] },
-    };
-    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
-      if (body.type === "rollMvp") {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ view: {}, roll: {
-              mvp: { home: "h1", away: "a1" },
-              postFf: { home: 4, away: 3 },
-              ffRoll: {
-                home: { roll: 4, direction: "up" },
-                away: { roll: 3, direction: "stay" },
-              },
-            } }),
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            view: {},
-            resolved: {
-              fixtureId: "f1",
-              status: "played",
-              homeScore: 2,
-              awayScore: 1,
-              winnerId: "th",
-              winnings: { home: 55000, away: 45000 },
-              postFf: { home: 4, away: 3 },
-              mvp: { home: "h1", away: "a1" },
-              resultId: "mr-1",
-            },
-          }),
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  it("step 3 (mvp): the confirm is REJECTED client-side until the side SENT its nominations (the confirm control only renders after saving)", async () => {
+    renderModal({ detail: baseDetail({ resolutionState: resolutionState({ home: { step: "mvp" } }) }) });
+    const dlg = dialog();
+    expect(within(dlg).queryByRole("button", { name: "Confirmar" })).toBeNull();
+  });
 
-    const onResolved = vi.fn().mockResolvedValue(undefined);
+  it("step mvp-done: waits for the rival's confirm, then the reveal fires resolutionMvpReveal (idempotent, server-owned)", async () => {
+    const fetchMock = stubFetch();
     const onNominated = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
-    const { rerender } = render(
-      <MatchResolveModal open detail={detail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
-    );
-    const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    await confirmRoll(dialog);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar y reportar" }));
-
-    // The resolve committed (refresh fired). The refreshed detail carries the
-    // RESULT → the modal advances to the LAST step: the hire step INSIDE the
-    // sequence with checkboxes.
-    await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
-    const resolvedDetail = baseDetail({
+        const detail = baseDetail({
       viewerSide: "home",
-      mvpNominations: { home: homeNom, away: awayNom },
+      resolutionState: resolutionState({
+        home: { step: "mvp-done", fansDone: true, mvpConfirmed: true },
+        away: { step: "mvp-done", fansDone: true, mvpConfirmed: true },
+      }),
     });
-    resolvedDetail.result = {
+    render(
+      <MatchResolveModal open detail={detail} onClose={onClose}  onNominated={onNominated} />,
+    );
+    // BOTH confirmed + not yet rolled → the auto-reveal fires the server-owned
+    // reveal (BOTH sides advance to the casualties step on refresh).
+    await waitFor(() =>
+      expect(commandBody(fetchMock, "resolutionMvpReveal")).toEqual({
+        type: "resolutionMvpReveal",
+        side: "home",
+      }),
+    );
+  });
+
+  it("step mvp-done: does NOT reveal while the rival has not confirmed", () => {
+    const fetchMock = stubFetch();
+    renderModal({
+      detail: baseDetail({
+        resolutionState: resolutionState({
+          home: { step: "mvp-done", fansDone: true, mvpConfirmed: true },
+          away: { step: "mvp" },
+        }),
+      }),
+    });
+    expect(within(dialog()).getByText(/Esperando la confirmación del rival/)).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(([, init]) => String((init as RequestInit).body).includes("resolutionMvpReveal")),
+    ).toBe(false);
+  });
+
+  it("step 4 (casualties): Continuar fires resolutionCasualtiesDone (the roster-state update was applied server-side)", async () => {
+    const fetchMock = stubFetch();
+    const { onNominated } = renderModal({
+      detail: baseDetail({
+        resolutionState: resolutionState({
+          home: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+          away: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+        }),
+      }),
+    });
+    const dlg = dialog();
+    fireEvent.click(within(dlg).getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    expect(commandBody(fetchMock, "resolutionCasualtiesDone")).toEqual({
+      type: "resolutionCasualtiesDone",
+      side: "home",
+    });
+  });
+
+  it("step 5 (journeymen): shows the ≥11-healthy count; Continuar is DISABLED while undecided novatos remain, then fires resolutionJourneymenDone", async () => {
+    const fetchMock = stubFetch();
+    const detail = baseDetail({
+      resolutionState: resolutionState({
+        home: { step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true },
+        away: { step: "winnings" },
+      }),
+    });
+    // 6 roster players served → healthy 6 (< 11) → the novato step shows.
+    detail.live = { ...detail.live!, journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric" }], away: [] } };
+    const onNominated = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <MatchResolveModal open detail={detail} onClose={vi.fn()}  onNominated={onNominated} />,
+    );
+    const dlg = dialog();
+    expect(within(dlg).getByText("Jugadores sanos: 6")).toBeTruthy();
+    // Undecided novato → Continuar disabled.
+    const cont = within(dlg).getByRole("button", { name: "Continuar" });
+    expect(cont).toHaveProperty("disabled", true);
+
+    // Decide the novato (let-go) → the refreshed detail empties the list.
+    fireEvent.click(within(dlg).getByRole("button", { name: "Dejar ir" }));
+    detail.live = { ...detail.live!, journeymen: { home: [], away: [] } };
+    rerender(
+      <MatchResolveModal open detail={detail} onClose={vi.fn()}  onNominated={onNominated} />,
+    );
+    const contAfter = within(dialog()).getByRole("button", { name: "Continuar" });
+    expect(contAfter).toHaveProperty("disabled", false);
+    fireEvent.click(contAfter);
+    await waitFor(() =>
+      expect(commandBody(fetchMock, "resolutionJourneymenDone")).toEqual({
+        type: "resolutionJourneymenDone",
+        side: "home",
+      }),
+    );
+  });
+
+  it("step 5 (journeymen): a ≥11-healthy side (no fielded novatos) can continue immediately", () => {
+    renderModal({
+      detail: baseDetail({
+        homePlayers: Array.from({ length: 12 }, (_, i) => player(`h${i + 1}`, `Hugo${i + 1}`)),
+        resolutionState: resolutionState({
+          home: { step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true },
+          away: { step: "winnings" },
+        }),
+      }),
+    });
+    const dlg = dialog();
+    expect(within(dlg).getByText("Jugadores sanos: 12")).toBeTruthy();
+    expect(within(dlg).getByText(/11 o más jugadores sanos/)).toBeTruthy();
+    expect(within(dlg).getByRole("button", { name: "Continuar" })).toHaveProperty("disabled", false);
+  });
+
+  it("step done: when BOTH sides are done the modal AUTO-FINALIZES (resolveMatch = THE close), with 'Cerrar partido' as the manual fallback", async () => {
+    const fetchMock = stubFetch();
+    const { onNominated } = renderModal({
+      detail: baseDetail({
+        resolutionState: resolutionState({
+          home: { step: "done", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: true },
+          away: { step: "done", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: true },
+        }),
+      }),
+    });
+    const dlg = dialog();
+    expect(within(dlg).getByText(/Ambos equipos completaron el informe/)).toBeTruthy();
+    // The both-done observation auto-fires the idempotent explicit close (the
+    // store's own auto-close is the fast path; this is the safety net).
+    await waitFor(() => expect(commandBody(fetchMock, "resolveMatch")).toEqual({ type: "resolveMatch" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalled());
+  });
+
+  it("step done: shows the waiting copy with the rival's step while the rival has not finished", () => {
+    renderModal({
+      detail: baseDetail({
+        resolutionState: resolutionState({
+          home: { step: "done", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: true },
+          away: { step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true },
+        }),
+      }),
+    });
+    const dlg = dialog();
+    expect(within(dlg).getByText(/Esperando al rival/)).toBeTruthy();
+    expect(within(dlg).getByText(/Novatos/)).toBeTruthy();
+  });
+
+  it("an admin/bye viewer (no side) sees BOTH sides' steps read-only — no checkboxes", () => {
+    renderModal({ detail: baseDetail({ viewerSide: null }) });
+    const dlg = dialog();
+    expect(within(dlg).queryAllByRole("checkbox")).toHaveLength(0);
+    expect(within(dlg).getByLabelText(homeName)).toBeTruthy();
+    expect(within(dlg).getByLabelText(awayName)).toBeTruthy();
+  });
+
+  it("closes itself once the match resolved (both sides done)", async () => {
+    const detail = baseDetail({
+      resolutionState: resolutionState({
+        home: { step: "done", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: true },
+        away: { step: "done", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: true },
+      }),
+    });
+    detail.result = {
       id: "mr-1",
       fixtureId: "f1",
       weather: null,
       scores: {
-        home: { score: 2, postFf: 4, winnings: 55000, casualties: [], pe: [] },
-        away: { score: 1, postFf: 3, winnings: 45000, casualties: [], pe: [] },
+        home: { score: 2, postFf: 3, winnings: 55000, casualties: [], pe: [] },
+        away: { score: 1, postFf: 1, winnings: 45000, casualties: [], pe: [] },
         winnerId: "th",
-        mvp: { home: "h1", away: "a1" },
+        mvp: { home: "h2", away: "a4" },
       },
       pettyCash: 0,
       loadedBy: "u1",
       createdAt: "2026-03-01T21:00:00.000Z",
     };
-    resolvedDetail.live = {
-      ...resolvedDetail.live!,
-      journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric Martillo" }], away: [] },
-    };
-    rerender(
-      <MatchResolveModal open detail={resolvedDetail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
-    );
-    const hire = within(dialog).getByTestId("journeymen-hire");
-    expect(within(hire).getByRole("checkbox", { name: /Aldric Martillo/ })).toBeTruthy();
-    expect(within(hire).getByRole("button", { name: "Contratar marcados" })).toHaveProperty("disabled", true);
-
-    // Once nothing remains to hire (a refresh emptied the journeymen list) the
-    // modal closes itself — the resolution sequence is complete.
-    resolvedDetail.live = { ...resolvedDetail.live!, journeymen: { home: [], away: [] } };
-    rerender(
-      <MatchResolveModal open detail={resolvedDetail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
-    );
-    expect(onClose).toHaveBeenCalled();
+    const onClose = vi.fn();
+    render(<MatchResolveModal open detail={detail} onClose={onClose}  onNominated={vi.fn()} />);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
   it("renders nothing when closed", () => {
     renderModal({ open: false });
     expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
+  });
+
+  it("the journeymen step's 'Dejar ir' is ENABLED after a casualties→journeymen transition (no stuck busy)", async () => {
+    const fetchMock = stubFetch();
+    const onNominated = vi.fn().mockResolvedValue(undefined);
+    let detail = baseDetail({
+      resolutionState: resolutionState({
+        home: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+        away: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+      }),
+    });
+    detail.live = { ...detail.live!, journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric" }], away: [] } };
+    const { rerender } = render(
+      <MatchResolveModal open detail={detail} onClose={vi.fn()} onNominated={onNominated} />,
+    );
+    // Advance through the casualties step (the mocked POST + refresh).
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    // The refreshed detail carries the journeymen step.
+    detail = baseDetail({
+      resolutionState: resolutionState({
+        home: { step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true },
+        away: { step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true },
+      }),
+    });
+    detail.live = { ...detail.live!, journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric" }], away: [] } };
+    rerender(<MatchResolveModal open detail={detail} onClose={vi.fn()} onNominated={onNominated} />);
+    const letGo = within(dialog()).getByRole("button", { name: "Dejar ir" });
+    expect(letGo).toHaveProperty("disabled", false);
+    void fetchMock;
   });
 });

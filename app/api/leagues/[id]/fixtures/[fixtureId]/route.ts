@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { deriveLiveClock, isDisplayEvent, parseMvpNominations } from "@/lib/liveMatch";
+import { deriveLiveClock, isDisplayEvent, parseMvpGrantees, parseMvpNominations, parseResolutionState } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 import {
   mergeRosterWithJourneymen,
@@ -51,6 +51,29 @@ export interface LiveDto {
    * has not nominated yet) — the resolution modal renders its per-coach pickers
    * and gates the server roll on BOTH sides. */
   mvpNominations: { home: string[] | null; away: string[] | null };
+  /** The per-side resolution wizard cursor (`{ home: { step, ... }, away: { step,
+   * ... } }`) — the modal resumes at the persisted step after a close/refresh.
+   * Defaults to the empty state (step "winnings") while the wizard never ran. */
+  resolutionState: {
+    home: {
+      step: string;
+      fansDone: boolean;
+      fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } | null;
+      mvpConfirmed: boolean;
+      mvpRolled: boolean;
+      casualtiesDone: boolean;
+      journeymenDone: boolean;
+    };
+    away: {
+      step: string;
+      fansDone: boolean;
+      fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } | null;
+      mvpConfirmed: boolean;
+      mvpRolled: boolean;
+      casualtiesDone: boolean;
+      journeymenDone: boolean;
+    };
+  };
   /** RAU-14: the persisted per-side journeymen (`{ home: [{ id, name }], away:
    * [{ id, name }] }`) — exposed even for a FINISHED/resolved match so the
    * post-resolve HIRE flow can reference them; null when the row has none. */
@@ -58,6 +81,10 @@ export interface LiveDto {
     home: { id: string; name: string }[];
     away: { id: string; name: string }[];
   } | null;
+  /** The revealed MVP grantees (`{ home, away }` rosterPlayerIds), persisted by
+   * the resolution reveal in `pendingResolution.mvp`; null per side until the
+   * BOTH-sides reveal runs. The modal's casualties step shows them. */
+  mvpGrantees: { home: string | null; away: string | null };
   events: LiveEventDto[];
 }
 
@@ -83,8 +110,12 @@ interface LiveMatchRow {
   pendingCasualty: unknown;
   /** RAU-51: the persisted per-side MJP nominations JSON (null = none yet). */
   mvpNominations: unknown;
+  /** The persisted per-side resolution wizard cursor JSON (null = never ran). */
+  resolutionState: unknown;
   /** RAU-14: the persisted per-side journeymen JSON (null until the match begins). */
   journeymen: unknown;
+  /** RAU-49: the persisted reveal/preview JSON (the MVP grantees, `pendingResolution`). */
+  pendingResolution: unknown;
   /** RAU-44: the persisted per-team live winnings JSON (`{ home, away }`),
    * null until the match reaches `finished`. */
   winnings: unknown;
@@ -145,9 +176,15 @@ export function serializeLive(
         ? (row.pendingCasualty as Record<string, unknown>)
         : null,
     mvpNominations: parseMvpNominations(row.mvpNominations),
+    // The per-side resolution wizard cursor — the modal resumes at the persisted
+    // step after a close/refresh (defaults to "winnings" while never started).
+    resolutionState: parseResolutionState(row.resolutionState),
     // RAU-14: the persisted journeymen ride the live DTO even once the match is
     // finished/resolved (the post-resolve hire flow reads them off `live`).
     journeymen: parsePersistedJourneymen(row.journeymen),
+    // The revealed MVP grantees (persisted at the BOTH-sides reveal) — the
+    // casualties step shows them; null until the reveal runs.
+    mvpGrantees: parseMvpGrantees(row.pendingResolution),
     // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
     // `requestTurn` stay in the DB (audit/replay) and are never shown here.
     events: row.events

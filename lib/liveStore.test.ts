@@ -15,6 +15,7 @@ import {
   type StoreDeps,
 } from "./liveStore";
 import type { LiveMatchState, TeamSide } from "./liveMatch";
+import { EMPTY_RESOLUTION_STATE } from "./liveMatch";
 
 /**
  * Store tests — consent/begin persistence (D16), optimistic `seq` guard (409 on
@@ -52,6 +53,7 @@ function fakeRow(): LiveMatchState {
     concedeProposedBy: null,
     pendingCasualty: null,
     mvpNominations: { home: null, away: null },
+    resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
   };
 }
@@ -149,6 +151,7 @@ describe("liveMatchRowToState", () => {
       concedeProposedBy: null,
       pendingCasualty: null,
       mvpNominations: null,
+      resolutionState: null,
     });
     expect(state.status).toBe("ready");
     expect(state.homeConsented).toBe(true);
@@ -181,6 +184,7 @@ describe("liveMatchRowToState", () => {
       concedeProposedBy: "home",
       pendingCasualty: null,
       mvpNominations: null,
+      resolutionState: null,
     });
     expect(state.concedeProposedBy).toBe("home");
   });
@@ -206,6 +210,7 @@ describe("liveMatchRowToState", () => {
       finishedAt: null,
       concedeProposedBy: null,
       mvpNominations: null,
+      resolutionState: null,
     } as const;
     const parsed = liveMatchRowToState({
       ...base,
@@ -247,6 +252,7 @@ describe("liveMatchRowToState", () => {
       concedeProposedBy: null,
       pendingCasualty: null,
       mvpNominations: { home: ["h1", "h2", "h3", "h4", "h5", "h6"], away: null },
+      resolutionState: null,
     });
     expect(parsed.mvpNominations).toEqual({ home: ["h1", "h2", "h3", "h4", "h5", "h6"], away: null });
     // A null/absent/foreign column parses to both sides "not nominated".
@@ -261,6 +267,43 @@ describe("liveMatchRowToState", () => {
     expect(
       liveMatchRowToState({ id: "lm-1", mvpNominations: { home: 1, away: [{ x: 1 }] } } as never).mvpNominations,
     ).toEqual({ home: null, away: null });
+  });
+
+  it("maps the persisted per-side resolution wizard state onto the pure state (resume cursor)", () => {
+    const parsed = liveMatchRowToState({
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "finished",
+      half: 2,
+      turnNumber: 8,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(1000),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 1,
+      awayScore: 0,
+      seq: 9,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: new Date(5000),
+      concedeProposedBy: null,
+      pendingCasualty: null,
+      mvpNominations: null,
+      resolutionState: {
+        home: { step: "casualties", fansDone: true, fans: { roll: 4, before: 2, after: 3, direction: "up" }, mvpConfirmed: true, mvpRolled: true, casualtiesDone: false, journeymenDone: false },
+        away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+      },
+    });
+    expect(parsed.resolutionState.home.step).toBe("casualties");
+    expect(parsed.resolutionState.home.mvpConfirmed).toBe(true);
+    expect(parsed.resolutionState.home.fans).toEqual({ roll: 4, before: 2, after: 3, direction: "up" });
+    expect(parsed.resolutionState.away).toEqual(EMPTY_RESOLUTION_STATE.away);
+    // A null/absent column parses to the EMPTY per-side state (step "winnings").
+    expect(liveMatchRowToState({ id: "lm-1", resolutionState: null } as never).resolutionState).toEqual(
+      EMPTY_RESOLUTION_STATE,
+    );
   });
 });
 
