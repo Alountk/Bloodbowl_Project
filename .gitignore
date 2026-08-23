@@ -60,3 +60,9 @@ node_modules/.cache
 
 # external source documents
 /external-assets/
+
+# local data tooling (never committed)
+/scripts/scrape-tourplay-teams.mjs
+
+# local design previews (never committed)
+/previews/
