@@ -1415,13 +1415,18 @@ export interface ResolveLiveOutcome {
  *    walkover) and runs `maybeCloseLeague` — the resolve IS the closure, fixing
  *  - the never-closed normally-finished live match; the fixture played +
  *    MatchResult presence are the terminal guard.
- * Guards: 404 no live row/team, 409 not-finished / already-resolved /
- * already-played-with-result / BOTH sides have not nominated yet (RAU-51: the
- * resolve rolls from the persisted per-side `mvpNominations`), 400 invalid
- * persisted nominations. A conceded match (fixture closed by
- * `acceptConcedeLiveMatch`, no MatchResult yet) is ALLOWED: the fixture-close
- * part is skipped, the awards + report still write.
- */
+  * Guards: 404 no live row/team, 409 not-finished / already-resolved /
+  * already-played-with-result / BOTH sides have not nominated yet (RAU-51: the
+  * resolve rolls from the persisted per-side `mvpNominations`), 400 invalid
+  * persisted nominations. A conceded match (fixture closed by
+  * `acceptConcedeLiveMatch`, no MatchResult yet) is ALLOWED: the fixture-close
+  * part is skipped, the awards + report still write.
+  *
+  * WIZARD path (a `resolutionState` cursor exists): the close runs ONLY when
+  * BOTH sides reached the "done" step — `runWizardClose` reuses the per-side
+  * persisted rolls (never re-applies the fans/casualties the steps already
+  * applied). LEGACY path (no cursor): the full old close as before.
+  */
 export async function resolveLiveMatch(
   input: ResolveLiveMatchInput,
   deps: StoreDeps,
@@ -1434,22 +1439,28 @@ export async function resolveLiveMatch(
   if (row.status !== "finished") {
     throw Object.assign(new Error("match not finished"), { status: 409 });
   }
-  const nominations = parseMvpNominations(row.mvpNominations);
   const wizardRaw = row.resolutionState;
   const wizard = parseResolutionState(wizardRaw);
-  const wizardActive = wizardRaw != null;
-  // WIZARD path: the match closes ONLY when BOTH sides reached "done" (the
-  // per-side steps already applied their effects). LEGACY path: a row without
-  // the wizard keeps the full old close (both sides must have nominated).
-  if (wizardActive && (wizard.home.step !== "done" || wizard.away.step !== "done")) {
-    throw Object.assign(new Error("resolution incomplete"), { status: 409 });
+  if (wizardRaw != null) {
+    // WIZARD path: the match closes ONLY when BOTH sides reached "done".
+    if (wizard.home.step !== "done" || wizard.away.step !== "done") {
+      throw Object.assign(new Error("resolution incomplete"), { status: 409 });
+    }
+    const closed = await deps.prisma.$transaction((tx) =>
+      runWizardClose(tx, row as LiveMatch & { events: LiveEvent[] }, input, wizard, deps),
+    );
+    return closed.outcome;
   }
-  if (!wizardActive && (!nominations.home || !nominations.away)) {
+
+  // ── LEGACY path (a pre-wizard row): the full old close — both sides must
+  // have nominated; the dedicated-fans apply + the casualty writes + the
+  // clear-then-set all happen HERE (nothing was applied per-side).
+  const nominations = parseMvpNominations(row.mvpNominations);
+  if (!nominations.home || !nominations.away) {
     throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
   }
-  const homeNom = nominations.home ?? [];
-  const awayNom = nominations.away ?? [];
-
+  const homeNom = nominations.home;
+  const awayNom = nominations.away;
   const roll6 = deps.rollD6 ?? rollD6;
 
   return deps.prisma.$transaction(async (tx) => {
@@ -1504,13 +1515,11 @@ export async function resolveLiveMatch(
       homeScore > awayScore ? "win" : homeScore < awayScore ? "loss" : "draw";
     const awayOutcome: MatchOutcome =
       awayScore > homeScore ? "win" : awayScore < homeScore ? "loss" : "draw";
-    // The roll sources differ by path:
-    //  - WIZARD: the per-side steps already rolled + APPLIED everything — the
-    //    close REUSES the reveal's MVP grantees (`pendingResolution.mvp`) and
-    //    the persisted per-side fan rolls (`resolutionState.*.fans`), so what
-    //    the coaches saw IS what gets reported (never a second roll).
-    //  - LEGACY preview: `rollMvp` persisted the full preview → reused verbatim.
-    //  - LEGACY fresh: server-owned rolls exactly as before.
+    // RAU-49 fix: when `rollMvp` previewed the resolution, the commit reuses
+    // THOSE EXACT rolls (MVP grantees + post-match FF) — the reported result
+    // always equals what the modal's summary showed, never a second independent
+    // roll. A direct/legacy resolve without a preview falls back to fresh
+    // server-owned rolls exactly as before.
     const pending = parsePendingResolution(row.pendingResolution);
     const homeFfBefore = dedicatedFansOf(homeTeam.coaching);
     const awayFfBefore = dedicatedFansOf(awayTeam.coaching);
@@ -1520,34 +1529,7 @@ export async function resolveLiveMatch(
     let awayFfRoll6: number;
     let homeMvp: string;
     let awayMvp: string;
-    if (wizardActive) {
-      const homeFans = wizard.home.fans;
-      const awayFans = wizard.away.fans;
-      if (pending) {
-        homeMvp = pending.mvp.home;
-        awayMvp = pending.mvp.away;
-      } else if (homeNom.length && awayNom.length) {
-        homeMvp = computeMvpGrantee(homeNom, roll6());
-        awayMvp = computeMvpGrantee(awayNom, roll6());
-      } else {
-        throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
-      }
-      if (homeFans && awayFans) {
-        postHomeFf = homeFans.after;
-        postAwayFf = awayFans.after;
-        homeFfRoll6 = homeFans.roll;
-        awayFfRoll6 = awayFans.roll;
-      } else {
-        // Defensive: a malformed cursor without the persisted fan rolls → fresh.
-        const homeFf = rollPostMatchFanFactor({ ff: homeFfBefore, result: homeOutcome, roll6: roll6() });
-        const awayFf = rollPostMatchFanFactor({ ff: awayFfBefore, result: awayOutcome, roll6: roll6() });
-        postHomeFf = homeFf.after;
-        postAwayFf = awayFf.after;
-        homeFfRoll6 = homeFf.roll6;
-        awayFfRoll6 = awayFf.roll6;
-      }
-    } else if (pending?.postFf && pending?.ffRoll) {
-      // RAU-49 fix (legacy preview): reuse the previewed rolls verbatim.
+    if (pending?.postFf && pending?.ffRoll) {
       homeMvp = pending.mvp.home;
       awayMvp = pending.mvp.away;
       postHomeFf = pending.postFf.home;
@@ -1555,14 +1537,17 @@ export async function resolveLiveMatch(
       homeFfRoll6 = pending.ffRoll.home;
       awayFfRoll6 = pending.ffRoll.away;
     } else {
-      // LEGACY fresh: rulebook p.103 FF (1D6 vs the dedicated-fans ATTRIBUTE,
-      // not the attendance 1D3) + the MVP 1D6 per team over the nominations.
+      // Rulebook p. 103 ("ACTUALIZAR HINCHAS"): the 1D6 compares against the
+      // dedicated-fans ATTRIBUTE (not the attendance 1D3) and the verdict
+      // UP/STAY/DOWN derives from the same roll.
       const homeFf = rollPostMatchFanFactor({ ff: homeFfBefore, result: homeOutcome, roll6: roll6() });
       const awayFf = rollPostMatchFanFactor({ ff: awayFfBefore, result: awayOutcome, roll6: roll6() });
       postHomeFf = homeFf.after;
       postAwayFf = awayFf.after;
       homeFfRoll6 = homeFf.roll6;
       awayFfRoll6 = awayFf.roll6;
+
+      // MVP: server-owned 1D6 per team over the persisted per-side nominations.
       homeMvp = computeMvpGrantee(homeNom, roll6());
       awayMvp = computeMvpGrantee(awayNom, roll6());
     }
@@ -1690,8 +1675,7 @@ export async function resolveLiveMatch(
     // Rulebook p. 103: the post-match fan-factor roll APPLIES to the team's
     // dedicated-fans characteristic (`coaching.dedicatedFans`) — the value the
     // summary previewed is written back (additive JSON update; the pre-match
-    // attendance 1D3 is unrelated to this change). WIZARD path: the per-side
-    // fans step ALREADY applied it — only the legacy close applies it here.
+    // attendance 1D3 is unrelated to this change).
     const applyDedicatedFans = async (
       teamId: string,
       coaching: Prisma.JsonValue | null,
@@ -1703,10 +1687,8 @@ export async function resolveLiveMatch(
         data: { coaching: { ...current, dedicatedFans } as never },
       });
     };
-    if (!wizardActive) {
-      await applyDedicatedFans(input.homeTeamId, homeTeam.coaching, postHomeFf);
-      await applyDedicatedFans(input.awayTeamId, awayTeam.coaching, postAwayFf);
-    }
+    await applyDedicatedFans(input.homeTeamId, homeTeam.coaching, postHomeFf);
+    await applyDedicatedFans(input.awayTeamId, awayTeam.coaching, postAwayFf);
 
     // PE awards to the lazy Player rows (same shape as the result route).
     for (const award of homeAwards) {
@@ -1722,22 +1704,18 @@ export async function resolveLiveMatch(
       });
     }
 
-    // RAU-12 clear-then-set + the casualty injury writes: LEGACY path only —
-    // the WIZARD applied them VISIBLY at each side's "casualties" step (the
-    // close must never re-apply or double-charge).
-    if (!wizardActive) {
-      // Suspensions from BEFORE this match are served (cleared for every player
-      // of both teams) and the new lasting victims are re-flagged so a player
-      // injured in THIS match starts their suspension after it, not during.
-      await tx.player.updateMany({
-        where: { teamId: { in: [input.homeTeamId, input.awayTeamId] } },
-        data: clearSuspensionUpdate(),
-      });
+    // RAU-12 clear-then-set: this resolution IS an applied match — suspensions
+    // from BEFORE it are served (cleared for every player of both teams) and
+    // the new lasting victims are re-flagged so a player injured in THIS match
+    // starts their suspension after it, not during.
+    await tx.player.updateMany({
+      where: { teamId: { in: [input.homeTeamId, input.awayTeamId] } },
+      data: clearSuspensionUpdate(),
+    });
 
-      // Casualty injuries: append each victim's persisted band (skip unknown
-      // rows and already-dead players — result-route semantics).
-      await persistResolveCasualties(tx, input.homeTeamId, input.awayTeamId, casualties);
-    }
+    // Casualty injuries: append each victim's persisted band (skip unknown rows
+    // and already-dead players — result-route semantics).
+    await persistResolveCasualties(tx, input.homeTeamId, input.awayTeamId, casualties);
 
     return {
       fixtureId: input.fixtureId,
@@ -1755,6 +1733,239 @@ export async function resolveLiveMatch(
       resultId: report.id,
     };
   });
+}
+
+/**
+ * The WIZARD-path close (shared by the explicit `resolveMatch` AND the
+ * auto-close that fires inside `resolutionJourneymenDone` when BOTH sides are
+ * done). Reuses the reveal's MVP grantees + the persisted per-side fan rolls —
+ * the coaches saw exactly what gets reported (defensive fresh rolls when a
+ * malformed cursor is missing them). The fans/casualties/clear were ALREADY
+ * applied per-side by the wizard steps, so the close only: writes the
+ * MatchResult + scoreboard, closes the fixture (idempotent), runs
+ * `maybeCloseLeague` (RAU-40), applies the treasury winnings + the PE awards
+ * and appends the MVP events. All in the caller's transaction.
+ */
+async function runWizardClose(
+  tx: StoreTx,
+  row: LiveMatch & { events: LiveEvent[] },
+  input: ResolveLiveMatchInput,
+  wizard: ResolutionState,
+  deps: StoreDeps,
+): Promise<{ outcome: ResolveLiveOutcome; seq: number }> {
+  const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
+  if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
+
+  const fixture = await tx.fixture.findUnique({
+    where: { id: input.fixtureId },
+    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+  });
+  if (!fixture) throw Object.assign(new Error("not found"), { status: 404 });
+
+  const teams = await tx.team.findMany({
+    where: { id: { in: [input.homeTeamId, input.awayTeamId] } },
+    select: {
+      id: true,
+      raceId: true,
+      roster: true,
+      coaching: true,
+      treasury: true,
+      players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
+    },
+  });
+  const byTeamId = new Map(teams.map((team) => [team.id, team]));
+  const homeTeam = byTeamId.get(input.homeTeamId);
+  const awayTeam = byTeamId.get(input.awayTeamId);
+  if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
+
+  const nominations = parseMvpNominations(row.mvpNominations);
+  const homeNom = nominations.home ?? [];
+  const awayNom = nominations.away ?? [];
+
+  const homeScore = fixture.homeScore ?? row.homeScore;
+  const awayScore = fixture.awayScore ?? row.awayScore;
+  const winnerId =
+    deriveWinnerId(homeScore, awayScore, input.homeTeamId, input.awayTeamId) ??
+    fixture.winnerId ??
+    null;
+  const homeOutcome: MatchOutcome = homeScore > awayScore ? "win" : homeScore < awayScore ? "loss" : "draw";
+  const awayOutcome: MatchOutcome = awayScore > homeScore ? "win" : awayScore < homeScore ? "loss" : "draw";
+
+  const pending = parsePendingResolution(row.pendingResolution);
+  const homeFfBefore = dedicatedFansOf(homeTeam.coaching);
+  const awayFfBefore = dedicatedFansOf(awayTeam.coaching);
+  const roll6 = deps.rollD6 ?? rollD6;
+
+  // MVP: reuse the reveal's persisted grantees (defensive: fresh roll).
+  let homeMvp: string;
+  let awayMvp: string;
+  if (pending) {
+    homeMvp = pending.mvp.home;
+    awayMvp = pending.mvp.away;
+  } else if (homeNom.length && awayNom.length) {
+    homeMvp = computeMvpGrantee(homeNom, roll6());
+    awayMvp = computeMvpGrantee(awayNom, roll6());
+  } else {
+    throw Object.assign(new Error("both sides must nominate first"), { status: 409 });
+  }
+
+  // Fans: reuse the persisted per-side rolls (defensive: fresh).
+  const homeFans = wizard.home.fans;
+  const awayFans = wizard.away.fans;
+  let postHomeFf: number;
+  let postAwayFf: number;
+  let homeFfRoll6: number;
+  let awayFfRoll6: number;
+  if (homeFans && awayFans) {
+    postHomeFf = homeFans.after;
+    postAwayFf = awayFans.after;
+    homeFfRoll6 = homeFans.roll;
+    awayFfRoll6 = awayFans.roll;
+  } else {
+    const homeFf = rollPostMatchFanFactor({ ff: homeFfBefore, result: homeOutcome, roll6: roll6() });
+    const awayFf = rollPostMatchFanFactor({ ff: awayFfBefore, result: awayOutcome, roll6: roll6() });
+    postHomeFf = homeFf.after;
+    postAwayFf = awayFf.after;
+    homeFfRoll6 = homeFf.roll6;
+    awayFfRoll6 = awayFf.roll6;
+  }
+  const homeFfDirection: FanFactorDirection = postHomeFf > homeFfBefore ? "up" : postHomeFf < homeFfBefore ? "down" : "stay";
+  const awayFfDirection: FanFactorDirection = postAwayFf > awayFfBefore ? "up" : postAwayFf < awayFfBefore ? "down" : "stay";
+
+  const winnings = parseWinningsJson(row.winnings) ?? { home: 0, away: 0 };
+  const events = resolveEventsOf((row as { events?: unknown[] }).events ?? []);
+  const homeAwards = addMvpPe(deriveLivePeAwards(events).home, homeMvp);
+  const awayAwards = addMvpPe(deriveLivePeAwards(events).away, awayMvp);
+  const casualties = casualtyVictimsFromEvents(events);
+
+  const homeParts = raceTvParts(homeTeam);
+  const awayParts = raceTvParts(awayTeam);
+  const pettyCash = computePettyCash(
+    computeTeamTv(homeParts.rosterCost, homeParts.coachingCost, homeParts.valueBonus),
+    computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus),
+  );
+
+  const scoreboard = {
+    home: {
+      score: homeScore,
+      postFf: postHomeFf,
+      winnings: winnings.home,
+      casualties: casualties
+        .filter((c) => c.team === "home")
+        .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
+      pe: homeAwards,
+    },
+    away: {
+      score: awayScore,
+      postFf: postAwayFf,
+      winnings: winnings.away,
+      casualties: casualties
+        .filter((c) => c.team === "away")
+        .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
+      pe: awayAwards,
+    },
+    winnerId,
+    mvp: { home: homeMvp, away: awayMvp },
+  };
+
+  const agg = await tx.liveEvent.aggregate({
+    where: { liveMatchId: row.id },
+    _max: { seq: true },
+  });
+  const maxSeq = agg._max?.seq ?? 0;
+  const homeSeq = maxSeq + 1;
+  const awaySeq = maxSeq + 2;
+  const atMs = row.finishedAt ? new Date(row.finishedAt).getTime() : input.now;
+  await tx.liveEvent.createMany({
+    data: [
+      {
+        liveMatchId: row.id,
+        seq: homeSeq,
+        kind: "mvp",
+        side: "home",
+        playerRosterId: homeMvp,
+        half: row.half,
+        turnNumber: row.turnNumber,
+        payload: {},
+        createdAt: new Date(atMs),
+      },
+      {
+        liveMatchId: row.id,
+        seq: awaySeq,
+        kind: "mvp",
+        side: "away",
+        playerRosterId: awayMvp,
+        half: row.half,
+        turnNumber: row.turnNumber,
+        payload: {},
+        createdAt: new Date(atMs),
+      },
+    ],
+  });
+  await tx.liveMatch.updateMany({ where: { id: row.id }, data: { seq: awaySeq } });
+
+  if (fixture.homeScore == null && fixture.awayScore == null) {
+    await tx.fixture.update({
+      where: { id: input.fixtureId },
+      data: { homeScore, awayScore, winnerId },
+    });
+  }
+  // RAU-40: the close IS the closure — when this was the season's LAST fixture
+  // the league closes atomically here (finished + champion).
+  await maybeCloseLeague(tx, input.leagueId);
+
+  const report = await tx.matchResult.create({
+    data: {
+      fixtureId: input.fixtureId,
+      weather: null,
+      scores: scoreboard as never,
+      pettyCash,
+      loadedBy: input.loadedBy,
+    },
+  });
+
+  await tx.team.updateMany({
+    where: { id: input.homeTeamId },
+    data: { treasury: { increment: winnings.home } },
+  });
+  await tx.team.updateMany({
+    where: { id: input.awayTeamId },
+    data: { treasury: { increment: winnings.away } },
+  });
+
+  // PE awards (the per-side steps already applied the dedicated-fans change
+  // and the casualty Player rows — the close never re-applies them).
+  for (const award of homeAwards) {
+    await tx.player.updateMany({
+      where: { teamId: input.homeTeamId, rosterPlayerId: award.rosterPlayerId },
+      data: { pe: { increment: award.pe } },
+    });
+  }
+  for (const award of awayAwards) {
+    await tx.player.updateMany({
+      where: { teamId: input.awayTeamId, rosterPlayerId: award.rosterPlayerId },
+      data: { pe: { increment: award.pe } },
+    });
+  }
+
+  return {
+    outcome: {
+      fixtureId: input.fixtureId,
+      status: "played" as const,
+      homeScore,
+      awayScore,
+      winnerId,
+      winnings,
+      postFf: { home: postHomeFf, away: postAwayFf },
+      ffRoll: {
+        home: { roll: homeFfRoll6, direction: homeFfDirection },
+        away: { roll: awayFfRoll6, direction: awayFfDirection },
+      },
+      mvp: { home: homeMvp, away: awayMvp },
+      resultId: report.id,
+    },
+    seq: awaySeq,
+  };
 }
 
 /**
@@ -2027,12 +2238,18 @@ export async function hireJourneymanLiveMatch(
  */
 
 /** The shared per-side wizard command input (the route resolves the caller's
- * OWN side's team id from the session, like `nominateMvp`). */
+ * OWN side's team id from the session, like `nominateMvp`). The optional close
+ * context lets `resolutionJourneymenDone` AUTO-CLOSE the match the moment BOTH
+ * sides reach "done" (the LAST command wins the close atomically). */
 export interface ResolutionWizardInput {
   fixtureId: string;
   side: TeamSide;
   teamId: string;
   now: number;
+  leagueId?: string;
+  homeTeamId?: string;
+  awayTeamId?: string;
+  loadedBy?: string;
 }
 
 /** Loads the LiveMatch row or throws 404. */
@@ -2432,12 +2649,23 @@ export async function resolutionCasualtiesDone(
 
 /** Step 5 (LAST): the journeymen step is COMPLETE once every fielded Novato
  * was decided (hired or let go — the hire/let-go commands remove entries from
- * `LiveMatch.journeymen`). Rejects "done" while undecided novatos remain. */
+ * `LiveMatch.journeymen`). Rejects "done" while undecided novatos remain.
+ *
+ * BOTH-SIDES CLOSE: when this completion makes BOTH sides "done", the final
+ * close (`runWizardClose`) runs IN THE SAME TRANSACTION — the LAST coach to
+ * finish the wizard closes the match atomically (MatchResult + maybeCloseLeague
+ * + treasury winnings + PE awards + the MVP events), so there is never a
+ * "both done but not reported" window and no extra click. The explicit
+ * `resolveMatch` command stays as a belt-and-suspenders path. */
 export async function resolutionJourneymenDone(
   input: ResolutionWizardInput,
   deps: StoreDeps,
 ): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
-  const row = await loadResolutionRow(input.fixtureId, deps);
+  const row = await deps.prisma.liveMatch.findFirst({
+    where: { fixtureId: input.fixtureId },
+    include: { events: { orderBy: { seq: "asc" } } },
+  });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
   if (row.status !== "finished") {
     throw Object.assign(new Error("match not finished"), { status: 409 });
   }
@@ -2457,16 +2685,39 @@ export async function resolutionJourneymenDone(
     ...current,
     [input.side]: { ...side, journeymenDone: true, step: "done" },
   };
+  const bothDone = next.home.step === "done" && next.away.step === "done";
+  // The LAST command to reach both-done runs the close in the SAME transaction
+  // (requires the route-provided close context).
+  const closeContext = input.leagueId && input.homeTeamId && input.awayTeamId && input.loadedBy;
+  let finalSeq = row.seq + 1;
   await deps.prisma.$transaction(async (tx) => {
     const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
     if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
     await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+    if (bothDone && closeContext) {
+      const closed = await runWizardClose(
+        tx,
+        row as LiveMatch & { events: LiveEvent[] },
+        {
+          fixtureId: input.fixtureId,
+          leagueId: input.leagueId!,
+          homeTeamId: input.homeTeamId!,
+          awayTeamId: input.awayTeamId!,
+          loadedBy: input.loadedBy!,
+          now: input.now,
+        },
+        next,
+        deps,
+      );
+      // The close bumped the row seq past the appended mvp events.
+      finalSeq = closed.seq;
+    }
   });
   const view = toLiveViewState(
-    { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: next },
+    { ...liveMatchRowToState(row), seq: finalSeq, resolutionState: next },
     input.now,
     { viewerSide: input.side },
   );
   deps.hub.publish(input.fixtureId, { ...view, events: [] });
-  return { seq: row.seq + 1, view };
+  return { seq: finalSeq, view };
 }
