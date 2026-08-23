@@ -38,7 +38,7 @@ export function formatMatchDate(iso: string | null): string {
 }
 
 /**
- * Pure: renders the recorded final score as "home : away" (Tourplay center
+ * Pure: renders the recorded final score as "home : away" (rulebook center
  * format). Returns null when scores are absent so the MatchCard can fall back
  * to the pending dash ("- : -").
  */
@@ -54,7 +54,7 @@ export interface MatchCardProps {
   fixture: FixtureDraft;
   /** Maps a member team id → team display name (from the league detail). */
   teamNameById: Map<string, string>;
-  /** Maps a member team id → resolved race display name (Tourplay card line). */
+  /** Maps a member team id → resolved race display name (rulebook card line). */
   raceNameById?: Map<string, string>;
   /** Session user id, used to decide whether the viewer is a match participant. */
   currentUserId: string;
@@ -74,7 +74,7 @@ export interface MatchCardProps {
 }
 
 /**
- * Tourplay-style match card (Design B): a clickable card (opens negotiation)
+ * rulebook-style match card (Design B): a clickable card (opens negotiation)
  * whose header is "Partido N · <status>" (navy, with a pulsing EN VIVO badge
  * while the live match runs), whose body centers the RESULT (score, or "- : -"
  * before the match) between the two teams, each with its deterministic emblem,
@@ -256,7 +256,7 @@ export function MatchCard({
   );
 }
 
-/** One team column of the Tourplay card: emblem, name link, race line, and the
+/** One team column of the rulebook card: emblem, name link, race line, and the
  * VICTORIA chip when this side won (the loser is grayed, a draw stays neutral). */
 function TeamSide({
   name,

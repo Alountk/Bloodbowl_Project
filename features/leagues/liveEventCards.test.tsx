@@ -4,7 +4,7 @@ import { LiveEventCards } from "./liveEventCards";
 import type { LiveMatchView, MatchTeamDetail, LiveMatchEventDto } from "./api";
 
 /**
- * Tourplay event cards (MVT-1/D3): team events at 68% width with the side
+ * rulebook event cards (MVT-1/D3): team events at 68% width with the side
  * gradient + turn tag (own side) / minute (opposite side); generic events at
  * 100% centered; TD cards carry the derived partial score; foul/casualty cards
  * carry victim/cause-causer lines (MVT-5). Strict TDD RED suite.

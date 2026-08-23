@@ -4,7 +4,7 @@ import { MatchCard, type MatchCardProps, matchStatusLabel, formatMatchDate, form
 import type { FixtureDraft } from "./api";
 
 /**
- * Tourplay-style MatchCard (Design B): a per-fixture card whose header is
+ * rulebook-style MatchCard (Design B): a per-fixture card whose header is
  * "Partido N · <status>", whose body centers the RESULT (score or "- : -")
  * between the two teams (deterministic emblem + name + race line), that
  * navigates to `/teams/[id]` (scouting) when a team is clicked, and that fires
@@ -313,7 +313,7 @@ describe("MatchCard — Ver partido navigation (MV-4)", () => {
         onForfeit={vi.fn()}
       />,
     );
-    // The result moved to the CENTER (Tourplay); the footer no longer repeats it.
+    // The result moved to the CENTER (rulebook); the footer no longer repeats it.
     expect(screen.getByTestId("match-card-score").textContent).toMatch(/2 : 1/);
     expect(screen.queryByText(/Ganador:/)).toBeNull();
     const links = linksInOrder();

@@ -97,7 +97,7 @@ function ReorderHarness({ fail = false }: { fail?: boolean }) {
 }
 
 describe("TeamRosterTable", () => {
-  it("renders the TourPlay column set with the player identity lines", () => {
+  it("renders the rulebook column set with the player identity lines", () => {
     render(<TeamRosterTable team={baseTeam} race={humanRace} />);
 
     for (const header of ["Nº", "Jugador", "Características", "Habilidades y rasgos", "NI", "SPP", "CAS", "MVP", "Valor"]) {

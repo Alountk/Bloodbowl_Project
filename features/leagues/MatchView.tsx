@@ -86,7 +86,7 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
 }
 
 /**
- * Live match UI (MV-5): the UNIFORM sticky Tourplay header (top bar + hero +
+ * Live match UI (MV-5): the UNIFORM sticky rulebook header (top bar + hero +
  * meta row) renders for the pending/scheduled/live/finished fixture states —
  * turns, clocks and score stay visible while the body scrolls, with the
  * LIVE-specific elements gated by `status === "live"` + the viewer's side. A
@@ -536,7 +536,7 @@ function LiveConsentPanel({
 }
 
 /**
- * One team's turn track (Tourplay): BOTH tracks always show the SAME GLOBAL
+ * One team's turn track (rulebook): BOTH tracks always show the SAME GLOBAL
  * sequence — 1-8 during half 1, 9-16 during half 2 (current global =
  * `half === 2 ? turnNumber + 8 : turnNumber`). Only the ACTIVE side's current
  * turn is highlighted (this supersedes the per-team isolated counters from #79).
@@ -575,7 +575,7 @@ function TurnTrack({
 }
 
 /**
- * The v7 Tourplay navy header, three stacked rows:
+ * The v7 rulebook navy header, three stacked rows:
  *  row 1 (top-row): back arrow (32px circle) + league·jornada label + the
  *    count-up (timer SVG + total elapsed H:MM:SS, right-aligned);
  *  row 2 (turn-row): home turn track · the red TURNO button ("Dar el turno"
@@ -699,7 +699,7 @@ function LiveTopBar({
   );
 }
 
-/** One team's mini-stat pill row (casi Tourplay): ⚽ TD / 🤝 completions /
+/** One team's mini-stat pill row (casi rulebook): ⚽ TD / 🤝 completions /
  * ⚰️ casualties / ★ SPP derived from the event feed via `deriveTeamStats`.
  * A pill renders when the STAT has data on EITHER side (visible), so the two
  * teams' pills sit side-by-side (a 0 shows next to the opponent's 1, Design 10). */
@@ -884,7 +884,7 @@ function LiveMetaRow() {
  * Only the LIVE-specific elements inside are gated by `state.status === "live"`
  * (see LiveTopBar/LiveScoreboard).
  */
-function TourplayHeader({
+function RulebookHeader({
   state,
   clock,
   label,
@@ -919,7 +919,7 @@ function TourplayHeader({
 }) {
   return (
     <div
-      data-testid="tourplay-header"
+      data-testid="rulebook-header"
       className="sticky top-0 z-40 border-b border-[#1f3a7a] bg-[#12225a] shadow-[0_6px_16px_rgba(15,23,42,0.18)]"
     >
       <LiveTopBar
@@ -1123,7 +1123,7 @@ function LiveActiveMatch({
   return (
     <div className="bg-white border border-[#e2e8f0]">
       {/* Uniform sticky match header: renders in EVERY fixture state. */}
-      <TourplayHeader
+      <RulebookHeader
         state={state}
         clock={clock}
         label={leagueLabel}
@@ -1326,7 +1326,7 @@ function SummaryFeedRows({ detail, names }: { detail: MatchDetail; names: { home
 }
 
 /**
- * A finished live match (status "finished"): the UNIFORM sticky Tourplay header
+ * A finished live match (status "finished"): the UNIFORM sticky rulebook header
  * renders the final score + frozen per-team clocks + inert tracks above the
  * persisted Design-A timeline. `useLiveClock` re-derives nothing while not
  * live — it just serves the persisted clock base values.
@@ -1369,7 +1369,7 @@ function FinishedLiveView({
   const stepLabel = t(resolutionStepKey(ownStep));
   return (
     <div className="bg-white border border-[#e2e8f0]">
-      <TourplayHeader
+      <RulebookHeader
         state={live}
         clock={clock}
         label={leagueLabel}
@@ -1656,7 +1656,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
       );
     }
   } else if (summary.walkover) {
-    // A walkover keeps its own panel (no uniform Tourplay header — the fixture
+    // A walkover keeps its own panel (no uniform rulebook header — the fixture
     // was never played live; the e2e asserts zero turn/clock chrome here).
     body = (
       <div className="border border-[#e2e8f0] bg-white px-4 py-4 text-center">
@@ -1709,7 +1709,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
 
   return (
     // v7: the duplicated "Partido {round}" + Volver page header is GONE — the
-    // back navigation lives in the sticky Tourplay header's back arrow (only
+    // back navigation lives in the sticky rulebook header's back arrow (only
     // the notFound/error/loading panels keep their own chrome).
     <section aria-label={t("match.pageAria", { round: detail.fixture.round })}>{body}</section>
   );

@@ -13,9 +13,9 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Home con cards, búsqueda, archivo (soft delete) con modal | #17, #28 |
 | Diseño "rulebook light" en toda la app (shell, sidebar, tablas) | #17, #20 |
 | Responsive mobile (drawer, tablas apiladas, combos nativos, sin scroll horizontal) | #19, #20, fixes directos |
-| Catálogo BB2025 = **31 razas / 163 posicionales** (Slann añadido), alineado con **TourPlay** (composición, letras de acceso, skills BB2025 completas, nombres ES); el catálogo vive en JSON con validador y scraper TourPlay como fuente | #106, #107, directos a main |
+| Catálogo BB2025 = **31 razas / 163 posicionales** (Slann añadido), alineado con **rulebook** (composición, letras de acceso, skills BB2025 completas, nombres ES); el catálogo vive en JSON con validador y scraper rulebook como fuente | #106, #107, directos a main |
 | **Nombres fantásticos** por raza: bancos de jugadores ("Nombre Apellido") y nombres de equipo, dado 🎲 en la creación y re-roll en el renombrado | #106, directos a main |
-| **Roster estilo TourPlay**: tabla densa con progresión integrada (barra SPP segmentada, NI, skills con marcador de compra), modal de improve con selects filtrados por PE, renombrar jugadores, dorsal junto al puesto y stats de carrera (CAS/MVP) | directos a main |
+| **Roster estilo rulebook**: tabla densa con progresión integrada (barra SPP segmentada, NI, skills con marcador de compra), modal de improve con selects filtrados por PE, renombrar jugadores, dorsal junto al puesto y stats de carrera (CAS/MVP) | directos a main |
 | **Contratar/despedir** contra el balance real de tesorería + **reordenar la plantilla** con flechas (el dorsal del feed sigue el orden) | #110, #111 |
 | **Bajas que se pierden el próximo partido** ("Baja la próxima", suspensión RAU-12; el hematoma nunca bloquea) | #108 |
 | **Página `/teams`**: secciones "Sin liga" / "En liga", cards con CTV, tesorería y hint "listos para mejorar" (cuenta PE disponibles), guard 409 al archivar | #121, #125–#127 |
@@ -49,7 +49,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Partido en vivo** (eventos de kickoff): Error costoso (matriz 6×6 del reglamento por tramo de tesorería, descuento atómico server-side con clamp anti-negativo) y Factor de aficionados (1D3 vía D6 + dedicated fans) como kinds TEXT sin migración, filas a 0' antes del primer turno, dados 100% server-side, begin idempotente (retry → 409) | #100–#102 |
 | **Concesión** (RAU-38): controles en la zona de turno del header, card en el feed, persistencia + victoria en la misma transacción, winnings del walkover sobre el marcador real | #104 |
 | **Bajas en dos fases** (RAU-34/LM-12): causa + víctima por el coach activo, panel de confirmación del defensor y **action card derivada** solo en el lado del causador | #105, #103 |
-| **Diseño match view Tourplay v7 restaurado/validado** (header sticky 3 filas, timeline, cards de eventos con iconos SVG) y arranque de partido sin fecha acordada | #103 |
+| **Diseño match view rulebook v7 restaurado/validado** (header sticky 3 filas, timeline, cards de eventos con iconos SVG) y arranque de partido sin fecha acordada | #103 |
 | **Cierre de liga + campeón** (RAU-40): standings **3/1/0** con desempates (puntos → diff. TD → TDs a favor → enfrentamiento directo → id), cierre atómico al completar la última jornada (hook en result/forfeit/concede), badge **"Finalizada"** + **panel del campeón** | directos a main |
 | **Ganancias al terminar el partido en vivo** (RAU-44): winnings deterministas por equipo persistidos en el cierre y expuestos en el resumen (sin refresco) | directos a main |
 | **Resolución del partido para partidos en vivo finalizados** (RAU-48/49): modal guiado con MVP y FF con previsualización confirmada | directos a main |
@@ -77,7 +77,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Doble submit de comandos en vivo ("Dar el turno" dos veces) | In-flight lock por comando (#78) |
 | Contadores de turno por equipo mezclados | Aislamiento de contadores por lado en la top bar live (#79) |
 | SSE entregaba frames corruptos / hub duplicado por instancia | Hub compartido process-wide + snapshot con gap-replay (#77, #78) |
-| Match view degradado vs. el mockup validado | Restauración y lock del diseño Tourplay v7 (#103) |
+| Match view degradado vs. el mockup validado | Restauración y lock del diseño rulebook v7 (#103) |
 | Causas de baja duplicadas en el feed; ★ de la herida en ambos cards | Consolidación de causas + SPP/★ solo en el card del causador (directos + #133) |
 | El turno no avanzaba al empezar una nueva ronda | Avance solo cuando vuelve el starter (home T1 → away T1 → home T2) (#133) |
 | El fichaje de un novato cobraba el coste dos veces | Flag `hired` que evita el recuento de balance (#133) |

@@ -142,7 +142,7 @@ test("multi-user journey: join open league, start season, jornadas, post-start l
     await expect(
       pageA.getByRole("region", { name: "Jornada 1" }).getByText(teamBName),
     ).toBeVisible();
-    // Exactly one matchup in this single round — its CENTER SCORE (Tourplay).
+    // Exactly one matchup in this single round — its CENTER SCORE (rulebook).
     await expect(
       pageA.getByRole("region", { name: "Jornada 1" }).getByTestId("match-card-score"),
     ).toHaveCount(1);

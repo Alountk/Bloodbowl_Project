@@ -129,7 +129,7 @@ async function fixturesTeamNames(page: Page, round = 1): Promise<string[]> {
 }
 
 async function openNegotiation(page: Page, round = 1) {
-  // Tourplay card: the CENTER SCORE is the clickable negotiation target (the
+  // rulebook card: the CENTER SCORE is the clickable negotiation target (the
   // old "VS" glyph was replaced by the scorebox — deliberate Design-B update).
   await page.getByRole("region", { name: `Jornada ${round}` }).getByTestId("match-card-score").click();
 }

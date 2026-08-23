@@ -254,7 +254,7 @@ describe("MatchView — walkover and inert live shells (MV-2/MV-5/MV-6)", () => 
   });
 
   it("renders no visible live/timeline/clock chrome in the played summary or the walkover body", async () => {
-    // The uniform Tourplay header only covers pending/scheduled/live/finished;
+    // The uniform rulebook header only covers pending/scheduled/live/finished;
     // the result-loaded summary and the walkover keep their own bodies (the
     // auth e2e asserts `/turno|minuto|½/` is absent from the played page).
     const cases = [playedDetail(), walkoverDetail()];
@@ -263,14 +263,14 @@ describe("MatchView — walkover and inert live shells (MV-2/MV-5/MV-6)", () => 
       stubMatch(detail);
       const { container } = renderPlayed();
       await waitFor(() => expect(container.textContent?.length ?? 0).toBeGreaterThan(0));
-      // No turn/clock/half/event-feed digits, and no Tourplay header.
+      // No turn/clock/half/event-feed digits, and no rulebook header.
       expect(container.textContent).not.toMatch(/turno \d|tiempo|mitad|evento|:\d{2}/i);
-      expect(container.querySelector("[data-testid='tourplay-header']")).toBeNull();
+      expect(container.querySelector("[data-testid='rulebook-header']")).toBeNull();
     }
   });
 });
 
-describe("MatchView — uniform sticky Tourplay header across states", () => {
+describe("MatchView — uniform sticky rulebook header across states", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("renders the sticky header for a PENDING fixture (inert tracks, '–' clocks, '- : -' score)", async () => {
@@ -279,7 +279,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     renderPlayed();
     await waitFor(() => expect(screen.getByText(/Partido sin programar/)).toBeTruthy());
 
-    const header = screen.getByTestId("tourplay-header");
+    const header = screen.getByTestId("rulebook-header");
     expect(header).toBeTruthy();
     // Sticky presence: solid navy bar pinned to the viewport top.
     expect(header.className).toContain("sticky");
@@ -313,7 +313,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     await screen.findByText(/Partido programado/);
 
     // The header shares the exact same chrome (top bar + hero + meta row).
-    expect(screen.getByTestId("tourplay-header")).toBeTruthy();
+    expect(screen.getByTestId("rulebook-header")).toBeTruthy();
     expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
     expect(screen.getByText(/1ª PARTE/i)).toBeTruthy();
     expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
@@ -329,7 +329,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
     const { container } = renderPlayed();
     await waitFor(() => expect(screen.getByText(/Fin del partido/)).toBeTruthy());
 
-    expect(screen.getByTestId("tourplay-header")).toBeTruthy();
+    expect(screen.getByTestId("rulebook-header")).toBeTruthy();
     expect(screen.getByTestId("live-score").textContent).toMatch(/2\s*:\s*1/);
     expect(screen.getByText(/2ª PARTE/i)).toBeTruthy();
     expect(screen.getByText(/Mitad 2 · Turno 8/)).toBeTruthy();
@@ -355,7 +355,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
 
     // The header renders, the match IS live, but the viewer has no side → the
     // turn controls stay hidden (only the ACTIVE participant may pass).
-    expect(screen.getByTestId("tourplay-header")).toBeTruthy();
+    expect(screen.getByTestId("rulebook-header")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Turno Reavers/)).toBeNull();
   });
@@ -376,7 +376,7 @@ describe("MatchView — uniform sticky Tourplay header across states", () => {
   });
 });
 
-describe("MatchView — Tourplay header back arrow (MVT-3/4.4)", () => {
+describe("MatchView — rulebook header back arrow (MVT-3/4.4)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("renders a back arrow inside the sticky header linking to the jornada", async () => {
@@ -384,7 +384,7 @@ describe("MatchView — Tourplay header back arrow (MVT-3/4.4)", () => {
     const { container } = renderPlayed();
     await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
 
-    const header = screen.getByTestId("tourplay-header");
+    const header = screen.getByTestId("rulebook-header");
     // The back arrow lives INSIDE the sticky header (top-left, before the
     // league·round label) and points to the jornada (league page).
     const back = within(header).getByRole("link", { name: /volver/i });
@@ -732,7 +732,7 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/1ª PARTE/i);
 
     // Turn tracks: 8 cells per team (16 total), the SAME GLOBAL sequence 1-8 on
-    // BOTH tracks (Tourplay), with exactly ONE highlighted cell — the ACTIVE
+    // BOTH tracks (rulebook), with exactly ONE highlighted cell — the ACTIVE
     // side's current GLOBAL turn. Half 1 turn 3 (home active) → "3" (supersedes
     // the per-team isolated counters from #79).
     const cells = screen.getAllByLabelText(/Turno \d/);
@@ -821,7 +821,7 @@ describe("MatchView — mockup layout + client ticking clock", () => {
   });
 });
 
-describe("MatchView — casi Tourplay hero (Design 10)", () => {
+describe("MatchView — casi rulebook hero (Design 10)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("renders both team emblems and the weather/stadium meta row in the live hero", async () => {
@@ -1358,7 +1358,7 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(localRow).toBeTruthy();
     expect(visitorRow).toBeTruthy();
 
-    // Tourplay mirroring (MVT-1/D3): the LOCAL (home) 68% card sits on the left
+    // rulebook mirroring (MVT-1/D3): the LOCAL (home) 68% card sits on the left
     // edge and the VISITOR (away) card on the right edge (module `.ev--home` /
     // `.ev--away` own the `align-self`), so each team reads its chronology from
     // its own side.
@@ -2038,7 +2038,7 @@ describe("MatchView — RAU-13 Journeymen notice", () => {
     stubLiveEventSource();
     stubMatch(liveDetail());
     renderPlayed();
-    await waitFor(() => expect(screen.getByTestId("tourplay-header")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("rulebook-header")).toBeTruthy());
     expect(screen.queryByTestId("journeymen-notice")).toBeNull();
   });
 });

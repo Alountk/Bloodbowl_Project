@@ -10,7 +10,7 @@ import { EVENT_GLYPH } from "./liveEventLabels";
 import type { LiveMatchEventDto, LiveMatchView, MatchDetail, MatchTeamDetail } from "./api";
 
 /**
- * DESIGN-LOCK suite: the user validated the Tourplay v7 design (event cards,
+ * DESIGN-LOCK suite: the user validated the rulebook v7 design (event cards,
  * sticky header, light timeline) on `fix/rau-35-39-design`. These tests lock
  * TODAY's output so any future drift (class rename, gradient change, removed
  * corner, skipped icon, duplicated page header, emoji glyph replacing an SVG)
@@ -20,7 +20,7 @@ import type { LiveMatchEventDto, LiveMatchView, MatchDetail, MatchTeamDetail } f
  *       validated declarations are asserted (deleting/changing one fails).
  * B  — rendered card structure per kind (TD / casualty / foul / turnStart /
  *       expensive_mistake / fan_factor / start·endMatch) + the icon set.
- * C  — the Tourplay sticky header via a stubbed MatchView (back arrow, no
+ * C  — the rulebook sticky header via a stubbed MatchView (back arrow, no
  *       duplicated page header, TURNO button, half badge, hero mini-line).
  * D  — MatchTimelineBar (light track, always-on boundary markers, chips).
  */
@@ -413,7 +413,7 @@ describe("B. LiveEventCards — validated v7 rendered structure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// C. Tourplay sticky header via a stubbed MatchView
+// C. rulebook sticky header via a stubbed MatchView
 // ---------------------------------------------------------------------------
 
 vi.mock("next-auth/react", () => ({
@@ -516,13 +516,13 @@ function stubMatch(detail: MatchDetail) {
   );
 }
 
-describe("C. Tourplay sticky header (MatchView)", () => {
+describe("C. rulebook sticky header (MatchView)", () => {
   it("locks the finished-live header: back arrow, no duplicated page header, meta row, frozen score, no turn controls", async () => {
     stubMatch(fixtureDetail(finishedLive()));
     const { container } = render(<MatchView leagueId="l1" fixtureId="f1" />);
     await waitFor(() => expect(container.textContent).toContain("Fin del partido"));
 
-    const header = screen.getByTestId("tourplay-header");
+    const header = screen.getByTestId("rulebook-header");
     expect(header).toBeTruthy();
     expect(header.className).toContain("sticky");
     expect(header.className).toContain("top-0");

@@ -1,6 +1,6 @@
-# Archive Report — match-view-tourplay
+# Archive Report — match-view-rulebook
 
-**Change**: match-view-tourplay
+**Change**: match-view-rulebook
 **Phase**: sdd-archive
 **Mode**: STRICT TDD (`pnpm test`)
 **Artifact store**: hybrid (OpenSpec filesystem + Engram)
@@ -8,17 +8,17 @@
 
 ## Intent of This Archive
 
-This is a **record-only archive**: the delta specs were synchronized into the consolidated main specs (`openspec/specs/match-view/spec.md`, `openspec/specs/live-match-realtime/spec.md`) and the archive report was persisted to OpenSpec and Engram, but the change folder was **NOT moved** to `openspec/changes/archive/`. The orchestrator explicitly instructed the archive to defer the physical move because the stacked PR chain (#90 S1 · #91 fix-avatar · #92 S2 · #93 S3 · #94 S4 · #95 S5, all open against `main`) is still being merged, and the artifacts under `openspec/changes/match-view-tourplay/` are committed on those branches. The folder move is a separate delivery step owned by the orchestrator once the stack is merged.
+This is a **record-only archive**: the delta specs were synchronized into the consolidated main specs (`openspec/specs/match-view/spec.md`, `openspec/specs/live-match-realtime/spec.md`) and the archive report was persisted to OpenSpec and Engram, but the change folder was **NOT moved** to `openspec/changes/archive/`. The orchestrator explicitly instructed the archive to defer the physical move because the stacked PR chain (#90 S1 · #91 fix-avatar · #92 S2 · #93 S3 · #94 S4 · #95 S5, all open against `main`) is still being merged, and the artifacts under `openspec/changes/match-view-rulebook/` are committed on those branches. The folder move is a separate delivery step owned by the orchestrator once the stack is merged.
 
 This decision is recorded here per the intentional-partial-archive rule; nothing was missing or incomplete in the change itself.
 
 ## Native Review Receipt Gate
 
-`reviewGate` is **structurally absent** in `gentle-ai sdd-status` output: `reviewPolicy`, `reviewLedger`, `reviewReceipt`, `reviewContext`, and `reviewState` are all `missing`, and there are no `openspec/changes/match-view-tourplay/reviews/*` files. A genuine `reviewOffer` is present (an invitation, never a gate). Per the Native Review Receipt Gate, with no review ever started for this candidate, archive proceeds under ordinary repository policy. `dependencies.archive: ready` here means proceed, not "investigate why the gate is missing".
+`reviewGate` is **structurally absent** in `gentle-ai sdd-status` output: `reviewPolicy`, `reviewLedger`, `reviewReceipt`, `reviewContext`, and `reviewState` are all `missing`, and there are no `openspec/changes/match-view-rulebook/reviews/*` files. A genuine `reviewOffer` is present (an invitation, never a gate). Per the Native Review Receipt Gate, with no review ever started for this candidate, archive proceeds under ordinary repository policy. `dependencies.archive: ready` here means proceed, not "investigate why the gate is missing".
 
 ## Task Completion Gate
 
-The persisted tasks artifact (`openspec/changes/match-view-tourplay/tasks.md`) shows **22/22 implementation tasks complete** (`[x]`); native status confirms `taskProgress { total: 22, completed: 22, pending: 0, allComplete: true }` and `applyState: all_done`. No unchecked implementation tasks. The two deferred items (per-team incentive chips, kickoff events) are documented as maintainer-scoped follow-ups OUTSIDE the change, not pending tasks — they do not block archive.
+The persisted tasks artifact (`openspec/changes/match-view-rulebook/tasks.md`) shows **22/22 implementation tasks complete** (`[x]`); native status confirms `taskProgress { total: 22, completed: 22, pending: 0, allComplete: true }` and `applyState: all_done`. No unchecked implementation tasks. The two deferred items (per-team incentive chips, kickoff events) are documented as maintainer-scoped follow-ups OUTSIDE the change, not pending tasks — they do not block archive.
 
 ## Final-State Authority
 
@@ -53,20 +53,20 @@ Per orchestrator scope: only the changed requirements were synced; all other req
 | Domain spec | New requirements | Modified requirements | Removed |
 |-------------|------------------|----------------------|---------|
 | `openspec/specs/live-match-realtime/spec.md` | MVT-5 | LM-6 (foul `victimRosterId` + casualty `cause`/`causerRosterId` payloads; legacy fallback), LM-12 (foul victim / casualty causer side invariants + 3 scenarios), LM-20 (victim/cause/causer form capture + 2 scenarios) | — |
-| `openspec/specs/match-view/spec.md` | MVT-1, MVT-2, MVT-3, MVT-4 | MV-6 (kickoff + snapshot-derived summary rows scoping, +1 scenario), MV-7 (Tourplay gradient/success token composition, +1 scenario) | — |
+| `openspec/specs/match-view/spec.md` | MVT-1, MVT-2, MVT-3, MVT-4 | MV-6 (kickoff + snapshot-derived summary rows scoping, +1 scenario), MV-7 (rulebook gradient/success token composition, +1 scenario) | — |
 
 Verification: all 24 changed/frozen scenarios confirmed present in the correct consolidated files; requirement headers enumerated and full requirement set preserved.
 
 ## Artifacts Read (traceability)
 
-- OpenSpec: `proposal.md`, `exploration.md`, `specs/live-match-realtime/spec.md`, `specs/match-view/spec.md`, `design.md`, `tasks.md`, `verify-report.md` (all under `openspec/changes/match-view-tourplay/`).
-- Engram: `sdd/match-view-tourplay/apply-progress` obs **#434**; `sdd/match-view-tourplay/verify-report` obs **#439**.
-- Native: `gentle-ai sdd-status match-view-tourplay --cwd <repo> --json --instructions`.
+- OpenSpec: `proposal.md`, `exploration.md`, `specs/live-match-realtime/spec.md`, `specs/match-view/spec.md`, `design.md`, `tasks.md`, `verify-report.md` (all under `openspec/changes/match-view-rulebook/`).
+- Engram: `sdd/match-view-rulebook/apply-progress` obs **#434**; `sdd/match-view-rulebook/verify-report` obs **#439**.
+- Native: `gentle-ai sdd-status match-view-rulebook --cwd <repo> --json --instructions`.
 
 ## Artifacts Persisted
 
-- OpenSpec: `openspec/changes/match-view-tourplay/archive-report.md` (this file — NOT included in any folder-move readback because the move is deferred).
-- Engram: `sdd/match-view-tourplay/archive-report` (architecture), `capture_prompt: false`.
+- OpenSpec: `openspec/changes/match-view-rulebook/archive-report.md` (this file — NOT included in any folder-move readback because the move is deferred).
+- Engram: `sdd/match-view-rulebook/archive-report` (architecture), `capture_prompt: false`.
 
 ## Errors Encountered
 
@@ -74,7 +74,7 @@ None. No stale `verify-report` CRITICAL/WARNING issues (0/0); no CRITICAL issues
 
 ## Archive Folder Move
 
-**DEFERRED** by explicit orchestrator instruction — stacked PR chain (#90..#95) still open; artifacts are committed on branch artifacts. The orchestrator owns `openspec/changes/archive/2026-08-15-match-view-tourplay/` once the stack merges. This archive report is the terminal record; the folder move shall be byte-identity-verified (`diff -r`) at that time.
+**DEFERRED** by explicit orchestrator instruction — stacked PR chain (#90..#95) still open; artifacts are committed on branch artifacts. The orchestrator owns `openspec/changes/archive/2026-08-15-match-view-rulebook/` once the stack merges. This archive report is the terminal record; the folder move shall be byte-identity-verified (`diff -r`) at that time.
 
 ## Verdict
 

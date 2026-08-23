@@ -1,14 +1,14 @@
-# Proposal: Match View Tourplay Redesign
+# Proposal: Match View rulebook Redesign
 
 ## Intent
 
-Match the approved Tourplay design (previews/enfrentamiento-tourplay.html + enfrentamiento-derivado.html v7): gray-box event cards, timeline bar in the sticky header, post-match rows in the finished feed. Four data gaps block it: foul victim, casualty cause/causer, kickoff rows, and snapshot summary rows are unavailable in the feed.
+Match the approved rulebook design (previews/enfrentamiento-rulebook.html + enfrentamiento-derivado.html v7): gray-box event cards, timeline bar in the sticky header, post-match rows in the finished feed. Four data gaps block it: foul victim, casualty cause/causer, kickoff rows, and snapshot summary rows are unavailable in the feed.
 
 ## Scope
 
 ### In Scope
 - Persist foul `victimRosterId` + casualty `cause`/`causerRosterId` (additive JSON payload, no migration); EventControls capture; permission matrix side-checks.
-- Tourplay cards (team 68% / generic 100%, gray box, internal gradient, 4px radius, 2px gap, turn top / minute bottom), per-TD partial score; casualty 3-actor rows.
+- rulebook cards (team 68% / generic 100%, gray box, internal gradient, 4px radius, 2px gap, turn top / minute bottom), per-TD partial score; casualty 3-actor rows.
 - Timeline bar in sticky header (% elapsed, local top / visitor bottom).
 - Header: integrated back arrow, T1–T16 flanking "Dar el turno", per-coach clocks + half indicator.
 - Finished-feed rows from MatchResult snapshot: "Partido reportado" (success), ganancias, fanáticos, incentivos.

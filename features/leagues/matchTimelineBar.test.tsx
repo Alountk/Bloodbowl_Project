@@ -4,7 +4,7 @@ import { MatchTimelineBar } from "./matchTimelineBar";
 import type { LiveMatchView } from "./api";
 
 /**
- * Tourplay sticky-header timeline bar (MVT-2/D4, v7): one icon per display event at
+ * rulebook sticky-header timeline bar (MVT-2/D4, v7): one icon per display event at
  * `round((at-startedAt)/elapsed×100)%`, home on the top lane and away on the
  * bottom lane, with ALWAYS-rendered mid start/end markers (timer at 0%, flag at
  * 100%) and the 0′/final-minute labels inside the bar. Reload-deterministic (no

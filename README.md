@@ -9,10 +9,10 @@ Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailw
 ## Features
 
 ### Equipos (BB2025)
-- Catálogo completo de **31 razas / 163 posicionales** (Slann incluido) con stats (MV/FU/AG/PS/AR), skills en español, acceso de skills (G/A/P/S/M/F), costos y rangos alineados con **TourPlay BB2025**. El catálogo vive en JSON (`features/teams/data/races.catalog.json`) con validador y un scraper TourPlay como fuente de referencia.
+- Catálogo completo de **31 razas / 163 posicionales** (Slann incluido) con stats (MV/FU/AG/PS/AR), skills en español, acceso de skills (G/A/P/S/M/F), costos y rangos alineados con **rulebook BB2025**. El catálogo vive en JSON (`features/teams/data/races.catalog.json`) con validador y un scraper rulebook como fuente de referencia.
 - **Nombres fantásticos** por raza: bancos de jugadores (composición "Nombre Apellido") y nombres de equipo, con botón 🎲 en la creación y al renombrar jugadores.
 - **Creación en 2 pasos**: nombre + raza → plantilla (mínimo **11 jugadores**, presupuesto 1 000 000 gc) → coaching staff → guardar.
-- **Roster estilo TourPlay**: tabla densa con progresión integrada (barra SPP segmentada, NI, badge "Baja la próxima"), modal de improve con selects filtrados por PE, dorsal junto al puesto, reordenar con flechas y **contratar/despedir** contra el balance real de tesorería.
+- **Roster estilo rulebook**: tabla densa con progresión integrada (barra SPP segmentada, NI, badge "Baja la próxima"), modal de improve con selects filtrados por PE, dorsal junto al puesto, reordenar con flechas y **contratar/despedir** contra el balance real de tesorería.
 - **Novatos (Journeymen)**: si quedan menos de 11 disponibles, se cubren con novatos del banco de la raza (nombres deterministas); ganan PE, son elegibles a MVP y tras el partido se pueden **fichar (cobro único) o dejar ir**.
 - **Detalle de equipo** estilo libro: plantilla, cuerpo técnico, tesorería; **archivo (soft delete)** con modal de confirmación; un equipo en una liga **no se puede archivar** (guard 409, expulsar primero).
 - **Página `/teams`**: tus equipos separados en "Sin liga" / "En liga", cards con CTV, tesorería y el hint "listos para mejorar".
@@ -94,7 +94,7 @@ docker compose up -d --force-recreate web
 app/                  # Rutas (App Router): equipos, ligas, partidos, perfil, dev, API routes
 components/           # Shell (Sidebar/Topbar), AuthCard
 features/
-  teams/              # Catálogo (data/: JSON + validador, skills, nombres), roster TourPlay, wizard
+  teams/              # Catálogo (data/: JSON + validador, skills, nombres), roster rulebook, wizard
   leagues/            # Ligas, campeonatos, matchday, partido en vivo, resolución, jornadas
   matches/            # Página /matches (próximos agrupados por fecha)
   rulesets/           # Tipos de reglas (sección dev-only)

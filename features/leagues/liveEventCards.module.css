@@ -1,6 +1,6 @@
 /**
- * The validated Tourplay v7 event-card design, ported VERBATIM from
- * `previews/cards-tourplay-duplicado.html` (the user-validated spec).
+ * The validated rulebook v7 event-card design, ported VERBATIM from
+ * `previews/cards-rulebook-duplicado.html` (the user-validated spec).
  *
  * WHY A PLAIN-CSS MODULE: the previous Tailwind ARBITRARY-VALUE classes
  * (`[grid-template-areas:'tag_body_._'…]`, `bg-[linear-gradient(…)]`) produced

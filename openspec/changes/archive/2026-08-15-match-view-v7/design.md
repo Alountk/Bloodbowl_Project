@@ -1,8 +1,8 @@
-# Design: Match View Tourplay Redesign
+# Design: Match View rulebook Redesign
 
 ## Technical Approach
 
-Model-first, 5 slices (proposal approach). Close the persisted data gaps server-side (foul victim, casualty cause/causer), then rebuild the feed as Tourplay cards + timeline bar, then snapshot summary rows. All display derivations stay pure in `lib/` (zero-mock testable, repo precedent). The 8-kind display surface (LM-16) is untouched; kickoff stays deferred.
+Model-first, 5 slices (proposal approach). Close the persisted data gaps server-side (foul victim, casualty cause/causer), then rebuild the feed as rulebook cards + timeline bar, then snapshot summary rows. All display derivations stay pure in `lib/` (zero-mock testable, repo precedent). The 8-kind display surface (LM-16) is untouched; kickoff stays deferred.
 
 ## Architecture Decisions
 
@@ -81,7 +81,7 @@ Commands: `foul { victimRosterId: string }` (now REQUIRED); `casualty { cause?: 
 
 ## Testids / Labels
 
-Preserved: `live-event-row` (kept on card `li`), `tourplay-header`, `live-score`, `mini-td-*`, `mini-spp-*`, `Mitad N · Turno M`, `1ª/2ª PARTE`, `Dar el turno`, `Pedir turno`, `Tu turno`, `Tu rival pide el turno`, `Inicio del partido`, `Touchdown`, `Pase completo`, `Baja`, `Herida`, `Falta`, `Fin de la mitad`, `Fin del partido`, `Jugador más valioso`, `Registrar`, `Cancelar`, `Jugador`, `Tipo de lesión`.
+Preserved: `live-event-row` (kept on card `li`), `rulebook-header`, `live-score`, `mini-td-*`, `mini-spp-*`, `Mitad N · Turno M`, `1ª/2ª PARTE`, `Dar el turno`, `Pedir turno`, `Tu turno`, `Tu rival pide el turno`, `Inicio del partido`, `Touchdown`, `Pase completo`, `Baja`, `Herida`, `Falta`, `Fin de la mitad`, `Fin del partido`, `Jugador más valioso`, `Registrar`, `Cancelar`, `Jugador`, `Tipo de lesión`.
 
 Deliberate additions (ship WITH the behavior, never silently): `match-timeline` (bar), `summary-row` + `summary-row-reported` (rows), select labels `Víctima`/`Causa`/`Causante`, MVT-5 cause strings, "(H - A)" on TD cards. Card `li` changes inner structure (flex → grid) but keeps `live-event-row` and all preserved strings.
 

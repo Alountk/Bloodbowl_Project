@@ -16,7 +16,7 @@ build_output_hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca49599
 
 ## Verification Report
 
-**Change**: match-view-tourplay
+**Change**: match-view-rulebook
 **Version**: N/A (delta specs, no version field)
 **Mode**: Strict TDD
 

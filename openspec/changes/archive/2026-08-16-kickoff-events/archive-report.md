@@ -79,7 +79,7 @@ No `openspec/config.yaml` exists in the repo (only the per-skill default); the `
 
 - OpenSpec: `openspec/changes/kickoff-events/proposal.md`, `design.md`, `tasks.md`, `verify-report.md`, `specs/live-match-realtime/spec.md`, `specs/match-view/spec.md` (deltas).
 - Consolidated (synced): `openspec/specs/live-match-realtime/spec.md`, `openspec/specs/match-view/spec.md`.
-- Precedent: `openspec/changes/archive/2026-08-15-match-view-tourplay/archive-report.md` (record-only archive pattern).
+- Precedent: `openspec/changes/archive/2026-08-15-match-view-rulebook/archive-report.md` (record-only archive pattern).
 
 ## Artifacts Persisted
 
