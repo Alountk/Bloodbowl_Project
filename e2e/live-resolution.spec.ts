@@ -233,10 +233,11 @@ async function consentAndBegin(
   await liveCommand(homePage, leagueId, fixtureId, { type: "begin" });
 }
 
-/** Drives 15 end-turns (half 2 turn 8) then scores a TD by the HOME side,
- * which auto-finishes the match (D5). Every command is posted from the ACTIVE
- * side's own coach page (the route enforces the caller-side turn gate).
- * Returns the final view. */
+/** Drives end-turns until half 2 turn 8 with the HOME side active (the last
+ * turn of the match: half 1 = 16 turns home/away, half 2 starts with the away
+ * side), then scores a HOME TD which auto-finishes the match (D5). Every
+ * command is posted from the ACTIVE side's own coach page (the route enforces
+ * the caller-side turn gate). Returns the final view. */
 async function autoFinishByTurnEightTd(
   homePage: Page,
   awayPage: Page,
@@ -245,14 +246,17 @@ async function autoFinishByTurnEightTd(
   homeScorerId: string,
 ): Promise<{ status: string; half: number; turnNumber: number }> {
   let view = await liveCommand(homePage, leagueId, fixtureId, { type: "endTurn", side: "home" });
-  for (let i = 0; i < 14; i++) {
+  // 31 end-turns reach home T8 in half 2 under the round-shared turn semantics
+  // (home T1 → away T1 → home T2 … away T8 half 1 → away T1 half 2 … away T8 →
+  // home T8); drive to the target state defensively.
+  for (let i = 0; i < 40; i++) {
+    if (view.half === 2 && view.turnNumber === 8 && view.activeSide === "home") break;
     const page = view.activeSide === "home" ? homePage : awayPage;
     view = await liveCommand(page, leagueId, fixtureId, {
       type: "endTurn",
       side: view.activeSide,
     });
   }
-  // After 15 end-turns the state is half 2, turn 8 with HOME active.
   expect(view.half).toBe(2);
   expect(view.turnNumber).toBe(8);
   expect(view.activeSide).toBe("home");
@@ -277,45 +281,49 @@ async function openResolution(page: Page, matchUrl: string) {
 }
 
 /**
- * RAU-51: a coach nominates THEIR OWN side from their own page. Asserts the
- * per-side contract: only the viewer's OWN six pickers exist (the rival side
- * is a read-only status, never their players) and the roll stays disabled
- * until BOTH sides have submitted. Saves via "Guardar mis nominaciones" and
- * returns the dialog for the roll/save steps.
+ * RAU-52: a coach nominates THEIR OWN side from their own page. The own
+ * roster renders as CHECKBOXES (not the old numbered selects) — the rival
+ * side is a read-only status, never their players — and the roll stays
+ * disabled until BOTH sides have submitted. Saves via "Guardar mis
+ * nominaciones" and returns the dialog for the roll/save steps.
  */
-async function nominateOwnSide(
-  page: Page,
-  ownTeamName: string,
-  rivalTeamName: string,
-  matchUrl: string,
-) {
+async function nominateOwnSide(page: Page, matchUrl: string) {
   const dialog = await openResolution(page, matchUrl);
-  // The rival's pickers are NOT editable for this coach — only their own six.
-  for (let i = 1; i <= 6; i++) {
-    await expect(dialog.getByLabel(`MVP ${i} ${ownTeamName}`)).toBeVisible();
-    await expect(dialog.getByLabel(`MVP ${i} ${rivalTeamName}`)).toHaveCount(0);
+  // CHECKBOXES over the viewer's own alive+available roster; the rival's
+  // players never appear here. The first six distinct checkboxes = six
+  // distinct roster players (the served order is deterministic).
+  await expect(dialog.getByRole("checkbox").first()).toBeVisible();
+  for (let i = 0; i < 6; i++) {
+    await dialog.getByRole("checkbox").nth(i).check();
   }
   // The roll is gated on BOTH sides' submissions.
   await expect(dialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
-  for (let i = 1; i <= 6; i++) {
-    await dialog.getByLabel(`MVP ${i} ${ownTeamName}`).selectOption({ index: i });
-  }
   await dialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
   await expect(dialog.getByText("Nominaciones enviadas")).toBeVisible();
   return dialog;
 }
 
-/** RAU-51: once BOTH sides nominated, the server-owned roll → resolve close. */
+/** RAU-52: once BOTH sides nominated, the FINAL confirm ("¿Estás seguro?")
+ * locks the picks, the server-owned roll reveals the summary and "Guardar y
+ * reportar" resolves. Returns the dialog — a coach whose side fielded
+ * journeymen then sees the hire step (the LAST step of the sequence). */
 async function rollAndResolve(dialog: ReturnType<Page["getByRole"]>) {
   await expect(dialog.getByRole("button", { name: "Tirar MVP" })).toBeEnabled();
   await dialog.getByRole("button", { name: "Tirar MVP" }).click();
+  await expect(dialog.getByText("¿Estás seguro?")).toBeVisible();
+  await dialog.getByRole("button", { name: "Sí, tirar el MVP" }).click();
   await expect(dialog.getByText("Resumen de la resolución")).toBeVisible();
   await dialog.getByRole("button", { name: "Guardar y reportar" }).click();
-  await expect(dialog).not.toBeVisible();
+  // Wait for THE CLOSURE to commit: the saving button is gone once the
+  // resolve landed — the modal then either advances to the hire step (a side
+  // with journeymen) or closes itself (nothing to hire).
+  await expect(dialog.getByRole("button", { name: "Guardando…" })).toHaveCount(0, { timeout: 20_000 });
+  return dialog;
 }
 
-/** RAU-51: the full per-side resolution — each coach nominates their own side
- * from their OWN page, then the roll + resolve close the match. */
+/** RAU-52: the full per-side resolution — each coach nominates their own side
+ * from their OWN page, then the final confirm → roll → resolve close the
+ * match. Returns the last coach's dialog. */
 async function resolvePerSide(
   homePage: Page,
   awayPage: Page,
@@ -323,11 +331,14 @@ async function resolvePerSide(
   awayTeamName: string,
   matchUrl: string,
 ) {
-  await nominateOwnSide(homePage, homeTeamName, awayTeamName, matchUrl);
-  const awayDialog = await nominateOwnSide(awayPage, awayTeamName, homeTeamName, matchUrl);
+  void homeTeamName;
+  void awayTeamName;
+  await nominateOwnSide(homePage, matchUrl);
+  const awayDialog = await nominateOwnSide(awayPage, matchUrl);
   // The second coach sees the rival's submission (status only — never the picks).
   await expect(awayDialog.getByText("El rival nominó 6 jugadores")).toBeVisible();
   await rollAndResolve(awayDialog);
+  return awayDialog;
 }
 
 /** Polls the league detail until the fixture is played and its round complete. */
@@ -419,7 +430,8 @@ test("auto-finish (TD in half-2 turn 8) → the resolve closure still runs", asy
     const { fixtureId, homeTeamName, awayTeamName, homeScorerId, homePage, awayPage } = await roundOne(admin, leagueId, teams);
     await consentAndBegin(homePage, awayPage, leagueId, fixtureId);
 
-    // 15 end-turns then a HOME TD on half-2 turn 8 → the match AUTO-finishes.
+    // Drive to half 2 turn 8 (home active) then a HOME TD → the match AUTO-
+    // finishes (D5).
     const afterTd = await autoFinishByTurnEightTd(homePage, awayPage, leagueId, fixtureId, homeScorerId);
     expect(afterTd.status).toBe("finished");
 
@@ -761,68 +773,78 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
     expect(finished).toBe(true);
     await admin.goto(match2Url);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
-    await resolvePerSide(home2Page, away2Page, home2Name, away2Name, match2Url);
-    await admin.goto(match2Url);
-    await waitFixturePlayed(admin, leagueId, r2Fixture.id, 2);
+    // RAU-52: resolve match 2 FROM THE PIVOT COACH'S OWN dialog so the hire
+    // step appears deterministically (the pivot's modal advances to the LAST
+    // step of the sequence right after its own save — no poll race).
+    await nominateOwnSide(home2Page, match2Url);
+    await nominateOwnSide(away2Page, match2Url);
+    const pivotDialog = pivotPage.getByRole("dialog", { name: "Resolver partido" });
+    await expect(pivotDialog).toBeVisible();
+    await expect(pivotDialog.getByText("El rival nominó 6 jugadores")).toBeVisible();
+    await rollAndResolve(pivotDialog);
 
-    // --- RAU-14: after the match is REPORTED, the hire step appears on the
-    // PIVOT coach's OWN page — one offer per remaining journeyman, with the
-    // race Lineman cost (Human Lineman = 50.000 M.O.).
-    await pivotPage.goto(match2Url);
+    // The season's LAST match just resolved → the league finished ATOMICALLY
+    // (RAU-40). The post-resolve hire must STILL work on the finished league
+    // (RAU-14: the finished-league guard exempts hireJourneyman) — this is the
+    // exact journey the user runs and the regression the fix must not return.
+    const leagueStatus = await admin.request.get(`/api/leagues/${leagueId}`);
+    expect(leagueStatus.status()).toBe(200);
+    const seasonBody = (await leagueStatus.json()) as { status: string };
+    expect(seasonBody.status).toBe("finished");
+
+    // --- RAU-14/RAU-52: the hire step is the LAST STEP of the resolution
+    // sequence — it appears INSIDE the modal AFTER the MVP roll + the final
+    // confirm (never as a separate post-report panel). The pivot coach's modal
+    // shows checkboxes per remaining novato with the race Lineman cost (Human
+    // Lineman = 50.000 M.O.). NOTE: the pivot team is the ADMIN's in this
+    // journey, so `pivotPage` IS the admin page — the hire MUST run before any
+    // further navigation reloads the page (a reload would close the modal).
     const hirePanel = pivotPage.getByTestId("journeymen-hire");
     await expect(hirePanel).toBeVisible();
     await expect(hirePanel.getByText(new RegExp(`${jrnyName}`))).toBeVisible();
     await expect(hirePanel.getByText(new RegExp(`${jrnyName2}`))).toBeVisible();
-    await expect(hirePanel.getByText(/puede quedarse por 50\.000 M\.O\./)).toHaveCount(2);
+    await expect(hirePanel.getByRole("checkbox")).toHaveCount(2);
+    await expect(hirePanel.getByRole("button", { name: "Contratar marcados" })).toBeDisabled();
 
     // Treasury BEFORE the decisions (the resolve winnings were already applied).
     const beforeRes = await admin.request.get(`/api/leagues/${leagueId}`);
     expect(beforeRes.status()).toBe(200);
     const beforeBody = (await beforeRes.json()) as {
-      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string; hired?: boolean }[] }[];
     };
     const pivotBefore = beforeBody.teams.find((t) => t.id === pivotTeamId)!;
     const treasuryBefore = pivotBefore.treasury;
     expect(pivotBefore.roster).toHaveLength(11);
 
-    // "Contratar" the FIRST journeyman → the roster gains them (reload
-    // persists), the treasury drops by the lineman cost and the option vanishes.
-    await hirePanel
-      .locator("li")
-      .filter({ hasText: jrnyName })
-      .getByRole("button", { name: "Contratar" })
-      .click();
-    await expect(pivotPage.getByTestId("journeymen-hire")).toBeVisible();
+    // Check the FIRST journeyman → "Contratar marcados": the roster gains them,
+    // the treasury DROPS by the lineman cost (paid AFTER the winnings were
+    // collected at resolve) and the option vanishes.
+    await hirePanel.getByRole("checkbox").nth(0).check();
+    await hirePanel.getByRole("button", { name: "Contratar marcados" }).click();
     await expect(hirePanel.getByText(new RegExp(jrnyName))).toHaveCount(0);
     await expect(hirePanel.getByText(new RegExp(jrnyName2))).toBeVisible();
 
     const afterHire = await admin.request.get(`/api/leagues/${leagueId}`);
     expect(afterHire.status()).toBe(200);
     const afterHireBody = (await afterHire.json()) as {
-      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string; hired?: boolean }[] }[];
     };
     const pivotAfterHire = afterHireBody.teams.find((t) => t.id === pivotTeamId)!;
     expect(pivotAfterHire.roster).toHaveLength(12);
     const hired = pivotAfterHire.roster.find((p) => p.name === jrnyName);
     expect(hired).toBeTruthy();
     expect(hired!.positionalKey).toBe("lineman");
+    // RAU-52 single charge: the entry is flagged so the spendable formula does
+    // not recount its cost on top of the treasury decrement below.
+    expect(hired!.hired).toBe(true);
     expect(pivotAfterHire.roster.some((p) => p.name === jrnyName2)).toBe(false);
-    // The hire is PAID via the balance formula: the roster grows (rosterCost),
-    // so `computeSpendableBalance` drops by the Lineman cost — the treasury
-    // ledger itself does NOT change (RAU-11 convention, no double-count).
-    expect(pivotAfterHire.treasury).toBe(treasuryBefore);
+    // RAU-52: the hire is PAID IN CASH from the treasury — the ledger drops by
+    // the 50.000 Lineman cost AFTER the resolve collected the winnings.
+    expect(pivotAfterHire.treasury).toBe(treasuryBefore - 50_000);
 
-    // A reload shows the hired novato is GONE from the offers (persisted) while
-    // the second offer remains — the decision survives the reload.
-    await pivotPage.reload();
-    const hirePanelReload = pivotPage.getByTestId("journeymen-hire");
-    await expect(hirePanelReload).toBeVisible();
-    await expect(hirePanelReload.getByText(new RegExp(jrnyName2))).toBeVisible();
-    await expect(hirePanelReload.getByText(new RegExp(jrnyName))).toHaveCount(0);
-
-    // "Dejar ir" the SECOND journeyman → the option is gone and NO roster or
-    // treasury change happens (the panel disappears when none remain).
-    await hirePanelReload
+    // "Dejar ir" the SECOND journeyman → the option is gone and the modal
+    // closes itself once nothing remains to hire (no roster or treasury change).
+    await hirePanel
       .locator("li")
       .filter({ hasText: jrnyName2 })
       .getByRole("button", { name: "Dejar ir" })
@@ -832,15 +854,17 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
     const afterLetGo = await admin.request.get(`/api/leagues/${leagueId}`);
     expect(afterLetGo.status()).toBe(200);
     const afterLetGoBody = (await afterLetGo.json()) as {
-      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string; hired?: boolean }[] }[];
     };
     const pivotAfterLetGo = afterLetGoBody.teams.find((t) => t.id === pivotTeamId)!;
     expect(pivotAfterLetGo.roster).toHaveLength(12);
     expect(pivotAfterLetGo.roster.some((p) => p.name === jrnyName2)).toBe(false);
     // "Dejar ir" never touches the team — the ledger stays exactly where the
-    // paid hire left it (RAU-14 balance formula: the hire dropped spendable
-    // balance via rosterCost growth, not the treasury).
-    expect(pivotAfterLetGo.treasury).toBe(treasuryBefore);
+    // paid hire left it (the 50.000 was already deducted from the treasury).
+    expect(pivotAfterLetGo.treasury).toBe(treasuryBefore - 50_000);
+
+    // The resolve closure completed (the hire ran on the finished league).
+    await waitFixturePlayed(admin, leagueId, r2Fixture.id, 2);
 
     const after = await admin.request.get(`/api/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
     expect(after.status()).toBe(200);

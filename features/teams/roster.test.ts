@@ -15,6 +15,7 @@ import {
   STARTING_TREASURY,
   computeCoachingCost,
   computeCoachingCostItems,
+  computeDraftedRosterCost,
   computeRosterCost,
   computeRosterCostFromPlayers,
   computeSpendableBalance,
@@ -137,6 +138,40 @@ describe("roster helpers", () => {
         { id: "x", name: "Ghost", positionalKey: "unknown-key" },
       ];
       expect(computeRosterCostFromPlayers(human, players)).toBe(0);
+    });
+  });
+
+  describe("computeDraftedRosterCost", () => {
+    it("sums positional costs for drafted (non-hired) entries only", () => {
+      const human = getRaceById("human")!;
+      const players: PlayerEntry[] = [
+        { id: "a", name: "Player 1", positionalKey: "lineman" },
+        { id: "b", name: "Player 2", positionalKey: "blitzer" },
+        { id: "c", name: "Player 3", positionalKey: "blitzer", hired: true },
+      ];
+      expect(computeDraftedRosterCost(human, players)).toBe(50_000 + 85_000);
+    });
+
+    it("returns 0 when every entry is hired", () => {
+      const human = getRaceById("human")!;
+      const players: PlayerEntry[] = [
+        { id: "a", name: "A", positionalKey: "lineman", hired: true },
+        { id: "b", name: "B", positionalKey: "blitzer", hired: true },
+      ];
+      expect(computeDraftedRosterCost(human, players)).toBe(0);
+    });
+
+    it("returns 0 for an empty player list", () => {
+      const human = getRaceById("human")!;
+      expect(computeDraftedRosterCost(human, [])).toBe(0);
+    });
+
+    it("leaves computeRosterCostFromPlayers (CTV/wizard) counting hired entries", () => {
+      const human = getRaceById("human")!;
+      const players: PlayerEntry[] = [
+        { id: "a", name: "A", positionalKey: "lineman", hired: true },
+      ];
+      expect(computeRosterCostFromPlayers(human, players)).toBe(50_000);
     });
   });
 
@@ -316,6 +351,36 @@ describe("roster helpers", () => {
       // 1 000 000 + 115 000 − 150 000 (3 linemen) = 965 000 — identical.
       const after = computeSpendableBalance({ ...team, treasury: 200_000 - 85_000 }, human);
       expect(after).toBe(before);
+    });
+
+    it("ignores the roster cost of a HIRED entry (already paid via the treasury decrement)", () => {
+      // RAU-52 single charge: the journeyman hire paid the lineman cost IN CASH
+      // from the treasury, so counting it again in the roster cost would
+      // double-charge. 1 000 000 + 0 − 150 000 (3 drafted linemen) − 0 = 850 000.
+      const withHired = [
+        ...threeLinemen,
+        { id: "p4", name: "Aldric Martillo", positionalKey: "lineman", hired: true },
+      ];
+      expect(computeSpendableBalance({ ...team, roster: withHired }, human)).toBe(850_000);
+      // CTV/wizard math still counts the hired entry.
+      expect(computeRosterCostFromPlayers(human, withHired)).toBe(200_000);
+    });
+
+    it("a hire drops the spendable balance by exactly the player's cost ONCE (not twice)", () => {
+      // Before: 1 000 000 + 200 000 − 150 000 (3 drafted linemen) = 1 050 000.
+      const before = computeSpendableBalance({ ...team, treasury: 200_000 }, human);
+      // Hire a 50k lineman: the roster grows (hired flag) AND the treasury drops
+      // by 50 000 → balance drops ONCE: 1 000 000 + 150 000 − 150 000 = 1 000 000.
+      // Double-counting would read 1 000 000 + 150 000 − 200 000 = 950 000.
+      const afterHire = computeSpendableBalance(
+        {
+          ...team,
+          treasury: 200_000 - 50_000,
+          roster: [...threeLinemen, { id: "p4", name: "Aldric", positionalKey: "lineman", hired: true }],
+        },
+        human,
+      );
+      expect(afterHire).toBe(before - 50_000);
     });
 
     it("ignores unknown positional keys in the roster cost (0 each)", () => {

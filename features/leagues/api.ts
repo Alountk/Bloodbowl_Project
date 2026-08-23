@@ -700,11 +700,19 @@ export async function sendLiveCommand(
   return body.view;
 }
 
+/** The per-side post-match fan-factor roll surfaced in the resolution summary
+ * ("Factor fan: ↑ / = / ↓" + the roll, rulebook p. 103). */
+export interface FanFactorRoll {
+  roll: number;
+  direction: "up" | "stay" | "down";
+}
+
 /** RAU-49: the server-owned preview roll for the resolution modal — the MVP
  * grantees (1D6 per team over the six nominations) + the post-match FF. */
 export interface LiveMvpRoll {
   mvp: { home: string; away: string };
   postFf: { home: number; away: number };
+  ffRoll: { home: FanFactorRoll; away: FanFactorRoll };
 }
 
 /** RAU-49: the resolve command's response — the closure snapshot + awards. */
@@ -716,6 +724,7 @@ export interface ResolveOutcome {
   winnerId: string | null;
   winnings: { home: number; away: number };
   postFf: { home: number; away: number };
+  ffRoll: { home: FanFactorRoll; away: FanFactorRoll };
   mvp: { home: string; away: string };
   resultId: string;
 }

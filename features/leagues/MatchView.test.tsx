@@ -1867,11 +1867,12 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
 
     fireEvent.click(resolveButton);
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // RAU-51: the viewer's OWN side renders the six pickers; the rival is a
-    // read-only status (no pickers). The roll stays gated on BOTH sides.
-    expect(within(dialog).getByLabelText("MVP 1 Reavers")).toBeTruthy();
-    expect(within(dialog).getByLabelText("MVP 6 Reavers")).toBeTruthy();
-    expect(within(dialog).queryByLabelText("MVP 6 Dwarves")).toBeNull();
+    // RAU-52: the viewer's OWN side renders CHECKBOXES (not the old numbered
+    // selects); the rival is a read-only status (no checkboxes). The roll
+    // stays gated on BOTH sides.
+    expect(within(dialog).getByRole("checkbox", { name: "Blitzer A (Human Blitzer · #1)" })).toBeTruthy();
+    expect(within(dialog).getByRole("checkbox", { name: "Thrower A (Human Thrower · #2)" })).toBeTruthy();
+    expect(within(dialog).queryByRole("checkbox", { name: /Blitzer B/ })).toBeNull();
     expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
   });
@@ -1918,6 +1919,72 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
     });
 
     await waitFor(() => expect(screen.getByRole("dialog", { name: "Resolver partido" })).toBeTruthy());
+  });
+});
+
+describe("MatchView — RAU-14 post-resolve JourneymenHirePanel gating", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A RESOLVED finished live match (result present) whose HOME side persisted
+   * a fielded journeyman — the exact shape the user's post-match hire journey
+   * hits: finished live + reported result + `live.journeymen` still served. */
+  function resolvedFinishedDetail(): MatchDetail {
+    const detail = finishedLiveDetail(); // carries the played result
+    detail.live = {
+      ...detail.live!,
+      viewerSide: "home",
+      // RAU-14: the journeymen persisted at begin survive the resolve.
+      journeymen: { home: [{ id: "journeyman-t1-1", name: "Aldric Martillo" }], away: [] },
+    };
+    return detail;
+  }
+
+  it("renders NO standalone hire panel for a RESOLVED finished-live match — the hire step lives INSIDE the resolution modal (RAU-52)", async () => {
+    stubMatch(resolvedFinishedDetail());
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+
+    // The match was reported → the resolution modal is gone and NO separate
+    // post-report panel renders: the post-match hire is the LAST STEP of the
+    // resolution sequence (inside the modal), not a standalone panel.
+    expect(screen.queryByRole("button", { name: "Resolver partido" })).toBeNull();
+    expect(screen.queryByTestId("journeymen-hire")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Contratar marcados" })).toBeNull();
+  });
+
+  it("does NOT render the hire panel while the finished match is UNRESOLVED (the resolution flow shows instead)", async () => {
+    const detail = resolvedFinishedDetail();
+    detail.result = null; // finished but NOT reported yet → resolve first
+    stubMatch(detail);
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+
+    expect(screen.queryByTestId("journeymen-hire")).toBeNull();
+    expect(screen.getByRole("button", { name: "Resolver partido" })).toBeTruthy();
+  });
+
+  it("renders NO hire panel when the viewer's side fielded no journeymen (only the rival's offers exist)", async () => {
+    const detail = resolvedFinishedDetail();
+    detail.live = {
+      ...detail.live!,
+      journeymen: { home: [], away: [{ id: "journeyman-t2-1", name: "Brunhild Hacha" }] },
+    };
+    stubMatch(detail);
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+
+    // The home coach (u1) sees nothing: the remaining offers belong to away.
+    expect(screen.queryByTestId("journeymen-hire")).toBeNull();
+  });
+
+  it("renders NO hire panel when the match never persisted journeymen (live.journeymen null)", async () => {
+    const detail = resolvedFinishedDetail();
+    detail.live = { ...detail.live!, journeymen: null };
+    stubMatch(detail);
+    renderPlayed();
+    await waitFor(() => expect(screen.getByText(/Inicio del partido/)).toBeTruthy());
+
+    expect(screen.queryByTestId("journeymen-hire")).toBeNull();
   });
 });
 

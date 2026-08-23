@@ -444,23 +444,35 @@ export function applyEndMatch(
   };
 }
 
-/** Computes the next turn indices after an end-turn (LM-4 turn caps/half flip). */
+/**
+ * Computes the next turn indices after an end-turn (LM-4 turn caps/half flip).
+ *
+ * The turn number names the ROUND, shared by both sides: home T1 → away T1 →
+ * home T2 → away T2. It advances ONLY when the next active side is the side
+ * that STARTED the current round — half 1 starts with home, half 2 with the
+ * away side (which receives the second-half kickoff). The half boundaries
+ * therefore sit on the round STARTER's next appearance: half 1 ends after the
+ * away side's turn 8 (home would start round 9), and the match finishes after
+ * the home side's half-2 turn 8 (away would start round 9).
+ */
 function advanceTurnIndex(state: LiveMatchState): {
   nextActive: TeamSide;
   nextHalf: number;
   nextTurnNumber: number;
   final: boolean;
 } {
-  const turnNumber = state.turnNumber + 1;
-  if (state.half === 1 && turnNumber > TURNS_PER_HALF) {
+  const roundStarter: TeamSide = state.half === 1 ? "home" : "away";
+  const nextActive = other(state.activeSide);
+  const nextTurnNumber = nextActive === roundStarter ? state.turnNumber + 1 : state.turnNumber;
+  if (state.half === 1 && nextTurnNumber > TURNS_PER_HALF) {
     // Half-1 turn 8 completes → half 2, away starts turn 1.
     return { nextActive: "away", nextHalf: 2, nextTurnNumber: 1, final: false };
   }
-  if (state.half === 2 && turnNumber > TURNS_PER_HALF) {
+  if (state.half === 2 && nextTurnNumber > TURNS_PER_HALF) {
     // Half-2 turn 8 completes → the match finishes.
-    return { nextActive: other(state.activeSide), nextHalf: 2, nextTurnNumber: TURNS_PER_HALF, final: true };
+    return { nextActive, nextHalf: 2, nextTurnNumber: TURNS_PER_HALF, final: true };
   }
-  return { nextActive: other(state.activeSide), nextHalf: state.half, nextTurnNumber: turnNumber, final: false };
+  return { nextActive, nextHalf: state.half, nextTurnNumber, final: false };
 }
 
 /** Bumps the ACTIVE side's accumulator by the in-flight segment elapsed (LM-5). */

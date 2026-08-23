@@ -1,101 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { JourneymenHirePanel } from "./JourneymenHire";
-import type { LiveMatchView, MatchDetail } from "./api";
+import { JourneymenHireStep } from "./JourneymenHire";
 
 /**
- * RAU-14 post-resolve journeyman hire panel tests: after the match is reported,
- * each side's OWNER sees their fielded Novatos ("Tu novato {name} puede
- * quedarse por {cost}") with **Contratar** / **Dejar ir**. "Contratar" POSTs
- * `hireJourneyman { hire: true }`, "Dejar ir" POSTs `hire: false`, and every
- * decision refreshes via `onUpdated` (the panel disappears when no journeymen
- * remain). An admin/bye viewer renders nothing.
+ * RAU-14/RAU-52 post-resolve journeyman (Novato) hire step tests: the LAST
+ * step of the end-of-match resolution sequence (shown AFTER the MVP roll + the
+ * final confirm, so the hire cost is paid from the treasury AFTER the match
+ * winnings were collected). The viewer's OWN side's remaining Novatos are
+ * listed with CHECKBOXES ("Contratar a {name} por {cost} M.O."); "Contratar
+ * marcados" POSTs `hireJourneyman { hire: true }` for each checked novato
+ * (the server decrements the treasury by the cost), and "Dejar ir" POSTs
+ * `hire: false` (the option is removed). Every decision refreshes via
+ * `onUpdated`; the step renders nothing when no journeymen remain.
  */
 
-function baseDetail(overrides: {
-  viewerSide?: "home" | "away" | null;
-  journeymen?: { home: { id: string; name: string }[]; away: { id: string; name: string }[] } | null;
-} = {}): MatchDetail {
-  const { viewerSide = "home", journeymen = { home: [{ id: "journeyman-th-1", name: "Aldric Martillo" }], away: [] } } = overrides;
-  return {
-    fixture: {
-      id: "f1",
-      leagueId: "l1",
-      round: 1,
-      homeTeamId: "th",
-      awayTeamId: "ta",
-      createdAt: "2026-02-01",
-      scheduledAt: "2026-03-01T10:00:00.000Z",
-      winnerId: null,
-      homeScore: null,
-      awayScore: null,
-      status: "played",
-      homeOwner: { id: "u1", name: "Coach A" },
-      awayOwner: { id: "u2", name: "Coach B" },
-      proposals: [],
-    },
-    result: {
-      id: "mr-1",
-      fixtureId: "f1",
-      weather: null,
-      scores: {
-        home: { score: 2, casualties: [], pe: [] },
-        away: { score: 1, casualties: [], pe: [] },
-        winnerId: "th",
-      },
-      pettyCash: 0,
-      loadedBy: "u1",
-      createdAt: "2026-03-01T21:00:00.000Z",
-    },
-    homeTeam: {
-      id: "th",
-      name: "Reavers",
-      raceId: "human",
-      user: { id: "u1", name: "Coach A", email: "a@x", avatar: null },
-      players: [],
-    },
-    awayTeam: {
-      id: "ta",
-      name: "Orcs",
-      raceId: "orc",
-      user: { id: "u2", name: "Coach B", email: "b@x", avatar: null },
-      players: [],
-    },
-    live: {
-      seq: 13,
-      status: "finished",
-      half: 2,
-      turnNumber: 8,
-      activeSide: "away",
-      homeConsented: true,
-      awayConsented: true,
-      viewerSide,
-      startedAt: 1000,
-      elapsed: 3100,
-      homeTurnMs: 1500,
-      awayTurnMs: 1600,
-      homeScore: 2,
-      awayScore: 1,
-      paused: false,
-      finishedAt: 5000,
-      concedeProposedBy: null,
-      pendingCasualty: null,
-      mvpNominations: { home: ["h1"], away: ["a1"] },
-      journeymen,
-      events: [],
-    } as LiveMatchView,
-    liveWinnings: { home: 55000, away: 45000 },
-  };
-}
+const JOURNEYMEN = [
+  { id: "journeyman-th-1", name: "Aldric Martillo" },
+  { id: "journeyman-th-2", name: "Brunhild Hacha" },
+];
 
-afterEach(() => vi.unstubAllGlobals());
-
-function renderPanel(props: Partial<Parameters<typeof JourneymenHirePanel>[0]> = {}) {
+function renderStep(props: Partial<Parameters<typeof JourneymenHireStep>[0]> = {}) {
   const onUpdated = vi.fn().mockResolvedValue(undefined);
   render(
-    <JourneymenHirePanel
-      detail={baseDetail()}
-      viewerSide="home"
+    <JourneymenHireStep
+      leagueId="l1"
+      fixtureId="f1"
+      side="home"
+      team={{ name: "Reavers", raceId: "human" }}
+      journeymen={JOURNEYMEN}
       onUpdated={onUpdated}
       {...props}
     />,
@@ -103,57 +35,30 @@ function renderPanel(props: Partial<Parameters<typeof JourneymenHirePanel>[0]> =
   return { onUpdated };
 }
 
-describe("JourneymenHirePanel", () => {
-  it("renders the offer for the viewer's OWN side: journeyman name + the race Lineman cost (RAU-14)", () => {
-    renderPanel();
+afterEach(() => vi.unstubAllGlobals());
+
+describe("JourneymenHireStep", () => {
+  it("renders the remaining novatos as CHECKBOXES with the race Lineman cost (Human = 50.000 M.O.)", () => {
+    renderStep();
     const section = screen.getByTestId("journeymen-hire");
-    expect(within(section).getByText(/Aldric Martillo/)).toBeTruthy();
-    // Human Lineman = 50.000 gp — "Tu novato Aldric Martillo puede quedarse por 50.000 M.O."
     expect(
-      within(section).getByText("Tu novato Aldric Martillo puede quedarse por 50.000 M.O."),
+      within(section).getByRole("checkbox", { name: "Contratar a Aldric Martillo por 50.000 M.O." }),
     ).toBeTruthy();
-    expect(within(section).getByRole("button", { name: "Contratar" })).toBeTruthy();
-    expect(within(section).getByRole("button", { name: "Dejar ir" })).toBeTruthy();
-  });
-
-  it("renders one offer per remaining journeyman (per-novato choice)", () => {
-    renderPanel({
-      detail: baseDetail({
-        viewerSide: "home",
-        journeymen: {
-          home: [
-            { id: "journeyman-th-1", name: "Aldric Martillo" },
-            { id: "journeyman-th-2", name: "Brunhild Hacha" },
-          ],
-          away: [],
-        },
-      }),
-    });
-    const section = screen.getByTestId("journeymen-hire");
-    expect(within(section).getByText(/Aldric Martillo/)).toBeTruthy();
-    expect(within(section).getByText(/Brunhild Hacha/)).toBeTruthy();
-    expect(within(section).getAllByRole("button", { name: "Contratar" })).toHaveLength(2);
+    expect(
+      within(section).getByRole("checkbox", { name: "Contratar a Brunhild Hacha por 50.000 M.O." }),
+    ).toBeTruthy();
+    // Each row keeps the "Dejar ir" release action.
     expect(within(section).getAllByRole("button", { name: "Dejar ir" })).toHaveLength(2);
+    // The bulk action is disabled until at least one novato is marked.
+    expect(within(section).getByRole("button", { name: "Contratar marcados" })).toHaveProperty("disabled", true);
   });
 
-  it("renders nothing for an admin/bye viewer (no side)", () => {
-    renderPanel({ viewerSide: null });
+  it("renders nothing when the side has no remaining journeymen", () => {
+    renderStep({ journeymen: [] });
     expect(screen.queryByTestId("journeymen-hire")).toBeNull();
   });
 
-  it("renders nothing when the viewer's side has no remaining journeymen (all hired-or-gone)", () => {
-    renderPanel({
-      detail: baseDetail({ viewerSide: "home", journeymen: { home: [], away: [{ id: "j", name: "Rival" }] } }),
-    });
-    expect(screen.queryByTestId("journeymen-hire")).toBeNull();
-  });
-
-  it("renders nothing when `live.journeymen` is null (match never persisted any)", () => {
-    renderPanel({ detail: baseDetail({ viewerSide: "home", journeymen: null }) });
-    expect(screen.queryByTestId("journeymen-hire")).toBeNull();
-  });
-
-  it("'Contratar' POSTs hireJourneyman { hire: true } for the OWN side and refreshes (onUpdated)", async () => {
+  it("'Contratar marcados' POSTs hireJourneyman { hire: true } for EACH checked novato and refreshes (onUpdated)", async () => {
     const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
       void _url;
       void _init;
@@ -163,25 +68,31 @@ describe("JourneymenHirePanel", () => {
         json: () =>
           Promise.resolve({
             journeymen: { home: [], away: [] },
-            team: { id: "th", roster: [{ id: "new-1", name: "Aldric Martillo", positionalKey: "lineman" }], treasury: 450000 },
+            team: { id: "th", roster: [], treasury: 400000 },
           }),
       });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { onUpdated } = renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Contratar" }));
+    const { onUpdated } = renderStep();
+    const section = screen.getByTestId("journeymen-hire");
+    fireEvent.click(within(section).getByRole("checkbox", { name: /Aldric Martillo/ }));
+    fireEvent.click(within(section).getByRole("checkbox", { name: /Brunhild Hacha/ }));
+    fireEvent.click(within(section).getByRole("button", { name: "Contratar marcados" }));
 
     await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
-    const call = fetchMock.mock.calls.find(([, init]) =>
+    const hireCalls = fetchMock.mock.calls.filter(([, init]) =>
       String((init as RequestInit).body).includes("hireJourneyman"),
     );
-    expect(call).toBeTruthy();
-    const body = JSON.parse((call![1] as RequestInit).body as string);
-    expect(body).toEqual({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-th-1", hire: true });
+    expect(hireCalls).toHaveLength(2);
+    const bodies = hireCalls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(bodies).toEqual([
+      { type: "hireJourneyman", side: "home", journeymanId: "journeyman-th-1", hire: true },
+      { type: "hireJourneyman", side: "home", journeymanId: "journeyman-th-2", hire: true },
+    ]);
   });
 
-  it("'Dejar ir' POSTs hireJourneyman { hire: false } and refreshes (no roster change)", async () => {
+  it("'Dejar ir' POSTs hireJourneyman { hire: false } for the row and refreshes (the option is removed)", async () => {
     const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
       void _url;
       void _init;
@@ -197,8 +108,9 @@ describe("JourneymenHirePanel", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { onUpdated } = renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Dejar ir" }));
+    const { onUpdated } = renderStep();
+    const section = screen.getByTestId("journeymen-hire");
+    fireEvent.click(within(section).getAllByRole("button", { name: "Dejar ir" })[0]);
 
     await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
     const call = fetchMock.mock.calls.find(([, init]) =>
@@ -206,10 +118,15 @@ describe("JourneymenHirePanel", () => {
     );
     expect(call).toBeTruthy();
     const body = JSON.parse((call![1] as RequestInit).body as string);
-    expect(body).toEqual({ type: "hireJourneyman", side: "home", journeymanId: "journeyman-th-1", hire: false });
+    expect(body).toEqual({
+      type: "hireJourneyman",
+      side: "home",
+      journeymanId: "journeyman-th-1",
+      hire: false,
+    });
   });
 
-  it("surfaces a rejection (e.g. 409 insufficient balance) in the panel and does NOT refresh", async () => {
+  it("surfaces a rejection (e.g. 409 insufficient treasury) in the step and does NOT refresh", async () => {
     vi.stubGlobal("fetch", (_url: string, _init?: RequestInit) => {
       void _url;
       void _init;
@@ -220,8 +137,10 @@ describe("JourneymenHirePanel", () => {
       });
     });
 
-    const { onUpdated } = renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Contratar" }));
+    const { onUpdated } = renderStep();
+    const section = screen.getByTestId("journeymen-hire");
+    fireEvent.click(within(section).getByRole("checkbox", { name: /Aldric Martillo/ }));
+    fireEvent.click(within(section).getByRole("button", { name: "Contratar marcados" }));
 
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("Cannot hire in current state"),

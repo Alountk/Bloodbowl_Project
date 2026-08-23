@@ -432,10 +432,137 @@ describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)",
     expect(action!.textContent).toContain("Blitz");
     expect(action!.textContent).toContain("Arnau hace una herida a Blitzer B");
     expect(action!.textContent).toContain("(★2)");
-    // The ROLL belongs to the injury card; RAU-47 keeps the ★2 on the injury
-    // card too so the points are visible even when no causer/action card exists.
+    // BUSINESS RULE (RAU-47): the ★2 belongs to the CAUSER's action card ONLY.
+    // The VICTIM's injury card must NEVER show the earned points — it renders
+    // the roll line and the "por {causer}" cause line, but no star.
     expect(injury!.textContent).toContain("Tirada 1D16: 13");
-    expect(injury!.textContent).toContain("(★2)");
+    expect(injury!.querySelector(".stars")).toBeNull();
+    expect(injury!.textContent).not.toContain("(★2)");
+  });
+
+  it("renders the causer's action card with (★2) for the LIVE confirmCasualty payload shape (blitz + band permanent + roll6)", () => {
+    // The EXACT payload `confirmCasualty` persists (RAU-39): victim + causer
+    // roster ids, the cause, the 1D16 roll, the optional 1D6 (permanent), the
+    // server-derived band and its attribute. A lasting band must always put the
+    // ★2 the causer earns on the ACTION card — this is the regression shape
+    // (the star disappearing for the one who DID the blitz, RAU-47).
+    const { container } = renderCards([
+      ev(
+        9,
+        "casualty",
+        "away",
+        {
+          victimRosterId: "p2",
+          causerRosterId: "p4",
+          cause: "blitz",
+          roll16: 13,
+          roll6: 5,
+          band: "permanent",
+          permanentAttribute: "ag",
+        },
+        "p2",
+        6,
+        3000,
+      ),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    const action = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau");
+    expect(action).toBeTruthy();
+    expect(action!.querySelector(".dline")?.textContent).toContain("Blitz");
+    expect(action!.textContent).toContain("Arnau hace una herida a Blitzer B");
+    // The ★2 the CAUSER earns sits on the action card...
+    expect(action!.querySelector(".stars")?.textContent).toBe("(★2)");
+    // ...and the VICTIM's injury card must NOT show it (RAU-47 business rule:
+    // the star only shows on the card of the player who DID the action).
+    const injury = rows.find((li) => li.textContent?.includes("Blitzer B"));
+    expect(injury!.querySelector(".stars")).toBeNull();
+    expect(injury!.textContent).not.toContain("(★2)");
+  });
+
+  it("BUSINESS RULE: a BLITZ lasting band earns ★2 ONLY on the CAUSER's action card — the victim's injury card shows no earned points", () => {
+    const { container } = renderCards([
+      ev(
+        9,
+        "casualty",
+        "away",
+        { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 9, band: "apaleado" },
+        "p2",
+        6,
+        3000,
+      ),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    const action = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau");
+    const injury = rows.find((li) => li.querySelector(".name")?.textContent === "Blitzer B");
+    expect(action).toBeTruthy();
+    expect(injury).toBeTruthy();
+    // Causer's action card carries the ★2 (the injury is lasting).
+    expect(action!.querySelector(".stars")?.textContent).toBe("(★2)");
+    // The victim's injury card NEVER shows earned points.
+    expect(injury!.querySelector(".stars")).toBeNull();
+    expect(injury!.textContent).not.toContain("(★");
+  });
+
+  it("BUSINESS RULE: a BLOCK lasting band earns ★2 ONLY on the CAUSER's action card — same as blitz", () => {
+    const { container } = renderCards([
+      ev(
+        9,
+        "casualty",
+        "away",
+        { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 9, band: "grave" },
+        "p2",
+        6,
+        3000,
+      ),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const action = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau" && li.textContent?.includes("Bloqueo"));
+    const injury = rows.find((li) => li.querySelector(".name")?.textContent === "Blitzer B");
+    expect(action).toBeTruthy();
+    expect(injury).toBeTruthy();
+    expect(action!.querySelector(".stars")?.textContent).toBe("(★2)");
+    expect(injury!.querySelector(".stars")).toBeNull();
+    expect(injury!.textContent).not.toContain("(★");
+  });
+
+  it("BUSINESS RULE: a bruise earns NO star ANYWHERE (neither the causer's action card nor the victim's injury card)", () => {
+    const { container } = renderCards([
+      ev(
+        9,
+        "casualty",
+        "away",
+        { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 2, band: "bruise" },
+        "p2",
+        6,
+        3000,
+      ),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    const action = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau");
+    const injury = rows.find((li) => li.querySelector(".name")?.textContent === "Blitzer B");
+    expect(action).toBeTruthy();
+    expect(injury).toBeTruthy();
+    expect(action!.querySelector(".stars")).toBeNull();
+    expect(injury!.querySelector(".stars")).toBeNull();
+    expect(container.textContent).not.toContain("(★");
+  });
+
+  it("hides the star on the action card for a bruise casualty (★0) while a lasting band keeps it", () => {
+    const { container } = renderCards([
+      ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 7, band: "bruise" }, "p2", 6, 3000),
+      ev(10, "casualty", "away", { victimRosterId: "p8", causerRosterId: "p4", cause: "block", roll16: 9, band: "apaleado" }, "p8", 6, 3100),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const bruiseAction = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau" && li.textContent?.includes("Blitz"));
+    expect(bruiseAction).toBeTruthy();
+    // A bruise earns no XP → no star on the causer's card (never "(★0)").
+    expect(bruiseAction!.querySelector(".stars")).toBeNull();
+    const lastingAction = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau" && li.textContent?.includes("Bloqueo"));
+    expect(lastingAction).toBeTruthy();
+    expect(lastingAction!.querySelector(".stars")?.textContent).toBe("(★2)");
   });
 
   it("renders NO action card for a self-inflicted (dodge/crowd) casualty — only the injury card", () => {

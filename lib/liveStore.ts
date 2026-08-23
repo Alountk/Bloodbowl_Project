@@ -46,7 +46,7 @@ import {
 import type { CasualtyCause } from "./livePhase";
 import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
-import { computeWinnings, preMatchFanFactor, postMatchFanFactor, type MatchOutcome } from "@/lib/rules";
+import { computeWinnings, preMatchFanFactor, rollPostMatchFanFactor, type MatchOutcome, type FanFactorDirection } from "@/lib/rules";
 import { rollD3, rollD6 } from "@/lib/random";
 import { clearSuspensionUpdate, injurySuspensionUpdate, isLastingBand } from "@/lib/playerInjuries";
 import {
@@ -70,7 +70,6 @@ import { getRaceById } from "@/features/teams/data/races";
 import {
   computeRosterCostFromPlayers,
   computeCoachingCost,
-  computeSpendableBalance,
   MAX_PLAYERS,
 } from "@/features/teams/roster";
 import { createId } from "@/features/teams/id";
@@ -1098,33 +1097,48 @@ function eligibleMvpIds(
 }
 
 /** The rolled resolution the preview persists for the commit to reuse (RAU-49
- * fix): the chosen nominee rosterPlayerIds + the post-match FF totals — both
- * from the SAME server roll the modal previewed. */
+ * fix): the chosen nominee rosterPlayerIds + the post-match FF totals + the
+ * 1D6 FF rolls per side — ALL from the SAME server roll the modal previewed. */
 export interface PendingResolution {
   mvp: { home: string; away: string };
   postFf: { home: number; away: number };
+  /** The 1D6 fan-factor roll per side (rulebook p. 103). */
+  ffRoll: { home: number; away: number };
+}
+
+/** The per-side post-match fan-factor roll surfaced in the resolution summary
+ * ("Factor fan: ↑ / = / ↓" + the roll). */
+export interface FanFactorRoll {
+  roll: number;
+  direction: FanFactorDirection;
 }
 
 /** Defensive parse of the persisted `pendingResolution` JSON: a malformed or
- * legacy shape returns null so `resolveLiveMatch` falls back to a fresh roll. */
+ * legacy shape (missing the FF rolls) returns null so `resolveLiveMatch` falls
+ * back to a fresh roll. */
 function parsePendingResolution(value: Prisma.JsonValue | null | undefined): PendingResolution | null {
   if (typeof value !== "object" || value === null) return null;
   const pending = value as Record<string, unknown>;
   const mvp = pending.mvp as Record<string, unknown> | undefined;
   const postFf = pending.postFf as Record<string, unknown> | undefined;
+  const ffRoll = pending.ffRoll as Record<string, unknown> | undefined;
   if (
     !mvp ||
     typeof mvp.home !== "string" ||
     typeof mvp.away !== "string" ||
     !postFf ||
     typeof postFf.home !== "number" ||
-    typeof postFf.away !== "number"
+    typeof postFf.away !== "number" ||
+    !ffRoll ||
+    typeof ffRoll.home !== "number" ||
+    typeof ffRoll.away !== "number"
   ) {
     return null;
   }
   return {
     mvp: { home: mvp.home, away: mvp.away },
     postFf: { home: postFf.home, away: postFf.away },
+    ffRoll: { home: ffRoll.home, away: ffRoll.away },
   };
 }
 
@@ -1236,7 +1250,11 @@ export interface NominateMvpInput {
 export async function rollLiveMvp(
   input: RollLiveMvpInput,
   deps: StoreDeps,
-): Promise<{ mvp: { home: string; away: string }; postFf: { home: number; away: number } }> {
+): Promise<{
+  mvp: { home: string; away: string };
+  postFf: { home: number; away: number };
+  ffRoll: { home: FanFactorRoll; away: FanFactorRoll };
+}> {
   const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
   if (!row) throw Object.assign(new Error("not found"), { status: 404 });
   if (row.status !== "finished") {
@@ -1250,7 +1268,6 @@ export async function rollLiveMvp(
   const awayNom = nominations.away;
 
   const roll6 = deps.rollD6 ?? rollD6;
-  const roll3 = deps.rollD3 ?? rollD3;
 
   return deps.prisma.$transaction(async (tx) => {
     // Same guard as `resolveLiveMatch`: a match already resolved (or in the
@@ -1301,16 +1318,21 @@ export async function rollLiveMvp(
     const awayOutcome: MatchOutcome =
       awayScore > homeScore ? "win" : awayScore < homeScore ? "loss" : "draw";
 
-    const preHomeFf = preMatchFanFactor({
-      roll3: roll3(),
-      dedicatedFans: dedicatedFansOf(homeTeam.coaching),
+    // Rulebook p. 103 ("ACTUALIZAR HINCHAS"): the 1D6 compares against the
+    // dedicated-fans ATTRIBUTE (coaching.dedicatedFans), not the attendance.
+    // The pre-match 1D3 attendance is NOT part of this roll.
+    const homeFf = rollPostMatchFanFactor({
+      ff: dedicatedFansOf(homeTeam.coaching),
+      result: homeOutcome,
+      roll6: roll6(),
     });
-    const preAwayFf = preMatchFanFactor({
-      roll3: roll3(),
-      dedicatedFans: dedicatedFansOf(awayTeam.coaching),
+    const awayFf = rollPostMatchFanFactor({
+      ff: dedicatedFansOf(awayTeam.coaching),
+      result: awayOutcome,
+      roll6: roll6(),
     });
-    const postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
-    const postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
+    const postHomeFf = homeFf.after;
+    const postAwayFf = awayFf.after;
 
     // RAU-49 fix: persist the previewed resolution so `resolveMatch` reuses
     // THESE exact values at commit (the summary the user approved IS what gets
@@ -1322,11 +1344,19 @@ export async function rollLiveMvp(
         pendingResolution: {
           mvp: { home: homeMvp, away: awayMvp },
           postFf: { home: postHomeFf, away: postAwayFf },
+          ffRoll: { home: homeFf.roll6, away: awayFf.roll6 },
         },
       },
     });
 
-    return { mvp: { home: homeMvp, away: awayMvp }, postFf: { home: postHomeFf, away: postAwayFf } };
+    return {
+      mvp: { home: homeMvp, away: awayMvp },
+      postFf: { home: postHomeFf, away: postAwayFf },
+      ffRoll: {
+        home: { roll: homeFf.roll6, direction: homeFf.direction },
+        away: { roll: awayFf.roll6, direction: awayFf.direction },
+      },
+    };
   });
 }
 
@@ -1350,6 +1380,7 @@ export interface ResolveLiveOutcome {
   winnerId: string | null;
   winnings: { home: number; away: number };
   postFf: { home: number; away: number };
+  ffRoll: { home: FanFactorRoll; away: FanFactorRoll };
   mvp: { home: string; away: string };
   resultId: string;
 }
@@ -1363,8 +1394,9 @@ export interface ResolveLiveOutcome {
  *    lasting-casualty) + the MVP +4, applied to the lazy Player rows;
  *  - applies the finish-time `LiveMatch.winnings` to the treasuries (never
  *    recomputed — RAU-44 persisted them deterministically at finish);
- *  - stores the post-match FF (snapshot-only, result-route precedent) and
- *    petty cash;
+ *  - stores the post-match FF in the snapshot AND APPLIES it to the teams'
+ *    `coaching.dedicatedFans` (rulebook p. 103 — the Hinchas attribute change
+ *    is +1/-1/stay on the dedicated-fans characteristic) + petty cash;
  *  - appends the home+away `mvp` events + bumps the row seq (LM-mvp parity);
  *  - closes the fixture IDEMPOTENTLY (skipped when already closed — the concede
  *    walkover) and runs `maybeCloseLeague` — the resolve IS the closure, fixing
@@ -1397,7 +1429,6 @@ export async function resolveLiveMatch(
   const awayNom = nominations.away;
 
   const roll6 = deps.rollD6 ?? rollD6;
-  const roll3 = deps.rollD3 ?? rollD3;
 
   return deps.prisma.$transaction(async (tx) => {
     const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
@@ -1457,8 +1488,12 @@ export async function resolveLiveMatch(
     // roll. A direct/legacy resolve without a preview falls back to fresh
     // server-owned rolls exactly as before.
     const pending = parsePendingResolution(row.pendingResolution);
+    const homeFfBefore = dedicatedFansOf(homeTeam.coaching);
+    const awayFfBefore = dedicatedFansOf(awayTeam.coaching);
     let postHomeFf: number;
     let postAwayFf: number;
+    let homeFfRoll6: number;
+    let awayFfRoll6: number;
     let homeMvp: string;
     let awayMvp: string;
     if (pending) {
@@ -1466,24 +1501,35 @@ export async function resolveLiveMatch(
       awayMvp = pending.mvp.away;
       postHomeFf = pending.postFf.home;
       postAwayFf = pending.postFf.away;
+      homeFfRoll6 = pending.ffRoll.home;
+      awayFfRoll6 = pending.ffRoll.away;
     } else {
-      // FF: fresh server-owned pre-match 1D3 + dedicated fans → post-match 1D6.
-      // Snapshot-only, exactly like the result route (no team mutation).
-      const preHomeFf = preMatchFanFactor({
-        roll3: roll3(),
-        dedicatedFans: dedicatedFansOf(homeTeam.coaching),
+      // Rulebook p. 103 ("ACTUALIZAR HINCHAS"): the 1D6 compares against the
+      // dedicated-fans ATTRIBUTE (not the attendance 1D3) and the verdict
+      // UP/STAY/DOWN derives from the same roll.
+      const homeFf = rollPostMatchFanFactor({
+        ff: homeFfBefore,
+        result: homeOutcome,
+        roll6: roll6(),
       });
-      const preAwayFf = preMatchFanFactor({
-        roll3: roll3(),
-        dedicatedFans: dedicatedFansOf(awayTeam.coaching),
+      const awayFf = rollPostMatchFanFactor({
+        ff: awayFfBefore,
+        result: awayOutcome,
+        roll6: roll6(),
       });
-      postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: roll6() });
-      postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: roll6() });
+      postHomeFf = homeFf.after;
+      postAwayFf = awayFf.after;
+      homeFfRoll6 = homeFf.roll6;
+      awayFfRoll6 = awayFf.roll6;
 
       // MVP: server-owned 1D6 per team over the persisted per-side nominations.
       homeMvp = computeMvpGrantee(homeNom, roll6());
       awayMvp = computeMvpGrantee(awayNom, roll6());
     }
+    const homeFfDirection: FanFactorDirection =
+      postHomeFf > homeFfBefore ? "up" : postHomeFf < homeFfBefore ? "down" : "stay";
+    const awayFfDirection: FanFactorDirection =
+      postAwayFf > awayFfBefore ? "up" : postAwayFf < awayFfBefore ? "down" : "stay";
 
     // Winnings: the RAU-44 finish-time values — applied, never recomputed.
     const winnings = parseWinningsJson(row.winnings) ?? { home: 0, away: 0 };
@@ -1601,6 +1647,24 @@ export async function resolveLiveMatch(
       data: { treasury: { increment: winnings.away } },
     });
 
+    // Rulebook p. 103: the post-match fan-factor roll APPLIES to the team's
+    // dedicated-fans characteristic (`coaching.dedicatedFans`) — the value the
+    // summary previewed is written back (additive JSON update; the pre-match
+    // attendance 1D3 is unrelated to this change).
+    const applyDedicatedFans = async (
+      teamId: string,
+      coaching: Prisma.JsonValue | null,
+      dedicatedFans: number,
+    ) => {
+      const current = isCoachingStaff(coaching) ? coaching : DEFAULT_COACHING;
+      await tx.team.updateMany({
+        where: { id: teamId },
+        data: { coaching: { ...current, dedicatedFans } as never },
+      });
+    };
+    await applyDedicatedFans(input.homeTeamId, homeTeam.coaching, postHomeFf);
+    await applyDedicatedFans(input.awayTeamId, awayTeam.coaching, postAwayFf);
+
     // PE awards to the lazy Player rows (same shape as the result route).
     for (const award of homeAwards) {
       await tx.player.updateMany({
@@ -1636,6 +1700,10 @@ export async function resolveLiveMatch(
       winnerId,
       winnings,
       postFf: { home: postHomeFf, away: postAwayFf },
+      ffRoll: {
+        home: { roll: homeFfRoll6, direction: homeFfDirection },
+        away: { roll: awayFfRoll6, direction: awayFfDirection },
+      },
       mvp: { home: homeMvp, away: awayMvp },
       resultId: report.id,
     };
@@ -1715,17 +1783,21 @@ export interface HireJourneymanInput {
  * Guards: 404 no live row / team; 400 unknown journeyman (the match never
  * persisted journeymen or the JSON is malformed); 409 the journeyman is not in
  * the persisted list (already hired-or-gone) or the match is NOT resolved yet
- * (`MatchResult` must exist); 409 roster at the 16 cap; 409 insufficient
- * spendable balance (the RAU-11 formula — the lineman cost must fit). Double-
- * hire is impossible: removing the id from the list plus the optimistic `seq`
- * guard on the row (a concurrent decision on the SAME journeyman loses the
- * guard → 409).
+ * (`MatchResult` must exist); 409 roster at the 16 cap; 409 the treasury
+ * cannot cover the lineman cost (the hire is PAID in cash from the treasury —
+ * RAU-52: the cost is subtracted from the treasury AFTER the match winnings
+ * were collected). Double-hire is impossible: removing the id from the list
+ * plus the optimistic `seq` guard on the row (a concurrent decision on the
+ * SAME journeyman loses the guard → 409).
  *
  * Effect in ONE transaction: the journeyman is removed from
  * `LiveMatch.journeymen`; a hire ALSO appends a `PlayerEntry { id: createId(),
- * name: <the persisted journeyman name>, positionalKey: <race Lineman key> }`
- * to the roster and creates the matching Player row with the match's earned PE
- * + injuries. Returns the remaining journeymen + the updated team surface.
+ * name: <the persisted journeyman name>, positionalKey: <race Lineman key>,
+ * hired: true }` to the roster, decrements the treasury by the lineman cost,
+ * and creates the matching Player row with the match's earned PE + injuries.
+ * The `hired` flag stops the spendable balance from counting the entry's cost
+ * a SECOND time (the treasury decrement is the single cash charge). Returns
+ * the remaining journeymen + the updated team surface.
  */
 export async function hireJourneymanLiveMatch(
   input: HireJourneymanInput,
@@ -1801,22 +1873,20 @@ export async function hireJourneymanLiveMatch(
     if (roster.length >= MAX_PLAYERS) {
       throw Object.assign(new Error("roster full"), { status: 409 });
     }
-    const balance = computeSpendableBalance(
-      {
-        treasury: team.treasury,
-        roster,
-        coaching: isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING,
-      },
-      race,
-    );
-    if (lineman.cost > balance) {
+    // RAU-52: the hire is PAID in CASH from the treasury (after the match
+    // winnings were collected at resolve) — the guard is the affordability of
+    // the lineman cost against the treasury itself.
+    if (lineman.cost > team.treasury) {
       throw Object.assign(new Error("not enough treasury"), { status: 409 });
     }
 
     const nextRosterId = createId();
     const nextRoster: PlayerEntry[] = [
       ...roster,
-      { id: nextRosterId, name: entry.name, positionalKey: lineman.key },
+      // RAU-52 single charge: the entry is flagged `hired: true` so the
+      // spendable balance does NOT count this cost again — the treasury
+      // decrement below is the ONLY charge for the hire.
+      { id: nextRosterId, name: entry.name, positionalKey: lineman.key, hired: true },
     ];
     const updated = await tx.liveMatch.updateMany({
       where: { id: row.id, seq: row.seq },
@@ -1826,13 +1896,13 @@ export async function hireJourneymanLiveMatch(
       },
     });
     if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
-    // RAU-14: hiring is PAID via the spendable-balance formula — appending the
-    // roster player grows rosterCost, so `computeSpendableBalance` drops by the
-    // lineman cost automatically. The treasury ledger is NOT decremented (that
-    // would double-count the payment; RAU-11 hire follows the same convention).
+    // RAU-52: the hire is PAID from the treasury ledger — the lineman cost is
+    // subtracted AFTER the resolve already applied the match winnings. The
+    // roster growth separately raises the team TV; the treasury decrement is
+    // the cash payment.
     await tx.team.updateMany({
       where: { id: input.teamId },
-      data: { roster: nextRoster as never },
+      data: { roster: nextRoster as never, treasury: { decrement: lineman.cost } },
     });
 
     // RAU-13: the hire CARRIES the match into the journeyman's new `Player`
@@ -1871,7 +1941,7 @@ export async function hireJourneymanLiveMatch(
 
     return {
       journeymen: nextJourneymen,
-      team: { id: input.teamId, roster: nextRoster, treasury: team.treasury },
+      team: { id: input.teamId, roster: nextRoster, treasury: team.treasury - lineman.cost },
     };
   });
 }
