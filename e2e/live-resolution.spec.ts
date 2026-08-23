@@ -810,7 +810,7 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
     const beforeRes = await admin.request.get(`/api/leagues/${leagueId}`);
     expect(beforeRes.status()).toBe(200);
     const beforeBody = (await beforeRes.json()) as {
-      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string; hired?: boolean }[] }[];
     };
     const pivotBefore = beforeBody.teams.find((t) => t.id === pivotTeamId)!;
     const treasuryBefore = pivotBefore.treasury;
@@ -827,13 +827,16 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
     const afterHire = await admin.request.get(`/api/leagues/${leagueId}`);
     expect(afterHire.status()).toBe(200);
     const afterHireBody = (await afterHire.json()) as {
-      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string; hired?: boolean }[] }[];
     };
     const pivotAfterHire = afterHireBody.teams.find((t) => t.id === pivotTeamId)!;
     expect(pivotAfterHire.roster).toHaveLength(12);
     const hired = pivotAfterHire.roster.find((p) => p.name === jrnyName);
     expect(hired).toBeTruthy();
     expect(hired!.positionalKey).toBe("lineman");
+    // RAU-52 single charge: the entry is flagged so the spendable formula does
+    // not recount its cost on top of the treasury decrement below.
+    expect(hired!.hired).toBe(true);
     expect(pivotAfterHire.roster.some((p) => p.name === jrnyName2)).toBe(false);
     // RAU-52: the hire is PAID IN CASH from the treasury — the ledger drops by
     // the 50.000 Lineman cost AFTER the resolve collected the winnings.
@@ -851,7 +854,7 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
     const afterLetGo = await admin.request.get(`/api/leagues/${leagueId}`);
     expect(afterLetGo.status()).toBe(200);
     const afterLetGoBody = (await afterLetGo.json()) as {
-      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string }[] }[];
+      teams: { id: string; treasury: number; roster: { id: string; name: string; positionalKey: string; hired?: boolean }[] }[];
     };
     const pivotAfterLetGo = afterLetGoBody.teams.find((t) => t.id === pivotTeamId)!;
     expect(pivotAfterLetGo.roster).toHaveLength(12);

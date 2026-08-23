@@ -49,6 +49,13 @@ export interface PlayerEntry {
   id: string;
   name: string;
   positionalKey: string;
+  /**
+   * True for a journeyman hired into the roster (RAU-14/RAU-52): their cost was
+   * already paid IN CASH from the treasury at hire time, so the spendable
+   * balance must NOT count this entry's roster cost again. Drafted entries
+   * (RAU-11 hires) never set it.
+   */
+  hired?: boolean;
 }
 
 /**
