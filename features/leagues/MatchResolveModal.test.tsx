@@ -551,22 +551,44 @@ describe("MatchResolveModal", () => {
     await confirmRoll(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: "Guardar y reportar" }));
 
-    // The resolve committed (refresh fired) and the modal STAYS open for the
-    // LAST step — the hire step renders INSIDE the sequence with checkboxes.
+    // The resolve committed (refresh fired). The refreshed detail carries the
+    // RESULT → the modal advances to the LAST step: the hire step INSIDE the
+    // sequence with checkboxes.
     await waitFor(() => expect(onResolved).toHaveBeenCalledTimes(1));
+    const resolvedDetail = baseDetail({
+      viewerSide: "home",
+      mvpNominations: { home: homeNom, away: awayNom },
+    });
+    resolvedDetail.result = {
+      id: "mr-1",
+      fixtureId: "f1",
+      weather: null,
+      scores: {
+        home: { score: 2, postFf: 4, winnings: 55000, casualties: [], pe: [] },
+        away: { score: 1, postFf: 3, winnings: 45000, casualties: [], pe: [] },
+        winnerId: "th",
+        mvp: { home: "h1", away: "a1" },
+      },
+      pettyCash: 0,
+      loadedBy: "u1",
+      createdAt: "2026-03-01T21:00:00.000Z",
+    };
+    resolvedDetail.live = {
+      ...resolvedDetail.live!,
+      journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric Martillo" }], away: [] },
+    };
+    rerender(
+      <MatchResolveModal open detail={resolvedDetail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
+    );
     const hire = within(dialog).getByTestId("journeymen-hire");
     expect(within(hire).getByRole("checkbox", { name: /Aldric Martillo/ })).toBeTruthy();
     expect(within(hire).getByRole("button", { name: "Contratar marcados" })).toHaveProperty("disabled", true);
 
     // Once nothing remains to hire (a refresh emptied the journeymen list) the
     // modal closes itself — the resolution sequence is complete.
-    const emptyDetail = baseDetail({
-      viewerSide: "home",
-      mvpNominations: { home: homeNom, away: awayNom },
-    });
-    emptyDetail.live = { ...emptyDetail.live!, journeymen: { home: [], away: [] } };
+    resolvedDetail.live = { ...resolvedDetail.live!, journeymen: { home: [], away: [] } };
     rerender(
-      <MatchResolveModal open detail={emptyDetail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
+      <MatchResolveModal open detail={resolvedDetail} onClose={onClose} onResolved={onResolved} onNominated={onNominated} />,
     );
     expect(onClose).toHaveBeenCalled();
   });
