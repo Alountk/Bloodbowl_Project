@@ -2,12 +2,12 @@ import { test, expect, type Browser, type Locator, type Page } from "@playwright
 test.use({ locale: "es-ES" });
 
 /**
- * Real-DB E2E for the RAU-46 TourPlay-style roster table and its PE-spending
+ * Real-DB E2E for the RAU-46 rulebook-style roster table and its PE-spending
  * improve modal (run via `pnpm run test:e2e:auth` with AUTH_MODE=auth and a
  * running Postgres). Protects the behaviors that replaced the old
  * ProgressionPanel:
  *
- *  1. the owner's team detail renders the TourPlay column set
+ *  1. the owner's team detail renders the rulebook column set
  *     (Nº/Jugador/Características/Habilidades y rasgos/NI/SPP/CAS/MVP/Valor)
  *     with a clickable row per roster player;
  *  2. a player with no PE opens a modal with only the "Sin PE suficientes..."
@@ -268,8 +268,8 @@ async function adminTeamRoster(league: TwoMemberLeague): Promise<{
   return { teamId: team!.id, roster: team!.roster };
 }
 
-// --- Journey 1: the owner sees the TourPlay column set -------------------------
-test("roster table renders the TourPlay column set for the owner", async ({ browser }) => {
+// --- Journey 1: the owner sees the rulebook column set -------------------------
+test("roster table renders the rulebook column set for the owner", async ({ browser }) => {
   const context = await browser.newContext({ locale: "es-ES" });
   try {
     const page = await context.newPage();

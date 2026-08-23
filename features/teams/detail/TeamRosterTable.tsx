@@ -81,7 +81,7 @@ function skillRefs(
 }
 
 /**
- * TeamRosterTable — TourPlay-style dense roster for the team detail page
+ * TeamRosterTable — rulebook-style dense roster for the team detail page
  * (RAU-46, Option A). Progression lives IN the table (NI, SPP bar toward the
  * next improvement cost, CAS, MVP, value with bonus breakdown) and a row click
  * opens the PE-spending modal for the owner. Read-only when no progression or

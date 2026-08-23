@@ -2,7 +2,7 @@
 
 ## Intent
 
-RAU-6: the live feed never generates kickoff events. When a match goes live it must emit two rulebook kickoff rows — Expensive Mistake ("Error costoso", per-team) and Fan Factor ("Factor de aficionados", centered) — as TEXT-kind events with JSON payloads (LM-14 precedent, NO migration), matching the Tourplay design context. The expensive-mistake treasury penalty applies server-side in the same transaction that persists the events.
+RAU-6: the live feed never generates kickoff events. When a match goes live it must emit two rulebook kickoff rows — Expensive Mistake ("Error costoso", per-team) and Fan Factor ("Factor de aficionados", centered) — as TEXT-kind events with JSON payloads (LM-14 precedent, NO migration), matching the rulebook design context. The expensive-mistake treasury penalty applies server-side in the same transaction that persists the events.
 
 ## Scope
 

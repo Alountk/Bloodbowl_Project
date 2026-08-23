@@ -440,7 +440,7 @@ test("complete lifecycle: join → start → schedule → result → progression
     await expect(startedRegion).toBeVisible();
     await expect(startedRegion.getByText(teamAName)).toBeVisible();
     await expect(startedRegion.getByText(teamBName)).toBeVisible();
-    // Exactly one matchup in this single round — its CENTER SCORE (Tourplay).
+    // Exactly one matchup in this single round — its CENTER SCORE (rulebook).
     await expect(startedRegion.getByTestId("match-card-score")).toHaveCount(1);
 
     // B reloads onto the started jornada.

@@ -4,7 +4,7 @@ import { RACES } from "./races";
 /**
  * Valid BB2025 skill-access letters (user-validated random-table categories):
  * A=Agilidad, F=Fuerza, G=Generales, M=Mutación, P=Pase, T=Triquiñuelas.
- * TourPlay exposes the same categories as G/A/S/P/M/D, where S=Strength and
+ * rulebook exposes the same categories as G/A/S/P/M/D, where S=Strength and
  * D=Devious; both are normalized onto this set (S→F, D→T).
  */
 const VALID_LETTERS = ["A", "F", "G", "M", "P", "T"] as const;
@@ -93,7 +93,7 @@ describe("Positional skill-access invariants (all races)", () => {
   });
 });
 
-describe("Human access (TourPlay reference)", () => {
+describe("Human access (rulebook reference)", () => {
   it("matches exact POSICIÓN → PRIMARIAS/SECUNDARIAS", () => {
     expect(RACES.find((r) => r.id === "human")!.positionals).toEqual(
       expect.arrayContaining([
@@ -127,7 +127,7 @@ describe("Human access (TourPlay reference)", () => {
   });
 });
 
-describe("Orc access (TourPlay reference)", () => {
+describe("Orc access (rulebook reference)", () => {
   it("matches exact POSICIÓN → PRIMARIAS/SECUNDARIAS", () => {
     expect(RACES.find((r) => r.id === "orc")!.positionals).toEqual(
       expect.arrayContaining([
@@ -166,7 +166,7 @@ describe("Orc access (TourPlay reference)", () => {
   });
 });
 
-describe("Dwarf access (TourPlay reference)", () => {
+describe("Dwarf access (rulebook reference)", () => {
   it("matches exact POSICIÓN → PRIMARIAS/SECUNDARIAS", () => {
     expect(RACES.find((r) => r.id === "dwarf")!.positionals).toEqual(
       expect.arrayContaining([

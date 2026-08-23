@@ -1,4 +1,4 @@
-# Tasks: Match View Tourplay Redesign
+# Tasks: Match View rulebook Redesign
 
 ## Review Workload Forecast
 
@@ -22,7 +22,7 @@ Chain strategy: stacked-to-main
 |------|------|-----------|----------------------|-----------------|-------------------|
 | 1 | Server payloads + invariants | PR 1 | `pnpm vitest run lib/livePhase.test.ts app/api/.../live/route.test.ts` | N/A — pure unit (phase+route matrix) | revert route.ts/livePhase.ts/api.ts |
 | 2 | EventControls capture | PR 2 | `pnpm vitest run features/leagues/liveControls.test.tsx` | N/A — RTL only | revert liveControls.tsx |
-| 3 | Tourplay cards + feed derivations | PR 3 | `pnpm vitest run lib/liveFeed.test.ts features/leagues/liveEventLabels.test.ts features/leagues/MatchView.test.tsx` | N/A — pure/RTL | remove liveEventCards.tsx, revert MatchView.tsx |
+| 3 | rulebook cards + feed derivations | PR 3 | `pnpm vitest run lib/liveFeed.test.ts features/leagues/liveEventLabels.test.ts features/leagues/MatchView.test.tsx` | N/A — pure/RTL | remove liveEventCards.tsx, revert MatchView.tsx |
 | 4 | Timeline + summary rows + back arrow | PR 4 | `pnpm vitest run features/leagues/matchSummary.test.ts features/leagues/MatchView.test.tsx` | N/A — pure component | remove matchTimelineBar.tsx, revert matchSummary.ts |
 | 5 | e2e + full sweep | PR 5 | `pnpm run test:e2e:auth` + `AUTH_MODE=local pnpm exec playwright test` | `AUTH_MODE=local pnpm exec playwright test` (real feed) | test-only commits |
 
@@ -41,7 +41,7 @@ Chain strategy: stacked-to-main
 - [x] 2.3 Distinct labels `Víctima`/`Causa`/`Causante` (keeps `getByLabelText(/Jugador/i)` unambiguous)
 - [x] 2.4 `liveControls.test.tsx` RED+unit: capture+submit foul victim, casualty cause+causer, dodge/crowd hides causer
 
-## Phase 3: Tourplay Cards (S3)
+## Phase 3: rulebook Cards (S3)
 
 - [x] 3.1 `lib/liveFeed.ts`: `derivePartialScore` (per-TD "(H - A)" from seq accumulation), `timelinePercent` (round+clamp 0..100)
 - [x] 3.2 `liveEventLabels.ts`: `CAUSE_LABELS` (blitz→Blitz … block→Bloqueo), move `EVENT_GLYPH` here, unknown passes through
@@ -54,7 +54,7 @@ Chain strategy: stacked-to-main
 - [x] 4.1 `matchTimelineBar.tsx` (create): `match-timeline`, icons at `round((at-startedAt)/elapsed×100)%`, home top/away bottom, 0'/100' markers when finished
 - [x] 4.2 `features/leagues/matchSummary.ts`: `buildSummaryFeedRows` (reported/ganancias/fanáticos/incentivos) from snapshot; `result==null`→`[]`; MV-2 walkover guard; report date = `result.createdAt`; MVP NOT duplicated
 - [x] 4.3 `MatchView.tsx` FinishedLiveView: render summary rows above cards; `summary-row`/`summary-row-reported`; incentives shows single `pettyCash` (chips deferred @open)
-- [x] 4.4 `LiveTopBar`: back arrow to jornada under `tourplay-header`; UI-only, existing DTO
+- [x] 4.4 `LiveTopBar`: back arrow to jornada under `rulebook-header`; UI-only, existing DTO
 - [x] 4.5 `matchSummary.test.ts` RED+unit: 4 rows from snapshot, walkover→[], MVP not duplicated; MatchView.test.tsx header/summary
 
 ## Phase 5: E2E + Cleanup (S5)

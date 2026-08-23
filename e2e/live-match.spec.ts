@@ -35,7 +35,7 @@ test.use({ locale: "es-ES" });
   *      jornada completes (the close command IS the closure, replacing the old
   *      result-modal prefill flow).
  *
- * Tourplay redesign guards (MVT-1/2/3/4) are asserted against the REAL UI:
+ * rulebook redesign guards (MVT-1/2/3/4) are asserted against the REAL UI:
  * the sticky header back arrow + horizontal timeline bar (MVT-2/MVT-3), the
  * per-TD partial score on TD cards (MVT-1), and the snapshot summary rows
  * above the finished feed's event cards (MVT-4).
@@ -417,10 +417,10 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(liveRows.filter({ hasText: "Error costoso" })).toHaveCount(0);
     await expect(liveRows.filter({ hasText: "Factor de aficionados" })).toHaveCount(1);
 
-    // MVT-2/MVT-3: the sticky Tourplay header renders the back arrow to the
+    // MVT-2/MVT-3: the sticky rulebook header renders the back arrow to the
     // jornada and the horizontal timeline bar once the match is live. The bar
     // derives from the LM-16 display events only, so a reload reproduces it.
-    const header = admin.getByTestId("tourplay-header");
+    const header = admin.getByTestId("rulebook-header");
     await expect(header).toBeVisible();
     await expect(
       header.getByRole("link", { name: "Volver a la jornada" }),

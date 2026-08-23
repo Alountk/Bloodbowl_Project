@@ -38,7 +38,7 @@ export interface TeamDetailViewProps {
   leagueName?: string;
   /**
    * Each roster player's progression state, keyed by `rosterPlayerId`. When
-   * provided, the roster renders the TourPlay-style table with PE-spending
+   * provided, the roster renders the rulebook-style table with PE-spending
    * affordances; otherwise it is read-only (e.g. rival scouting).
    */
   progression?: Record<string, PlayerProgressionCore>;
@@ -90,7 +90,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
       </header>
 
       <div className="px-6 py-[18px]">
-        {/* Plantilla (TourPlay-style roster with progression in the table) */}
+        {/* Plantilla (rulebook-style roster with progression in the table) */}
         <section aria-labelledby="plantilla-heading">
           <div className="mb-3 flex items-center justify-between gap-3 border-b-[3px] border-[#d11938] pb-1.5">
             <h2 id="plantilla-heading" className="text-[16px] text-[#12225a]">

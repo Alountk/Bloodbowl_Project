@@ -83,7 +83,7 @@ type UpgradeSelection =
 
 /**
  * PlayerImproveModal — square, compact PE-spending modal opened from the team
- * detail roster (RAU-46, TourPlay-style). Shows the player's Nº (display-only:
+ * detail roster (RAU-46, rulebook-style). Shows the player's Nº (display-only:
  * the dorsal follows the roster order) and an editable Nombre with a 🎲
  * random-name re-roll, the PE progress bar, and — when the player can pay the
  * next improvement — a "Nuevo skill / característica" select with skill picks

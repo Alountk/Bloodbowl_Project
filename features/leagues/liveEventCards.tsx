@@ -21,7 +21,7 @@ import type { LiveMatchView, MatchTeamDetail } from "./api";
 import styles from "./liveEventCards.module.css";
 
 /**
- * The validated Tourplay v7 card set (`previews/cards-tourplay-duplicado.html`).
+ * The validated rulebook v7 card set (`previews/cards-rulebook-duplicado.html`).
  * A wide-event usually names a player on one side, so it renders as a TEAM card
  * at 68% width sitting on that team's side with a navy (home) / red (away)
  * gradient and mirrored grid corners (turn tag top on the team's side, minute
@@ -209,7 +209,7 @@ function wallClockTime(at: number): string {
 }
 
 /**
- * The Tourplay chronology as a card grid (validated v7): a gray box (`#eef1f6`)
+ * The rulebook chronology as a card grid (validated v7): a gray box (`#eef1f6`)
  * with a full 1px border, `12px 14px` inner padding and 2px gaps. Team events
  * sit at 68% with the side gradient and grid-template-areas (turn tag top on the
  * team's side, minute bottom on the opposite side); generic events span 100%

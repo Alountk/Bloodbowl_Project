@@ -1,7 +1,7 @@
 /**
- * Inline SVG icon set (Material Design Icons style, same set as the Tourplay
+ * Inline SVG icon set (Material Design Icons style, same set as the rulebook
  * previews). No icon library — the paths are the verbatim MDI path data used
- * by `previews/enfrentamiento-tourplay.html` / `enfrentamiento-derivado.html`,
+ * by `previews/enfrentamiento-rulebook.html` / `enfrentamiento-derivado.html`,
  * so the feed, the timeline bar and the sticky header all render the same
  * glyphs. `currentColor` lets each call site tint the icon via Tailwind text
  * color classes (navy home / red away / slate neutral).

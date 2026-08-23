@@ -12,7 +12,7 @@ test.use({ locale: "es-ES" });
  *     fixture participant) loads a 2–0 win through the ResultModal, the
  *     MatchCard shows the score and the round becomes "Jornada completa"; the
  *     same owner then visits their own team detail and spends the scorer's PE on
- *     an élite skill (Block) through the TourPlay roster's improve modal (row
+ *     an élite skill (Block) through the rulebook roster's improve modal (row
  *     click), seeing the élite ◆ diamond and the recalculated value.
  *  2. correction (match-result R5): a 3-member, 2-jornada league's round-1
  *     fixture is played, and the league owner (admin) corrects that result
@@ -396,7 +396,7 @@ test("result + progression: load a win through the modal → score + jornada com
     await expect(league.admin.getByText("Jornada completa")).toBeVisible();
 
     // Same owner spends the scorer's PE (2 TDs → 6 PE) on Block (élite primary)
-    // through the TourPlay roster: a row click opens the PE-spending modal.
+    // through the rulebook roster: a row click opens the PE-spending modal.
     const detail = await league.admin.request.get(`/api/leagues/${league.leagueId}`);
     const teams = ((await detail.json()) as {
       teams: { id: string; name: string; roster: { id: string; name: string }[] }[];

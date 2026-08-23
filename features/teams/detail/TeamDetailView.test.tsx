@@ -306,7 +306,7 @@ describe("TeamDetailView", () => {
       { id: "p2", name: "Jane", positionalKey: "lineman" },
     ];
 
-    it("renders the TourPlay roster table with progression and opens the improve modal on a row click", () => {
+    it("renders the rulebook roster table with progression and opens the improve modal on a row click", () => {
       render(
         <TeamDetailView
           team={{ ...baseTeam, roster }}

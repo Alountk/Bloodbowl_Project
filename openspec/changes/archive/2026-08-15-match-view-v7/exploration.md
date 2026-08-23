@@ -1,17 +1,17 @@
-# Exploration: match-view-tourplay
+# Exploration: match-view-rulebook
 
-Redesign the match/fixture view toward a Tourplay style. Design target = `previews/enfrentamiento-tourplay.html` (original) + `previews/enfrentamiento-derivado.html` (derived v7, current direction). This exploration maps the existing match-view implementation, the live-match data model, the exact data gaps against the target design, and the test/system constraints that a proposal must satisfy.
+Redesign the match/fixture view toward a rulebook style. Design target = `previews/enfrentamiento-rulebook.html` (original) + `previews/enfrentamiento-derivado.html` (derived v7, current direction). This exploration maps the existing match-view implementation, the live-match data model, the exact data gaps against the target design, and the test/system constraints that a proposal must satisfy.
 
 ## Current State
 
 ### MatchView anatomy (`features/leagues/MatchView.tsx`)
 - Single client page rendered by `app/leagues/[id]/fixtures/[fixtureId]/page.tsx`. Renders from `getMatchDetail` (fixture + `MatchResult` snapshot + both rosters + the shared `LiveMatchView` DTO).
 - `MatchView` dispatches by state:
-  - `detail.live` present + `status === "finished"` → `FinishedLiveView` (TourplayHeader + `FinishedLiveTimeline` → `LiveEventsList`).
-  - `detail.live` present or fixture scheduled → `LiveActiveMatch` (TourplayHeader + consent/live panel + `EventControls` FAB).
+  - `detail.live` present + `status === "finished"` → `FinishedLiveView` (rulebookHeader + `FinishedLiveTimeline` → `LiveEventsList`).
+  - `detail.live` present or fixture scheduled → `LiveActiveMatch` (rulebookHeader + consent/live panel + `EventControls` FAB).
   - `pending` → `PendingFixtureView` (header + notice).
   - no LiveMatch and played → `PlayedSections` (renders `buildMatchSummary` snapshot sections).
-- `TourplayHeader` (sticky, z-40) = `LiveTopBar` (nav bar: league·round label + back, per-side clocks) + `TurnTrack` (global T1–T16 pills, active highlighted) + `LiveHero` (1fr auto 1fr: two `LiveTeamBlock`s + `LiveScoreboard` `data-testid=live-score`; mini pills `mini-td-*`/`mini-spp-*`) + `LiveMetaRow` (Clima · Estándar / Estadio · Reglamentario). **There is NO timeline bar today** — the derived preview's horizontal JSON timeline in the sticky header does not exist.
+- `rulebookHeader` (sticky, z-40) = `LiveTopBar` (nav bar: league·round label + back, per-side clocks) + `TurnTrack` (global T1–T16 pills, active highlighted) + `LiveHero` (1fr auto 1fr: two `LiveTeamBlock`s + `LiveScoreboard` `data-testid=live-score`; mini pills `mini-td-*`/`mini-spp-*`) + `LiveMetaRow` (Clima · Estándar / Estadio · Reglamentario). **There is NO timeline bar today** — the derived preview's horizontal JSON timeline in the sticky header does not exist.
 - `LiveEventsList` renders a flat `<ol aria-label="Cronología del partido">` of `<li data-testid="live-event-row">`, newest-first, one row per display event: minute (`deriveMinute`), global turn tag (`turnTag`), dorsal (`playerRef` map), player name/position resolved from rosters, inline glyph (`EVENT_GLYPH` + casualty band glyph 🏥/⚰️), `liveEventLabel`, ★SPP. Side gradient navy/red + visitor row reflection (`flex-row-reverse`).
 - `EventControls` (FAB "+", `liveControls.tsx`) — mini-form with player select + casualty band select; submits `LiveCommand`. Active coach: td/completion/casualty/foul; non-active: casualty only (own player).
 
@@ -21,7 +21,7 @@ Redesign the match/fixture view toward a Tourplay style. Design target = `previe
 - Server persistence: `app/api/.../live/route.ts` → `recordCasualty`/`recordFoul`/`applyTD`/`applyCompletion`/transitions append to `state.events`, persisted by `lib/liveStore.ts` (`LiveEvent` rows with JSON payload). `casualty` payload = `{ band }`; `foul` payload = `{}`; `td`/`completion` payload = `{}`/`{ spp: 1 }`; `mvp` written only by the result route.
 - Derived helpers: `lib/liveFeed.ts` (`deriveMinute`, `turnTag`, `playerRef`, `deriveTeamStats`), `liveEventLabels.ts` (`bandToDisplay`, `eventSpp`, `liveEventLabel`).
 
-## DATA GAPS vs the derived Tourplay design
+## DATA GAPS vs the derived rulebook design
 
 1. **Foul → victim not persisted.** `foul` command accepts `victimRosterId?` but `recordFoul` drops it into `payload: {}`; the `playerRosterId` column is the AGGRESSOR. The design row "a #8 Trash (victim)" has no data source. → must capture `victimRosterId` in `EventControls` AND persist it in the foul payload.
 2. **Casualty has no cause/causer.** `recordCasualty` persists only `{ band }`. The derived design's three actors — victim (row), causer ("por #4 Arnau" or "El público"), and cause (`blitz|foul|dodge|crowd|block`) — are absent. → add `cause` + `causerRosterId` fields to the casualty command + payload (design note already proposes `cause` + `causerRosterId`).
@@ -35,7 +35,7 @@ Redesign the match/fixture view toward a Tourplay style. Design target = `previe
 ## Test Constraints (strings/data-testids asserted)
 
 ### Unit (`features/leagues/`)
-- **MatchView.test.tsx**: `tourplay-header`, `live-score`, `live-event-row`, `mini-td-home`, `mini-td-away`, `mini-spp-home`; texts `1ª PARTE`, `2ª PARTE`, `Mitad 1 · Turno 1`, `Mitad 1 · Turno 3`, `Mitad 2 · Turno 8`, `Mitad 2 · Turno 5`; buttons `Dar el turno`, `Pedir turno`; status `Tu turno`; event labels `Baja`, `Herida grave`, `Inicio del partido`, `Fin del partido`, `Pase completo`; `live-score` regex `/-\s*:\s*-/` and `/1\s*:\s*0/`, `/2\s*:\s*1/`. No `tourplay-header` when no LiveMatch; no turn controls for spectator/inactive.
+- **MatchView.test.tsx**: `rulebook-header`, `live-score`, `live-event-row`, `mini-td-home`, `mini-td-away`, `mini-spp-home`; texts `1ª PARTE`, `2ª PARTE`, `Mitad 1 · Turno 1`, `Mitad 1 · Turno 3`, `Mitad 2 · Turno 8`, `Mitad 2 · Turno 5`; buttons `Dar el turno`, `Pedir turno`; status `Tu turno`; event labels `Baja`, `Herida grave`, `Inicio del partido`, `Fin del partido`, `Pase completo`; `live-score` regex `/-\s*:\s*-/` and `/1\s*:\s*0/`, `/2\s*:\s*1/`. No `rulebook-header` when no LiveMatch; no turn controls for spectator/inactive.
 - **liveControls.test.tsx**: menu buttons `Touchdown`, `Pase completo`, `Baja`, `Herida`, `Falta`; non-active offers only `Herida`; labels `Jugador`, `Tipo de lesión`, `Registrar`, `Cancelar`.
 - **liveEventLabels.test.ts**: exact map — start "Inicio del partido", turn "Fin de turno", td "Touchdown", completion "Pase completo", mvp "Jugador más valioso", foul "Falta", endHalf "Fin de la mitad", endMatch "Fin del partido", turnStart "Tu turno", requestTurn "Te piden el turno", casualty bruise→"Herida" / lasting→"Baja"; SPP td 3 / completion 1 / mvp 4 / lasting cas 2 / bruise 0 / foul 0.
 - **liveFeed.test.ts / deriveTeamStats**: per-team td/completion/casualty/foul/★ counts.
@@ -47,7 +47,7 @@ Redesign the match/fixture view toward a Tourplay style. Design target = `previe
 
 ## Approaches
 
-1. **Model-first (recommended)** — close the data gaps in the server (foul victim, casualty cause/causer, new kickoff/summary event kinds) and the `LiveCommand`/`EventControls` capture, then refactor `LiveEventsList` into Tourplay cards + add the timeline bar and post-match summary rows to the finished feed.
+1. **Model-first (recommended)** — close the data gaps in the server (foul victim, casualty cause/causer, new kickoff/summary event kinds) and the `LiveCommand`/`EventControls` capture, then refactor `LiveEventsList` into rulebook cards + add the timeline bar and post-match summary rows to the finished feed.
    - Pros: persistent, survives reload/new-device (LM-8/LM-17), renders identically for live and finished; matches the "events are the source of truth" architecture.
    - Cons: touches the live route + store + command union + EventControls + several unit/e2e tests.
    - Effort: High (multiple slices).
@@ -57,7 +57,7 @@ Redesign the match/fixture view toward a Tourplay style. Design target = `previe
    - Cons: casualty cause/causer and kickoff rows remain impossible (they are NOT in any existing data source for a live game — a result snapshot rolls casualty bands but does not capture fouler/cause per-blow); "Partido reportado"/winnings/fans can come from snapshot. Less faithful to the approved design.
    - Effort: Medium.
 
-3. **Full Tourplay port** — new component set mirroring the preview HTML/SVG 1:1.
+3. **Full rulebook port** — new component set mirroring the preview HTML/SVG 1:1.
    - Pros: most pixel-faithful.
    - Cons: violates MV-7/LM-10 (SVG icon lib/deps), increases e2e breakage; rejected by the design system constraint.
    - Effort: High, out of policy.

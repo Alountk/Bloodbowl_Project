@@ -1,7 +1,7 @@
 # Exploration: live-match-events
 
 > Change name: `live-match-events` · Status: exploration complete · Date: 2026-08-13
-> Decision source: Design A (Tourplay-style chronological list) — `/var/folders/hz/fz3h02rs18q3gr_bhpdfcqpr0000gn/T/opencode/designs/01-lista-cronologica.html`
+> Decision source: Design A (rulebook-style chronological list) — `/var/folders/hz/fz3h02rs18q3gr_bhpdfcqpr0000gn/T/opencode/designs/01-lista-cronologica.html`
 > Product decisions are user-approved and binding (see below); this doc maps them onto the current codebase and flags the deltas it forces.
 
 ## Product decisions (binding)

@@ -27,7 +27,7 @@ A schema migration adding `LiveMatch`/`LiveEvent` and a chronological event time
 
 ### Requirement: MV-7 · Design System and Copy
 
-MatchView MUST use only rulebook-light tokens (navy `#12225a`, red `#d11938`, background `#f8fafc`, white square panels) and MUST NOT add a dark theme, dependencies, or an icon library (inline glyphs/SVG only). The Tourplay card box, the 68% internal gradients, and the "Partido reportado" success style MUST be composed exclusively from existing token values: navy/red at reduced opacity for the team gradients, the neutral background token for the gray box, and the green semantic family already in use (green-50/600/700) for success; no new color values. League-section copy MUST be Spanish.
+MatchView MUST use only rulebook-light tokens (navy `#12225a`, red `#d11938`, background `#f8fafc`, white square panels) and MUST NOT add a dark theme, dependencies, or an icon library (inline glyphs/SVG only). The rulebook card box, the 68% internal gradients, and the "Partido reportado" success style MUST be composed exclusively from existing token values: navy/red at reduced opacity for the team gradients, the neutral background token for the gray box, and the green semantic family already in use (green-50/600/700) for success; no new color values. League-section copy MUST be Spanish.
 (Previously: no color/shadow variants at all — the gradients and the success style did not exist.)
 
 #### Scenario: Token and copy audit
@@ -38,13 +38,13 @@ MatchView MUST use only rulebook-light tokens (navy `#12225a`, red `#d11938`, ba
 
 #### Scenario: Success and gradient tokens
 
-- GIVEN the rendered Tourplay cards and the "Partido reportado" row
+- GIVEN the rendered rulebook cards and the "Partido reportado" row
 - WHEN classes are audited
 - THEN the gradients use only navy/red at reduced opacity, the box uses the neutral background token, and success uses the existing green family — no new hex values
 
 ## ADDED Requirements
 
-### Requirement: MVT-1 · Tourplay Event Cards
+### Requirement: MVT-1 · rulebook Event Cards
 
 The event feed MUST render display events (LM-16) as cards inside a gray box with 4px radius and 2px gap. Team events (`td|completion|casualty|foul|mvp`) MUST render at 68% width with an internal side-to-side gradient of the team color (navy home / red away), the turn tag on the team's side and the minute on the opposite side; generic events (`start|endHalf|endMatch`) MUST render centered at 100% width. A TD card MUST show the partial score "(H - A)" derived by accumulating TD events per side across the display feed up to that event. The `live-event-row` testid and existing feed labels MUST be preserved where the design keeps them; deliberate label/testid changes MUST ship with the behavior change, never silently.
 
@@ -88,7 +88,7 @@ The sticky header MUST render a horizontal timeline bar: a full-bleed light trac
 - WHEN the bar renders
 - THEN home icons sit on the top half, away icons on the bottom half, and the start/end markers anchor 0% and 100%
 
-### Requirement: MVT-3 · Tourplay Sticky Header
+### Requirement: MVT-3 · rulebook Sticky Header
 
 The sticky header MUST render: an integrated back arrow (to the jornada), the league·round label, two turn tracks flanking the "Dar el turno" CTA (each covering the active half's turns — T1–T8 in half 1, T9–T16 in half 2 — with the current turn highlighted), per-coach clocks (home and away accumulated turn time), and a half indicator ("2ª Parte" badge with "Mitad N · Turno M"). This MUST be UI-only: the header MUST derive every value from the existing live DTO and MUST NOT add fields or change the turn/clock model.
 

@@ -245,7 +245,7 @@ export function EventControls({
     (kind !== "foul" || victimRosterId !== "");
 
   return (
-    // z-50 keeps the FAB + its menu ABOVE the sticky Tourplay header (z-40):
+    // z-50 keeps the FAB + its menu ABOVE the sticky rulebook header (z-40):
     // the match header now stays visible on scroll, so the floating controls
     // must stack on top or the header would cover the open menu.
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">

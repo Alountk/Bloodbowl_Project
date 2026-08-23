@@ -136,7 +136,7 @@ const es: Dict = {
   "detail.coachingTotal": "Total",
   "detail.coachingTotalRow": "Total cuerpo técnico",
 
-  // TourPlay-style roster table (RAU-46)
+  // rulebook-style roster table (RAU-46)
   "detail.tbl.number": "Nº",
   "detail.tbl.player": "Jugador",
   "detail.tbl.chars": "Características",
@@ -816,7 +816,7 @@ const en: Dict = {
   "detail.coachingTotal": "Total",
   "detail.coachingTotalRow": "Coaching total",
 
-  // TourPlay-style roster table (RAU-46)
+  // rulebook-style roster table (RAU-46)
   "detail.tbl.number": "No.",
   "detail.tbl.player": "Player",
   "detail.tbl.chars": "Characteristics",

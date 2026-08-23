@@ -2,7 +2,7 @@
 
 ## Intent
 
-Live matches already persist every event (`LiveEvent` + snapshot-first resume), but the feed dumps raw kinds — turn passes, `turnStart` nudges — instead of a Tourplay-style match story. This change turns that history into the Design-A chronological feed (minute, global turn tag, dorsal, name/position, icon, label, ★ SPP stars, side gradient), adds the missing `completion` and `mvp` event kinds, filters feed noise server-side, and derives per-team stats. No DB migration: `LiveEvent.kind` is TEXT.
+Live matches already persist every event (`LiveEvent` + snapshot-first resume), but the feed dumps raw kinds — turn passes, `turnStart` nudges — instead of a rulebook-style match story. This change turns that history into the Design-A chronological feed (minute, global turn tag, dorsal, name/position, icon, label, ★ SPP stars, side gradient), adds the missing `completion` and `mvp` event kinds, filters feed noise server-side, and derives per-team stats. No DB migration: `LiveEvent.kind` is TEXT.
 
 ## Scope
 
@@ -13,7 +13,7 @@ Live matches already persist every event (`LiveEvent` + snapshot-first resume), 
 4. **Derived team stats**: per-team TD, completions, casualties, fouls, ★ SPP total (hero mini-row).
 5. **New event kinds**: `completion` (active-coach live command, ★1) and `mvp` (result-route write — home + away grantee, `max(seq)` in-transaction; NOT a live command).
 6. **Extend persisted history** (LiveEvent model + Design-A UI + derived stats).
-7. **Event recording controls** (NEW, user-approved): a floating "+" button (Tourplay-style) opens the event-type menu, then a mini-form (player select from the ACTIVE coach's roster + band select for casualty/injury). The active coach records TD, Pase completo, Baja/Herida, Falta; the NON-active coach only records Herida (casualty to their OWN player) per LM-12. Controls honor the viewer-side permission matrix.
+7. **Event recording controls** (NEW, user-approved): a floating "+" button (rulebook-style) opens the event-type menu, then a mini-form (player select from the ACTIVE coach's roster + band select for casualty/injury). The active coach records TD, Pase completo, Baja/Herida, Falta; the NON-active coach only records Herida (casualty to their OWN player) per LM-12. Controls honor the viewer-side permission matrix.
 
 ### Out of Scope
 - No jersey `number` field (dorsal = roster index+1; real numbers = future change).
@@ -32,7 +32,7 @@ None.
 
 ## User Stories
 - As the active coach, I record a completion (★1) during my turn and it appears in the feed.
-- As a member, I see the match history Tourplay-style — no turn-pass rows.
+- As a member, I see the match history rulebook-style — no turn-pass rows.
 - As a member, I see MVP rows in the played timeline after the result is loaded.
 - As a member, I reload/reconnect and see the same persisted history (snapshot-first).
 
