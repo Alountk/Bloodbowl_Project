@@ -120,15 +120,18 @@ export function MatchResolveModal({
     ownSide && ownNomination ? ownNomination.slice(0, MVP_NOMINATION_MAX) : [],
   );
 
-  // Poll the persisted detail while the wizard is open so the rival's progress
-  // (confirms / steps) arrives WITHOUT a reload.
+  // Poll the persisted detail while the wizard waits on the RIVAL (up to the
+  // reveal — the only joint step — and at the final "done" wait). During the
+  // per-side steps every action refreshes, so no polling (it would churn the
+  // journeymen step's local state for no reason).
   useEffect(() => {
     if (!open || matchResolved) return;
+    if (revealed && ownStep !== "done") return;
     const id = setInterval(() => {
       void onNominated();
     }, 4000);
     return () => clearInterval(id);
-  }, [open, matchResolved, onNominated]);
+  }, [open, matchResolved, revealed, ownStep, onNominated]);
 
   // The MVP reveal is the ONLY joint step: when BOTH sides confirmed, the modal
   // auto-triggers the server-owned reveal (idempotent — both clients may fire
@@ -143,14 +146,16 @@ export function MatchResolveModal({
         try {
           await resolutionMvpReveal(detail.fixture.leagueId, detail.fixture.id, ownSide ?? "home");
           await onNominated();
-        } catch (e) {
-          setError(e instanceof Error ? e.message : t("match.resolve.rollError"));
+        } catch {
+          // A concurrent reveal from the rival's page may have won (seq guard);
+          // refresh and let the persisted grantees advance both sides.
+          await onNominated();
         } finally {
           revealingRef.current = false;
         }
       })();
     }
-  }, [open, matchResolved, bothConfirmed, revealed, ownSide, detail.fixture.leagueId, detail.fixture.id, onNominated, t]);
+  }, [open, matchResolved, bothConfirmed, revealed, ownSide, detail.fixture.leagueId, detail.fixture.id, onNominated]);
 
   // Once the match closed (BOTH sides done), the resolution is complete — the
   // hire already happened at step 5, so the modal closes itself.
@@ -158,11 +163,49 @@ export function MatchResolveModal({
     if (open && matchResolved) onClose();
   }, [open, matchResolved, onClose]);
 
+  // BOTH-SIDES CLOSE safety net: the store auto-closes when the LAST side
+  // completes, but two concurrent completions can overlap (each reads the other
+  // side as not-done-yet). Whenever THIS modal observes BOTH sides done with no
+  // result, it fires the idempotent explicit close (refresh re-derives).
+  const finalizingRef = useRef(false);
+  useEffect(() => {
+    if (!open || matchResolved || finalizingRef.current) return;
+    const bothDone = resolution.home.step === "done" && resolution.away.step === "done";
+    if (bothDone) {
+      finalizingRef.current = true;
+      void (async () => {
+        try {
+          await resolveLiveMatch(detail.fixture.leagueId, detail.fixture.id);
+          await onNominated();
+        } catch {
+          // The store's auto-close (or the rival's) may have won — refresh.
+          await onNominated();
+        } finally {
+          finalizingRef.current = false;
+        }
+      })();
+    }
+  }, [open, matchResolved, resolution.home.step, resolution.away.step, detail.fixture.leagueId, detail.fixture.id, onNominated]);
+
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
     setBusy(true);
     try {
-      await fn();
+      // The two coaches' pages act CONCURRENTLY — a rival action can bump the
+      // row seq between this command's read and write (optimistic guard → 409
+      // "seq conflict"). Retry with a fresh read: the commands are idempotent
+      // and the refresh re-derives the step (the rival's write may have already
+      // advanced it).
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await fn();
+          break;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "";
+          if (message !== "seq conflict" || attempt >= 2) throw e;
+          await onNominated();
+        }
+      }
       await onNominated();
     } catch (e) {
       setError(e instanceof Error ? e.message : t("match.resolve.saveError"));
@@ -279,6 +322,7 @@ export function MatchResolveModal({
               </p>
               {ownStep === "winnings" ? (
                 <WinningsStep
+                  key="winnings"
                   winnings={winnings[ownSide]}
                   onContinue={() =>
                     void run(() => resolutionWinningsSeen(detail.fixture.leagueId, detail.fixture.id, ownSide))
@@ -289,6 +333,7 @@ export function MatchResolveModal({
               ) : null}
               {ownStep === "fans" ? (
                 <FansStep
+                  key="fans"
                   fans={own.fans}
                   fansDone={own.fansDone}
                   onRoll={() =>
@@ -303,6 +348,7 @@ export function MatchResolveModal({
               ) : null}
               {ownStep === "mvp" ? (
                 <MvpStep
+                  key="mvp"
                   name={ownName ?? "—"}
                   raceId={ownSide === "home" ? detail.homeTeam.raceId : detail.awayTeam.raceId}
                   roster={ownRoster}
@@ -328,6 +374,7 @@ export function MatchResolveModal({
               ) : null}
               {ownStep === "mvp-done" ? (
                 <MvpDoneStep
+                  key="mvp-done"
                   confirmed={own.mvpConfirmed}
                   rivalConfirmed={rivalSide ? resolution[rivalSide].mvpConfirmed : false}
                   t={t}
@@ -335,6 +382,7 @@ export function MatchResolveModal({
               ) : null}
               {ownStep === "casualties" ? (
                 <CasualtiesStep
+                  key="casualties"
                   name={ownName ?? "—"}
                   rivalName={rivalName ?? "—"}
                   roster={ownRoster}
@@ -352,6 +400,7 @@ export function MatchResolveModal({
               ) : null}
               {ownStep === "journeymen" ? (
                 <JourneymenStep
+                  key="journeymen"
                   name={ownName ?? "—"}
                   healthyCount={healthyCount}
                   remaining={ownJourneymen.length}
@@ -373,6 +422,7 @@ export function MatchResolveModal({
               ) : null}
               {ownStep === "done" ? (
                 <DoneStep
+                  key="done"
                   rivalDone={rivalSide ? resolution[rivalSide].journeymenDone : false}
                   rivalStep={rivalSide ? resolution[rivalSide].step : "winnings"}
                   matchResolved={matchResolved}

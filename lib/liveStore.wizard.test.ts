@@ -256,24 +256,29 @@ async function expectStatus409(promise: Promise<unknown>, message: string) {
 }
 
 describe("resolutionWinningsSeen — step 1 display advance (persisted cursor)", () => {
-  it("advances the OWN side from 'winnings' to 'fans' and persists the cursor", async () => {
-    const { deps, liveMatchUpdateMany } = makeDeps();
+  it("advances the OWN side from 'winnings' to 'fans' AND COLLECTS its finish-time winnings into the treasury", async () => {
+    const { deps, liveMatchUpdateMany, teamUpdateMany } = makeDeps();
     const view = await resolutionWinningsSeen({ ...baseInput, side: "home" }, deps);
     expect(view.view.resolutionState.home.step).toBe("fans");
     expect(view.view.resolutionState.away.step).toBe("winnings");
     const write = liveMatchUpdateMany.mock.calls.find(([call]) => call.data?.resolutionState);
     expect(write![0].data.resolutionState.home.step).toBe("fans");
     expect(write![0].data.seq).toBe(13);
+    // The finish-time winnings land in THIS side's treasury (per-side, so the
+    // step-5 hire can afford the lineman cost before the both-done close).
+    const treasury = teamUpdateMany.mock.calls.map((c) => c[0]).find((call) => call.data?.treasury?.increment);
+    expect(treasury).toMatchObject({ where: { id: "home-t" }, data: { treasury: { increment: 55000 } } });
   });
 
   it("is an idempotent no-op once the side already advanced past 'winnings'", async () => {
     const row = finishedRow({
       resolutionState: { home: emptySide({ step: "mvp", fansDone: true }), away: emptySide() },
     });
-    const { deps, liveMatchUpdateMany } = makeDeps({ row });
+    const { deps, liveMatchUpdateMany, teamUpdateMany } = makeDeps({ row });
     const view = await resolutionWinningsSeen({ ...baseInput, side: "home" }, deps);
     expect(view.view.resolutionState.home.step).toBe("mvp");
     expect(liveMatchUpdateMany).not.toHaveBeenCalled();
+    expect(teamUpdateMany).not.toHaveBeenCalled();
   });
 
   it("rejects a finished match that is already resolved (409)", async () => {
@@ -603,11 +608,10 @@ describe("resolveLiveMatch — the both-sides close (wizard path)", () => {
     };
     expect(scores.home.postFf).toBe(3);
     expect(scores.home.winnings).toBe(55000);
-    // Winnings treasury increment + PE awards (incl. the +4 MVP) still apply.
+    // NO treasury increment in the close — the finish-time winnings were
+    // collected PER-SIDE at step 1 (the wizard close never re-applies them).
     const treasuryUpdates = teamUpdateMany.mock.calls.map((c) => c[0]);
-    expect(
-      treasuryUpdates.some((call) => call.where.id === "home-t" && call.data.treasury?.increment === 55000),
-    ).toBe(true);
+    expect(treasuryUpdates.some((call) => call.data?.treasury?.increment)).toBe(false);
     const peWrites = playerUpdateMany.mock.calls.map((c) => c[0]).filter((call) => call.where.teamId === "home-t");
     // The MVP grantee h2 (completion ★1 + the +4 MVP) and h1 (TD ★3) both land.
     const h2Write = peWrites.find((call) => call.data.pe?.increment === 1 + PE_MVP);

@@ -1924,17 +1924,9 @@ async function runWizardClose(
     },
   });
 
-  await tx.team.updateMany({
-    where: { id: input.homeTeamId },
-    data: { treasury: { increment: winnings.home } },
-  });
-  await tx.team.updateMany({
-    where: { id: input.awayTeamId },
-    data: { treasury: { increment: winnings.away } },
-  });
-
-  // PE awards (the per-side steps already applied the dedicated-fans change
-  // and the casualty Player rows — the close never re-applies them).
+  // PE awards (the per-side steps already applied the dedicated-fans change,
+  // the casualty Player rows AND the finish-time winnings collected at step 1
+  // — the wizard close never re-applies them).
   for (const award of homeAwards) {
     await tx.player.updateMany({
       where: { teamId: input.homeTeamId, rosterPlayerId: award.rosterPlayerId },
@@ -2286,7 +2278,11 @@ async function persistResolutionCursor(
 }
 
 /** Step 1 advance: "Ganancias y mantenimiento" → "Tirada de fans". The
- * winnings/maintenance display is pure UI; this only persists the cursor. */
+ * winnings/maintenance display is pure UI; this persists the cursor AND
+ * COLLECTS the side's finish-time winnings into its treasury (per-side,
+ * independent of the rival — so the step-5 hire can afford the lineman cost
+ * with the match money already collected). Idempotent: once past the step,
+ * the winnings are never applied again. */
 export async function resolutionWinningsSeen(
   input: ResolutionWizardInput,
   deps: StoreDeps,
@@ -2300,6 +2296,7 @@ export async function resolutionWinningsSeen(
     // Idempotent: already past the winnings step.
     return { seq: row.seq, view: toLiveViewState(liveMatchRowToState(row), input.now, { viewerSide: input.side }) };
   }
+  const winnings = parseWinningsJson(row.winnings)?.[input.side] ?? 0;
   const next: ResolutionState = {
     ...current,
     [input.side]: { ...current[input.side], step: "fans" },
@@ -2308,6 +2305,15 @@ export async function resolutionWinningsSeen(
     const existing = await tx.matchResult.findUnique({ where: { fixtureId: input.fixtureId } });
     if (existing) throw Object.assign(new Error("already resolved"), { status: 409 });
     await persistResolutionCursor({ liveMatchId: row.id, seq: row.seq, next }, tx);
+    // RAU-44: the finish-time winnings are collected HERE (per-side), so the
+    // both-done close never re-applies them (the wizard path skips the
+    // treasury increment).
+    if (winnings > 0) {
+      await tx.team.updateMany({
+        where: { id: input.teamId },
+        data: { treasury: { increment: winnings } },
+      });
+    }
   });
   const view = toLiveViewState(
     { ...liveMatchRowToState(row), seq: row.seq + 1, resolutionState: next },
@@ -2604,7 +2610,11 @@ export async function resolutionCasualtiesDone(
   input: ResolutionWizardInput,
   deps: StoreDeps,
 ): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
-  const row = await loadResolutionRow(input.fixtureId, deps);
+  const row = await deps.prisma.liveMatch.findFirst({
+    where: { fixtureId: input.fixtureId },
+    include: { events: { orderBy: { seq: "asc" } } },
+  });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
   if (row.status !== "finished") {
     throw Object.assign(new Error("match not finished"), { status: 409 });
   }

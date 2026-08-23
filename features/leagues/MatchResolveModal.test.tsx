@@ -462,7 +462,7 @@ describe("MatchResolveModal — the per-side 5-step WIZARD", () => {
     expect(within(dlg).getByRole("button", { name: "Continuar" })).toHaveProperty("disabled", false);
   });
 
-  it("step done: waits for the rival; when BOTH sides are done 'Cerrar partido' fires resolveMatch (THE close)", async () => {
+  it("step done: when BOTH sides are done the modal AUTO-FINALIZES (resolveMatch = THE close), with 'Cerrar partido' as the manual fallback", async () => {
     const fetchMock = stubFetch();
     const { onNominated } = renderModal({
       detail: baseDetail({
@@ -474,11 +474,10 @@ describe("MatchResolveModal — the per-side 5-step WIZARD", () => {
     });
     const dlg = dialog();
     expect(within(dlg).getByText(/Ambos equipos completaron el informe/)).toBeTruthy();
-    fireEvent.click(within(dlg).getByRole("button", { name: "Cerrar partido" }));
-    // The close fires the server-owned resolveMatch (the parent refreshes; the
-    // modal then closes itself once the detail carries the result).
-    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
-    expect(commandBody(fetchMock, "resolveMatch")).toEqual({ type: "resolveMatch" });
+    // The both-done observation auto-fires the idempotent explicit close (the
+    // store's own auto-close is the fast path; this is the safety net).
+    await waitFor(() => expect(commandBody(fetchMock, "resolveMatch")).toEqual({ type: "resolveMatch" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalled());
   });
 
   it("step done: shows the waiting copy with the rival's step while the rival has not finished", () => {
@@ -532,5 +531,35 @@ describe("MatchResolveModal — the per-side 5-step WIZARD", () => {
   it("renders nothing when closed", () => {
     renderModal({ open: false });
     expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
+  });
+
+  it("the journeymen step's 'Dejar ir' is ENABLED after a casualties→journeymen transition (no stuck busy)", async () => {
+    const fetchMock = stubFetch();
+    const onNominated = vi.fn().mockResolvedValue(undefined);
+    let detail = baseDetail({
+      resolutionState: resolutionState({
+        home: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+        away: { step: "casualties", fansDone: true, mvpConfirmed: true, mvpRolled: true },
+      }),
+    });
+    detail.live = { ...detail.live!, journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric" }], away: [] } };
+    const { rerender } = render(
+      <MatchResolveModal open detail={detail} onClose={vi.fn()} onNominated={onNominated} />,
+    );
+    // Advance through the casualties step (the mocked POST + refresh).
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Continuar" }));
+    await waitFor(() => expect(onNominated).toHaveBeenCalledTimes(1));
+    // The refreshed detail carries the journeymen step.
+    detail = baseDetail({
+      resolutionState: resolutionState({
+        home: { step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true },
+        away: { step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true },
+      }),
+    });
+    detail.live = { ...detail.live!, journeymen: { home: [{ id: "journeyman-th-1", name: "Aldric" }], away: [] } };
+    rerender(<MatchResolveModal open detail={detail} onClose={vi.fn()} onNominated={onNominated} />);
+    const letGo = within(dialog()).getByRole("button", { name: "Dejar ir" });
+    expect(letGo).toHaveProperty("disabled", false);
+    void fetchMock;
   });
 });

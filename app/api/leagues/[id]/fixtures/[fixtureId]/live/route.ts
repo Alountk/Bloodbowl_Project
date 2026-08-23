@@ -1147,7 +1147,8 @@ export async function POST(
       if (status === 400) return Response.json({ error: "Unknown journeyman" }, { status: 400 });
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
       if (status === 409) {
-        return Response.json({ error: "Cannot hire in current state" }, { status: 409 });
+        const message = error instanceof Error ? error.message : "Cannot hire in current state";
+        return Response.json({ error: message }, { status: 409 });
       }
       throw error;
     }
@@ -1228,7 +1229,8 @@ export async function POST(
       if (status === 400) return Response.json({ error: "Invalid resolution command" }, { status: 400 });
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
       if (status === 409) {
-        return Response.json({ error: "Cannot advance the resolution in current state" }, { status: 409 });
+        const message = error instanceof Error ? error.message : "Cannot advance the resolution in current state";
+        return Response.json({ error: message }, { status: 409 });
       }
       throw error;
     }
