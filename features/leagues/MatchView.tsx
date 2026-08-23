@@ -1621,10 +1621,9 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
               open={resolveOpen}
               detail={detail}
               onClose={() => setResolveOpen(false)}
-              // RAU-14: the resolve commits THE closure; the modal STAYS open
-              // for the LAST step of the sequence — the post-match journeyman
-              // hire step — and closes itself once nothing remains to hire.
-              onResolved={refresh}
+              // RAU-52 rework: every wizard action refreshes the detail (the
+              // persisted step + the rival's progress); once the match closes
+              // (BOTH sides done) the modal closes itself via the result.
               onNominated={refresh}
             />
           ) : null}

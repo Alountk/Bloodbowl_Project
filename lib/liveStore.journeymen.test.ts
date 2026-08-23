@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { hireJourneymanLiveMatch, type StoreDeps } from "./liveStore";
+import { PE_MVP } from "./rules/pe";
 import { getRaceById } from "@/features/teams/data/races";
 import { computeSpendableBalance } from "@/features/teams/roster";
 
@@ -322,7 +323,7 @@ describe("hireJourneymanLiveMatch — guards", () => {
         { fixtureId: "f-1", teamId: "home-t", side: "home", journeymanId: "journeyman-home-t-1", hire: true, now: 1000 },
         deps,
       ),
-    ).rejects.toMatchObject({ status: 409, message: "match not resolved" });
+    ).rejects.toMatchObject({ status: 409, message: "journeymen step first" });
     expect(teamUpdate).not.toHaveBeenCalled();
   });
 
@@ -336,6 +337,46 @@ describe("hireJourneymanLiveMatch — guards", () => {
         deps,
       ),
     ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("hireJourneymanLiveMatch — the WIZARD hire (step 5, BEFORE the close)", () => {
+  it("hires at the side's 'journeymen' step with NO MatchResult yet, carrying the EVENTS-derived PE + MVP +4 + injuries", async () => {
+    // The wizard hire runs pre-close: no MatchResult, but the side's cursor is
+    // at "journeymen" and the reveal already persisted the MVP grantees.
+    const row = {
+      id: "lm-1",
+      fixtureId: "f-1",
+      seq: 12,
+      journeymen: JOURNEYMEN,
+      resolutionState: {
+        home: { step: "journeymen", fansDone: true, fans: null, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: false },
+        away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+      },
+      pendingResolution: { mvp: { home: "journeyman-home-t-1", away: "a1" } },
+      events: [
+        { kind: "td", side: "home", playerRosterId: "journeyman-home-t-1", payload: {} },
+        { kind: "casualty", side: "home", playerRosterId: "journeyman-home-t-1", payload: { victimRosterId: "journeyman-home-t-1", band: "apaleado" } },
+      ],
+    };
+    const { deps, playerCreate } = makeDeps({ row: row as never, matchResult: null });
+
+    const result = await hireJourneymanLiveMatch(
+      { fixtureId: "f-1", teamId: "home-t", side: "home", journeymanId: "journeyman-home-t-1", hire: true, now: 1000 },
+      deps,
+    );
+
+    expect(result.journeymen).toEqual({ home: [], away: [] });
+    // TD ★3 + MVP +4 = 7 PE; the lasting band is carried into the new row.
+    expect(playerCreate).toHaveBeenCalledTimes(1);
+    const data = playerCreate.mock.calls[0][0].data as {
+      pe: number;
+      injuries: { kind: string }[];
+      missNextMatch: boolean;
+    };
+    expect(data.pe).toBe(3 + PE_MVP);
+    expect(data.injuries).toEqual([{ kind: "apaleado" }]);
+    expect(data.missNextMatch).toBe(true);
   });
 });
 
@@ -363,6 +404,6 @@ describe("hireJourneymanLiveMatch — Dejar ir (hire: false)", () => {
         { fixtureId: "f-1", teamId: "home-t", side: "home", journeymanId: "journeyman-home-t-1", hire: false, now: 1000 },
         deps,
       ),
-    ).rejects.toMatchObject({ status: 409, message: "match not resolved" });
+    ).rejects.toMatchObject({ status: 409, message: "journeymen step first" });
   });
 });

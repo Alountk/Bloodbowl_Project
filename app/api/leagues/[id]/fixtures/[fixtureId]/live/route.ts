@@ -21,6 +21,13 @@ import {
   resolveLiveMatch,
   nominateMvpLiveMatch,
   hireJourneymanLiveMatch,
+  resolutionWinningsSeen,
+  resolutionFanRoll,
+  resolutionAdvance,
+  resolutionMvpConfirm,
+  resolutionMvpReveal,
+  resolutionCasualtiesDone,
+  resolutionJourneymenDone,
 } from "@/lib/liveStore";
 import {
   applyEndTurn,
@@ -613,6 +620,42 @@ type ControlCommand =
       side: TeamSide;
       journeymanId: string;
       hire: boolean;
+    }
+  | {
+      /** Per-side wizard step 1 advance: winnings → fans (display-only). */
+      type: "resolutionWinningsSeen";
+      side: TeamSide;
+    }
+  | {
+      /** Per-side wizard step 2: the server-owned dedicated-fans 1D6 roll. */
+      type: "resolutionFanRoll";
+      side: TeamSide;
+    }
+  | {
+      /** Per-side wizard step advance: fans → mvp (requires the fan roll). */
+      type: "resolutionAdvance";
+      side: TeamSide;
+      step: "fans" | "mvp";
+    }
+  | {
+      /** Per-side wizard step 3: the FINAL MVP confirm (irrevocable). */
+      type: "resolutionMvpConfirm";
+      side: TeamSide;
+    }
+  | {
+      /** Wizard step 4 gate: the MVP reveal (BOTH sides confirmed). */
+      type: "resolutionMvpReveal";
+      side: TeamSide;
+    }
+  | {
+      /** Per-side wizard step 4 advance: the casualties were seen. */
+      type: "resolutionCasualtiesDone";
+      side: TeamSide;
+    }
+  | {
+      /** Per-side wizard step 5 (LAST): the journeymen step is complete. */
+      type: "resolutionJourneymenDone";
+      side: TeamSide;
     };
 
 function isControlCommand(value: unknown): value is ControlCommand {
@@ -683,6 +726,20 @@ function isControlCommand(value: unknown): value is ControlCommand {
         (c.side === "home" || c.side === "away") &&
         typeof c.journeymanId === "string" &&
         typeof c.hire === "boolean"
+      );
+    case "resolutionWinningsSeen":
+    case "resolutionFanRoll":
+    case "resolutionMvpConfirm":
+    case "resolutionMvpReveal":
+    case "resolutionCasualtiesDone":
+    case "resolutionJourneymenDone":
+      // Per-side wizard commands: the caller's own side only.
+      return c.side === "home" || c.side === "away";
+    case "resolutionAdvance":
+      // The fans→mvp / winnings→fans step advance.
+      return (
+        (c.side === "home" || c.side === "away") &&
+        (c.step === "fans" || c.step === "mvp")
       );
     default:
       return false;
@@ -1091,6 +1148,81 @@ export async function POST(
       if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
       if (status === 409) {
         return Response.json({ error: "Cannot hire in current state" }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
+  // The per-side RESOLUTION WIZARD commands (RAU-52 rework): each coach advances
+  // THEIR OWN side's step cursor (winnings → fans → mvp → mvp-done → casualties
+  // → journeymen → done). Every command is restricted to the caller's OWN side
+  // (like `nominateMvp`), persists the side's progress server-side (a refresh
+  // resumes at the persisted step), and is idempotent — a re-sent command after
+  // the side already advanced returns the current view.
+  if (
+    command.type === "resolutionWinningsSeen" ||
+    command.type === "resolutionFanRoll" ||
+    command.type === "resolutionAdvance" ||
+    command.type === "resolutionMvpConfirm" ||
+    command.type === "resolutionMvpReveal" ||
+    command.type === "resolutionCasualtiesDone" ||
+    command.type === "resolutionJourneymenDone"
+  ) {
+    if (side === null) {
+      return Response.json({ error: "No side to resolve" }, { status: 409 });
+    }
+    if (command.side !== side) {
+      return Response.json({ error: "Not your team" }, { status: 409 });
+    }
+    const input = {
+      fixtureId,
+      teamId: command.side === "home" ? ctx.homeTeamId : ctx.awayTeamId,
+      side: command.side,
+      now,
+    };
+    try {
+      switch (command.type) {
+        case "resolutionWinningsSeen": {
+          const result = await resolutionWinningsSeen(input, deps);
+          return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+        }
+        case "resolutionFanRoll": {
+          const result = await resolutionFanRoll(input, deps);
+          return Response.json(
+            { view: { ...result.view, viewerSide: side }, fans: result.fans },
+            { status: 200 },
+          );
+        }
+        case "resolutionAdvance": {
+          const result = await resolutionAdvance({ ...input, step: command.step }, deps);
+          return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+        }
+        case "resolutionMvpConfirm": {
+          const result = await resolutionMvpConfirm(input, deps);
+          return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+        }
+        case "resolutionMvpReveal": {
+          const result = await resolutionMvpReveal(input, deps);
+          return Response.json(
+            { view: { ...result.view, viewerSide: side }, mvp: result.mvp },
+            { status: 200 },
+          );
+        }
+        case "resolutionCasualtiesDone": {
+          const result = await resolutionCasualtiesDone(input, deps);
+          return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+        }
+        case "resolutionJourneymenDone": {
+          const result = await resolutionJourneymenDone(input, deps);
+          return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+        }
+      }
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400) return Response.json({ error: "Invalid resolution command" }, { status: 400 });
+      if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      if (status === 409) {
+        return Response.json({ error: "Cannot advance the resolution in current state" }, { status: 409 });
       }
       throw error;
     }

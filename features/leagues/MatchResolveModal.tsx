@@ -1,24 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
-import { addMvpPe, deriveLivePeAwards } from "@/lib/liveResolve";
+import { casualtyVictimsFromEvents } from "@/lib/liveResolve";
 import { positionName } from "./liveControls";
+import { casualtyKindLabel } from "./matchSummary";
 import { JourneymenHireStep } from "./JourneymenHire";
 import {
   nominateMvp,
-  rollLiveMvp,
+  resolutionAdvance,
+  resolutionCasualtiesDone,
+  resolutionFanRoll,
+  resolutionJourneymenDone,
+  resolutionMvpConfirm,
+  resolutionMvpReveal,
+  resolutionWinningsSeen,
   resolveLiveMatch,
-  type FanFactorRoll,
-  type LiveMvpRoll,
   type MatchDetail,
+  type ResolutionSideState,
 } from "./api";
 
 /** A roster player reference (id + name), shared with the result modal. The
  * optional dorsal/positionalKey power the "Name (Position · #N)" MJP picker
- * labels (RAU-13); `journeyman` swaps the role slot for the "Novato" marker.
- * The summary sections only use id + name. */
+ * labels (RAU-13); `journeyman` swaps the role slot for the "Novato" marker. */
 export interface RosterPlayerRef {
   id: string;
   name: string;
@@ -34,6 +39,19 @@ export interface RosterPlayerRef {
  * ruleset hook is the flagged future extension point. */
 export const MVP_NOMINATION_MAX = 6;
 
+/** A side that has not started the wizard (defensive default for the DTO). */
+function emptySide(): ResolutionSideState {
+  return {
+    step: "winnings",
+    fansDone: false,
+    fans: null,
+    mvpConfirmed: false,
+    mvpRolled: false,
+    casualtiesDone: false,
+    journeymenDone: false,
+  };
+}
+
 /** True when a team has exactly `MVP_NOMINATION_MAX` DISTINCT nominations
  * selected (checkbox toggling guarantees distinctness — a re-checked player is
  * un-toggled). */
@@ -44,109 +62,118 @@ function nominationsReady(nominations: readonly string[]): boolean {
   );
 }
 
-/** The per-team PE the summary reveals: derived from the live events + the
- * rolled MVP grantee (display-only — the resolve command awards it server-side). */
-function teamPe(
-  detail: MatchDetail,
-  side: "home" | "away",
-  grantee: string,
-): { rosterPlayerId: string; pe: number }[] {
-  const events = detail.live?.events ?? [];
-  const derived = deriveLivePeAwards(events)[side];
-  return addMvpPe(derived, grantee);
-}
-
 /**
- * RAU-51 resolution modal — the guided end-of-match sequence for a FINISHED
- * live match, now PER-SIDE. Two steps:
- *  1. Nomination step (mandatory): each coach nominates ONLY their OWN team's
- *     six MJP nominations from their ALIVE + AVAILABLE roster (dead/suspended
- *     players are excluded client-side and rejected server-side, RAU-12).
- *     "Guardar mis nominaciones" POSTs `nominateMvp` (persisted per-side and
- *     replaceable). The rival side and the admin/bye viewer see a read-only
- *     status (never the rival's picks before the roll). "Tirar MVP" is enabled
- *     only once BOTH sides have nominated — the server rolls the 1D6 per team
- *     from the PERSISTED nominations (`rollMvp`) and reveals the grantees +
- *     post-match FF.
- *  2. Summary step: per team — MVP (+4 PE), winnings (→ treasury, already
- *     persisted at finish, RAU-44), dedicated-fans roll and the PE earned from
- *     the match. "Guardar y reportar" POSTs `resolveMatch` (THE closure);
- *     `onResolved` lets the parent refresh + close.
+ * RAU-52 resolution modal — the PER-SIDE, RESUMABLE end-of-match WIZARD for a
+ * FINISHED live match. Each coach advances their OWN side independently through
+ * the persisted step cursor (`live.resolutionState[side].step`):
+ *
+ *  1. Ganancias + mantenimiento (display-only; maintenance = 0, not implemented)
+ *  2. Tirada de fans — the SERVER-OWNED 1D6 roll applied to `coaching.
+ *     dedicatedFans` (rulebook p.103)
+ *  3. MVP — checkboxes (max 6) + "Enviar" (nominateMvp, replaceable) + the
+ *     FINAL confirm ("¿estás seguro?") — no going back after it
+ *  4. MVP reveal + bajas — waits for BOTH sides' confirms (reveal), then shows
+ *     the grantees + the casualty outcomes VISIBLY (Player rows updated)
+ *  5. Novatos — the ≥11-healthy check + the fielded journeyman hire/let-go
+ *
+ * Every action persists the side's progress server-side, so a close/refresh
+ * resumes the modal AT THE CURRENT STEP. The match closes when BOTH sides reach
+ * "done".
  */
 export function MatchResolveModal({
   open,
   detail,
   onClose,
-  onResolved,
   onNominated,
 }: {
   open: boolean;
   detail: MatchDetail;
   onClose: () => void;
-  onResolved: () => Promise<void>;
-  /** RAU-51: after a nomination POST, refresh the match detail so the persisted
-   * per-side state (status line + the roll gate) re-renders without closing. */
+  /** After any wizard action, refresh the match detail so the persisted step
+   * (and the rival's progress) re-renders without closing. */
   onNominated: () => Promise<void>;
 }) {
   const { t } = useI18n();
-  const [roll, setRoll] = useState<LiveMvpRoll | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rolling, setRolling] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [nominating, setNominating] = useState(false);
-  /** RAU-52: the FINAL confirm state — armed once BOTH sides nominated; "Sí,
-   * tirar el MVP" locks the picks (no back after the roll reveals the MVP). */
+  const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   const viewerSide = detail.live?.viewerSide ?? null;
-  const nominations = detail.live?.mvpNominations ?? { home: null, away: null };
+  const resolution = detail.live?.resolutionState ?? { home: emptySide(), away: emptySide() };
   const ownSide = viewerSide;
   const rivalSide = ownSide === "home" ? "away" : ownSide === "away" ? "home" : null;
-  const ownNomination = ownSide ? nominations[ownSide] : null;
-  const rivalNominated = rivalSide != null && nominations[rivalSide] != null;
-  const bothNominated = nominations.home != null && nominations.away != null;
-  const rolled = roll != null;
-  /** RAU-14: the resolve committed (the fixture GET now carries the result) —
-   * whether THIS coach saved it or the rival did (the modal polls the detail,
-   * so the rival's save advances this coach's modal to the hire step too). */
+  const own = ownSide ? resolution[ownSide] : null;
+  const ownStep = own?.step ?? "winnings";
   const matchResolved = detail.result != null;
+  const winnings = detail.liveWinnings ?? { home: 0, away: 0 };
+  const mvpGrantees = detail.live?.mvpGrantees ?? { home: null, away: null };
+  const nominations = detail.live?.mvpNominations ?? { home: null, away: null };
+  const ownNomination = ownSide ? nominations[ownSide] : null;
+  const bothConfirmed = resolution.home.mvpConfirmed && resolution.away.mvpConfirmed;
+  const revealed = resolution.home.mvpRolled && resolution.away.mvpRolled;
 
-  // RAU-52: the draft is the coach's OWN selected ids (checkbox toggles),
-  // seeded ONCE from the PERSISTED per-side nomination so a reload never loses
-  // the coach's own picks (re-saves replace; while the modal stays open the
-  // draft is the client's local working copy).
+  // The draft is the coach's OWN selected ids (checkbox toggles), seeded ONCE
+  // from the PERSISTED per-side nomination on mount — the modal remounts per
+  // open, so a reload resumes with the saved picks and in-session toggles own
+  // the working copy (a re-save replaces the persisted picks).
   const [draft, setDraft] = useState<string[]>(() =>
     ownSide && ownNomination ? ownNomination.slice(0, MVP_NOMINATION_MAX) : [],
   );
 
-  // RAU-52 fix (the "rival never receives the confirmation" bug): a finished
-  // live match is NOT fed by the SSE hub, so the modal polls the persisted
-  // match detail while the nomination step is open. When the rival submits
-  // their side, their status flips to "El rival nominó 6 jugadores" WITHOUT a
-  // reload — the send/confirm reaches the other coach automatically.
+  // Poll the persisted detail while the wizard is open so the rival's progress
+  // (confirms / steps) arrives WITHOUT a reload.
   useEffect(() => {
-    if (!open || rolled || matchResolved) return;
+    if (!open || matchResolved) return;
     const id = setInterval(() => {
       void onNominated();
     }, 4000);
     return () => clearInterval(id);
-  }, [open, rolled, matchResolved, onNominated]);
+  }, [open, matchResolved, onNominated]);
 
-  // RAU-14: the hire step is the LAST step of the sequence. Once the resolve
-  // committed and there is nothing left to hire (no own side, or no remaining
-  // journeymen for it), the modal closes itself — the resolution is complete.
-  const ownJourneymen = ownSide ? (detail.live?.journeymen?.[ownSide] ?? []) : [];
+  // The MVP reveal is the ONLY joint step: when BOTH sides confirmed, the modal
+  // auto-triggers the server-owned reveal (idempotent — both clients may fire
+  // it; the loser gets the winner's persisted grantees). An in-flight ref
+  // guards the double-fire without a synchronous setState.
+  const revealingRef = useRef(false);
   useEffect(() => {
-    if (!open || !matchResolved) return;
-    if (!ownSide || ownJourneymen.length === 0) onClose();
-  }, [open, matchResolved, ownSide, ownJourneymen.length, onClose]);
+    if (!open || matchResolved || revealingRef.current) return;
+    if (bothConfirmed && !revealed) {
+      revealingRef.current = true;
+      void (async () => {
+        try {
+          await resolutionMvpReveal(detail.fixture.leagueId, detail.fixture.id, ownSide ?? "home");
+          await onNominated();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : t("match.resolve.rollError"));
+        } finally {
+          revealingRef.current = false;
+        }
+      })();
+    }
+  }, [open, matchResolved, bothConfirmed, revealed, ownSide, detail.fixture.leagueId, detail.fixture.id, onNominated, t]);
+
+  // Once the match closed (BOTH sides done), the resolution is complete — the
+  // hire already happened at step 5, so the modal closes itself.
+  useEffect(() => {
+    if (open && matchResolved) onClose();
+  }, [open, matchResolved, onClose]);
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    setBusy(true);
+    try {
+      await fn();
+      await onNominated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("match.resolve.saveError"));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // RAU-51: the pickers are fed ONLY the viewer's own team's alive+available
-  // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
-  // players here. RAU-13: Journeymen are INCLUDED — they play for the team
-  // that match, so they are MVP-eligible like any match player (labeled "Novato"
-  // in the picker). The dorsal (RAU-13) is the served-array index + 1 (D21), so
-  // the picker labels match the FAB combos and the feed.
+  // roster (RAU-12: exclude missNextMatch). RAU-13: Journeymen are INCLUDED —
+  // they play for the team that match (labeled "Novato").
   const ownRoster = useMemo<RosterPlayerRef[]>(() => {
     const players = ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players;
     return players
@@ -159,14 +186,19 @@ export function MatchResolveModal({
         journeyman: p.journeyman,
       }));
   }, [ownSide, detail.homeTeam.players, detail.awayTeam.players]);
-  const homeRoster = useMemo<RosterPlayerRef[]>(
-    () => detail.homeTeam.players.map((p) => ({ id: p.rosterPlayerId, name: p.name })),
-    [detail.homeTeam.players],
-  );
-  const awayRoster = useMemo<RosterPlayerRef[]>(
-    () => detail.awayTeam.players.map((p) => ({ id: p.rosterPlayerId, name: p.name })),
-    [detail.awayTeam.players],
-  );
+  // The rival's roster only needs id + name (the casualties step names the
+  // rival's MVP grantee).
+  const rivalRoster = useMemo<RosterPlayerRef[]>(() => {
+    const players = rivalSide === "home" ? detail.homeTeam.players : detail.awayTeam.players;
+    return players.map((p) => ({ id: p.rosterPlayerId, name: p.name }));
+  }, [rivalSide, detail.homeTeam.players, detail.awayTeam.players]);
+
+  // The side's casualty victims (derived from the persisted events — the band
+  // was server-derived at confirm time, never re-rolled).
+  const casualties = useMemo(() => {
+    const events = detail.live?.events ?? [];
+    return casualtyVictimsFromEvents(events).filter((c) => c.team === ownSide);
+  }, [detail.live?.events, ownSide]);
 
   if (!open) return null;
 
@@ -175,56 +207,37 @@ export function MatchResolveModal({
   const ownName = ownSide === "home" ? homeName : ownSide === "away" ? awayName : null;
   const rivalName =
     rivalSide === "home" ? homeName : rivalSide === "away" ? awayName : null;
-  const canRoll = bothNominated && !rolling;
-  const winnings = detail.liveWinnings ?? { home: 0, away: 0 };
 
+  // The ≥11-healthy own players (alive && !missNextMatch among the ROSTER,
+  // EXCLUDING journeymen) — the step-5 check.
+  const ownPlayers = ownSide === "home" ? detail.homeTeam.players : detail.awayTeam.players;
+  const healthyCount = ownPlayers.filter((p) => !p.journeyman && p.alive && !p.missNextMatch).length;
+  const ownJourneymen = ownSide ? (detail.live?.journeymen?.[ownSide] ?? []) : [];
   const nameOf = (roster: RosterPlayerRef[], id: string | null | undefined) =>
     roster.find((p) => p.id === id)?.name ?? id ?? "—";
 
-  const doNominate = async () => {
+  const doSendNominations = async () => {
     if (!ownSide || !nominationsReady(draft)) return;
-    setError(null);
-    setNominating(true);
-    try {
+    await run(async () => {
       await nominateMvp(detail.fixture.leagueId, detail.fixture.id, ownSide, draft);
-      await onNominated();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("match.resolve.nominateError"));
-    } finally {
-      setNominating(false);
-    }
+    });
   };
 
-  const doRoll = async () => {
-    setError(null);
+  const doConfirmMvp = async () => {
+    if (!ownSide) return;
+    await run(async () => {
+      await resolutionMvpConfirm(detail.fixture.leagueId, detail.fixture.id, ownSide);
+    });
     setConfirming(false);
-    setRolling(true);
-    try {
-      const result = await rollLiveMvp(detail.fixture.leagueId, detail.fixture.id);
-      setRoll(result);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("match.resolve.rollError"));
-    } finally {
-      setRolling(false);
-    }
   };
 
-  const doSave = async () => {
-    if (!roll) return;
-    setError(null);
-    setSaving(true);
-    try {
+  const doFinalize = async () => {
+    await run(async () => {
       await resolveLiveMatch(detail.fixture.leagueId, detail.fixture.id);
-      // The refresh persists the resolved result (and the finish-time winnings
-      // are already applied); `detail.result` then flips the modal to the
-      // LAST step of the sequence — the post-match hire step (RAU-14).
-      await onResolved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("match.resolve.saveError"));
-    } finally {
-      setSaving(false);
-    }
+    });
   };
+
+  const stepLabel = t(stepKey(ownStep));
 
   return (
     <div
@@ -259,182 +272,128 @@ export function MatchResolveModal({
             </p>
           ) : null}
 
-          {!matchResolved && roll == null ? (
+          {ownSide && own ? (
             <>
-              <p className="text-sm text-slate-600">{t("match.resolve.intro")}</p>
-              <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                {t("match.resolve.mvpStep")}
-              </h4>
-
-              {ownSide && ownName ? (
-                <>
-                  {/* RAU-52: ONLY the viewer's own side is editable — the
-                      CHECKBOXES list their OWN alive+available roster; the rival
-                      is a read-only status that never leaks the rival's picks. */}
-                  <OwnNominationSection
-                    name={ownName}
-                    raceId={ownSide === "home" ? detail.homeTeam.raceId : detail.awayTeam.raceId}
-                    roster={ownRoster}
-                    selected={draft}
-                    saved={ownNomination != null}
-                    nominating={nominating}
-                    onToggle={(id) => {
-                      setDraft((prev) => {
-                        if (prev.includes(id)) return prev.filter((x) => x !== id);
-                        // RAU-52: the MAX (6) is enforced — a 7th player can
-                        // never be checked.
-                        if (prev.length >= MVP_NOMINATION_MAX) return prev;
-                        return [...prev, id];
-                      });
-                    }}
-                    onSave={() => void doNominate()}
-                    t={t}
-                  />
-                  <SideStatusSection
-                    name={rivalName ?? awayName}
-                    status={
-                      rivalNominated
-                        ? t("match.resolve.rivalDone")
-                        : t("match.resolve.rivalPending")
-                    }
-                  />
-                </>
-              ) : (
-                <>
-                  {/* RAU-51: an admin/bye viewer (no side) sees BOTH sides as
-                      read-only statuses — never the rival's picks before the
-                      roll reveals the MVP. */}
-                  <SideStatusSection
-                    name={homeName}
-                    status={
-                      nominations.home != null
-                        ? t("match.resolve.statusDone")
-                        : t("match.resolve.statusPending")
-                    }
-                  />
-                  <SideStatusSection
-                    name={awayName}
-                    status={
-                      nominations.away != null
-                        ? t("match.resolve.statusDone")
-                        : t("match.resolve.statusPending")
-                    }
-                  />
-                </>
-              )}
-
-              {!bothNominated ? (
-                <p className="text-[11px] text-slate-500">{t("match.resolve.needBothSides")}</p>
-              ) : null}
-              <p className="text-[11px] text-slate-500">
-                {t("match.resolve.maxHint", { max: MVP_NOMINATION_MAX })}
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                {t("match.resolve.stepLabel", { step: stepLabel })}
               </p>
-              <div className="flex items-center justify-end gap-2 border-t border-[#e2e8f0] pt-3">
-                {!confirming ? (
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                ) : null}
-                {confirming ? (
-                  // RAU-52: the FINAL confirm — armed once BOTH sides nominated.
-                  // "Sí, tirar el MVP" locks the picks; there is NO going back
-                  // after it (the summary below has no "change nominations").
-                  <>
-                    <span className="text-xs font-bold text-[#d11938]">
-                      {t("match.resolve.confirmTitle")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void doRoll()}
-                      disabled={rolling}
-                      className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {rolling ? t("match.resolve.rolling") : t("match.resolve.confirmRoll")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirming(false)}
-                      disabled={rolling}
-                      className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
-                    >
-                      {t("match.resolve.confirmCancel")}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirming(true)}
-                    disabled={!canRoll}
-                    className="ml-2 rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {rolling ? t("match.resolve.rolling") : t("match.resolve.roll")}
-                  </button>
-                )}
-              </div>
-            </>
-          ) : !matchResolved && rolled ? (
-            <>
-              <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                {t("match.resolve.summary")}
-              </h4>
-              <TeamSummarySection
-                name={homeName}
-                roster={homeRoster}
-                mvp={roll.mvp.home}
-                winnings={winnings.home}
-                ffRoll={roll.ffRoll.home}
-                pe={teamPe(detail, "home", roll.mvp.home)}
-                nameOf={nameOf}
-                t={t}
-              />
-              <TeamSummarySection
-                name={awayName}
-                roster={awayRoster}
-                mvp={roll.mvp.away}
-                winnings={winnings.away}
-                ffRoll={roll.ffRoll.away}
-                pe={teamPe(detail, "away", roll.mvp.away)}
-                nameOf={nameOf}
-                t={t}
-              />
-              <div className="flex justify-end border-t border-[#e2e8f0] pt-3">
-                {/* RAU-52: NO going back after the final confirm — the picks
-                    are locked once the MVP was rolled; the only way forward is
-                    "Guardar y reportar" (THE closure). */}
-                <button
-                  type="button"
-                  onClick={() => void doSave()}
-                  disabled={saving}
-                  className="rounded-sm bg-[#d11938] px-4 py-2 text-sm font-bold text-white hover:bg-[#b0142f] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {saving ? t("match.resolve.saving") : t("match.resolve.save")}
-                </button>
-              </div>
-            </>
-          ) : (
-            // RAU-14: the LAST step of the resolution sequence — the post-match
-            // journeyman (Novato) hire step (checkboxes + Contratar marcados /
-            // Dejar ir). Renders for the viewer's OWN side only; the modal
-            // closes itself once nothing remains to hire.
-            <>
-              {ownSide && ownName ? (
-                <JourneymenHireStep
+              {ownStep === "winnings" ? (
+                <WinningsStep
+                  winnings={winnings[ownSide]}
+                  onContinue={() =>
+                    void run(() => resolutionWinningsSeen(detail.fixture.leagueId, detail.fixture.id, ownSide))
+                  }
+                  busy={busy}
+                  t={t}
+                />
+              ) : null}
+              {ownStep === "fans" ? (
+                <FansStep
+                  fans={own.fans}
+                  fansDone={own.fansDone}
+                  onRoll={() =>
+                    void run(() => resolutionFanRoll(detail.fixture.leagueId, detail.fixture.id, ownSide))
+                  }
+                  onContinue={() =>
+                    void run(() => resolutionAdvance(detail.fixture.leagueId, detail.fixture.id, ownSide, "mvp"))
+                  }
+                  busy={busy}
+                  t={t}
+                />
+              ) : null}
+              {ownStep === "mvp" ? (
+                <MvpStep
+                  name={ownName ?? "—"}
+                  raceId={ownSide === "home" ? detail.homeTeam.raceId : detail.awayTeam.raceId}
+                  roster={ownRoster}
+                  selected={draft}
+                  saved={ownNomination != null}
+                  confirming={confirming}
+                  busy={busy}
+                  onToggle={(id) => {
+                    setDraft((prev) => {
+                      if (prev.includes(id)) return prev.filter((x) => x !== id);
+                      if (prev.length >= MVP_NOMINATION_MAX) return prev;
+                      return [...prev, id];
+                    });
+                  }}
+                  onSave={() => void doSendNominations()}
+                  onConfirm={() => setConfirming(true)}
+                  onCancelConfirm={() => setConfirming(false)}
+                  onConfirmYes={() => void doConfirmMvp()}
+                  rivalConfirmed={rivalSide ? resolution[rivalSide].mvpConfirmed : false}
+                  rivalNominated={rivalSide ? nominations[rivalSide] != null : false}
+                  t={t}
+                />
+              ) : null}
+              {ownStep === "mvp-done" ? (
+                <MvpDoneStep
+                  confirmed={own.mvpConfirmed}
+                  rivalConfirmed={rivalSide ? resolution[rivalSide].mvpConfirmed : false}
+                  t={t}
+                />
+              ) : null}
+              {ownStep === "casualties" ? (
+                <CasualtiesStep
+                  name={ownName ?? "—"}
+                  rivalName={rivalName ?? "—"}
+                  roster={ownRoster}
+                  rivalRoster={rivalRoster}
+                  mvp={mvpGrantees[ownSide]}
+                  rivalMvp={rivalSide ? mvpGrantees[rivalSide] : null}
+                  casualties={casualties}
+                  nameOf={nameOf}
+                  onContinue={() =>
+                    void run(() => resolutionCasualtiesDone(detail.fixture.leagueId, detail.fixture.id, ownSide))
+                  }
+                  busy={busy}
+                  t={t}
+                />
+              ) : null}
+              {ownStep === "journeymen" ? (
+                <JourneymenStep
+                  name={ownName ?? "—"}
+                  healthyCount={healthyCount}
+                  remaining={ownJourneymen.length}
                   leagueId={detail.fixture.leagueId}
                   fixtureId={detail.fixture.id}
                   side={ownSide}
-                  team={
-                    ownSide === "home"
-                      ? { name: homeName, raceId: detail.homeTeam.raceId }
-                      : { name: awayName, raceId: detail.awayTeam.raceId }
-                  }
+                  team={{
+                    name: ownName ?? "—",
+                    raceId: ownSide === "home" ? detail.homeTeam.raceId : detail.awayTeam.raceId,
+                  }}
                   journeymen={ownJourneymen}
                   onUpdated={onNominated}
+                  onContinue={() =>
+                    void run(() => resolutionJourneymenDone(detail.fixture.leagueId, detail.fixture.id, ownSide))
+                  }
+                  busy={busy}
+                  t={t}
                 />
               ) : null}
+              {ownStep === "done" ? (
+                <DoneStep
+                  rivalDone={rivalSide ? resolution[rivalSide].journeymenDone : false}
+                  rivalStep={rivalSide ? resolution[rivalSide].step : "winnings"}
+                  matchResolved={matchResolved}
+                  onFinalize={() => void doFinalize()}
+                  onClose={onClose}
+                  busy={busy}
+                  t={t}
+                />
+              ) : null}
+            </>
+          ) : (
+            // An admin/bye viewer (no side) sees both sides' steps read-only.
+            <div className="space-y-3">
+              <SideStatusSection
+                name={homeName}
+                status={t("match.resolve.stepLabel", { step: t(stepKey(resolution.home.step)) })}
+              />
+              <SideStatusSection
+                name={awayName}
+                status={t("match.resolve.stepLabel", { step: t(stepKey(resolution.away.step)) })}
+              />
               <div className="flex justify-end border-t border-[#e2e8f0] pt-3">
                 <button
                   type="button"
@@ -444,7 +403,7 @@ export function MatchResolveModal({
                   {t("match.resolve.close")}
                 </button>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -452,30 +411,157 @@ export function MatchResolveModal({
   );
 }
 
-/** RAU-52: the viewer's OWN team's MJP nomination CHECKBOXES (alive+available
- * roster only; Journeymen included and labeled "Novato", RAU-13) + the
- * "Guardar mis nominaciones" action and status line. The rulebook MAX (6) is
- * enforced: a 7th checkbox is disabled, and the toggle never exceeds it. */
-function OwnNominationSection({
+/** The i18n key for a wizard step label. */
+function stepKey(step: string): string {
+  switch (step) {
+    case "winnings":
+      return "match.resolve.stepWinnings";
+    case "fans":
+      return "match.resolve.stepFans";
+    case "mvp":
+      return "match.resolve.stepMvp";
+    case "mvp-done":
+      return "match.resolve.stepMvpDone";
+    case "casualties":
+      return "match.resolve.stepCasualties";
+    case "journeymen":
+      return "match.resolve.stepJourneymen";
+    case "done":
+      return "match.resolve.stepDone";
+    default:
+      return "match.resolve.stepUnknown";
+  }
+}
+
+/** Step 1: the finish-time winnings (already computed at live finish) + the
+ * maintenance-cost row placeholder (NOT implemented — shown as 0 with a note). */
+function WinningsStep({
+  winnings,
+  onContinue,
+  busy,
+  t,
+}: {
+  winnings: number;
+  onContinue: () => void;
+  busy: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  return (
+    <section aria-label={t("match.resolve.stepWinnings")} className="border border-[#e2e8f0] p-3">
+      <ul className="space-y-1 text-sm text-slate-700">
+        <li className="flex justify-between gap-3">
+          <span className="font-semibold text-slate-500">{t("match.resolve.winnings")}</span>
+          <span className="tabular-nums">{winnings.toLocaleString("es-ES")} gp.</span>
+        </li>
+        <li className="flex justify-between gap-3">
+          <span className="font-semibold text-slate-500">{t("match.resolve.upkeep")}</span>
+          <span className="tabular-nums">{t("match.resolve.upkeepValue")}</span>
+        </li>
+      </ul>
+      <p className="mt-2 text-[11px] text-slate-500">{t("match.resolve.upkeepNote")}</p>
+      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={busy}
+          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {t("match.resolve.continue")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Step 2: the SERVER-OWNED dedicated-fans roll (rulebook p.103). The button
+ * fires `resolutionFanRoll` (the server rolls + applies + persists); once
+ * `fansDone` the persisted roll is shown and "Continuar" advances to the MVP. */
+function FansStep({
+  fans,
+  fansDone,
+  onRoll,
+  onContinue,
+  busy,
+  t,
+}: {
+  fans: ResolutionSideState["fans"];
+  fansDone: boolean;
+  onRoll: () => void;
+  onContinue: () => void;
+  busy: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  if (!fansDone || !fans) {
+    return (
+      <section aria-label={t("match.resolve.stepFans")} className="border border-[#e2e8f0] p-3">
+        <p className="text-sm text-slate-700">{t("match.resolve.fansHint")}</p>
+        <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+          <button
+            type="button"
+            onClick={onRoll}
+            disabled={busy}
+            className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? t("match.resolve.rolling") : t("match.resolve.fansRollAction")}
+          </button>
+        </div>
+      </section>
+    );
+  }
+  const glyph = fans.direction === "up" ? "↑" : fans.direction === "down" ? "↓" : "=";
+  return (
+    <section aria-label={t("match.resolve.stepFans")} className="border border-[#e2e8f0] p-3">
+      <p className="text-sm text-slate-700">
+        {t("match.resolve.fansResult", { before: fans.before, roll: fans.roll, after: fans.after, glyph })}
+      </p>
+      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={busy}
+          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {t("match.resolve.continue")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Step 3: the coach's OWN six MVP nominations via CHECKBOXES + the SEND
+ * ("Guardar mis nominaciones", replaceable) + the FINAL confirm ("¿Estás
+ * seguro?") — after the confirm there is NO going back (step → "mvp-done"). */
+function MvpStep({
   name,
   raceId,
   roster,
   selected,
   saved,
-  nominating,
+  confirming,
+  busy,
   onToggle,
   onSave,
+  onConfirm,
+  onCancelConfirm,
+  onConfirmYes,
+  rivalConfirmed,
+  rivalNominated,
   t,
 }: {
   name: string;
-  /** The OWN side's race id, so the option labels resolve the positional name. */
   raceId: string;
   roster: RosterPlayerRef[];
   selected: string[];
   saved: boolean;
-  nominating: boolean;
+  confirming: boolean;
+  busy: boolean;
   onToggle: (id: string) => void;
   onSave: () => void;
+  onConfirm: () => void;
+  onCancelConfirm: () => void;
+  onConfirmYes: () => void;
+  rivalConfirmed: boolean;
+  rivalNominated: boolean;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   const ready = nominationsReady(selected);
@@ -497,8 +583,6 @@ function OwnNominationSection({
               : positionName(raceId, player.positionalKey ?? "lineman"),
             dorsal: player.dorsal ?? 0,
           });
-          // RAU-52: the MAX is enforced at the CONTROL level — an un-checked
-          // player is not selectable once 6 are already checked.
           const disabled = !checked && atMax;
           return (
             <label
@@ -527,81 +611,279 @@ function OwnNominationSection({
         <button
           type="button"
           onClick={onSave}
-          disabled={!ready || nominating}
+          disabled={!ready || busy}
           className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {nominating ? t("match.resolve.nominating") : t("match.resolve.nominate")}
+          {busy ? t("match.resolve.nominating") : t("match.resolve.nominate")}
+        </button>
+      </div>
+
+      <div className="mt-2 border-t border-[#e2e8f0] pt-2">
+        <p className="text-xs font-semibold text-slate-500">
+          {rivalConfirmed
+            ? t("match.resolve.rivalConfirmed")
+            : rivalNominated
+              ? t("match.resolve.rivalDone")
+              : t("match.resolve.rivalPending")}
+        </p>
+        {saved && !confirming ? (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={busy}
+              className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t("match.resolve.confirm")}
+            </button>
+          </div>
+        ) : null}
+        {saved && confirming ? (
+          // The FINAL confirm — after "Sí, confirmar" there is NO going back.
+          <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+            <span className="text-xs font-bold text-[#d11938]">{t("match.resolve.confirmTitle")}</span>
+            <button
+              type="button"
+              onClick={onConfirmYes}
+              disabled={busy}
+              className="rounded-sm bg-[#d11938] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#b0142f] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t("match.resolve.confirmYes")}
+            </button>
+            <button
+              type="button"
+              onClick={onCancelConfirm}
+              disabled={busy}
+              className="rounded-sm border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400"
+            >
+              {t("match.resolve.confirmCancel")}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/** Step "mvp-done": the coach's picks are locked; the reveal waits for the
+ * rival's confirm (the modal auto-fires it once BOTH confirmed). */
+function MvpDoneStep({
+  confirmed,
+  rivalConfirmed,
+  t,
+}: {
+  confirmed: boolean;
+  rivalConfirmed: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  return (
+    <section aria-label={t("match.resolve.stepMvpDone")} className="border border-[#e2e8f0] p-3">
+      <p className="text-sm text-slate-700">
+        {confirmed ? t("match.resolve.ownConfirmed") : t("match.resolve.ownConfirmPending")}
+      </p>
+      <p className="mt-1 text-sm text-slate-600">
+        {rivalConfirmed
+          ? t("match.resolve.revealReady")
+          : t("match.resolve.waitingRivalConfirm")}
+      </p>
+    </section>
+  );
+}
+
+/** Step 4: the MVP REVEAL (both sides' confirms) + the casualty outcomes —
+ * each injured player's outcome (recovers / Miss Next Game / permanent / dead)
+ * shown VISIBLY (the Player rows were updated by `resolutionCasualtiesDone`). */
+function CasualtiesStep({
+  name,
+  rivalName,
+  roster,
+  rivalRoster,
+  mvp,
+  rivalMvp,
+  casualties,
+  nameOf,
+  onContinue,
+  busy,
+  t,
+}: {
+  name: string;
+  rivalName: string;
+  roster: RosterPlayerRef[];
+  rivalRoster: RosterPlayerRef[];
+  mvp: string | null;
+  rivalMvp: string | null;
+  casualties: { team: "home" | "away"; rosterPlayerId: string; band: string }[];
+  nameOf: (roster: RosterPlayerRef[], id: string | null | undefined) => string;
+  onContinue: () => void;
+  busy: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  return (
+    <section aria-label={t("match.resolve.stepCasualties")} className="border border-[#e2e8f0] p-3">
+      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{t("match.resolve.mvpTitle")}</h5>
+      <ul className="space-y-1 text-sm text-slate-700">
+        <li className="flex justify-between gap-3">
+          <span className="font-semibold text-slate-500">{name}</span>
+          <span className="text-[#12225a]">{t("match.resolve.mvpLine", { player: nameOf(roster, mvp), pe: PE_MVP })}</span>
+        </li>
+        <li className="flex justify-between gap-3">
+          <span className="font-semibold text-slate-500">{rivalName}</span>
+          <span className="text-[#12225a]">{t("match.resolve.mvpLine", { player: nameOf(rivalRoster, rivalMvp), pe: PE_MVP })}</span>
+        </li>
+      </ul>
+      <h5 className="mt-3 mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{t("match.resolve.casualtiesTitle")}</h5>
+      {casualties.length === 0 ? (
+        <p className="text-sm text-slate-600">{t("match.resolve.noCasualties")}</p>
+      ) : (
+        <ul className="space-y-1 text-sm text-slate-700">
+          {casualties.map((c) => (
+            <li key={c.rosterPlayerId} className="flex justify-between gap-3">
+              <span className="font-semibold">{nameOf(roster, c.rosterPlayerId)}</span>
+              <span className="tabular-nums">{casualtyKindLabel(c.band, t)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={busy}
+          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {t("match.resolve.continue")}
         </button>
       </div>
     </section>
   );
 }
 
-/** RAU-51: a READ-ONLY per-side status — never the player picks. Used for the
- * coach's rival side and for every side an admin/bye viewer sees. */
+/** Step 5 (LAST): the ≥11-healthy own players check + the fielded journeyman
+ * hire/let-go step. "Continuar" completes the side (enabled once every fielded
+ * Novato was decided). */
+function JourneymenStep({
+  name,
+  healthyCount,
+  remaining,
+  leagueId,
+  fixtureId,
+  side,
+  team,
+  journeymen,
+  onUpdated,
+  onContinue,
+  busy,
+  t,
+}: {
+  name: string;
+  healthyCount: number;
+  remaining: number;
+  leagueId: string;
+  fixtureId: string;
+  side: "home" | "away";
+  team: { name: string; raceId: string };
+  journeymen: { id: string; name: string }[];
+  onUpdated: () => Promise<void>;
+  onContinue: () => void;
+  busy: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  return (
+    <section aria-label={t("match.resolve.stepJourneymen")} className="border border-[#e2e8f0] p-3">
+      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
+      <p className="mb-2 text-xs font-semibold text-slate-500">
+        {t("match.resolve.healthyCount", { count: healthyCount })}
+      </p>
+      {healthyCount < 11 ? (
+        <p className="mb-2 text-xs text-slate-600">{t("match.resolve.journeymenNeed")}</p>
+      ) : (
+        <p className="mb-2 text-xs text-slate-600">{t("match.resolve.journeymenEnough")}</p>
+      )}
+      <JourneymenHireStep
+        leagueId={leagueId}
+        fixtureId={fixtureId}
+        side={side}
+        team={team}
+        journeymen={journeymen}
+        onUpdated={onUpdated}
+      />
+      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={busy || remaining > 0}
+          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {t("match.resolve.continue")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Step "done": the side completed — wait for the rival, or close the match
+ * (both done → the final resolveMatch). */
+function DoneStep({
+  rivalDone,
+  rivalStep,
+  matchResolved,
+  onFinalize,
+  onClose,
+  busy,
+  t,
+}: {
+  rivalDone: boolean;
+  rivalStep: string;
+  matchResolved: boolean;
+  onFinalize: () => void;
+  onClose: () => void;
+  busy: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  return (
+    <section aria-label={t("match.resolve.stepDone")} className="border border-[#e2e8f0] p-3">
+      {matchResolved ? (
+        <p className="text-sm font-bold text-green-700">{t("match.resolve.reported")}</p>
+      ) : rivalDone ? (
+        <>
+          <p className="text-sm text-slate-700">{t("match.resolve.bothDone")}</p>
+          <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+            <button
+              type="button"
+              onClick={onFinalize}
+              disabled={busy}
+              className="rounded-sm bg-[#d11938] px-4 py-2 text-sm font-bold text-white hover:bg-[#b0142f] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? t("match.resolve.saving") : t("match.resolve.finalize")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-slate-700">
+            {t("match.resolve.waitingRival", { step: t(stepKey(rivalStep)) })}
+          </p>
+          <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-sm border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-slate-400"
+            >
+              {t("match.resolve.close")}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** A READ-ONLY per-side status (the no-side viewer's read-out). */
 function SideStatusSection({ name, status }: { name: string; status: string }) {
   return (
     <section aria-label={name} className="border border-[#e2e8f0] p-3">
       <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
       <p className="text-sm text-slate-600">{status}</p>
-    </section>
-  );
-}
-
-/** The summary block for one team after the server roll. */
-function TeamSummarySection({
-  name,
-  roster,
-  mvp,
-  winnings,
-  ffRoll,
-  pe,
-  nameOf,
-  t,
-}: {
-  name: string;
-  roster: RosterPlayerRef[];
-  mvp: string;
-  winnings: number;
-  ffRoll: FanFactorRoll;
-  pe: { rosterPlayerId: string; pe: number }[];
-  nameOf: (roster: RosterPlayerRef[], id: string | null | undefined) => string;
-  t: (key: string, params?: Record<string, string | number>) => string;
-}) {
-  // RAU-52: the post-match fan-factor verdict glyph (rulebook p. 103) — the
-  // dedicated-fans attribute goes ↑ / stays = / goes ↓ with the 1D6 roll.
-  const ffGlyph = ffRoll.direction === "up" ? "↑" : ffRoll.direction === "down" ? "↓" : "=";
-  return (
-    <section aria-label={name} className="border border-[#e2e8f0] p-3">
-      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
-      <ul className="space-y-1 text-sm text-slate-700">
-        <li className="flex justify-between gap-3">
-          <span className="font-semibold text-slate-500">{t("match.resolve.mvp")}</span>
-          <span className="text-[#12225a]">
-            {t("match.resolve.mvpLine", { player: nameOf(roster, mvp), pe: PE_MVP })}
-          </span>
-        </li>
-        <li className="flex justify-between gap-3">
-          <span className="font-semibold text-slate-500">{t("match.resolve.winnings")}</span>
-          <span className="tabular-nums">{winnings.toLocaleString("es-ES")} gp.</span>
-        </li>
-        <li className="flex justify-between gap-3">
-          <span className="font-semibold text-slate-500">{t("match.resolve.fans")}</span>
-          <span className="tabular-nums">
-            {t("match.resolve.fansRoll", { direction: ffGlyph, roll: ffRoll.roll })}
-          </span>
-        </li>
-        <li className="flex flex-col gap-0.5">
-          <span className="font-semibold text-slate-500">{t("match.resolve.pe")}</span>
-          <span className="flex flex-col gap-0.5 text-right">
-            {pe.map((row) => (
-              <span key={row.rosterPlayerId} className="tabular-nums">
-                {t("match.resolve.peLine", { pe: row.pe, player: nameOf(roster, row.rosterPlayerId) })}
-              </span>
-            ))}
-          </span>
-        </li>
-      </ul>
     </section>
   );
 }
