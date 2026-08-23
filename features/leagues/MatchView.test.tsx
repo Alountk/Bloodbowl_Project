@@ -1869,14 +1869,10 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
 
     fireEvent.click(resolveButton);
     const dialog = screen.getByRole("dialog", { name: "Resolver partido" });
-    // RAU-52: the viewer's OWN side renders CHECKBOXES (not the old numbered
-    // selects); the rival is a read-only status (no checkboxes). The roll
-    // stays gated on BOTH sides.
-    expect(within(dialog).getByRole("checkbox", { name: "Blitzer A (Human Blitzer · #1)" })).toBeTruthy();
-    expect(within(dialog).getByRole("checkbox", { name: "Thrower A (Human Thrower · #2)" })).toBeTruthy();
-    expect(within(dialog).queryByRole("checkbox", { name: /Blitzer B/ })).toBeNull();
-    expect(within(dialog).getByText("El rival aún no ha nominado")).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Tirar MVP" })).toHaveProperty("disabled", true);
+    // The wizard RESUMES at the persisted step — a fresh finish opens at the
+    // FIRST step (Ganancias y mantenimiento) with its Continuar action.
+    expect(within(dialog).getByText("Paso: Ganancias y mantenimiento")).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Continuar" })).toBeTruthy();
   });
 
   it("hides the resolve banner once the match is resolved (result present)", async () => {

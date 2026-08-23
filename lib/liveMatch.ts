@@ -301,6 +301,24 @@ export function parseResolutionState(value: unknown): ResolutionState {
 }
 
 /**
+ * Defensively parses a persisted `pendingResolution` MVP-grantees value (the
+ * reveal persisted `{ mvp: { home, away } }`): malformed/absent collapses to
+ * null per side (never crash). Surfaced on the fixture GET so the modal's
+ * casualties step can show who got the MVP after a refresh.
+ */
+export function parseMvpGrantees(value: unknown): { home: string | null; away: string | null } {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { home: null, away: null };
+  }
+  const pending = value as Record<string, unknown>;
+  const mvp = pending.mvp as Record<string, unknown> | undefined;
+  if (!mvp || typeof mvp.home !== "string" || typeof mvp.away !== "string") {
+    return { home: null, away: null };
+  }
+  return { home: mvp.home, away: mvp.away };
+}
+
+/**
  * DTO for subscribers/snapshot/POST/GET (LM-8, D19). Per-side accumulators and
  * `elapsed` are unified-clock derived; the deprecated per-turn clock fields are
  * gone. `viewerSide` is per-viewer (D19): snapshot / POST response / fixture-GET
