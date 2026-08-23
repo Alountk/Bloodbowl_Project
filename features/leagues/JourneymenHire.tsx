@@ -1,31 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { linemanPositionalOf } from "@/lib/journeymen";
 import { hireJourneyman } from "./api";
 
 /**
- * RAU-14/RAU-52: the post-resolve journeyman (Novato) HIRE STEP — the last
- * step of the end-of-match resolution sequence, shown AFTER the MVP roll +
- * the final confirm (the resolve already collected the match winnings, so the
- * hire cost is subtracted from the treasury AFTER them). Each side's OWNER
- * sees their fielded journeymen that are not yet hired-or-gone with
- * CHECKBOXES to mark which to hire:
+ * RAU-14/RAU-52: the journeyman (Novato) HIRE STEP — the LAST step of the
+ * per-side resolution WIZARD (step 5, before the both-done close; the side's
+ * finish-time winnings were collected at step 1, so the hire cost is paid from
+ * a treasury that already holds the match money). Each side's OWNER sees their
+ * fielded journeymen that are not yet hired-or-gone with CHECKBOXES:
  *
  * - "Contratar marcados" POSTs `hireJourneyman { hire: true }` for each
  *   checked novato: the journeyman's cost (the race Lineman positional) is
  *   PAID IN CASH from the treasury (the server decrements it) and they become
- *   a permanent roster player (their persisted journeyman name,
- *   `positionalKey` = the race Lineman — RAU-11 style). The server enforces
- *   the treasury affordability + the 16-roster cap.
+ *   a permanent roster player (`positionalKey` = the race Lineman, `hired:
+ *   true` — the single-charge rule). The server enforces the affordability +
+ *   the 16-roster cap.
  * - "Dejar ir" POSTs `hireJourneyman { hire: false }`: the option is removed,
  *   nothing else mutates.
  *
  * Every decision refreshes via `onUpdated` (the parent re-fetches the match
- * detail), so the step disappears when no journeymen remain. Renders nothing
- * when the side has no remaining journeymen.
+ * detail), so the step disappears when no journeymen remain. The in-flight
+ * guard is a REF (never sticks across re-renders — the buttons stay clickable
+ * and a concurrent rival action's seq-conflict is retried with a fresh read).
  */
 export function JourneymenHireStep({
   leagueId,
@@ -44,8 +44,8 @@ export function JourneymenHireStep({
 }) {
   const { t, locale } = useI18n();
   const [selected, setSelected] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inflightRef = useRef(false);
 
   if (journeymen.length === 0) return null;
 
@@ -55,35 +55,52 @@ export function JourneymenHireStep({
   const cost = lineman?.cost ?? 0;
   const formattedCost = cost.toLocaleString(locale === "en" ? "en-US" : "es-ES");
 
+  /** Posts one decision with a seq-conflict retry: a concurrent rival wizard
+   * action can bump the row seq between the read and the write (optimistic
+   * guard → 409 "seq conflict"); a retry with a fresh read is safe and
+   * idempotent. */
+  const decide = async (journeymanId: string, hire: boolean) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await hireJourneyman(leagueId, fixtureId, side, journeymanId, hire);
+        return;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "";
+        if (message !== "seq conflict" || attempt >= 2) throw e;
+        await onUpdated();
+      }
+    }
+  };
+
   const hireChecked = async () => {
-    if (selected.length === 0 || busy) return;
-    setBusy(true);
+    if (selected.length === 0 || inflightRef.current) return;
+    inflightRef.current = true;
     setError(null);
     try {
       for (const journeymanId of selected) {
-        await hireJourneyman(leagueId, fixtureId, side, journeymanId, true);
+        await decide(journeymanId, true);
       }
       await onUpdated();
       setSelected([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("match.journeymen.error"));
     } finally {
-      setBusy(false);
+      inflightRef.current = false;
     }
   };
 
   const letGo = async (journeymanId: string) => {
-    if (busy) return;
-    setBusy(true);
+    if (inflightRef.current) return;
+    inflightRef.current = true;
     setError(null);
     try {
-      await hireJourneyman(leagueId, fixtureId, side, journeymanId, false);
+      await decide(journeymanId, false);
       await onUpdated();
       setSelected((prev) => prev.filter((id) => id !== journeymanId));
     } catch (e) {
       setError(e instanceof Error ? e.message : t("match.journeymen.error"));
     } finally {
-      setBusy(false);
+      inflightRef.current = false;
     }
   };
 
@@ -113,7 +130,7 @@ export function JourneymenHireStep({
                 type="checkbox"
                 aria-label={t("match.journeymen.checkHire", { name: j.name, cost: formattedCost })}
                 checked={selected.includes(j.id)}
-                disabled={busy}
+                disabled={false}
                 onChange={() =>
                   setSelected((prev) =>
                     prev.includes(j.id) ? prev.filter((id) => id !== j.id) : [...prev, j.id],
@@ -128,7 +145,7 @@ export function JourneymenHireStep({
             <button
               type="button"
               onClick={() => void letGo(j.id)}
-              disabled={busy}
+              disabled={false}
               className="rounded-sm border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-400 disabled:opacity-50"
             >
               {t("match.journeymen.letGo")}
@@ -143,7 +160,7 @@ export function JourneymenHireStep({
         <button
           type="button"
           onClick={() => void hireChecked()}
-          disabled={selected.length === 0 || busy}
+          disabled={selected.length === 0}
           className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("match.journeymen.hireChecked")}

@@ -32,14 +32,22 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const { t } = useI18n();
+  // Monotonic request seq: a STALE refresh response (an older request landing
+  // after a newer one — the wizard fires refreshes concurrently with the
+  // modal's poll/actions) must never regress the detail (which would remount
+  // the wizard steps mid-flow).
+  const seqRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const seq = ++seqRef.current;
     try {
       const match = await getMatchDetail(leagueId, fixtureId);
+      if (seq !== seqRef.current) return;
       setDetail(match);
       setError(null);
       setNotFound(false);
     } catch (e) {
+      if (seq !== seqRef.current) return;
       const status = (e as { status?: number }).status;
       if (status === 404) {
         setNotFound(true);
@@ -47,7 +55,7 @@ function useMatchDetail(leagueId: string, fixtureId: string) {
         setError(e instanceof Error ? e.message : t("match.loadError"));
       }
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   }, [leagueId, fixtureId, t]);
 
