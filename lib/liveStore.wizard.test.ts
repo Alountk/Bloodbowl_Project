@@ -499,6 +499,56 @@ describe("resolutionJourneymenDone — the LAST step (step 5 → done)", () => {
     expect(view.view.resolutionState.home.step).toBe("done");
     expect(view.view.resolutionState.away.step).toBe("winnings");
   });
+
+  it("AUTO-CLOSES the match when the LAST side reaches 'done' — MatchResult + fixture + league close in the SAME transaction (both-sides close)", async () => {
+    const row = finishedRow({
+      resolutionState: {
+        home: emptySide({ step: "journeymen", fansDone: true, fans: { roll: 4, before: 2, after: 3, direction: "up" }, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true }),
+        away: emptySide({ step: "done", fansDone: true, fans: { roll: 2, before: 1, after: 1, direction: "stay" }, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: true }),
+      },
+    });
+    (row as LiveMatch & { events: LiveEvent[] }).journeymen = { home: [], away: [] };
+    (row as LiveMatch & { events: LiveEvent[] }).pendingResolution = { mvp: { home: "h2", away: "a4" } } as never;
+    const { deps, matchResultCreate, fixtureUpdate, leagueUpdate, liveEventCreateMany } = makeDeps({ row });
+    const view = await resolutionJourneymenDone(
+      { ...baseInput, side: "home", leagueId: "l-1", homeTeamId: "home-t", awayTeamId: "away-t", loadedBy: "u1" },
+      deps,
+    );
+    expect(view.view.resolutionState.home.step).toBe("done");
+    // The close committed in the SAME transaction as the completion: the report
+    // row, the idempotent fixture close, the RAU-40 league close + the MVP rows.
+    expect(matchResultCreate).toHaveBeenCalledTimes(1);
+    expect(fixtureUpdate).toHaveBeenCalled();
+    expect(leagueUpdate).toHaveBeenCalled();
+    expect(liveEventCreateMany).toHaveBeenCalledTimes(1);
+    // The persisted rolls were reused (never re-rolled): the snapshot carries
+    // the per-side fan rolls from `resolutionState.fans`.
+    const report = matchResultCreate.mock.calls[0][0].data.scores as {
+      home: { postFf: number };
+      away: { postFf: number };
+    };
+    expect(report.home.postFf).toBe(3);
+    expect(report.away.postFf).toBe(1);
+  });
+
+  it("does NOT close while the rival has not reached 'done' (independence)", async () => {
+    const row = finishedRow({
+      resolutionState: {
+        home: emptySide({ step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true }),
+        away: emptySide({ step: "journeymen", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true }),
+      },
+    });
+    (row as LiveMatch & { events: LiveEvent[] }).journeymen = { home: [], away: [] };
+    const { deps, matchResultCreate } = makeDeps({ row });
+    const view = await resolutionJourneymenDone(
+      { ...baseInput, side: "home", leagueId: "l-1", homeTeamId: "home-t", awayTeamId: "away-t", loadedBy: "u1" },
+      deps,
+    );
+    expect(view.view.resolutionState.home.step).toBe("done");
+    expect(view.view.resolutionState.away.step).toBe("journeymen");
+    // No close yet — the rival still has the journeymen step open.
+    expect(matchResultCreate).not.toHaveBeenCalled();
+  });
 });
 
 describe("resolveLiveMatch — the both-sides close (wizard path)", () => {

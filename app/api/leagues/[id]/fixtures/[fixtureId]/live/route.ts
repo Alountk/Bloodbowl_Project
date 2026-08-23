@@ -1179,6 +1179,12 @@ export async function POST(
       teamId: command.side === "home" ? ctx.homeTeamId : ctx.awayTeamId,
       side: command.side,
       now,
+      // The close context: the LAST wizard command that reaches BOTH-done
+      // auto-closes the match atomically (RAU-40 kept).
+      leagueId: ctx.leagueId,
+      homeTeamId: ctx.homeTeamId,
+      awayTeamId: ctx.awayTeamId,
+      loadedBy: userId as string,
     };
     try {
       switch (command.type) {
