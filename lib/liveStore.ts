@@ -36,7 +36,9 @@ import {
   toLiveViewState,
   isStartableFixture,
   parseMvpNominations,
+  parseResolutionState,
   EMPTY_MVP_NOMINATIONS,
+  EMPTY_RESOLUTION_STATE,
   type FixtureStartState,
   type LiveMatchState,
   type MvpNominations,
@@ -245,6 +247,9 @@ interface LiveMatchRowFields {
   /** RAU-51: the persisted per-side MJP nominations JSON (`{ home, away }`,
    * null per side = that coach has not nominated yet). */
   mvpNominations: Prisma.JsonValue | null;
+  /** The persisted per-side resolution wizard cursor JSON (`{ home, away }`),
+   * null until the wizard's FIRST action persists it. */
+  resolutionState: Prisma.JsonValue | null;
 }
 
 /** Defensively parses a persisted `pendingCasualty` JSON value into the pure
@@ -298,6 +303,7 @@ export function liveMatchRowToState(
     concedeProposedBy: row.concedeProposedBy,
     pendingCasualty: toPendingCasualty(row.pendingCasualty ?? null),
     mvpNominations: parseMvpNominations(row.mvpNominations ?? null),
+    resolutionState: parseResolutionState(row.resolutionState ?? null),
     events: [],
   };
 }
@@ -326,6 +332,9 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue,
     mvpNominations: next.mvpNominations as unknown as
+      | Prisma.NullableJsonNullValueInput
+      | Prisma.InputJsonValue,
+    resolutionState: next.resolutionState as unknown as
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue,
   };
@@ -594,6 +603,7 @@ async function createFirstConsent(
     concedeProposedBy: null,
     pendingCasualty: null,
     mvpNominations: EMPTY_MVP_NOMINATIONS,
+    resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
   };
 
