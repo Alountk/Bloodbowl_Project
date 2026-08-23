@@ -97,9 +97,6 @@ export function MatchResolveModal({
   /** RAU-52: the FINAL confirm state — armed once BOTH sides nominated; "Sí,
    * tirar el MVP" locks the picks (no back after the roll reveals the MVP). */
   const [confirming, setConfirming] = useState(false);
-  /** RAU-14: once the resolve committed, the modal stays open for the LAST
-   * step of the sequence — the post-match journeyman (Novato) hire step. */
-  const [resolved, setResolved] = useState(false);
 
   const viewerSide = detail.live?.viewerSide ?? null;
   const nominations = detail.live?.mvpNominations ?? { home: null, away: null };
@@ -109,6 +106,10 @@ export function MatchResolveModal({
   const rivalNominated = rivalSide != null && nominations[rivalSide] != null;
   const bothNominated = nominations.home != null && nominations.away != null;
   const rolled = roll != null;
+  /** RAU-14: the resolve committed (the fixture GET now carries the result) —
+   * whether THIS coach saved it or the rival did (the modal polls the detail,
+   * so the rival's save advances this coach's modal to the hire step too). */
+  const matchResolved = detail.result != null;
 
   // RAU-52: the draft is the coach's OWN selected ids (checkbox toggles),
   // seeded ONCE from the PERSISTED per-side nomination so a reload never loses
@@ -124,21 +125,21 @@ export function MatchResolveModal({
   // their side, their status flips to "El rival nominó 6 jugadores" WITHOUT a
   // reload — the send/confirm reaches the other coach automatically.
   useEffect(() => {
-    if (!open || rolled) return;
+    if (!open || rolled || matchResolved) return;
     const id = setInterval(() => {
       void onNominated();
     }, 4000);
     return () => clearInterval(id);
-  }, [open, rolled, onNominated]);
+  }, [open, rolled, matchResolved, onNominated]);
 
-  // RAU-14: the hire step is the LAST step of the sequence. When the resolve
+  // RAU-14: the hire step is the LAST step of the sequence. Once the resolve
   // committed and there is nothing left to hire (no own side, or no remaining
   // journeymen for it), the modal closes itself — the resolution is complete.
   const ownJourneymen = ownSide ? (detail.live?.journeymen?.[ownSide] ?? []) : [];
   useEffect(() => {
-    if (!open || !resolved) return;
+    if (!open || !matchResolved) return;
     if (!ownSide || ownJourneymen.length === 0) onClose();
-  }, [open, resolved, ownSide, ownJourneymen.length, onClose]);
+  }, [open, matchResolved, ownSide, ownJourneymen.length, onClose]);
 
   // RAU-51: the pickers are fed ONLY the viewer's own team's alive+available
   // roster (RAU-12: exclude missNextMatch) — a coach never sees the rival's
@@ -215,10 +216,9 @@ export function MatchResolveModal({
     try {
       await resolveLiveMatch(detail.fixture.leagueId, detail.fixture.id);
       // The refresh persists the resolved result (and the finish-time winnings
-      // are already applied); the modal stays OPEN for the post-match hire
-      // step — RAU-14, the LAST step of the resolution sequence.
+      // are already applied); `detail.result` then flips the modal to the
+      // LAST step of the sequence — the post-match hire step (RAU-14).
       await onResolved();
-      setResolved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("match.resolve.saveError"));
     } finally {
@@ -259,7 +259,7 @@ export function MatchResolveModal({
             </p>
           ) : null}
 
-          {roll == null ? (
+          {!matchResolved && roll == null ? (
             <>
               <p className="text-sm text-slate-600">{t("match.resolve.intro")}</p>
               <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -376,7 +376,7 @@ export function MatchResolveModal({
                 )}
               </div>
             </>
-          ) : rolled && !resolved ? (
+          ) : !matchResolved && rolled ? (
             <>
               <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">
                 {t("match.resolve.summary")}

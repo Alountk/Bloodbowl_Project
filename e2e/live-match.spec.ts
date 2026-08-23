@@ -482,17 +482,18 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(
       awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }),
     ).toBeVisible();
-    // RECURRING REGRESSION (RAU-47): the ★2 the CAUSER earns must show on the
-    // causer's action card AND the victim's injury card — in BOTH coaches'
-    // feeds (the timeline renders the full event set for every coach). The
+    // RECURRING REGRESSION (RAU-47): the ★2 the CAUSER earns must show ONLY on
+    // the causer's action card — the VICTIM's injury card must NOT show the
+    // earned points (the star belongs to the player who DID the action). The
     // e2e roll16 is 9 → apaleado → a lasting band (★2), never hidden.
     for (const page of [awayCoach, homeCoach]) {
       await expect(
         page.getByTestId("live-event-row").filter({ hasText: "hace una herida a" }).filter({ hasText: "(★2)" }),
       ).toBeVisible();
+      // The victim's injury card carries the "por {causer}" line but NO star.
       await expect(
         page.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }).filter({ hasText: "(★2)" }),
-      ).toBeVisible();
+      ).toHaveCount(0);
     }
 
     // [B] ACTIVE (away) coach records a Pase completo (completion ★1) through the
@@ -550,17 +551,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await admin.goto(matchUrl);
     await expect(admin.getByRole("button", { name: "Resolver partido" })).toBeVisible();
 
-    // Coach A (whichever team is home) nominates their OWN six.
+    // Coach A (whichever team is home) nominates their OWN six via CHECKBOXES.
     await homeCoach.goto(matchUrl);
     const homeDialog = await openResolution(homeCoach, matchUrl);
-    for (let i = 1; i <= 6; i++) {
-      await expect(homeDialog.getByLabel(`MVP ${i} ${homeTeamName}`)).toBeVisible();
-      await expect(homeDialog.getByLabel(`MVP ${i} ${awayTeamName}`)).toHaveCount(0);
+    await expect(homeDialog.getByRole("checkbox")).toHaveCount(11);
+    for (let i = 0; i < 6; i++) {
+      await homeDialog.getByRole("checkbox").nth(i).check();
     }
     await expect(homeDialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
-    for (let i = 1; i <= 6; i++) {
-      await homeDialog.getByLabel(`MVP ${i} ${homeTeamName}`).selectOption({ index: i });
-    }
     await homeDialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
     await expect(homeDialog.getByText("Nominaciones enviadas")).toBeVisible();
     // The home coach's own modal shows the rival as a read-only status.
@@ -569,22 +567,23 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // Coach B nominates their OWN six on their OWN page.
     const awayDialog = await openResolution(awayCoach, matchUrl);
     await expect(awayDialog.getByText("El rival nominó 6 jugadores")).toBeVisible();
-    for (let i = 1; i <= 6; i++) {
-      await expect(awayDialog.getByLabel(`MVP ${i} ${awayTeamName}`)).toBeVisible();
-      await expect(awayDialog.getByLabel(`MVP ${i} ${homeTeamName}`)).toHaveCount(0);
-    }
+    await expect(awayDialog.getByRole("checkbox")).toHaveCount(11);
     await expect(awayDialog.getByRole("button", { name: "Tirar MVP" })).toBeDisabled();
-    for (let i = 1; i <= 6; i++) {
-      await awayDialog.getByLabel(`MVP ${i} ${awayTeamName}`).selectOption({ index: i });
+    for (let i = 0; i < 6; i++) {
+      await awayDialog.getByRole("checkbox").nth(i).check();
     }
     await awayDialog.getByRole("button", { name: "Guardar mis nominaciones" }).click();
     await expect(awayDialog.getByText("Nominaciones enviadas")).toBeVisible();
 
-    // Both sides nominated → the SERVER-owned 1D6 MVP roll is enabled and
+    // Both sides nominated → the SERVER-owned 1D6 MVP roll is enabled. The
+    // FINAL confirm ("¿Estás seguro?") locks the picks; "Sí, tirar el MVP"
     // reveals the grantees + the summary (winnings → the finish-time persisted
-    // values, dedicated fans, match PE). "Guardar y reportar" is THE closure.
+    // values, the fan-factor roll, match PE). "Guardar y reportar" is THE
+    // closure (the modal closes itself — no journeymen were fielded here).
     await expect(awayDialog.getByRole("button", { name: "Tirar MVP" })).toBeEnabled();
     await awayDialog.getByRole("button", { name: "Tirar MVP" }).click();
+    await expect(awayDialog.getByText("¿Estás seguro?")).toBeVisible();
+    await awayDialog.getByRole("button", { name: "Sí, tirar el MVP" }).click();
     await expect(awayDialog.getByText("Resumen de la resolución")).toBeVisible();
     await awayDialog.getByRole("button", { name: "Guardar y reportar" }).click();
     await expect(awayDialog).not.toBeVisible();
