@@ -31,6 +31,11 @@ async function login(page: Page, email: string, password: string) {
 async function logout(page: Page) {
   await page.getByRole("button", { name: "User menu" }).click();
   await page.getByRole("button", { name: "Log out" }).click();
+  // `/` is the dashboard for signed-in users, so the URL alone cannot prove the
+  // session cleared — wait for the public landing heading instead.
+  await expect(
+    page.getByRole("heading", { name: "Your league, in your pocket." }),
+  ).toBeVisible();
 }
 
 async function createTeam(page: Page, name: string) {
