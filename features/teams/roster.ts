@@ -84,12 +84,29 @@ export function computeRosterCostFromPlayers(race: Race, players: PlayerEntry[])
 }
 
 /**
+ * The roster cost of DRAFTED (non-hired) entries only. A journeyman hire
+ * (RAU-52) pays the lineman cost in cash from the treasury and flags the entry
+ * `hired: true`, so the spendable balance skips it to avoid charging twice;
+ * CTV/wizard math (`computeRosterCostFromPlayers`) still counts every entry.
+ */
+export function computeDraftedRosterCost(race: Race, players: PlayerEntry[]): number {
+  return computeRosterCostFromPlayers(
+    race,
+    players.filter((player) => !player.hired),
+  );
+}
+
+/**
  * The team's CURRENT spendable gold: the drafting budget plus accumulated
- * winnings (`Team.treasury`), minus the current roster and coaching costs.
+ * winnings (`Team.treasury`), minus the current DRAFTED roster and coaching
+ * costs.
  *
- * Hiring lowers the balance automatically via the `rosterCost` growth (the
- * treasury is never touched). Firing decrements the DB treasury by the fired
- * player's cost (BB2025: no refund), so this formula stays flat across a fire.
+ * A RAU-11 hire lowers the balance automatically via the `rosterCost` growth
+ * (the treasury is never touched). A journeyman hire (RAU-52) is paid IN CASH
+ * from the treasury and flags the entry `hired: true` — the flag stops the
+ * formula from counting that entry's cost AGAIN, so the balance drops exactly
+ * once. Firing decrements the DB treasury by the fired player's cost (BB2025:
+ * no refund), so this formula stays flat across a fire of a drafted player.
  */
 export function computeSpendableBalance(
   team: Pick<Team, "treasury" | "roster" | "coaching">,
@@ -98,7 +115,7 @@ export function computeSpendableBalance(
   return (
     STARTING_TREASURY +
     team.treasury -
-    computeRosterCostFromPlayers(race, team.roster) -
+    computeDraftedRosterCost(race, team.roster) -
     computeCoachingCost(race, team.coaching)
   );
 }

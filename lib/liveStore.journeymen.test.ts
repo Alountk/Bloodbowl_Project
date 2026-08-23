@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { hireJourneymanLiveMatch, type StoreDeps } from "./liveStore";
+import { getRaceById } from "@/features/teams/data/races";
+import { computeSpendableBalance } from "@/features/teams/roster";
 
 /**
  * RAU-14 hire-command store tests: the post-resolve journeyman (Novato)
@@ -119,7 +121,7 @@ describe("hireJourneymanLiveMatch — HIRE", () => {
     expect(teamCall.data.treasury).toEqual({ decrement: 50_000 });
     const nextRoster = teamCall.data.roster;
     expect(nextRoster).toHaveLength(12);
-    expect(nextRoster[11]).toMatchObject({ name: "Aldric Martillo", positionalKey: "lineman" });
+    expect(nextRoster[11]).toMatchObject({ name: "Aldric Martillo", positionalKey: "lineman", hired: true });
     const newRosterId = nextRoster[11].id;
     expect(typeof newRosterId).toBe("string");
     // The list removal + seq bump ride the SAME transaction as the team write.
@@ -149,6 +151,33 @@ describe("hireJourneymanLiveMatch — HIRE", () => {
         attributeIncreases: {},
       },
     });
+  });
+
+  it("a hire drops the spendable balance by the lineman cost ONCE (hired flag skips the roster recount)", async () => {
+    const { deps, teamUpdate } = makeDeps();
+    const race = getRaceById("human")!;
+    // 11 drafted linemen (550k) + 2 rerolls (100k) + 500k treasury.
+    const before = computeSpendableBalance(
+      { treasury: 500_000, roster: linemanRoster(11), coaching: COACHING },
+      race,
+    );
+
+    const result = await hireJourneymanLiveMatch(
+      { fixtureId: "f-1", teamId: "home-t", side: "home", journeymanId: "journeyman-home-t-1", hire: true, now: 1000 },
+      deps,
+    );
+
+    // The appended entry is flagged `hired: true` so the spendable formula
+    // does NOT count its cost again on top of the treasury decrement.
+    const teamCall = teamUpdate.mock.calls[0][0];
+    expect(teamCall.data.roster[11]).toMatchObject({ positionalKey: "lineman", hired: true });
+    // Treasury 450k, roster 12 (1 hired) → balance drops by exactly 50 000,
+    // never by the double-charged 100 000.
+    const after = computeSpendableBalance(
+      { treasury: result.team.treasury, roster: result.team.roster, coaching: COACHING },
+      race,
+    );
+    expect(after).toBe(before - 50_000);
   });
 
   it("a hire with no earned PE in the snapshot still creates a fresh 0-PE row with no injuries", async () => {

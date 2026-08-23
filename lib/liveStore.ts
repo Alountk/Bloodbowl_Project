@@ -1792,10 +1792,12 @@ export interface HireJourneymanInput {
  *
  * Effect in ONE transaction: the journeyman is removed from
  * `LiveMatch.journeymen`; a hire ALSO appends a `PlayerEntry { id: createId(),
- * name: <the persisted journeyman name>, positionalKey: <race Lineman key> }`
- * to the roster, decrements the treasury by the lineman cost, and creates the
- * matching Player row with the match's earned PE + injuries. Returns the
- * remaining journeymen + the updated team surface.
+ * name: <the persisted journeyman name>, positionalKey: <race Lineman key>,
+ * hired: true }` to the roster, decrements the treasury by the lineman cost,
+ * and creates the matching Player row with the match's earned PE + injuries.
+ * The `hired` flag stops the spendable balance from counting the entry's cost
+ * a SECOND time (the treasury decrement is the single cash charge). Returns
+ * the remaining journeymen + the updated team surface.
  */
 export async function hireJourneymanLiveMatch(
   input: HireJourneymanInput,
@@ -1881,7 +1883,10 @@ export async function hireJourneymanLiveMatch(
     const nextRosterId = createId();
     const nextRoster: PlayerEntry[] = [
       ...roster,
-      { id: nextRosterId, name: entry.name, positionalKey: lineman.key },
+      // RAU-52 single charge: the entry is flagged `hired: true` so the
+      // spendable balance does NOT count this cost again — the treasury
+      // decrement below is the ONLY charge for the hire.
+      { id: nextRosterId, name: entry.name, positionalKey: lineman.key, hired: true },
     ];
     const updated = await tx.liveMatch.updateMany({
       where: { id: row.id, seq: row.seq },
