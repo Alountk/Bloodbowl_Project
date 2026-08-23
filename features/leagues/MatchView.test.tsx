@@ -416,7 +416,7 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
@@ -479,7 +479,7 @@ function finishedLiveDetail(): MatchDetail {
       finishedAt: 5000,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
@@ -911,7 +911,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
     stubMatch(detail);
@@ -944,7 +944,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
     stubMatch(detail);
@@ -976,7 +976,7 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       finishedAt: null,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
     const fetchMock = vi.fn((url: string) =>
@@ -1749,7 +1749,7 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
       finishedAt: 9000,
       concedeProposedBy: null,
       pendingCasualty: null,
-    mvpNominations: { home: null, away: null },
+    mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
         { seq: 6, kind: "concede", side: "home", playerRosterId: null, half: 1, turnNumber: 3, payload: { winnerSide: "away" }, at: 9000 },

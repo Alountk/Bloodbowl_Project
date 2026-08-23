@@ -597,10 +597,32 @@ export interface LiveMatchViewState {
     roll16: number;
     roll6?: number;
   } | null;
-  /** RAU-51: the persisted per-side MJP nominations (null per side = that coach
-   * has not nominated yet) — the resolution modal renders the per-coach pickers
-   * and gates the server roll on BOTH sides. */
-  mvpNominations: { home: string[] | null; away: string[] | null };
+/** RAU-51: the persisted per-side MJP nominations (null per side = that coach
+ * has not nominated yet) — the resolution modal renders the per-coach pickers
+ * and gates the server roll on BOTH sides. */
+mvpNominations: { home: string[] | null; away: string[] | null };
+/** The per-side resolution wizard cursor — the modal resumes at the persisted
+ * step after a close/refresh (defaults to "winnings" while never started). */
+resolutionState: ResolutionState;
+}
+
+/** The per-side resolution wizard step cursor (see the store's `ResolutionState`
+ * for the full contract). The modal advances the side through the steps and
+ * resumes at the persisted step after a close/refresh. */
+export interface ResolutionSideState {
+  step: "winnings" | "fans" | "mvp" | "mvp-done" | "casualties" | "journeymen" | "done";
+  fansDone: boolean;
+  fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } | null;
+  mvpConfirmed: boolean;
+  mvpRolled: boolean;
+  casualtiesDone: boolean;
+  journeymenDone: boolean;
+}
+
+/** The persisted per-side resolution state exposed by the fixture GET. */
+export interface ResolutionState {
+  home: ResolutionSideState;
+  away: ResolutionSideState;
 }
 
 /** A chronological live event delivered by the hub (LM-6). */

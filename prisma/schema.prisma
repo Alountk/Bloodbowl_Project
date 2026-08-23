@@ -210,6 +210,14 @@ model LiveMatch {
   /// ROLLED result. Additive JSON, never re-typed; null until the first side
   /// nominates.
   mvpNominations    Json?
+  /// The PER-SIDE end-of-match resolution wizard cursor (`{ home: { step,
+  /// fansDone, fans, mvpConfirmed, mvpRolled, casualtiesDone, journeymenDone },
+  /// away: {...} }`). Each coach advances THEIR OWN side independently through
+  /// the 5 steps (ganancias/mantenimiento → fans → MVP → reveal+bajas →
+  /// novatos); a refresh resumes at the persisted step. Only the MVP reveal
+  /// waits for BOTH sides; the match closes when BOTH sides reach "done".
+  /// Additive JSON, never re-typed; null until the wizard's first action.
+  resolutionState    Json?
   /// RAU-14: the journeymen (Novatos) fielded at begin, persisted so the
   /// post-resolve HIRE flow can reference them (`{ home: [{ id, name }],
   /// away: [{ id, name }] }` — each journeyman's synthetic id + deterministic

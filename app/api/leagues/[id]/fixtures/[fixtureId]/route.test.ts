@@ -401,27 +401,34 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
         awayScore: 0,
         paused: false,
         clockStartedAt: new Date("2026-03-01T20:00:10").getTime(),
-        finishedAt: null,
-        concedeProposedBy: null,
-        pendingCasualty: null,
-        mvpNominations: { home: null, away: null },
-        events: [],
+      finishedAt: null,
+      concedeProposedBy: null,
+      pendingCasualty: null,
+      mvpNominations: { home: null, away: null },
+      resolutionState: {
+        home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+        away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
       },
-      now,
-      { viewerSide: "home" },
-    );
-    // Both serializers derive the same unified-clock field set (no drift).
-    expect(liveDto.homeTurnMs).toBe(stateView.homeTurnMs);
-    expect(liveDto.awayTurnMs).toBe(stateView.awayTurnMs);
-    expect(liveDto.elapsed).toBe(stateView.elapsed);
-    expect(liveDto.homeConsented).toBe(stateView.homeConsented);
-    expect(liveDto.awayConsented).toBe(stateView.awayConsented);
-    expect(liveDto.startedAt).toBe(stateView.startedAt);
-    expect(liveDto.viewerSide).toBe(stateView.viewerSide);
-    expect(liveDto.paused).toBe(stateView.paused);
-    // RAU-51: the per-side nominations surface on BOTH serializers identically.
-    expect(liveDto.mvpNominations).toEqual(stateView.mvpNominations);
-  });
+      events: [],
+    },
+    now,
+    { viewerSide: "home" },
+  );
+  // Both serializers derive the same unified-clock field set (no drift).
+  expect(liveDto.homeTurnMs).toBe(stateView.homeTurnMs);
+  expect(liveDto.awayTurnMs).toBe(stateView.awayTurnMs);
+  expect(liveDto.elapsed).toBe(stateView.elapsed);
+  expect(liveDto.homeConsented).toBe(stateView.homeConsented);
+  expect(liveDto.awayConsented).toBe(stateView.awayConsented);
+  expect(liveDto.startedAt).toBe(stateView.startedAt);
+  expect(liveDto.viewerSide).toBe(stateView.viewerSide);
+  expect(liveDto.paused).toBe(stateView.paused);
+  // RAU-51: the per-side nominations surface on BOTH serializers identically.
+  expect(liveDto.mvpNominations).toEqual(stateView.mvpNominations);
+  // The per-side resolution wizard cursor surfaces identically on BOTH
+  // serializers (resume-at-step parity).
+  expect(liveDto.resolutionState).toEqual(stateView.resolutionState);
+});
 
   it("returns 200 for a member-team owner (not league owner)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } }); // home team owner, league member

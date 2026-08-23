@@ -107,6 +107,9 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
       home: ["h1", "h2", "h3", "h4", "h5", "h6"],
       away: ["a1", "a2", "a3", "a4", "a5", "a6"],
     },
+    // The per-side resolution wizard cursor (null = never ran; the legacy
+    // resolve path then falls back to fresh rolls as before).
+    resolutionState: null,
     // RAU-14: the default finished row fields no journeymen.
     journeymen: null,
     createdAt: new Date(0),

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { deriveLiveClock, isDisplayEvent, parseMvpNominations } from "@/lib/liveMatch";
+import { deriveLiveClock, isDisplayEvent, parseMvpNominations, parseResolutionState } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 import {
   mergeRosterWithJourneymen,
@@ -51,6 +51,29 @@ export interface LiveDto {
    * has not nominated yet) — the resolution modal renders its per-coach pickers
    * and gates the server roll on BOTH sides. */
   mvpNominations: { home: string[] | null; away: string[] | null };
+  /** The per-side resolution wizard cursor (`{ home: { step, ... }, away: { step,
+   * ... } }`) — the modal resumes at the persisted step after a close/refresh.
+   * Defaults to the empty state (step "winnings") while the wizard never ran. */
+  resolutionState: {
+    home: {
+      step: string;
+      fansDone: boolean;
+      fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } | null;
+      mvpConfirmed: boolean;
+      mvpRolled: boolean;
+      casualtiesDone: boolean;
+      journeymenDone: boolean;
+    };
+    away: {
+      step: string;
+      fansDone: boolean;
+      fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } | null;
+      mvpConfirmed: boolean;
+      mvpRolled: boolean;
+      casualtiesDone: boolean;
+      journeymenDone: boolean;
+    };
+  };
   /** RAU-14: the persisted per-side journeymen (`{ home: [{ id, name }], away:
    * [{ id, name }] }`) — exposed even for a FINISHED/resolved match so the
    * post-resolve HIRE flow can reference them; null when the row has none. */
@@ -83,6 +106,8 @@ interface LiveMatchRow {
   pendingCasualty: unknown;
   /** RAU-51: the persisted per-side MJP nominations JSON (null = none yet). */
   mvpNominations: unknown;
+  /** The persisted per-side resolution wizard cursor JSON (null = never ran). */
+  resolutionState: unknown;
   /** RAU-14: the persisted per-side journeymen JSON (null until the match begins). */
   journeymen: unknown;
   /** RAU-44: the persisted per-team live winnings JSON (`{ home, away }`),
@@ -145,6 +170,9 @@ export function serializeLive(
         ? (row.pendingCasualty as Record<string, unknown>)
         : null,
     mvpNominations: parseMvpNominations(row.mvpNominations),
+    // The per-side resolution wizard cursor — the modal resumes at the persisted
+    // step after a close/refresh (defaults to "winnings" while never started).
+    resolutionState: parseResolutionState(row.resolutionState),
     // RAU-14: the persisted journeymen ride the live DTO even once the match is
     // finished/resolved (the post-resolve hire flow reads them off `live`).
     journeymen: parsePersistedJourneymen(row.journeymen),

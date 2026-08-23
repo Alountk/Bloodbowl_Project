@@ -15,6 +15,8 @@ import {
   toLiveViewState,
   deriveLiveClock,
   isDisplayEvent,
+  parseResolutionState,
+  EMPTY_RESOLUTION_STATE,
   type LiveMatchState,
   type LiveMatchTransitionEvent,
   type PendingCasualty,
@@ -47,6 +49,7 @@ function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     concedeProposedBy: null,
     pendingCasualty: null,
     mvpNominations: { home: null, away: null },
+    resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
     ...overrides,
   };
@@ -72,6 +75,7 @@ function pending(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     concedeProposedBy: null,
     pendingCasualty: null,
     mvpNominations: { home: null, away: null },
+    resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
     ...overrides,
   };
@@ -693,5 +697,38 @@ describe("toLiveViewState — unified-clock DTO (LM-5, D19)", () => {
     expect(view.viewerSide).toBe("home");
     expect(view.homeTurnMs).toBe(5100);
     expect(view.awayTurnMs).toBe(3000);
+  });
+
+  it("exposes the per-side resolution wizard state (defaults while unfinished)", () => {
+    const view = toLiveViewState(state({ status: "finished" }), 2000);
+    expect(view.resolutionState).toEqual(EMPTY_RESOLUTION_STATE);
+  });
+});
+
+describe("parseResolutionState — the per-side resolution wizard cursor (additive)", () => {
+  it("collapses null / malformed values to the EMPTY per-side state (never crashes)", () => {
+    expect(parseResolutionState(null)).toEqual(EMPTY_RESOLUTION_STATE);
+    expect(parseResolutionState("junk")).toEqual(EMPTY_RESOLUTION_STATE);
+    expect(parseResolutionState([])).toEqual(EMPTY_RESOLUTION_STATE);
+    expect(parseResolutionState({ home: "x" })).toEqual(EMPTY_RESOLUTION_STATE);
+  });
+
+  it("parses a persisted per-side shape and keeps the recorded progress", () => {
+    const parsed = parseResolutionState({
+      home: { step: "fans", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+      away: { step: "mvp", fansDone: true, fans: { roll: 4, before: 3, after: 4, direction: "up" }, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+    });
+    expect(parsed.home.step).toBe("fans");
+    expect(parsed.away.step).toBe("mvp");
+    expect(parsed.away.fans).toEqual({ roll: 4, before: 3, after: 4, direction: "up" });
+    expect(parsed.home.fans).toBeNull();
+  });
+
+  it("defaults a side whose entry is missing/malformed without crashing the other", () => {
+    const parsed = parseResolutionState({
+      home: { step: "done", fansDone: true, mvpConfirmed: true, mvpRolled: true, casualtiesDone: true, journeymenDone: true },
+    });
+    expect(parsed.home.step).toBe("done");
+    expect(parsed.away).toEqual(EMPTY_RESOLUTION_STATE.away);
   });
 });

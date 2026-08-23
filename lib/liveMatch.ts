@@ -126,6 +126,10 @@ export interface LiveMatchState {
    * has not nominated yet). Not part of the turn lifecycle — carried on the
    * state so the shared DTO exposes it for the per-side resolution modal. */
   mvpNominations: MvpNominations;
+  /** The per-side RESOLUTION WIZARD cursor (see `ResolutionState`) — the
+   * resumable end-of-match step machine. Not part of the turn lifecycle;
+   * carried so the shared DTO exposes it for the modal's resume-at-step. */
+  resolutionState: ResolutionState;
   events: LiveEventRecord[];
 }
 
@@ -178,6 +182,125 @@ export function parseMvpNominations(value: unknown): MvpNominations {
 }
 
 /**
+ * The per-side RESOLUTION WIZARD step cursor (the resumable end-of-match
+ * sequence). Each coach advances their OWN side independently; only the MVP
+ * reveal waits for BOTH sides. Steps in order:
+ *  - "winnings":  the finish-time winnings display (+ the maintenance-cost row
+ *                 placeholder — NOT implemented, shown as 0 with a note).
+ *  - "fans":      the server-owned 1D6 dedicated-fans roll (rulebook p.103).
+ *  - "mvp":       the coach's six checkbox nominations + the SEND + the FINAL
+ *                 confirm ("¿estás seguro?") — after the confirm, no going back.
+ *  - "mvp-done":  the coach's confirm is locked; waits for the rival's.
+ *  - "casualties":the MVP REVEAL (both sides' confirms needed) + the casualty
+ *                 outcomes, visibly applying the roster state (alive /
+ *                 missNextMatch / injuries).
+ *  - "journeymen":the ≥11-healthy check + the fielded Novato hire/let-go step.
+ *  - "done":      the side completed; when BOTH sides are done the match closes.
+ */
+export type ResolutionStep =
+  | "winnings"
+  | "fans"
+  | "mvp"
+  | "mvp-done"
+  | "casualties"
+  | "journeymen"
+  | "done";
+
+/** One side's persisted wizard progress. `fans` is the persisted server-owned
+ * roll once rolled (absent/null until then). Every step action persists the
+ * side's progress server-side, so a refresh resumes at the current step. */
+export interface ResolutionSideState {
+  step: ResolutionStep;
+  fansDone: boolean;
+  /** The persisted server-owned 1D6 fan roll (rulebook p.103) once rolled —
+   * `{ roll, before, after, direction }`. Null until the coach rolls. */
+  fans: { roll: number; before: number; after: number; direction: "up" | "stay" | "down" } | null;
+  mvpConfirmed: boolean;
+  mvpRolled: boolean;
+  casualtiesDone: boolean;
+  journeymenDone: boolean;
+}
+
+/** The persisted per-side resolution state on the LiveMatch row. */
+export interface ResolutionState {
+  home: ResolutionSideState;
+  away: ResolutionSideState;
+}
+
+/** A side that has not started the wizard: step "winnings", nothing done. */
+export function emptyResolutionSide(): ResolutionSideState {
+  return {
+    step: "winnings",
+    fansDone: false,
+    fans: null,
+    mvpConfirmed: false,
+    mvpRolled: false,
+    casualtiesDone: false,
+    journeymenDone: false,
+  };
+}
+
+/** A LiveMatch whose sides have not started the resolution wizard yet. */
+export const EMPTY_RESOLUTION_STATE: ResolutionState = {
+  home: emptyResolutionSide(),
+  away: emptyResolutionSide(),
+};
+
+/**
+ * Defensively parses a persisted `resolutionState` JSON value (additive): a
+ * malformed or legacy shape (missing the wizard) collapses EACH side to the
+ * empty per-side state (never crash). A side with partial progress keeps it.
+ */
+export function parseResolutionState(value: unknown): ResolutionState {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return EMPTY_RESOLUTION_STATE;
+  }
+  const raw = value as Record<string, unknown>;
+  const side = (candidate: unknown): ResolutionSideState => {
+    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+      return emptyResolutionSide();
+    }
+    const s = candidate as Record<string, unknown>;
+    const steps: ResolutionStep[] = [
+      "winnings",
+      "fans",
+      "mvp",
+      "mvp-done",
+      "casualties",
+      "journeymen",
+      "done",
+    ];
+    const step = steps.find((candidateStep) => candidateStep === s.step);
+    const fans = s.fans;
+    const parsedFans: ResolutionSideState["fans"] =
+      typeof fans === "object" &&
+      fans !== null &&
+      !Array.isArray(fans) &&
+      typeof (fans as Record<string, unknown>).roll === "number" &&
+      typeof (fans as Record<string, unknown>).before === "number" &&
+      typeof (fans as Record<string, unknown>).after === "number" &&
+      (["up", "stay", "down"] as const).includes((fans as Record<string, unknown>).direction as never)
+        ? {
+            roll: (fans as Record<string, unknown>).roll as number,
+            before: (fans as Record<string, unknown>).before as number,
+            after: (fans as Record<string, unknown>).after as number,
+            direction: (fans as Record<string, unknown>).direction as "up" | "stay" | "down",
+          }
+        : null;
+    return {
+      step: step ?? "winnings",
+      fansDone: s.fansDone === true,
+      fans: parsedFans,
+      mvpConfirmed: s.mvpConfirmed === true,
+      mvpRolled: s.mvpRolled === true,
+      casualtiesDone: s.casualtiesDone === true,
+      journeymenDone: s.journeymenDone === true,
+    };
+  };
+  return { home: side(raw.home), away: side(raw.away) };
+}
+
+/**
  * DTO for subscribers/snapshot/POST/GET (LM-8, D19). Per-side accumulators and
  * `elapsed` are unified-clock derived; the deprecated per-turn clock fields are
  * gone. `viewerSide` is per-viewer (D19): snapshot / POST response / fixture-GET
@@ -208,6 +331,9 @@ export interface LiveMatchViewState {
    * has not nominated yet). The resolution modal needs it to render the
    * per-coach pickers/status and gate the server roll on BOTH sides. */
   mvpNominations: MvpNominations;
+  /** The per-side resolution wizard cursor — the modal resumes at the persisted
+   * step after a close/refresh (see `ResolutionState`). */
+  resolutionState: ResolutionState;
 }
 
 const TURNS_PER_HALF = 8;
@@ -877,5 +1003,6 @@ export function toLiveViewState(
     concedeProposedBy: state.concedeProposedBy,
     pendingCasualty: state.pendingCasualty,
     mvpNominations: state.mvpNominations,
+    resolutionState: state.resolutionState,
   };
 }
