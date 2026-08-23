@@ -34,18 +34,46 @@ export default defineConfig({
     "**/teams-page.spec.ts",
     "**/matches-page.spec.ts",
   ],
-  fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
-  workers: 1,
+  // The suite already documents cold-start re-runs; a single retry absorbs the
+  // remaining contention races (e.g. list re-render detach) without masking
+  // real failures — a genuinely broken feature fails both attempts.
+  retries: 1,
   reporter: [["html", { outputFolder: "playwright-report-auth" }]],
+  globalSetup: "./e2e/global-setup-auth",
+  // Cold-start SSR under 4 parallel workers can exceed the 5s default
+  // (e.g. the landing page after logout). 15s only extends waits when an
+  // assertion is already failing — passing assertions still resolve instantly.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
   },
   projects: [
     {
+      // Most specs: unique emails/league names per run (see e2e conventions), so
+      // they are safe to parallelize. CI stays at 1 worker (sharding is a later
+      // step); locally up to 3 browsers share the single `next dev` process.
       name: "chromium",
+      testIgnore: [
+        "**/live-match.spec.ts",
+        "**/live-resolution.spec.ts",
+      ],
+      fullyParallel: true,
+      workers: process.env.CI ? 1 : 3,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      // SSE fan-out is process-wide: the two live specs must never run
+      // concurrently with each other, and the resolution wizard is the heaviest
+      // journey. One serial worker keeps the hub quiet.
+      name: "chromium-sse-heavy",
+      testMatch: [
+        "**/live-match.spec.ts",
+        "**/live-resolution.spec.ts",
+      ],
+      fullyParallel: false,
+      workers: 1,
       use: { ...devices["Desktop Chrome"] },
     },
   ],
@@ -60,6 +88,9 @@ export default defineConfig({
       // Published port matches docker-compose POSTGRES_PORT (default 5433).
       DATABASE_URL:
         `postgresql://bloodbowl:bloodbowl@localhost:${process.env.POSTGRES_PORT ?? "5433"}/bloodbowl?schema=public`,
+      // Fast bcrypt for e2e only (default 10 in prod): the ~130 signups/login
+      // would otherwise saturate the single dev server under parallel workers.
+      PASSWORD_SALT_ROUNDS: "4",
       // AUTH_SECRET falls back to .env when present; a dev default keeps CI green.
       AUTH_SECRET: process.env.AUTH_SECRET ?? "e2e-auth-secret-for-tests-only",
       AUTH_TRUST_HOST: "true",

@@ -11,8 +11,17 @@
 /** Minimum password length for both signup and change-password. */
 export const MIN_PASSWORD_LENGTH = 8;
 
-/** bcrypt cost factor used to hash account passwords. */
-export const PASSWORD_SALT_ROUNDS = 10;
+/**
+ * bcrypt cost factor used to hash account passwords.
+ *
+ * Defaults to 10 (production strength). E2E runs set `PASSWORD_SALT_ROUNDS=4`
+ * via the Playwright webServer env so signup/change-password hashing stays fast
+ * across ~130 hashes per suite. Login `compare` reads the cost from the stored
+ * hash, so it adapts automatically; production never sets this env.
+ */
+const envSaltRounds = Number(process.env.PASSWORD_SALT_ROUNDS);
+export const PASSWORD_SALT_ROUNDS =
+  Number.isInteger(envSaltRounds) && envSaltRounds > 0 ? envSaltRounds : 10;
 
 /** Error code for a failed CURRENT-password check (PATCH /api/me/password). */
 export const WRONG_CURRENT_PASSWORD_CODE = "wrong-current-password";
