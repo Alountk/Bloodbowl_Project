@@ -271,6 +271,10 @@ describe("LeagueDetail — STARTED league", () => {
     expect(screen.queryByRole("button", { name: "Expulsar" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Desapuntarse" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Unirse" })).toBeNull();
+
+    // RAU-40 standings render above the jornadas (empty state: no scores yet).
+    expect(screen.getByRole("heading", { name: "Clasificación" })).toBeTruthy();
+    expect(screen.getByText("Aún no hay resultados.")).toBeTruthy();
   });
 
   it("switches rounds via the tabs and shows the completion badge on a complete round", async () => {

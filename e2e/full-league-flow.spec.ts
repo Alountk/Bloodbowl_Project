@@ -541,6 +541,14 @@ test("complete lifecycle: join → start → schedule → result → progression
     await expect(championPanel.getByText("Campeón")).toBeVisible();
     await expect(championPanel.getByText(teamAName)).toBeVisible();
     await expect(championPanel.getByText("Temporada finalizada")).toBeVisible();
+    // RAU-40 standings: the table shows team A (the 2–1 winner) at #1 and the
+    // stored champion row is highlighted in gold.
+    const standings = pageA.getByTestId("standings-table");
+    await expect(standings).toBeVisible();
+    await expect(standings.getByRole("heading", { name: "Clasificación" })).toBeVisible();
+    const championRow = standings.getByTestId("standings-champion-row");
+    await expect(championRow).toBeVisible();
+    await expect(championRow.getByText(teamAName)).toBeVisible();
     // The played card stays visible, but the correction affordance is gone.
     await expect(pageA.getByRole("button", { name: "Corregir resultado" })).toHaveCount(0);
     // A correction PUT is definitively rejected (409) — the champion is final.
