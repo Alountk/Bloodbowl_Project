@@ -54,12 +54,19 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Ganancias al terminar el partido en vivo** (RAU-44): winnings deterministas por equipo persistidos en el cierre y expuestos en el resumen (sin refresco) | directos a main |
 | **Resolución del partido para partidos en vivo finalizados** (RAU-48/49): modal guiado con MVP y FF con previsualización confirmada | directos a main |
 | **i18n ES/EN** (cero dependencias): núcleo con diccionarios, migración de shell, auth, wizard, detalle, ligas y match view; idioma por cuenta | directos a main + #120 |
+| **i18n SSR + default inglés**: el layout resuelve el locale con precedencia cuenta > sesión > cookie > `Accept-Language` > **inglés** (mata el hydration mismatch del landing anónimo); **landing localizado** (hero, features, how-it-works, footer — ya no hardcodeado) | #141, #142 |
 | **MVP por lado** (RAU-51): nominación de MVP en el modal de resolución con comando server-side, rollo y gating | #109 |
 | **Tipos de reglas (rulesets)** (RAU-52/52b): modelo `Ruleset` + `League.rulesetId` + `User.role` con seed "Estándar BB2025"; CRUD dev-only con guard 403; las ligas eligen un ruleset al crearse (badge en cards/detalle); sección dev con wizard de cards/tabs (razas, tesorería, TV cap, mín/máx, gestión) y editor inline con guard de cambios sin guardar | #111, #112, #113 |
 | **Un usuario = un equipo por liga** (RAU-54): segundo join → 409; auditoría de auth (401 sin sesión, redirect de página) | #115 |
 | **Novatos / Journeymen** (RAU-13/14): si hay menos de 11 disponibles, novatos del banco de la raza (nombres deterministas por partido); ganan PE, elegibles a MVP, evento "novato se une" y **fichaje post-resolución** (Contratar con cobro único / Dejar ir) | #116, #115 |
 | **Resolución por lado** (wizard de 5 pasos, resumible): ganancias → aficionados (↑/=/↓, dado 1D6 server-side sobre dedicated fans) → MVP (checkboxes, máx. 6) → bajas → novatos; card persistente "Informar del fin del partido" con el paso actual; **cuando ambos lados terminan, el partido se cierra solo** | #133, #134 |
 | **Turnos correctos** (home T1 → away T1 → home T2) y **★2 solo en el causador** (RAU-47), también en el card de lesión | #133 |
+
+### Calidad y mantenimiento
+| Tema | PR / Cambio |
+|---|---|
+| Limpieza de referencias al servicio externo (38 archivos: docs, código, tests, i18n, archive; terminología neutral/rulebook) | #137 |
+| Suite e2e auth paralelizada: bcrypt cost 4 en tests + 2 proyectos Playwright (chromium paralelo + sse-heavy serial) — 9:18 → 5:06 | #138 |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -82,6 +89,8 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | El turno no avanzaba al empezar una nueva ronda | Avance solo cuando vuelve el starter (home T1 → away T1 → home T2) (#133) |
 | El fichaje de un novato cobraba el coste dos veces | Flag `hired` que evita el recuento de balance (#133) |
 | Mezcla de idiomas (sesión vs cookie) en la navegación | Locale solo por cookie/cuenta + precedencia SSR (#118, #120) |
+| Keys duplicadas de React por víctimas de lesión repetidas en la resolución en vivo | Dedup de `casualtyVictimsFromEvents` por (equipo, jugador) con la banda más severa (#139) |
+| Flaky del locator de live-match (filter ambiguo → strict violation cuando el SSE era rápido) | Locator por víctima + línea del causante, resuelve a una sola card (#140) |
 
 ## Pendiente / Roadmap futuro
 
