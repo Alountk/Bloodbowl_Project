@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { StartLeagueModal } from "./StartLeagueModal";
+import { StandingsTable } from "./StandingsTable";
 import { useLeagueDetail } from "./useLeagueDetail";
 import { MatchCard } from "./MatchCard";
 import { NegotiationPanel } from "./NegotiationPanel";
@@ -226,19 +227,28 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
       ) : null}
 
       {started || finished ? (
-        <Jornadas
-          fixtures={league.fixtures}
-          rounds={league.rounds}
-          teams={league.teams}
-          currentUserId={userId ?? ""}
-          isLeagueOwner={isOwner}
-          leagueFinished={finished}
-          onPropose={propose}
-          onAccept={accept}
-          onForfeit={forfeit}
-          onSubmitResult={submit}
-          onCorrectResult={correct}
-        />
+        <div className="space-y-6">
+          {/* RAU-40 standings: the 3/1/0 table the champion was declared from
+              (read-only summary above the per-round jornadas). */}
+          <StandingsTable
+            teams={league.teams}
+            fixtures={league.fixtures}
+            championTeamId={league.championTeamId}
+          />
+          <Jornadas
+            fixtures={league.fixtures}
+            rounds={league.rounds}
+            teams={league.teams}
+            currentUserId={userId ?? ""}
+            isLeagueOwner={isOwner}
+            leagueFinished={finished}
+            onPropose={propose}
+            onAccept={accept}
+            onForfeit={forfeit}
+            onSubmitResult={submit}
+            onCorrectResult={correct}
+          />
+        </div>
       ) : (
         <div className="space-y-6">
           {/* Anyone who is not yet a member can join with one of their own
