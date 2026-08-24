@@ -2,7 +2,21 @@ export type Locale = "es" | "en";
 
 export type Dict = Record<string, string>;
 
-/** The default locale: Spanish. `useI18n()` falls back to this without a provider. */
+/**
+ * The PRODUCT default: English. Anonymous visitors with no locale signal
+ * (no cookie/session/DB, unknown browser language) get the app in English.
+ * Applied in app/layout.tsx (and the dev rulesets page) as the final fallback
+ * of the SSR locale resolution.
+ */
+export const APP_DEFAULT_LOCALE: Locale = "en";
+
+/**
+ * The BARE-MOUNT fallback: Spanish. Used by `useI18n()` when NO provider is
+ * mounted and by pure helpers when the caller passes no translator/locale —
+ * i.e. standalone mounts and the component-test convention. It is NOT the app
+ * default (that is `APP_DEFAULT_LOCALE`); the app always resolves a concrete
+ * locale in the root layout before rendering.
+ */
 export const DEFAULT_LOCALE: Locale = "es";
 
 const es: Dict = {

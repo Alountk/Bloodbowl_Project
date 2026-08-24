@@ -61,14 +61,14 @@ describe("DevRulesetsPage 403 panel (RAU-59 server-side i18n)", () => {
     expect(screen.getByRole("heading", { name: "Restricted access" })).toBeTruthy();
   });
 
-  it("defaults to Spanish when nothing is set (anonymous/local mode)", async () => {
+  it("defaults to English when nothing is set (anonymous/local mode)", async () => {
     authMock.mockResolvedValue(null);
     prismaMock.user.findUnique.mockResolvedValue(null);
 
     render(await Page());
 
-    expect(screen.getByRole("heading", { name: "Acceso restringido" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Volver al inicio" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Restricted access" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back to home" })).toBeTruthy();
   });
 });
 

@@ -144,15 +144,15 @@ test.describe("signed-in: the selector persists to the account", () => {
 test.describe("anonymous: the cookie drives the locale", () => {
   test.use({ locale: "fr-FR" });
 
-  test("no account → the bb-locale cookie selects es/en on the landing", async ({
+  test("no account → English is the default when no cookie is set; the bb-locale cookie then selects es/en", async ({
     page,
   }) => {
-    // A non-English browser (fr) → Spanish is the default when no cookie is set.
+    // A non-English browser (fr) → English is the product default when no cookie is set.
     await page.goto("/");
     const switcher = page
       .locator("header")
       .getByRole("group", { name: /Idioma|Language/ });
-    await expect(switcher).toHaveAttribute("aria-label", "Idioma");
+    await expect(switcher).toHaveAttribute("aria-label", "Language");
 
     await setLocaleCookie(page, "en");
     await page.reload();

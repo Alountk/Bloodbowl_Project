@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_LOCALE, t } from "@/lib/i18n/dictionaries";
+import { APP_DEFAULT_LOCALE, t } from "@/lib/i18n/dictionaries";
 import { resolveServerLocale } from "@/lib/i18n/serverLocale";
 import { RulesetManager } from "@/features/rulesets/RulesetManager";
 
@@ -33,7 +33,7 @@ export default async function DevRulesetsPage() {
         cookieLocale: cookieStore.get("bb-locale")?.value,
         sessionLocale: session?.user?.locale ?? null,
         dbLocale: user?.locale ?? null,
-      }) ?? DEFAULT_LOCALE;
+      }) ?? APP_DEFAULT_LOCALE;
 
     return (
       <section className="border border-slate-200 bg-white p-8 text-center">
