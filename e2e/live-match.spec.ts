@@ -530,9 +530,15 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(homeCoach.getByRole("dialog", { name: /Baja registrada por el rival/i })).toHaveCount(0);
     // The ONE casualty event renders the injury card on the victim's (home) side
     // with the MVT-5 causer line AND the derived action card on the causer's
-    // (away) side — both feeds converge via the hub.
+    // (away) side — both feeds converge via the hub. The victim name alone is
+    // ambiguous (the earlier self-inflicted card [A1] carries the same name), so
+    // the injury card is matched by victim + causer line: the A1 card has NO
+    // "por …" line and the action card is not on this page's injury shape.
     await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName }),
+      homeCoach
+        .getByTestId("live-event-row")
+        .filter({ hasText: homeScorerName })
+        .filter({ hasText: `por ${awayScorerName}` }),
     ).toBeVisible();
     await expect(
       homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }),
