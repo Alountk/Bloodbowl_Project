@@ -61,6 +61,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Novatos / Journeymen** (RAU-13/14): si hay menos de 11 disponibles, novatos del banco de la raza (nombres deterministas por partido); ganan PE, elegibles a MVP, evento "novato se une" y **fichaje post-resolución** (Contratar con cobro único / Dejar ir) | #116, #115 |
 | **Resolución por lado** (wizard de 5 pasos, resumible): ganancias → aficionados (↑/=/↓, dado 1D6 server-side sobre dedicated fans) → MVP (checkboxes, máx. 6) → bajas → novatos; card persistente "Informar del fin del partido" con el paso actual; **cuando ambos lados terminan, el partido se cierra solo** | #133, #134 |
 | **Turnos correctos** (home T1 → away T1 → home T2) y **★2 solo en el causador** (RAU-47), también en el card de lesión | #133 |
+| **Tabla de posiciones (standings UI)** (RAU-40): la tabla 3/1/0 con la cadena de desempates aprobada (puntos → diff TD → TDs a favor → head-to-head → id) ahora se muestra en el detalle de liga sobre las jornadas, con la fila del campeón en dorado; usa el MISMO `computeStandings` puro que decide el campeón server-side | #144 |
 
 ### Calidad y mantenimiento
 | Tema | PR / Cambio |
@@ -98,7 +99,6 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Feature | Notas |
 |---|---|
 | **Histórico completo con replay / taxonomía amplia** | El modo en vivo (SSE, turnos, relojes, timeline), kickoff (#100–#102) y la resolución por lado (#133/#134) ya están en Completado; lo que queda es replay de partidos, taxonomía completa de eventos (intercepciones, skills, clima, resto de la tabla de kickoff), filtros y visualización pública. |
-| **Tabla de posiciones / standings completa** | Las standings 3/1/0 con desempates ya existen y deciden el campeón (RAU-40), pero **no tienen UI**: falta mostrar la tabla por jornada en el detalle de liga. |
 | **Crear equipo al apuntarse a una liga** | Hoy hay que crear el equipo antes y unirse con él; falta poder crear el equipo desde la inscripción con el **ruleset de la liga aplicado** (razas permitidas, tesorería, mín/máx). |
 | **Historial en My Profile** | El perfil muestra estadísticas de carrera (RAU-57); falta el historial de temporadas y equipos pasados. |
 | **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
