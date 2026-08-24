@@ -41,10 +41,11 @@ export default defineConfig({
   retries: 1,
   reporter: [["html", { outputFolder: "playwright-report-auth" }]],
   globalSetup: "./e2e/global-setup-auth",
-  // Cold-start SSR under 4 parallel workers can exceed the 5s default
-  // (e.g. the landing page after logout). 15s only extends waits when an
-  // assertion is already failing — passing assertions still resolve instantly.
-  expect: { timeout: 15_000 },
+  // The cold-start signOut POST under 4 parallel workers can exceed 15s (dev
+  // server compiles the Auth.js surface on first use). 30s only extends waits
+  // when an assertion is already failing — passing assertions still resolve
+  // instantly. The globalSetup warm-up removes the root cause.
+  expect: { timeout: 30_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
