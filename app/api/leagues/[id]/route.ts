@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { rulesetToDto } from "@/lib/rulesets";
 import type { FixtureLiveLite, FixtureStatus } from "@/features/leagues/api";
 
 /** The scheduling/result fields a fixture derives its lifecycle status from. */
@@ -160,8 +161,10 @@ export async function GET(
     where: { id },
     include: {
       owner: { select: { id: true, email: true, name: true } },
-      // RAU-52: the league's chosen ruleset (name only — badge on the detail hero).
-      ruleset: { select: { id: true, name: true } },
+      // RAU-52/56: the league's FULL ruleset — the badge uses the name, and the
+      // create-team-on-join wizard needs races/treasury/min-max/TV cap to
+      // preconfigure the form (the server still enforces them on POST).
+      ruleset: true,
       teams: {
         where: { archivedAt: null },
         orderBy: { createdAt: "asc" },
@@ -202,6 +205,7 @@ export async function GET(
     status: rest.status,
     ownerName: owner?.name ?? owner?.email ?? null,
     rulesetName: ruleset?.name ?? null,
+    ruleset: ruleset ? rulesetToDto(ruleset) : null,
     fixtures: fixtures.map((fixture) => enrichFixture(fixture as FixtureWithMatchday)),
     rounds: buildRoundsWithCompletion(fixtures as never),
   });

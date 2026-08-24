@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { AppProvider } from "@/app/providers/AppProvider";
+import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { LeagueDetail } from "./LeagueDetail";
+
+// The create-team-on-join modal hosts CreateTeamForm, which uses the router.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/",
+}));
 
 /**
  * The detail is role- and status-aware:
@@ -243,6 +251,48 @@ describe("LeagueDetail — foreign non-member of an open league (public join)", 
     render(<LeagueDetail leagueId="l2" />);
 
     await waitFor(() => expect(screen.getByText(/Crea un equipo para unirte/)).toBeTruthy());
+  });
+
+  it("opens the create-team-on-join modal with the league ruleset (RAU-56)", async () => {
+    makeFetch({
+      ...foreignOpenLeague,
+      ruleset: {
+        id: "r1",
+        name: "Estándar BB2025",
+        description: null,
+        races: ["orc", "skaven"],
+        startingTreasury: 1_200_000,
+        tvCap: null,
+        minPlayers: 11,
+        maxPlayers: 16,
+        hireFire: "between-jornadas",
+        seasonReform: true,
+        mercenaries: false,
+        active: true,
+        createdAt: "2026-01-01",
+        updatedAt: "2026-01-01",
+      },
+    });
+    // The modal hosts CreateTeamForm, which requires the app store provider.
+    render(
+      <AppProvider store={new InMemoryTeamStore()}>
+        <LeagueDetail leagueId="l2" />
+      </AppProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText("Unirse")).toBeTruthy());
+
+    // The create button is the RAU-56 path; clicking opens the modal with the
+    // ruleset hint and the wizard filtered to the ruleset's races.
+    fireEvent.click(screen.getByRole("button", { name: "Crear equipo para esta liga" }));
+    const dialog = screen.getByRole("dialog", { name: "Nuevo equipo de liga" });
+    expect(within(dialog).getByText(/El equipo se crea con las reglas de la liga/)).toBeTruthy();
+
+    const select = within(dialog).getByRole("combobox") as HTMLSelectElement;
+    const options = Array.from(select.options).map((option) => option.value);
+    expect(options).toContain("orc");
+    expect(options).toContain("skaven");
+    expect(options).not.toContain("human");
   });
 });
 

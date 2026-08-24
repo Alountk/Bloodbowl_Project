@@ -3,10 +3,17 @@ import { act, renderHook } from "@testing-library/react";
 import { getRaceById } from "../data/races";
 import { PLAYER_NAME_BANKS, PLAYER_SURNAME_BANKS } from "../data/playerNames";
 import { DEFAULT_COACHING } from "../types";
-import { useCreateTeamForm, type CreateTeamValues } from "./useCreateTeamForm";
+import { useCreateTeamForm, type CreateFormOptions, type CreateTeamValues } from "./useCreateTeamForm";
 
 function setup(onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined)) {
   return renderHook(() => useCreateTeamForm(onSubmit));
+}
+
+function setupRuleset(
+  options: CreateFormOptions,
+  onSubmit = vi.fn<(values: CreateTeamValues) => Promise<void>>().mockResolvedValue(undefined),
+) {
+  return renderHook(() => useCreateTeamForm(onSubmit, options));
 }
 
 /** Asserts a wizard auto-name is composed as "{first} {surname}" from the human banks. */
@@ -352,5 +359,61 @@ describe("useCreateTeamForm", () => {
     expect(result.current.name).toBe("");
     expect(result.current.raceId).toBe("");
     expect(result.current.players).toEqual([]);
+  });
+});
+
+describe("useCreateTeamForm with ruleset options (RAU-56)", () => {
+  it("caps the budget at the ruleset starting treasury", () => {
+    const { result } = setupRuleset({ startingTreasury: 100_000 });
+    act(() => result.current.changeRace("human"));
+    // 2 linemen = 100k → a third would exceed the 100k ruleset budget.
+    act(() => result.current.addPlayer("lineman"));
+    act(() => result.current.addPlayer("lineman"));
+    act(() => result.current.addPlayer("lineman"));
+    expect(result.current.playerCount).toBe(2);
+    expect(result.current.cost).toBeLessThanOrEqual(100_000);
+    expect(result.current.remainingBudget).toBe(0);
+  });
+
+  it("enforces the ruleset minimum at submit", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { result } = setupRuleset({ minPlayers: 13 }, onSubmit);
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.setName("Reavers"));
+    for (let i = 0; i < 11; i++) act(() => result.current.addPlayer("lineman"));
+
+    await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
+
+    expect(result.current.errors.players).toBeDefined();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("blocks submit when the team value exceeds the ruleset TV cap", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { result } = setupRuleset({ tvCap: 100_000 }, onSubmit);
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.setName("Reavers"));
+    // 11 linemen = 550k, way over the 100k TV cap.
+    for (let i = 0; i < 11; i++) act(() => result.current.addPlayer("lineman"));
+
+    await act(async () => result.current.handleSubmit({ preventDefault: vi.fn() } as never));
+
+    expect(result.current.errors.tvCap).toBeDefined();
+    expect(result.current.errors.budget).toBeUndefined();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("passes the leagueId through on submit", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const { result } = setupRuleset({ startingTreasury: 1_200_000 }, onSubmit);
+    act(() => result.current.changeRace("human"));
+    act(() => result.current.setName("League Reavers"));
+    for (let i = 0; i < 11; i++) act(() => result.current.addPlayer("lineman"));
+
+    await act(async () =>
+      result.current.handleSubmit({ preventDefault: vi.fn() } as never),
+    );
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });

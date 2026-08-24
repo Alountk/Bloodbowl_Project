@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { AppProvider, useApp } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
+import type { RulesetDto } from "@/lib/rulesets";
 import { RACES } from "@/features/teams/data/races";
 import { PLAYER_NAME_BANKS, PLAYER_SURNAME_BANKS } from "@/features/teams/data/playerNames";
 import { TEAM_NAME_BANKS } from "@/features/teams/data/teamNames";
@@ -19,12 +20,12 @@ function expectComposedHumanName(name: string) {
   expect(PLAYER_SURNAME_BANKS.human).toContain(rest.join(" "));
 }
 
-describe("CreateTeamForm", () => {
   function HydrationProbe() {
     const { isHydrated } = useApp();
     return <span data-testid="hydration-status">{isHydrated ? "hydrated" : "loading"}</span>;
   }
 
+describe("CreateTeamForm", () => {
   async function renderForm() {
     await act(async () => {
       render(
@@ -278,5 +279,65 @@ describe("CreateTeamForm", () => {
     expect(within(region).queryByText("50k gc · 50k", { selector: "span" })).toBeNull();
     fireEvent.click(apothecary);
     expect(within(region).getByText("50k gc · 50k", { selector: "span" })).toBeTruthy();
+  });
+});
+
+describe("CreateTeamForm with a league ruleset (RAU-56)", () => {
+  function ruleset(overrides: Partial<RulesetDto> = {}): RulesetDto {
+    return {
+      id: "r1",
+      name: "Estándar BB2025",
+      description: null,
+      races: ["orc", "skaven"],
+      startingTreasury: 1_200_000,
+      tvCap: null,
+      minPlayers: 11,
+      maxPlayers: 16,
+      hireFire: "between-jornadas",
+      seasonReform: true,
+      mercenaries: false,
+      active: true,
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-01",
+      ...overrides,
+    };
+  }
+
+  async function renderFormWithRuleset() {
+    await act(async () => {
+      render(
+        <AppProvider store={new InMemoryTeamStore()}>
+          <HydrationProbe />
+          <CreateTeamForm ruleset={ruleset()} leagueId="l1" />
+        </AppProvider>,
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("hydration-status").textContent).toBe("hydrated");
+    });
+  }
+
+  it("filters the race select to the ruleset's allowed races and shows the ruleset hint", async () => {
+    await renderFormWithRuleset();
+
+    // The ruleset hint names the league rules.
+    expect(screen.getByText("Reglas de la liga: Estándar BB2025")).toBeTruthy();
+
+    const select = screen.getByLabelText(/raza/i) as HTMLSelectElement;
+    const options = Array.from(select.options).map((option) => option.value);
+    // Allowed races are present; disallowed races are absent.
+    expect(options).toContain("orc");
+    expect(options).toContain("skaven");
+    expect(options).not.toContain("human");
+    expect(options).not.toContain("dwarf");
+  });
+
+  it("blocks a disallowed race even when a race is otherwise available", async () => {
+    await renderFormWithRuleset();
+
+    const select = screen.getByLabelText(/raza/i) as HTMLSelectElement;
+    const humanOption = Array.from(select.options).find((option) => option.value === "human");
+    expect(humanOption).toBeUndefined();
   });
 });

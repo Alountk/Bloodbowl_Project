@@ -285,6 +285,10 @@ model Team {
   league       League?   @relation("LeagueMembers", fields: [leagueId], references: [id], onDelete: SetNull)
   /// Post-match winnings balance in gold coins (0 until the first result loads).
   treasury     Int       @default(0)
+  /// RAU-56: the treasury base the team was created with (1M default, or the
+  /// league ruleset's `startingTreasury` when the team was created joining a
+  /// league). The spendable balance is `startingTreasury + treasury - costs`.
+  startingTreasury Int   @default(1000000)
   homeFixtures Fixture[] @relation("FixtureHomeTeam")
   awayFixtures Fixture[] @relation("FixtureAwayTeam")
   wonFixtures  Fixture[] @relation("FixtureWinner")

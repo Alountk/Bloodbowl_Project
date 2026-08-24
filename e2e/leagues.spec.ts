@@ -319,3 +319,52 @@ test("one user = one team per league: a second join by the same owner is 409, an
   await ctxB.close();
 });
 
+
+test("creates a team when joining a league (RAU-56, ruleset applied)", async ({ page }) => {
+  const email = uniqueEmail();
+  const password = "password-123";
+  await signup(page, email, password);
+
+  // A league created with the seeded "Estándar BB2025" ruleset (all races,
+  // 1M treasury, 11–16 players) so the wizard assertions are deterministic.
+  const leagueName = `Liga Create-Join ${Date.now()}`;
+  await page.goto("/leagues");
+  await expect(page.getByRole("heading", { level: 1, name: "Mis Ligas" })).toBeVisible();
+  await page.getByRole("button", { name: "+ Nueva liga" }).first().click();
+  await page.getByLabel("Nombre").fill(leagueName);
+  await page.getByLabel("Tipo de reglas").selectOption({ label: "Estándar BB2025" });
+  await page.getByRole("button", { name: "Crear liga" }).click();
+  await expect(page.getByText(leagueName)).toBeVisible();
+
+  // Open the league detail — the user has NO teams yet, so the join select is
+  // replaced by the create-team-on-join path.
+  await page
+    .locator("li")
+    .filter({ hasText: leagueName })
+    .getByRole("link", { name: "Ver", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unirse" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Crear equipo para esta liga" }),
+  ).toBeVisible();
+
+  // Open the modal and draft a Human team under the league ruleset.
+  await page.getByRole("button", { name: "Crear equipo para esta liga" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nuevo equipo de liga" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/Reglas de la liga: Estándar BB2025/)).toBeVisible();
+
+  await dialog.getByLabel("Nombre del equipo").fill("Join Born");
+  await dialog.getByLabel("Raza").selectOption("human");
+  await dialog.getByRole("button", { name: "Siguiente →" }).click();
+  const addLineman = dialog.getByRole("button", { name: "Añadir Human Lineman" }).first();
+  for (let i = 0; i < 11; i++) await addLineman.click();
+  await dialog.getByRole("button", { name: /crear equipo/i }).click();
+
+  // Success: the modal closes, the detail refreshes and the new team is a member.
+  await expect(page.getByRole("dialog", { name: "Nuevo equipo de liga" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
+  await expect(page.locator("li").filter({ hasText: "Join Born" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Crear equipo para esta liga" })).toHaveCount(0);
+});

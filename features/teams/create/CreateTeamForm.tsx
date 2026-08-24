@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { useApp } from "@/app/providers/AppProvider";
+import type { RulesetDto } from "@/lib/rulesets";
 import { RACES } from "../data/races";
 import { randomTeamName } from "../data/teamNames";
 import {
@@ -64,27 +65,53 @@ const COACHING_LABELS: Record<string, string> = {
   cheerleaders: "coaching.cheerleaders",
 };
 
-export function CreateTeamForm() {
+export interface CreateTeamFormProps {
+  /** RAU-56: the league ruleset governing this team — filters the race select
+   * and overrides the treasury budget / min-max bounds / TV cap. Absent = the
+   * rulebook defaults (standalone pickup team). */
+  ruleset?: RulesetDto | null;
+  /** RAU-56: when set, the team is created already assigned to this league
+   * (the server enforces the ruleset) and success navigates to its detail. */
+  leagueId?: string;
+  /** Optional success hook (e.g. a hosting modal closes + refreshes). Called
+   * AFTER the team persisted, before the navigation. */
+  onCreated?: () => void;
+}
+
+export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTeamFormProps = {}) {
   const { addTeam } = useApp();
   const router = useRouter();
   const { t } = useI18n();
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const form = useCreateTeamForm(async (values) => {
-    try {
-      await addTeam(values);
-      setSaveError(null);
-      router.push("/");
-    } catch {
-      // Persistence failed (e.g. API down / 401): stay on the form so the user
-      // can retry instead of silently losing the team.
-      setSaveError(t("create.saveError"));
-    }
-  });
+  const form = useCreateTeamForm(
+    async (values) => {
+      try {
+        await addTeam({ ...values, leagueId });
+        setSaveError(null);
+        onCreated?.();
+        router.push(leagueId ? `/leagues/${leagueId}` : "/");
+        router.refresh();
+      } catch {
+        // Persistence failed (e.g. API down / 401): stay on the form so the user
+        // can retry instead of silently losing the team.
+        setSaveError(t("create.saveError"));
+      }
+    },
+    {
+      startingTreasury: ruleset?.startingTreasury,
+      minPlayers: ruleset?.minPlayers,
+      maxPlayers: ruleset?.maxPlayers,
+      tvCap: ruleset?.tvCap ?? null,
+    },
+  );
 
+  const treasury = ruleset?.startingTreasury ?? STARTING_TREASURY;
+  const maxPlayers = ruleset?.maxPlayers ?? MAX_PLAYERS;
+  const allowedRaces = ruleset ? RACES.filter((r) => ruleset.races.includes(r.id)) : RACES;
   const race = RACES.find((candidate) => candidate.id === form.raceId);
-  const budgetPercent = Math.min(100, (form.totalCost / STARTING_TREASURY) * 100);
-  const isOverBudget = form.totalCost > STARTING_TREASURY;
+  const budgetPercent = Math.min(100, (form.totalCost / treasury) * 100);
+  const isOverBudget = form.totalCost > treasury;
 
   return (
     <form
@@ -129,13 +156,13 @@ export function CreateTeamForm() {
                 {t(form.playerCount === 1 ? "create.playerOne" : "create.playerMany", {
                   count: form.playerCount,
                   spent: formatGold(form.totalCost),
-                  treasury: formatGold(STARTING_TREASURY),
+                  treasury: formatGold(treasury),
                 })}
               </span>
               <span className={isOverBudget ? "font-semibold text-[#d11938]" : "text-[#64748b]"}>
                 {isOverBudget
                   ? t("create.overBudget", {
-                      amount: formatGold(form.totalCost - STARTING_TREASURY),
+                      amount: formatGold(form.totalCost - treasury),
                     })
                   : t("create.remaining", { amount: formatGold(form.remainingBudget) })}
               </span>
@@ -148,6 +175,14 @@ export function CreateTeamForm() {
                 style={{ width: `${budgetPercent}%` }}
               />
             </div>
+            {form.tvCap !== null ? (
+              <p className="mb-2 text-[11px] text-[#64748b]">
+                {t("create.tvCapLine", {
+                  cap: formatGold(form.tvCap),
+                  value: formatGold(form.totalCost),
+                })}
+              </p>
+            ) : null}
           </section>
 
           {/* Jugadores disponibles */}
@@ -160,7 +195,7 @@ export function CreateTeamForm() {
               players={form.players}
               totalCost={form.totalCost}
               onAdd={form.addPlayer}
-              maxPlayers={MAX_PLAYERS}
+              maxPlayers={maxPlayers}
             />
           </section>
 
@@ -172,6 +207,12 @@ export function CreateTeamForm() {
           <h1 className="mb-4 border-b-[3px] border-[#d11938] pb-1.5 text-[26px] font-black text-[#12225a]">
             {t("create.step1Title")}
           </h1>
+
+          {ruleset ? (
+            <p className="mb-4 rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-2 text-[12px] text-[#334155]">
+              {t("create.rulesetApplied", { name: ruleset.name })}
+            </p>
+          ) : null}
 
           <div className="space-y-4">
             <div>
@@ -215,7 +256,7 @@ export function CreateTeamForm() {
                   className={selectClassName}
                 >
                   <option value="">{t("create.selectRace")}</option>
-                  {RACES.map((raceOption) => (
+                  {allowedRaces.map((raceOption) => (
                     <option key={raceOption.id} value={raceOption.id}>
                       {raceOption.name}
                     </option>
@@ -279,6 +320,11 @@ export function CreateTeamForm() {
           {form.errors.budget ? (
             <p role="alert" className="text-sm text-red-600">
               {form.errors.budget}
+            </p>
+          ) : null}
+          {form.errors.tvCap ? (
+            <p role="alert" className="text-sm text-red-600">
+              {form.errors.tvCap}
             </p>
           ) : null}
           {saveError ? (

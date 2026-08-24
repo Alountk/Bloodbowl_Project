@@ -330,6 +330,13 @@ describe("roster helpers", () => {
       expect(computeSpendableBalance(withCoaching, human)).toBe(750_000);
     });
 
+    it("uses the ruleset-derived startingTreasury as the base (RAU-56)", () => {
+      // 1 200 000 (ruleset base) − 150 000 (3 linemen) = 1 050 000.
+      expect(computeSpendableBalance({ ...team, startingTreasury: 1_200_000 }, human)).toBe(
+        1_050_000,
+      );
+    });
+
     it("adds accumulated winnings to the spendable pool", () => {
       // 1 000 000 + 200 000 (winnings) − 150 000 − 0 = 1 050 000.
       expect(computeSpendableBalance({ ...team, treasury: 200_000 }, human)).toBe(1_050_000);

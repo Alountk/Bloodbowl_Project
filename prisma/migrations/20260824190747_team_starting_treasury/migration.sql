@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Team" ADD COLUMN     "startingTreasury" INTEGER NOT NULL DEFAULT 1000000;
