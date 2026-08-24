@@ -23,6 +23,9 @@ export interface CreateTeamValues {
   raceId: string;
   roster: PlayerEntry[];
   coaching: CoachingStaff;
+  /** RAU-56: when set, the team is created ALREADY assigned to this league
+   * (the server validates the league's ruleset before persisting). */
+  leagueId?: string;
 }
 
 interface FormErrors {
@@ -30,12 +33,32 @@ interface FormErrors {
   race?: string;
   players?: string;
   budget?: string;
+  tvCap?: string;
 }
 
 type Step = 1 | 2;
 
-export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promise<void>) {
+/** RAU-56: rulebook defaults overridden by the league ruleset when present. */
+export interface CreateFormOptions {
+  /** The drafting budget base (default 1M). */
+  startingTreasury?: number;
+  /** Minimum roster size to submit (default 11). */
+  minPlayers?: number;
+  /** Maximum roster size while adding (default 16). */
+  maxPlayers?: number;
+  /** League TV cap; null/absent means no cap. */
+  tvCap?: number | null;
+}
+
+export function useCreateTeamForm(
+  onSubmit: (values: CreateTeamValues) => Promise<void>,
+  options: CreateFormOptions = {},
+) {
   const { t } = useI18n();
+  const budget = options.startingTreasury ?? STARTING_TREASURY;
+  const minPlayers = options.minPlayers ?? MIN_PLAYERS;
+  const maxPlayers = options.maxPlayers ?? MAX_PLAYERS;
+  const tvCap = options.tvCap ?? null;
   const [name, setName] = useState("");
   const [raceId, setRaceId] = useState("");
   const [players, setPlayers] = useState<PlayerEntry[]>([]);
@@ -50,7 +73,7 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
   const coachingCost = race ? computeCoachingCost(race, coaching) : 0;
   const totalCost = cost + coachingCost;
   const playerCount = players.length;
-  const remainingBudget = STARTING_TREASURY - totalCost;
+  const remainingBudget = budget - totalCost;
 
   // Race change — with pending confirmation if roster is non-empty
   const changeRace = (nextRaceId: string) => {
@@ -97,11 +120,11 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     if (!race) return;
     const positional = race.positionals.find((p) => p.key === positionalKey);
     if (!positional) return;
-    if (players.length >= MAX_PLAYERS) return;
+    if (players.length >= maxPlayers) return;
     const countForPositional = players.filter((p) => p.positionalKey === positionalKey).length;
     if (countForPositional >= positional.max) return;
     const nextCost = totalCost + positional.cost;
-    if (nextCost > STARTING_TREASURY) return;
+    if (nextCost > budget) return;
 
     const newPlayer: PlayerEntry = {
       id: createId(),
@@ -129,10 +152,11 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     event.preventDefault();
     const nextErrors: FormErrors = {};
     if (!name.trim()) nextErrors.name = t("create.errors.nameRequired");
-    if (playerCount < MIN_PLAYERS) {
-      nextErrors.players = t("create.errors.minPlayers", { min: MIN_PLAYERS });
+    if (playerCount < minPlayers) {
+      nextErrors.players = t("create.errors.minPlayers", { min: minPlayers });
     }
-    if (totalCost > STARTING_TREASURY) nextErrors.budget = t("create.errors.budget");
+    if (totalCost > budget) nextErrors.budget = t("create.errors.budget");
+    if (tvCap !== null && totalCost > tvCap) nextErrors.tvCap = t("create.errors.tvCap");
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length > 0 || !race) return;
@@ -176,6 +200,8 @@ export function useCreateTeamForm(onSubmit: (values: CreateTeamValues) => Promis
     totalCost,
     playerCount,
     remainingBudget,
+    /** RAU-56: the league TV cap driving the submit validation (null = none). */
+    tvCap,
     isSubmitting,
     handleSubmit,
     coaching,

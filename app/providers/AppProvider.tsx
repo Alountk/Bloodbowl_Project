@@ -61,9 +61,21 @@ export function AppProvider({
 
   const addTeam = useCallback(
     async (values: CreateTeamValues) => {
-      const team: Team = { id: createId(), ...values, leagueId: null, treasury: 0 };
-      await store.save(team);
-      setTeams((prev) => [...prev, team]);
+      const team: Team = {
+        id: createId(),
+        name: values.name,
+        raceId: values.raceId,
+        roster: values.roster,
+        coaching: values.coaching,
+        leagueId: values.leagueId ?? null,
+        treasury: 0,
+        // The API derives the real base from the league's ruleset (RAU-56);
+        // the local optimistic value is only a placeholder until the save
+        // response replaces it.
+        startingTreasury: 1_000_000,
+      };
+      const saved = await store.save(team);
+      setTeams((prev) => [...prev, saved]);
     },
     [store],
   );

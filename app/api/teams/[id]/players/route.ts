@@ -36,7 +36,7 @@ export async function POST(
 
   const team = await prisma.team.findFirst({
     where: { id: teamId, userId, archivedAt: null },
-    select: { id: true, raceId: true, roster: true, coaching: true, treasury: true },
+    select: { id: true, raceId: true, roster: true, coaching: true, treasury: true, startingTreasury: true },
   });
   if (!team) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -1,5 +1,6 @@
 import type { Team } from "@/features/teams/types";
 import type { CasualtyCause } from "@/lib/livePhase";
+import type { RulesetDto } from "@/lib/rulesets";
 
 /** Lifecycle state of a league: joinable/open, locked after a season starts, or
  * definitively closed once every fixture is played (champion declared, RAU-40). */
@@ -149,6 +150,11 @@ export interface LeagueDetail extends League {
   fixtures: FixtureDraft[];
   /** Per-round completion flags (a round is complete when every fixture is played). */
   rounds: FixtureRound[];
+  /** RAU-56: the league's FULL ruleset (races, treasury, min/max, TV cap) when
+   * one is set — the create-team-on-join wizard preconfigures from it. Null for
+   * legacy leagues without a ruleset. Optional so legacy test fixtures compile;
+   * the API always returns it (null when absent). */
+  ruleset?: RulesetDto | null;
 }
 
 async function readJson<T>(res: Response): Promise<T> {

@@ -8,6 +8,9 @@ const prismaMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
     delete: vi.fn(),
   },
+  league: {
+    findFirst: vi.fn(),
+  },
 }));
 
 vi.mock("@/auth", () => ({
@@ -166,5 +169,128 @@ describe("POST /api/teams", () => {
     );
     expect(res.status).toBe(400);
     expect(prismaMock.team.create).not.toHaveBeenCalled();
+  });
+
+  describe("POST /api/teams with leagueId (RAU-56 create-on-join)", () => {
+    const elevenLinemen = () =>
+      Array.from({ length: 11 }, (_, i) => ({ id: `p${i + 1}`, name: `Player ${i + 1}`, positionalKey: "lineman" }));
+    const body = (overrides: Record<string, unknown> = {}) => ({
+      name: "League Reavers",
+      raceId: "human",
+      roster: elevenLinemen(),
+      coaching: { rerolls: 0, dedicatedFans: 0, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
+      ...overrides,
+    });
+    const ruleset = {
+      id: "r1",
+      races: ["human", "orc"],
+      startingTreasury: 1_200_000,
+      tvCap: null,
+      minPlayers: 11,
+      maxPlayers: 16,
+    };
+    const openLeague = { id: "l1", status: "open", rulesetId: "r1", ruleset };
+    const req = (payload: unknown) =>
+      new Request("http://localhost:3000/api/teams", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "content-type": "application/json" },
+      });
+
+    it("creates the team already assigned to the league with the ruleset treasury", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      prismaMock.league.findFirst.mockResolvedValue(openLeague);
+      prismaMock.team.findFirst.mockResolvedValue(null); // no existing member
+      prismaMock.team.create.mockResolvedValue({ id: "team-1" });
+
+      const res = await POST(req(body({ leagueId: "l1" })));
+      expect(res.status).toBe(201);
+      expect(prismaMock.team.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            leagueId: "l1",
+            startingTreasury: 1_200_000,
+          }),
+        }),
+      );
+    });
+
+    it("returns 404 for an unknown league", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      prismaMock.league.findFirst.mockResolvedValue(null);
+
+      const res = await POST(req(body({ leagueId: "ghost" })));
+      expect(res.status).toBe(404);
+      expect(prismaMock.team.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a started league with 409 (no new teams)", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      prismaMock.league.findFirst.mockResolvedValue({ id: "l1", status: "started", rulesetId: null, ruleset: null });
+
+      const res = await POST(req(body({ leagueId: "l1" })));
+      expect(res.status).toBe(409);
+      expect(prismaMock.team.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a second team per user in the league with 409 (RAU-54)", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      prismaMock.league.findFirst.mockResolvedValue(openLeague);
+      prismaMock.team.findFirst.mockResolvedValue({ id: "existing" });
+
+      const res = await POST(req(body({ leagueId: "l1" })));
+      expect(res.status).toBe(409);
+      expect(prismaMock.team.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a race outside the ruleset with 400", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      prismaMock.league.findFirst.mockResolvedValue(openLeague);
+      prismaMock.team.findFirst.mockResolvedValue(null);
+
+      const res = await POST(req(body({ raceId: "skaven", leagueId: "l1" })));
+      expect(res.status).toBe(400);
+      expect(prismaMock.team.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a roster below the ruleset minimum with 400", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      prismaMock.league.findFirst.mockResolvedValue({
+        ...openLeague,
+        ruleset: { ...ruleset, minPlayers: 13 },
+      });
+      prismaMock.team.findFirst.mockResolvedValue(null);
+
+      const res = await POST(req(body({ leagueId: "l1" })));
+      expect(res.status).toBe(400);
+      expect(prismaMock.team.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a cost over the ruleset starting treasury with 400", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      // 11 Human linemen cost 550k > the 500k treasury.
+      prismaMock.league.findFirst.mockResolvedValue({
+        ...openLeague,
+        ruleset: { ...ruleset, startingTreasury: 500_000 },
+      });
+      prismaMock.team.findFirst.mockResolvedValue(null);
+
+      const res = await POST(req(body({ leagueId: "l1" })));
+      expect(res.status).toBe(400);
+      expect(prismaMock.team.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a cost over the ruleset TV cap with 400", async () => {
+      authMock.mockResolvedValue({ user: { id: "user-1" } });
+      prismaMock.league.findFirst.mockResolvedValue({
+        ...openLeague,
+        ruleset: { ...ruleset, tvCap: 500_000 },
+      });
+      prismaMock.team.findFirst.mockResolvedValue(null);
+
+      const res = await POST(req(body({ leagueId: "l1" })));
+      expect(res.status).toBe(400);
+      expect(prismaMock.team.create).not.toHaveBeenCalled();
+    });
   });
 });

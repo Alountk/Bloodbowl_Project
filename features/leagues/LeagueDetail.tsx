@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { StartLeagueModal } from "./StartLeagueModal";
+import { CreateLeagueTeamModal } from "./CreateLeagueTeamModal";
 import { StandingsTable } from "./StandingsTable";
 import { useLeagueDetail } from "./useLeagueDetail";
 import { MatchCard } from "./MatchCard";
@@ -57,6 +58,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [startOpen, setStartOpen] = useState(false);
+  const [createTeamOpen, setCreateTeamOpen] = useState(false);
 
   const userId = session?.user?.id;
   const isOwner = league?.ownerId === userId;
@@ -255,41 +257,67 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
               unassigned teams. This includes the owner, who must add their own
               team (with others) to reach the ≥2 members a season needs. */}
           {!isMember ? (
-            <form onSubmit={onJoin} className="rounded-md border border-[#e2e8f0] bg-white p-4">
-              <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">
-                {t("leagues.join")}
-              </h3>
-              {unassigned.length === 0 ? (
-                <p className="text-sm text-slate-600">{t("leagues.joinHint")}</p>
-              ) : (
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="min-w-[220px] flex-1">
-                    <label htmlFor="league-team-select" className="mb-1 block text-sm font-medium text-slate-700">
-                      {t("leagues.yourTeam")}
-                    </label>
-                    <select
-                      id="league-team-select"
-                      value={selectedTeamId}
-                      onChange={(event) => setSelectedTeamId(event.target.value)}
-                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
+            <>
+              <form onSubmit={onJoin} className="rounded-md border border-[#e2e8f0] bg-white p-4">
+                <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">
+                  {t("leagues.join")}
+                </h3>
+                {unassigned.length === 0 ? (
+                  <p className="text-sm text-slate-600">{t("leagues.joinHint")}</p>
+                ) : (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="min-w-[220px] flex-1">
+                      <label htmlFor="league-team-select" className="mb-1 block text-sm font-medium text-slate-700">
+                        {t("leagues.yourTeam")}
+                      </label>
+                      <select
+                        id="league-team-select"
+                        value={selectedTeamId}
+                        onChange={(event) => setSelectedTeamId(event.target.value)}
+                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
+                      >
+                        <option value="">{t("leagues.selectTeam")}</option>
+                        {unassigned.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="submit"
+                      className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
                     >
-                      <option value="">{t("leagues.selectTeam")}</option>
-                      {unassigned.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
+                      {t("leagues.joinAction")}
+                    </button>
                   </div>
-                  <button
-                    type="submit"
-                    className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
-                  >
-                    {t("leagues.joinAction")}
-                  </button>
-                </div>
-              )}
-            </form>
+                )}
+              </form>
+
+              {/* RAU-56: create a team for THIS league — the wizard applies the
+                  league ruleset (allowed races, treasury, min/max, TV cap). */}
+              <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-[#cbd5e1] bg-white p-4 text-center">
+                <p className="text-[12px] text-slate-500">{t("leagues.joinCreateHint")}</p>
+                <button
+                  type="button"
+                  onClick={() => setCreateTeamOpen(true)}
+                  className="rounded-md bg-[#d11938] px-4 py-2 text-sm font-semibold text-white hover:bg-[#e51b40]"
+                >
+                  {t("leagues.joinCreateTeam")}
+                </button>
+              </div>
+
+              <CreateLeagueTeamModal
+                open={createTeamOpen}
+                leagueId={league.id}
+                ruleset={league.ruleset ?? null}
+                onClose={() => setCreateTeamOpen(false)}
+                onCreated={() => {
+                  setCreateTeamOpen(false);
+                  void refresh();
+                }}
+              />
+            </>
           ) : null}
 
           {/* Member list; the owner gets expel and the season start. */}

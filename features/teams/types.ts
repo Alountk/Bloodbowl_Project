@@ -130,9 +130,16 @@ export interface Team {
   /**
    * Post-match winnings balance in gold coins, accumulated on `Team.treasury`
    * (0 for a fresh team). The spendable balance is
-   * `STARTING_TREASURY + treasury - rosterCost - coachingCost`.
+   * `startingTreasury + treasury - rosterCost - coachingCost`.
    */
   treasury: number;
+  /**
+   * RAU-56: the treasury base this team was created with — the 1M rulebook
+   * default, or the league ruleset's `startingTreasury` when the team was
+   * created while joining a league. Optional because legacy API responses and
+   * test fixtures omit it; the spendable-balance formula defaults to 1M.
+   */
+  startingTreasury?: number;
 }
 
 /** A user-owned group of teams, scoped via `ownerId`. */

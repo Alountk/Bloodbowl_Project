@@ -109,11 +109,13 @@ export function computeDraftedRosterCost(race: Race, players: PlayerEntry[]): nu
  * no refund), so this formula stays flat across a fire of a drafted player.
  */
 export function computeSpendableBalance(
-  team: Pick<Team, "treasury" | "roster" | "coaching">,
+  team: Pick<Team, "startingTreasury" | "treasury" | "roster" | "coaching">,
   race: Race,
 ): number {
   return (
-    STARTING_TREASURY +
+    // RAU-56: the base is the ruleset's starting treasury when the team was
+    // created under one; legacy rows without the field fall back to 1M.
+    (team.startingTreasury ?? STARTING_TREASURY) +
     team.treasury -
     computeDraftedRosterCost(race, team.roster) -
     computeCoachingCost(race, team.coaching)
