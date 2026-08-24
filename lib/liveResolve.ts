@@ -16,6 +16,7 @@
  */
 
 import { PE_TD, PE_MVP, PE_CASUALTY, PE_COMPLETION } from "./rules/pe";
+import { INJURY_OUTCOMES, type InjuryOutcomeKind } from "./rules/injuries";
 
 /** One player's total PE for the match (rosterPlayerId + earned PE). */
 export interface PeAward {
@@ -120,18 +121,31 @@ export interface LiveCasualtyVictim {
  * RAU-13: a Journeyman VICTIM IS included — the snapshot documents the match,
  * and the hire flow reads it to carry their injuries into the new `Player`
  * row. `persistResolveCasualties` still skips them at resolve (no row exists
- * for a synthetic id yet). */
+ * for a synthetic id yet).
+ *
+ * A player can appear in MULTIPLE casualty events of the same match (the
+ * resolution wizard can record the same victim twice). The collection is keyed
+ * by `rosterPlayerId` in the resolution modal AND the injuries are persisted
+ * per player, so it DEDUPES per (team, player) keeping the MOST SEVERE band
+ * (`INJURY_OUTCOMES` order) — a double "apaleado" is one injury, not two, and
+ * never a duplicate React key. First-seen order is preserved. */
 export function casualtyVictimsFromEvents(
   events: readonly ResolveEventLike[],
 ): LiveCasualtyVictim[] {
-  const out: LiveCasualtyVictim[] = [];
+  const severityOf = (band: string): number =>
+    INJURY_OUTCOMES.indexOf(band as InjuryOutcomeKind);
+  const best = new Map<string, LiveCasualtyVictim>();
   for (const event of events) {
     if (event.kind !== "casualty" || event.side == null || !event.playerRosterId) continue;
     const band = event.payload.band;
     if (typeof band !== "string") continue;
-    out.push({ team: event.side, rosterPlayerId: event.playerRosterId, band });
+    const key = `${event.side}:${event.playerRosterId}`;
+    const prev = best.get(key);
+    if (!prev || severityOf(band) > severityOf(prev.band)) {
+      best.set(key, { team: event.side, rosterPlayerId: event.playerRosterId, band });
+    }
   }
-  return out;
+  return [...best.values()];
 }
 
 /**

@@ -198,6 +198,63 @@ describe("casualtyVictimsFromEvents", () => {
       { team: "home", rosterPlayerId: "h2", band: "bruise" },
     ]);
   });
+
+  it("dedupes a player recorded twice with the SAME band (one victim, one injury)", () => {
+    const victims = casualtyVictimsFromEvents([
+      event({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "a1",
+        payload: { band: "apaleado" },
+      }),
+      event({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "a1",
+        payload: { band: "apaleado" },
+      }),
+    ]);
+    expect(victims).toEqual([
+      { team: "away", rosterPlayerId: "a1", band: "apaleado" },
+    ]);
+  });
+
+  it("dedupes a player recorded with DIFFERENT bands keeping the most severe", () => {
+    const victims = casualtyVictimsFromEvents([
+      event({
+        kind: "casualty",
+        side: "home",
+        playerRosterId: "h1",
+        payload: { band: "bruise" },
+      }),
+      event({
+        kind: "casualty",
+        side: "home",
+        playerRosterId: "h1",
+        payload: { band: "dead" },
+      }),
+      event({
+        kind: "casualty",
+        side: "home",
+        playerRosterId: "h2",
+        payload: { band: "apaleado" },
+      }),
+    ]);
+    expect(victims).toEqual([
+      { team: "home", rosterPlayerId: "h1", band: "dead" },
+      { team: "home", rosterPlayerId: "h2", band: "apaleado" },
+    ]);
+  });
+
+  it("keeps first-seen order across distinct players and sides", () => {
+    const victims = casualtyVictimsFromEvents([
+      event({ kind: "casualty", side: "home", playerRosterId: "h1", payload: { band: "grave" } }),
+      event({ kind: "casualty", side: "away", playerRosterId: "a1", payload: { band: "bruise" } }),
+      event({ kind: "casualty", side: "home", playerRosterId: "h1", payload: { band: "dead" } }),
+    ]);
+    expect(victims.map((v) => v.rosterPlayerId)).toEqual(["h1", "a1"]);
+    expect(victims[0].band).toBe("dead");
+  });
 });
 
 describe("validateMvpNominations", () => {
