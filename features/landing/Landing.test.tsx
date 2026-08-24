@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { I18nProvider } from "@/lib/i18n";
 import { Landing } from "./Landing";
 
 vi.mock("next/navigation", () => ({
@@ -11,9 +12,21 @@ vi.mock("next-auth/react", () => ({
   useSession: () => ({ data: null, status: "unauthenticated" }),
 }));
 
+/**
+ * The landing copy under test is English (the product default); the bare-mount
+ * i18n fallback is Spanish, so every render pins the locale explicitly.
+ */
+function renderLanding(locale: "es" | "en" = "en") {
+  return render(
+    <I18nProvider initialLocale={locale}>
+      <Landing />
+    </I18nProvider>,
+  );
+}
+
 describe("Landing", () => {
   it("renders the unified public nav: Sign in opens the auth modal, section links present", () => {
-    render(<Landing />);
+    renderLanding();
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
     // Teams and Matches now ship with their dedicated pages.
@@ -23,11 +36,11 @@ describe("Landing", () => {
     expect(within(nav).getByRole("link", { name: "Matches" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(screen.getByRole("dialog", { name: "Iniciar sesión" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Log in" })).toBeTruthy();
   });
 
   it("renders the hero with both CTAs", () => {
-    render(<Landing />);
+    renderLanding();
 
     expect(
       screen.getByRole("heading", { name: "Your league, in your pocket." }),
@@ -41,7 +54,7 @@ describe("Landing", () => {
   });
 
   it("renders the four 'What you get' cards with their unique copy", () => {
-    render(<Landing />);
+    renderLanding();
 
     expect(screen.getByRole("heading", { name: "What you get" })).toBeTruthy();
     expect(screen.getByText("31 races with rulebook costs, skills and characteristics.")).toBeTruthy();
@@ -51,7 +64,7 @@ describe("Landing", () => {
   });
 
   it("shows the How it works steps by default", () => {
-    render(<Landing />);
+    renderLanding();
 
     expect(screen.getByRole("heading", { name: "How it works" })).toBeTruthy();
     expect(screen.getByText("Three steps to your next season")).toBeTruthy();
@@ -61,7 +74,7 @@ describe("Landing", () => {
   });
 
   it("collapses the steps on Hide and brings them back on Show", () => {
-    render(<Landing />);
+    renderLanding();
 
     expect(
       screen.getByText("Pick a race from the BB2025 catalog, spend your 1M treasury, name your squad."),
@@ -83,5 +96,18 @@ describe("Landing", () => {
       screen.getByText("Pick a race from the BB2025 catalog, spend your 1M treasury, name your squad."),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Hide" })).toBeTruthy();
+  });
+
+  it("renders the hero and sections in Spanish for an es locale", () => {
+    renderLanding("es");
+
+    expect(
+      screen.getByRole("heading", { name: "Tu liga, en tu bolsillo." }),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Regístrate gratis" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Conoce la app" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Qué obtienes" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Cómo funciona" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ocultar" })).toBeTruthy();
   });
 });

@@ -31,6 +31,51 @@ const es: Dict = {
   "topbar.searchLabel": "Buscar equipos",
   "topbar.searchPlaceholder": "Buscar equipos…",
   "topbar.logout": "Cerrar sesión",
+
+  // Public landing — hero, features, how-it-works, mock panel and footer (the
+  // hero was hardcoded English; now it follows the active locale like the nav).
+  "landing.heroTitle": "Tu liga, en tu bolsillo.",
+  "landing.heroSubtitle":
+    "Desde el draft del roster hasta el pitido final — equipos, jornadas y partidos en vivo para tu grupo de Blood Bowl.",
+  "landing.ctaSignup": "Regístrate gratis",
+  "landing.ctaTour": "Conoce la app",
+  "landing.mockMatchday": "Jornada 1 · 2 equipos",
+  "landing.mockPlayers": "11 / 11 jugadores",
+  "landing.mockLive": "EN VIVO",
+  "landing.featuresHeading": "Qué obtienes",
+  "landing.featuresSubtitle": "Todo lo que un comisionado necesita — y nada que no.",
+  "landing.feature.rosters.tag": "Rosters",
+  "landing.feature.rosters.title": "Arma tu equipo",
+  "landing.feature.rosters.copy":
+    "31 razas con costes, habilidades y características del reglamento.",
+  "landing.feature.season.tag": "Temporada",
+  "landing.feature.season.title": "Jornadas automáticas",
+  "landing.feature.season.copy":
+    "Jornadas round-robin y negociación cuando los horarios chocan.",
+  "landing.feature.live.tag": "En vivo",
+  "landing.feature.live.title": "Marcador compartido",
+  "landing.feature.live.copy":
+    "Reloj de turno, eventos y tiradas en streaming para ambos entrenadores.",
+  "landing.feature.growth.tag": "Progreso",
+  "landing.feature.growth.title": "PJs y lesiones",
+  "landing.feature.growth.copy":
+    "Progresa jugadores, pierde el próximo partido, contrata novatos.",
+  "landing.howHeading": "Cómo funciona",
+  "landing.howSubtitle": "Tres pasos hacia tu próxima temporada",
+  "landing.howHide": "Ocultar",
+  "landing.howShow": "Mostrar",
+  "landing.howStep1.title": "Arma tu equipo",
+  "landing.howStep1.copy":
+    "Elige una raza del catálogo BB2025, gasta tu tesorería de 1M y nombra tu plantilla.",
+  "landing.howStep2.title": "Únete a una liga",
+  "landing.howStep2.copy":
+    "Empieza o únete a una temporada con tus propias reglas — razas, tesorería y tope de TV incluidos.",
+  "landing.howStep3.title": "Juega en vivo",
+  "landing.howStep3.copy":
+    "Marcador compartido, reloj de turno, eventos, MVPs y ganancias. La liga se mantiene sola.",
+  "landing.footer":
+    "Blood Bowl es un juego de Games Workshop. Esta es una herramienta de fans, no afiliada a GW.",
+
   "teams.heading": "Equipos",
   "teams.createNew": "Crear equipo",
   "teams.empty": "No hay equipos todavía. Crea tu primer equipo.",
@@ -711,6 +756,50 @@ const en: Dict = {
   "topbar.searchLabel": "Search teams",
   "topbar.searchPlaceholder": "Search teams…",
   "topbar.logout": "Log out",
+
+  // Public landing — hero, features, how-it-works, mock panel and footer.
+  "landing.heroTitle": "Your league, in your pocket.",
+  "landing.heroSubtitle":
+    "From roster drafts to the final whistle — teams, matchdays and live matches for your Blood Bowl group.",
+  "landing.ctaSignup": "Sign up free",
+  "landing.ctaTour": "Tour the app",
+  "landing.mockMatchday": "Matchday 1 · 2 teams",
+  "landing.mockPlayers": "11 / 11 players",
+  "landing.mockLive": "Live now",
+  "landing.featuresHeading": "What you get",
+  "landing.featuresSubtitle": "Everything a commissioner needs — and nothing you don't.",
+  "landing.feature.rosters.tag": "Rosters",
+  "landing.feature.rosters.title": "Draft your team",
+  "landing.feature.rosters.copy":
+    "31 races with rulebook costs, skills and characteristics.",
+  "landing.feature.season.tag": "Season",
+  "landing.feature.season.title": "Automatic fixtures",
+  "landing.feature.season.copy":
+    "Round-robin matchdays and negotiation when schedules clash.",
+  "landing.feature.live.tag": "Live",
+  "landing.feature.live.title": "Shared match board",
+  "landing.feature.live.copy":
+    "Turn clock, events and rolls stream to both coaches.",
+  "landing.feature.growth.tag": "Growth",
+  "landing.feature.growth.title": "SPP & injuries",
+  "landing.feature.growth.copy":
+    "Progress players, miss the next match, hire journeymen.",
+  "landing.howHeading": "How it works",
+  "landing.howSubtitle": "Three steps to your next season",
+  "landing.howHide": "Hide",
+  "landing.howShow": "Show",
+  "landing.howStep1.title": "Draft your team",
+  "landing.howStep1.copy":
+    "Pick a race from the BB2025 catalog, spend your 1M treasury, name your squad.",
+  "landing.howStep2.title": "Join a league",
+  "landing.howStep2.copy":
+    "Start or join a season with your own rules — races, treasury and TV caps included.",
+  "landing.howStep3.title": "Play live",
+  "landing.howStep3.copy":
+    "Shared match board, turn clock, events, MVPs and winnings. The league keeps itself.",
+  "landing.footer":
+    "Blood Bowl is a Games Workshop game. This is a fan tool, not affiliated with GW.",
+
   "teams.heading": "Teams",
   "teams.createNew": "Create team",
   "teams.empty": "No teams yet. Create your first team.",

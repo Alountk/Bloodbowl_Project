@@ -1,31 +1,34 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * Collapsible "How it works" section (approved Option B): the three steps stay
  * visible until the coach clicks "Hide"; "Show" brings them back. The collapsed
  * state is NOT persisted — a fresh visit always shows the steps, matching the
- * approved preview and avoiding a localStorage read on first paint.
+ * approved preview and avoiding a localStorage read on first paint. Copy
+ * follows the active locale (like the rest of the landing).
  */
 
-const STEPS = [
-  {
-    title: "Draft your team",
-    copy: "Pick a race from the BB2025 catalog, spend your 1M treasury, name your squad.",
-  },
-  {
-    title: "Join a league",
-    copy: "Start or join a season with your own rules — races, treasury and TV caps included.",
-  },
-  {
-    title: "Play live",
-    copy: "Shared match board, turn clock, events, MVPs and winnings. The league keeps itself.",
-  },
-] as const;
-
 export function HowItWorks() {
+  const { t } = useI18n();
   const [hidden, setHidden] = useState(false);
+
+  const steps = [
+    {
+      title: t("landing.howStep1.title"),
+      copy: t("landing.howStep1.copy"),
+    },
+    {
+      title: t("landing.howStep2.title"),
+      copy: t("landing.howStep2.copy"),
+    },
+    {
+      title: t("landing.howStep3.title"),
+      copy: t("landing.howStep3.copy"),
+    },
+  ] as const;
 
   return (
     <section
@@ -34,10 +37,10 @@ export function HowItWorks() {
     >
       <div className="flex flex-wrap items-center gap-2 bg-slate-100 px-4 py-3.5">
         <h2 id="how-heading" className="flex-1 text-[16px] font-black text-[#12225a]">
-          How it works
+          {t("landing.howHeading")}
         </h2>
         <span className="hidden text-[11.5px] text-slate-500 sm:inline">
-          Three steps to your next season
+          {t("landing.howSubtitle")}
         </span>
         <button
           type="button"
@@ -45,12 +48,12 @@ export function HowItWorks() {
           aria-expanded={!hidden}
           className="rounded-none border-2 border-[#12225a] bg-white px-3.5 py-1.5 text-[13px] font-bold text-[#12225a] hover:bg-[#eef2ff]"
         >
-          {hidden ? "Show" : "Hide"}
+          {hidden ? t("landing.howShow") : t("landing.howHide")}
         </button>
       </div>
       {!hidden ? (
         <div className="grid gap-3.5 p-4 sm:grid-cols-3">
-          {STEPS.map((step, index) => (
+          {steps.map((step, index) => (
             <article
               key={step.title}
               className="relative rounded-xl border border-slate-200 bg-white p-4 pt-6"
