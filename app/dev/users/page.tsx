@@ -5,27 +5,22 @@ import { APP_DEFAULT_LOCALE } from "@/lib/i18n/dictionaries";
 import { resolveServerLocale } from "@/lib/i18n/serverLocale";
 import { can } from "@/lib/permissions";
 import DevDeniedPanel from "@/features/dev/DevDeniedPanel";
-import { RulesetManager } from "@/features/rulesets/RulesetManager";
+import { UserManager } from "@/features/users/UserManager";
 
 /**
- * RAU-52 developer "Tipos de reglas" section (Option B: cards + 4-step
- * wizard). Server-gated by the `rulesets.dev` permission: no session → 403
- * panel (in AUTH_MODE=auth the proxy redirects anonymous traffic to /login
- * first); an authenticated user whose DB role lacks the permission gets the
- * same 403 panel. The role is read from the DATABASE (authoritative), so a
- * promoted user gains access immediately.
- *
- * RAU-59: the 403 panel is i18n-aware server-side (`DevDeniedPanel`); the
- * locale follows the account → session → cookie precedence.
+ * RAU-52 developer "Usuarios" section: manage account roles and plans
+ * (RBAC + billing tiers). Server-gated by the `users.manage` permission
+ * (developers today; admins inherit it later) — DB-authoritative. The 403
+ * panel follows the account → session → cookie locale precedence.
  */
-export default async function DevRulesetsPage() {
+export default async function DevUsersPage() {
   const session = await auth();
   const userId = session?.user?.id;
   const user = userId
     ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true, locale: true } })
     : null;
 
-  if (!can(user?.role, "rulesets.dev")) {
+  if (!can(user?.role, "users.manage")) {
     const cookieStore = await cookies();
     const locale =
       resolveServerLocale({
@@ -36,5 +31,5 @@ export default async function DevRulesetsPage() {
     return <DevDeniedPanel locale={locale} />;
   }
 
-  return <RulesetManager />;
+  return <UserManager />;
 }

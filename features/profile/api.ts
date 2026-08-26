@@ -16,6 +16,10 @@ export interface Profile {
   avatar: string | null;
   /** RAU-58: the account-level UI language (es|en). */
   locale: Locale;
+  /** RAU-52: RBAC role (user/developer/admin) — DB snapshot. */
+  role?: string;
+  /** RAU-52: billing tier (free/club/premium) — ready for future flags. */
+  plan?: string;
 }
 
 /** Career stats as served by GET /api/me/stats. */

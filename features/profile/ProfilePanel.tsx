@@ -179,6 +179,11 @@ export function ProfilePanel() {
           {profile?.name ? (
             <p className="text-sm font-semibold text-slate-700">{profile.name}</p>
           ) : null}
+          {profile?.role || profile?.plan ? (
+            <p className="text-[11px] text-slate-400">
+              {t("profile.rolePlan", { role: profile?.role ?? "user", plan: profile?.plan ?? "free" })}
+            </p>
+          ) : null}
         </div>
       </div>
 

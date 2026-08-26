@@ -71,7 +71,7 @@ describe("AppNav logged-in variant (app shell)", () => {
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
   });
 
-  it("appends the dev rulesets link for a developer session", () => {
+  it("appends the dev links (rulesets + users) for a developer session", () => {
     sessionMock.mockReturnValue({
       data: { user: { id: "dev-1", name: "Dev", role: "developer" } },
       status: "authenticated",
@@ -79,12 +79,15 @@ describe("AppNav logged-in variant (app shell)", () => {
     render(<AppNav authenticated onLogout={logoutMock} />);
 
     const nav = screen.getByRole("navigation", { name: "Main navigation" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(4);
+    expect(within(nav).getAllByRole("link")).toHaveLength(5);
     expect(within(nav).getByRole("link", { name: "Leagues" }).getAttribute("href")).toBe("/leagues");
     expect(within(nav).getByRole("link", { name: "Teams" }).getAttribute("href")).toBe("/teams");
     expect(within(nav).getByRole("link", { name: "Matches" }).getAttribute("href")).toBe("/matches");
     expect(within(nav).getByRole("link", { name: "Tipos de reglas" }).getAttribute("href")).toBe(
       "/dev/rulesets",
+    );
+    expect(within(nav).getByRole("link", { name: "Usuarios" }).getAttribute("href")).toBe(
+      "/dev/users",
     );
   });
 });
