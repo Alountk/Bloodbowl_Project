@@ -271,6 +271,7 @@ const es: Dict = {
 
   "profile.subtitle": "Sube una foto como avatar; se mostrará junto a tu nombre en los partidos.",
   "profile.upload": "Subir foto",
+  "profile.rolePlan": "Rol: {role} · Plan: {plan}",
   "profile.loadError": "No se pudo cargar tu perfil.",
   "profile.uploadError": "No se pudo subir la foto.",
   "profile.cropTitle": "Ajusta tu foto",
@@ -446,11 +447,25 @@ const es: Dict = {
   "rulesets.carousel.next": "Ver más tipos",
 
   "nav.devRulesets": "Tipos de reglas",
+  "nav.devUsers": "Usuarios",
 
   // RAU-59 — dev section 403 panel (server-rendered)
   "dev.deniedTitle": "Acceso restringido",
   "dev.deniedBody": "Esta sección es exclusiva para desarrolladores.",
   "dev.backHome": "Volver al inicio",
+
+  // RAU-52 — dev user manager (roles + plans)
+  "dev.users.heading": "Usuarios y planes",
+  "dev.users.account": "Cuenta",
+  "dev.users.role": "Rol",
+  "dev.users.plan": "Plan",
+  "dev.users.empty": "No hay cuentas.",
+  "dev.users.loading": "Cargando cuentas…",
+  "dev.users.loadError": "No se pudieron cargar las cuentas.",
+  "dev.users.saveError": "No se pudo actualizar la cuenta.",
+  "dev.users.selfRoleHint": "No puedes cambiar tu propio rol.",
+  "dev.users.roleFor": "Cambiar rol de {account}",
+  "dev.users.planFor": "Cambiar plan de {account}",
 
   "leagues.start.title": "Iniciar liga",
   "leagues.start.closeAria": "Close start league",
@@ -768,6 +783,7 @@ const en: Dict = {
   "nav.leagues": "Leagues",
   "nav.profile": "My Profile",
   "nav.devRulesets": "Rulesets",
+  "nav.devUsers": "Users",
   "nav.openMenu": "Open navigation menu",
   "nav.closeMenu": "Close menu",
   "nav.locale": "Language",
@@ -1013,6 +1029,7 @@ const en: Dict = {
 
   "profile.subtitle": "Upload a photo as your avatar; it will appear next to your name in matches.",
   "profile.upload": "Upload photo",
+  "profile.rolePlan": "Role: {role} · Plan: {plan}",
   "profile.loadError": "Could not load your profile.",
   "profile.uploadError": "Could not upload the photo.",
   "profile.cropTitle": "Adjust your photo",
@@ -1191,6 +1208,19 @@ const en: Dict = {
   "dev.deniedTitle": "Restricted access",
   "dev.deniedBody": "This section is exclusive to developers.",
   "dev.backHome": "Back to home",
+
+  // RAU-52 — dev user manager (roles + plans)
+  "dev.users.heading": "Users & plans",
+  "dev.users.account": "Account",
+  "dev.users.role": "Role",
+  "dev.users.plan": "Plan",
+  "dev.users.empty": "No accounts.",
+  "dev.users.loading": "Loading accounts…",
+  "dev.users.loadError": "Could not load the accounts.",
+  "dev.users.saveError": "Could not update the account.",
+  "dev.users.selfRoleHint": "You cannot change your own role.",
+  "dev.users.roleFor": "Change role for {account}",
+  "dev.users.planFor": "Change plan for {account}",
 
   "leagues.start.title": "Start league",
   "leagues.start.closeAria": "Close start league",

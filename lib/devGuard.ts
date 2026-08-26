@@ -1,18 +1,19 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { can, type Permission } from "@/lib/permissions";
 
-export type DeveloperSessionResult =
+export type GuardResult =
   | { ok: true; userId: string }
   | { ok: false; status: 401 | 403; error: string };
 
 /**
- * Shared server-side guard for the /api/dev/rulesets routes (RAU-52).
+ * Shared server-side permission guard (RAU-52) for the /api/dev/* routes.
  * 401 unauthenticated (or a session whose user row vanished); 403 for any
- * authenticated user whose DB role is not "developer". The role is read from the
- * DATABASE (authoritative), never from the JWT — a user promoted after sign-in
- * is granted immediately without re-login.
+ * authenticated user whose DB role lacks the permission. The role is read from
+ * the DATABASE (authoritative), never from the JWT — a user promoted after
+ * sign-in is granted immediately without re-login.
  */
-export async function requireDeveloper(): Promise<DeveloperSessionResult> {
+export async function requirePermission(permission: Permission): Promise<GuardResult> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, status: 401, error: "Unauthorized" };
@@ -21,8 +22,17 @@ export async function requireDeveloper(): Promise<DeveloperSessionResult> {
     select: { role: true },
   });
   if (!user) return { ok: false, status: 401, error: "Unauthorized" };
-  if (user.role !== "developer") {
+  if (!can(user.role, permission)) {
     return { ok: false, status: 403, error: "Forbidden" };
   }
   return { ok: true, userId };
+}
+
+/**
+ * Backward-compatible alias for the rulesets dev section (RAU-52 pre-model).
+ * The rulesets routes keep calling it; new routes use `requirePermission`
+ * directly with their own permission key.
+ */
+export async function requireDeveloper(): Promise<GuardResult> {
+  return requirePermission("rulesets.dev");
 }

@@ -25,9 +25,13 @@ model User {
   /// but the account locale wins whenever the user is signed in.
   locale            String             @default("es")
   createdAt         DateTime           @default(now())
-  /// Developer-only tools gate (RAU-52): "developer" unlocks the /dev/rulesets
-  /// section (server-enforced 403 otherwise); any other value is a regular user.
+  /// RBAC role (RAU-52): "user" (default) · "developer" (dev sections) ·
+  /// "admin" (future platform management). Gates are server-side from the DB
+  /// (the JWT carries the role only as a login-time snapshot).
   role              String             @default("user")
+  /// RAU-52 billing tier — no payment logic yet, just the field + checks so
+  /// feature flags can gate by plan later: "free" (default) · "club" · "premium".
+  plan              String             @default("free")
   teams             Team[]
   leagues           League[]
   scheduleProposals ScheduleProposal[]

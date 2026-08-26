@@ -65,11 +65,12 @@ async function signupAsDeveloper(page: Page): Promise<string> {
   const email = uniqueEmail("dev");
   await signup(page, email);
   promoteToDeveloper(email);
-  // Logout lives in the avatar user menu (unified nav).
+  // Logout lives in the avatar user menu (unified nav). The anonymous landing
+  // follows the account locale (es-ES here → Spanish hero, #142).
   await page.getByRole("button", { name: "Menú de usuario" }).click();
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
   await expect(
-    page.getByRole("heading", { name: "Your league, in your pocket." }),
+    page.getByRole("heading", { name: "Tu liga, en tu bolsillo." }),
   ).toBeVisible();
   await login(page, email);
   return email;
@@ -230,4 +231,35 @@ test("a non-developer sees the 403 panel in the ACCOUNT language (RAU-59)", asyn
   await page.goto("/dev/rulesets");
   await expect(page.getByRole("heading", { name: "Restricted access" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to home" })).toBeVisible();
+});
+
+test("developer manages roles and plans in /dev/users (RAU-52)", async ({ page, browser }) => {
+  const devEmail = await signupAsDeveloper(page);
+
+  // A regular target account whose plan the developer will change.
+  const targetEmail = uniqueEmail("target");
+  const targetCtx = await browser.newContext({ locale: "es-ES" });
+  const targetPage = await targetCtx.newPage();
+  await signup(targetPage, targetEmail);
+  await targetCtx.close();
+
+  // The dev nav shows both dev links now.
+  await expect(page.getByRole("link", { name: "Usuarios" })).toBeVisible();
+  await page.getByRole("link", { name: "Usuarios" }).click();
+  await expect(page).toHaveURL(/\/dev\/users$/);
+  await expect(page.getByRole("heading", { name: "Usuarios y planes" })).toBeVisible();
+
+  // Change the target's plan to club — the PATCH round-trips and reflects.
+  const targetRow = page.locator("tr").filter({ hasText: targetEmail });
+  await expect(targetRow).toBeVisible();
+  await targetRow
+    .getByRole("combobox", { name: `Cambiar plan de ${targetEmail}` })
+    .selectOption("club");
+  await expect(
+    targetRow.getByRole("combobox", { name: `Cambiar plan de ${targetEmail}` }),
+  ).toHaveValue("club");
+
+  // Self-role lockout guard: the developer's own role select is disabled.
+  const devRow = page.locator("tr").filter({ hasText: devEmail });
+  await expect(devRow.getByRole("combobox", { name: `Cambiar rol de ${devEmail}` })).toBeDisabled();
 });

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
+import { can } from "@/lib/permissions";
 import { LocaleSwitcher } from "@/lib/i18n/LocaleSwitcher";
 import { AuthModal } from "@/features/auth/AuthModal";
 
@@ -44,10 +45,14 @@ export function AppNav({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
 
-  const isDeveloper = session?.user?.role === "developer";
-  const links = isDeveloper
-    ? [...NAV_LINKS, { href: "/dev/rulesets", label: t("nav.devRulesets") }]
-    : NAV_LINKS;
+  // RAU-52: the dev links follow the DB role's PERMISSIONS (the JWT role is a
+  // login-time snapshot, enough to decide which nav links to show).
+  const role = session?.user?.role ?? null;
+  const links: { href: string; label: string }[] = [
+    ...NAV_LINKS,
+    ...(can(role, "rulesets.dev") ? [{ href: "/dev/rulesets", label: t("nav.devRulesets") }] : []),
+    ...(can(role, "users.manage") ? [{ href: "/dev/users", label: t("nav.devUsers") }] : []),
+  ];
   // `||` (not `??`): an EMPTY name must fall back to the email so the pill
   // never renders blank/"?" for accounts registered without a name.
   const displayName = session?.user?.name?.trim() || session?.user?.email || "?";
