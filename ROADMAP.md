@@ -100,6 +100,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Feature | Notas |
 |---|---|
 | **Histórico completo con replay / taxonomía amplia** | El modo en vivo (SSE, turnos, relojes, timeline), kickoff (#100–#102) y la resolución por lado (#133/#134) ya están en Completado; lo que queda es replay de partidos, taxonomía completa de eventos (intercepciones, skills, clima, resto de la tabla de kickoff), filtros y visualización pública. |
+| **Escudo de equipo personalizado** (RAU-78) | Poder poner un escudo propio al equipo desde el detalle (subir/elegir), visible en cards, detalle, MatchCard y standings — reemplaza el emblema determinista de `TeamEmblem`; reutiliza el pipeline de avatares (WebP 256, storage local/S3). |
 | **Historial en My Profile** | El perfil muestra estadísticas de carrera (RAU-57); falta el historial de temporadas y equipos pasados. |
 | **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
 | **Emblemas reales + dorsal/jersey reales** | El dorsal es hoy un pseudo-número por índice de roster; falta asignar números de jersey reales y emblemas de equipo/raza. |
