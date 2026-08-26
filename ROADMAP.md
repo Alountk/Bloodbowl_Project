@@ -29,6 +29,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Migración de localStorage → cuenta (idempotente) | #26, fixes directos |
 | Avatares de usuario + página "My Profile" (avatar 256×256 WebP, /profile, nav, owner avatar en MatchCard) | #44, #45, #46, #47 |
 | **Modelo de cuentas con roles**: `user` / `developer` (el rol desbloquea la sección dev de rulesets; guard 403 server-side, DB-authoritative) | #112 |
+| **Modelo de cuentas: roles RBAC + plan** (RAU-52): `User.plan` aditivo (`free`/`club`/`premium`), `lib/permissions` (uniones tipadas + `can`/`canAny`/`planAtLeast`), guard generalizado `requirePermission`, sección dev **/dev/users** para gestionar roles/planes (con lockout de auto-rol), rol+plan visibles en My Profile | #149 |
 | **Landing pública + dashboard**: `/` = landing para anónimos / dashboard para logueados; **nav unificado** (Teams · Leagues · Matches) | #117, #118 |
 | **Auth en modal** (bottom/top-sheet mobile; /login y /signup pasan a ser fallbacks), coach name obligatorio | #118 |
 | **My Profile ampliado**: cambio de contraseña y **estadísticas de carrera** (campeonatos, V/E/D) derivadas de los equipos del usuario | #119 |
