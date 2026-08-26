@@ -6,6 +6,9 @@ const prismaMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
     update: vi.fn(),
   },
+  player: {
+    findMany: vi.fn(),
+  },
 }));
 
 vi.mock("@/auth", () => ({
@@ -85,7 +88,10 @@ describe("canViewScoutedTeam (pure gate)", () => {
 });
 
 describe("GET /api/teams/[id] scouting", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.player.findMany.mockResolvedValue([]);
+  });
 
   it("returns 401 when unauthenticated", async () => {
     authMock.mockResolvedValue(null);
@@ -96,7 +102,15 @@ describe("GET /api/teams/[id] scouting", () => {
 
   it("returns 200 with read-only data to the team owner", async () => {
     authMock.mockResolvedValue({ user: { id: "user-owner" } });
-    prismaMock.team.findFirst.mockResolvedValue(scoutedTeam({ league: { id: "l1", ownerId: "user-league-owner", teams: [] } }));
+    prismaMock.team.findFirst.mockResolvedValue(
+      scoutedTeam({
+        roster: [{ id: "p1", name: "Player 1", positionalKey: "lineman" }],
+        league: { id: "l1", ownerId: "user-league-owner", teams: [] },
+      }),
+    );
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t1", rosterPlayerId: "p1", pe: 6 },
+    ]);
 
     const res = await getRequest("t1");
     expect(res.status).toBe(200);
@@ -104,7 +118,11 @@ describe("GET /api/teams/[id] scouting", () => {
     expect(body.id).toBe("t1");
     expect(body.name).toBe("Reavers");
     expect(body.raceId).toBe("human");
-    // The user and league relations must not leak into the response.
+    // RAU-14: scouting carries the player experience on the roster entries.
+    expect(body.roster).toEqual([
+      expect.objectContaining({ id: "p1", pe: 6 }),
+    ]);
+    // The relations never leak.
     expect(body.league).toBeUndefined();
     expect(body.user).toBeUndefined();
   });

@@ -480,4 +480,22 @@ describe("EventControls — RAU-13 Journeymen (Novatos) in the pools", () => {
     expect(labels.some((l) => l.includes("Blitzer A"))).toBe(true);
     expect(labels.some((l) => l.includes("(Novato)"))).toBe(false);
   });
+
+describe("EventControls — RAU-14 PE in player options", () => {
+  it("appends the ★PE suffix to options when the player has experience", () => {
+    renderControls({
+      roster: [
+        { rosterPlayerId: "p1", name: "Blitzer A", positionalKey: "blitzer", pe: 5, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+        { rosterPlayerId: "p2", name: "Thrower A", positionalKey: "thrower", pe: 0, skills: [], injuries: [], alive: true, missNextMatch: false, valueBonus: 0 },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    fireEvent.click(screen.getByRole("button", { name: /Touchdown/i }));
+    const tdSelect = screen.getByLabelText(/Jugador/i) as HTMLSelectElement;
+    const labels = Array.from(tdSelect.options).map((o) => o.textContent ?? "");
+    // Pe > 0 appends the experience; pe 0 stays without the suffix.
+    expect(labels.some((l) => l.includes("Blitzer A") && l.includes("★5"))).toBe(true);
+    expect(labels.some((l) => l.includes("Thrower A") && l.includes("★"))).toBe(false);
+  });
+});
 });

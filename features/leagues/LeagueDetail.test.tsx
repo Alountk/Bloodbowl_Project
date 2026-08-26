@@ -181,6 +181,28 @@ describe("LeagueDetail — owner of an open league (admin)", () => {
     expect(start.disabled).toBe(true);
   });
 
+  it("RAU-14: shows each member team's total SPP chip from the served roster PE", async () => {
+    makeFetch({
+      ...ownOpenLeague,
+      teams: [
+        {
+          ...ownOpenLeague.teams[0],
+          roster: [
+            { id: "p1", name: "A", positionalKey: "lineman", pe: 6 },
+            { id: "p2", name: "B", positionalKey: "lineman", pe: 3 },
+          ],
+        },
+        ownOpenLeague.teams[1],
+      ],
+    });
+    render(<LeagueDetail leagueId="l1" />);
+
+    await waitFor(() => expect(screen.getByText("Reavers")).toBeTruthy());
+    // 6 + 3 → the "SPP 9" chip; the zero-PE team shows none.
+    expect(screen.getByText("SPP 9")).toBeTruthy();
+    expect(screen.getAllByText(/SPP/)).toHaveLength(1);
+  });
+
   it("opens the start modal and refreshes into jornadas after a successful start", async () => {
     const fetchMock = makeFetch(ownOpenLeague);
     render(<LeagueDetail leagueId="l1" />);

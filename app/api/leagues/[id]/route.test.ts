@@ -13,6 +13,9 @@ const prismaMock = vi.hoisted(() => ({
   team: {
     updateMany: vi.fn(),
   },
+  player: {
+    findMany: vi.fn(),
+  },
 }));
 
 vi.mock("@/auth", () => ({
@@ -26,7 +29,10 @@ vi.mock("@/lib/prisma", () => ({
 import { GET, DELETE, deriveFixtureStatus, enrichFixture, buildRoundsWithCompletion } from "./route";
 
 describe("GET /api/leagues/[id]", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.player.findMany.mockResolvedValue([]);
+  });
 
   it("returns 401 when there is no session", async () => {
     authMock.mockResolvedValue(null);
@@ -50,10 +56,21 @@ describe("GET /api/leagues/[id]", () => {
       startedAt: null,
       createdAt: new Date().toISOString(),
       teams: [
-        { id: "t1", name: "Reavers", raceId: "human", userId: "user-1", leagueId: "l1", archivedAt: null },
+        {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          leagueId: "l1",
+          archivedAt: null,
+          roster: [{ id: "p1", name: "Player 1", positionalKey: "lineman" }],
+        },
         { id: "t2", name: "Dwarves", raceId: "dwarf", userId: "user-3", leagueId: "l1", archivedAt: null },
       ],
     });
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t1", rosterPlayerId: "p1", pe: 8 },
+    ]);
 
     const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
       params: Promise.resolve({ id: "l1" }),
@@ -65,6 +82,10 @@ describe("GET /api/leagues/[id]", () => {
     expect(body.ownerName).toBe("Owner Coach");
     expect(body.status).toBe("open");
     expect(body.teams).toHaveLength(2);
+    // RAU-14: member rosters carry the player experience.
+    expect(body.teams[0].roster).toEqual([
+      expect.objectContaining({ id: "p1", pe: 8 }),
+    ]);
     expect(body.fixtures).toEqual([]);
     // Open league visible regardless of owner → query is scoped by id only.
     expect(prismaMock.league.findFirst).toHaveBeenCalledWith(

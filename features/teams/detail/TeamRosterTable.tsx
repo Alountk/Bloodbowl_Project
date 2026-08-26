@@ -274,6 +274,14 @@ export function TeamRosterTable({
                   <td className="px-2 py-1.5 text-left">
                     <p className="font-bold text-[#1a1a1a]">
                       {entry.name}
+                      {/* RAU-14: read-only (scouting) rows surface the player's
+                          experience from the served roster entry; the owner's
+                          rows already show the SPP bar via progression. */}
+                      {core == null && (entry.pe ?? 0) > 0 ? (
+                        <span className="ml-1 align-middle text-[10px] font-black tracking-wide text-[#d11938]">
+                          ★{entry.pe}
+                        </span>
+                      ) : null}
                       {dead ? <span className="ml-1">💀</span> : null}
                       {injured ? <span className="ml-1">🏥</span> : null}
                       {missNext ? (

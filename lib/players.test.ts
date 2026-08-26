@@ -1,71 +1,57 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { attachPeToRoster, attachPeToTeams } from "./players";
 
 const prismaMock = vi.hoisted(() => ({
-  player: { createMany: vi.fn() },
+  player: { findMany: vi.fn() },
 }));
-
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
-import { ensurePlayersForTeam } from "./players";
-import type { PlayerEntry } from "@/features/teams/types";
+const roster = [
+  { id: "p1", name: "A", positionalKey: "lineman" },
+  { id: "p2", name: "B", positionalKey: "blitzer" },
+];
 
-const ROSTER: PlayerEntry[] = Array.from({ length: 11 }, (_, i) => ({
-  id: `p${i + 1}`,
-  name: `Player ${i + 1}`,
-  positionalKey: i === 0 ? "thrower" : "liner",
-}));
-
-describe("ensurePlayersForTeam (player-progression reconciliation)", () => {
-  beforeEach(() => {
-    prismaMock.player.createMany.mockReset();
-    prismaMock.player.createMany.mockResolvedValue({ count: ROSTER.length });
+describe("attachPeToRoster (RAU-14 pure)", () => {
+  it("maps pe onto matching entries and leaves the rest untouched", () => {
+    const attached = attachPeToRoster(roster, [
+      { rosterPlayerId: "p1", pe: 6 },
+      { rosterPlayerId: "p2", pe: 0 },
+    ]);
+    expect(attached[0]).toEqual({ id: "p1", name: "A", positionalKey: "lineman", pe: 6 });
+    expect(attached[1]).toEqual({ id: "p2", name: "B", positionalKey: "blitzer", pe: 0 });
   });
 
-  it("backfills one Player row per roster entry, mapped by rosterPlayerId", async () => {
-    await ensurePlayersForTeam("t1", ROSTER);
-    expect(prismaMock.player.createMany).toHaveBeenCalledTimes(1);
-    const arg = prismaMock.player.createMany.mock.calls[0][0];
-    expect(arg.skipDuplicates).toBe(true);
-    expect(arg.data).toHaveLength(11);
-    // idempotent unique key
-    expect(arg.data[0]).toMatchObject({
-      teamId: "t1",
-      rosterPlayerId: "p1",
-      name: "Player 1",
-      positionalKey: "thrower",
-    });
-    // all rows carry the progression defaults
-    for (const row of arg.data) {
-      expect(row).toMatchObject({
-        pe: 0,
-        skills: [],
-        injuries: [],
-        alive: true,
-        valueBonus: 0,
-        improvements: [],
-        attributeIncreases: {},
-      });
-    }
+  it("does not mutate the input", () => {
+    attachPeToRoster(roster, [{ rosterPlayerId: "p1", pe: 6 }]);
+    expect(roster[0]).not.toHaveProperty("pe");
+  });
+});
+
+describe("attachPeToTeams (RAU-14 DB)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("attaches pe for multiple teams in one query", async () => {
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t1", rosterPlayerId: "p1", pe: 6 },
+      { teamId: "t2", rosterPlayerId: "p2", pe: 3 },
+    ]);
+    const teams = [
+      { id: "t1", roster: [{ id: "p1", name: "A", positionalKey: "lineman" }] },
+      { id: "t2", roster: [{ id: "p2", name: "B", positionalKey: "blitzer" }] },
+    ];
+    const attached = await attachPeToTeams(teams);
+
+    expect(prismaMock.player.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { teamId: { in: ["t1", "t2"] } } }),
+    );
+    expect(attached[0].roster[0]).toEqual({ id: "p1", name: "A", positionalKey: "lineman", pe: 6 });
+    expect(attached[1].roster[0]).toEqual({ id: "p2", name: "B", positionalKey: "blitzer", pe: 3 });
   });
 
-  it("stays idempotent across repeated calls via skipDuplicates", async () => {
-    await ensurePlayersForTeam("t1", ROSTER);
-    await ensurePlayersForTeam("t1", ROSTER);
-    expect(prismaMock.player.createMany).toHaveBeenCalledTimes(2);
-    const each = prismaMock.player.createMany.mock.calls.map((call) => call[0].skipDuplicates);
-    expect(each).toEqual([true, true]);
-  });
-
-  it("skips rows for roster ids that no longer exist (no orphans)", async () => {
-    await ensurePlayersForTeam("t1", ROSTER.slice(0, 4));
-    const arg = prismaMock.player.createMany.mock.calls[0][0];
-    expect(arg.data).toHaveLength(4);
-    const ids = arg.data.map((row: { rosterPlayerId: string }) => row.rosterPlayerId);
-    expect(ids).toEqual(["p1", "p2", "p3", "p4"]);
-  });
-
-  it("makes no write when the roster is empty", async () => {
-    await ensurePlayersForTeam("t1", []);
-    expect(prismaMock.player.createMany).not.toHaveBeenCalled();
+  it("keeps teams without Player rows untouched", async () => {
+    prismaMock.player.findMany.mockResolvedValue([]);
+    const teams = [{ id: "t1", roster: [{ id: "p1", name: "A", positionalKey: "lineman" }] }];
+    const attached = await attachPeToTeams(teams);
+    expect(attached[0].roster[0]).not.toHaveProperty("pe");
   });
 });

@@ -271,6 +271,24 @@ describe("TeamRosterTable", () => {
     expect(screen.queryByTestId("improve-modal")).toBeNull();
   });
 
+  it("RAU-14: read-only rows surface the served PE badge when the entry has experience", () => {
+    render(
+      <TeamRosterTable
+        team={{
+          ...baseTeam,
+          roster: [
+            { id: "p1", name: "John", positionalKey: "lineman", pe: 6 },
+            { id: "p2", name: "Jane", positionalKey: "lineman", pe: 0 },
+          ],
+        }}
+        race={humanRace}
+      />,
+    );
+    expect(screen.getByText("★6")).toBeTruthy();
+    // A zero-PE entry shows no badge.
+    expect(screen.queryByText("★0")).toBeNull();
+  });
+
   it("RAU-9: renders reorder arrows per row, hiding the impossible move (first/last)", () => {
     render(
       <TeamRosterTable

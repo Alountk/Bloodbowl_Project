@@ -378,7 +378,9 @@ function MemberList({
       ) : (
         teams.map((team) => {
           const race = getRaceById(team.raceId);
-          const playerCount = Array.isArray(team.roster) ? team.roster.length : 0;
+          const roster = Array.isArray(team.roster) ? (team.roster as { pe?: number }[]) : [];
+          const playerCount = roster.length;
+          const totalPe = roster.reduce((sum, entry) => sum + (entry.pe ?? 0), 0);
           return (
             <li
               key={team.id}
@@ -393,6 +395,12 @@ function MemberList({
                   })}
                 </p>
               </div>
+              {/* RAU-14: the team's total experience at a glance. */}
+              {totalPe > 0 ? (
+                <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[11px] font-bold text-[#d11938]">
+                  {t("leagues.sppTotal", { total: totalPe })}
+                </span>
+              ) : null}
               {canExpel ? (
                 <button
                   type="button"

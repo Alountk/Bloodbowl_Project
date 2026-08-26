@@ -56,6 +56,12 @@ export interface PlayerEntry {
    * (RAU-11 hires) never set it.
    */
   hired?: boolean;
+  /**
+   * RAU-14: the player's experience (PE), attached server-side when a roster is
+   * served to roster views (scouting, league member lists). Progression rows
+   * live in the `Player` table; `pe` here is a read-only projection for display.
+   */
+  pe?: number;
 }
 
 /**
