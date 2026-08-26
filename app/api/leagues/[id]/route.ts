@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { rulesetToDto } from "@/lib/rulesets";
+import { attachPeToTeams } from "@/lib/players";
 import type { FixtureLiveLite, FixtureStatus } from "@/features/leagues/api";
 
 /** The scheduling/result fields a fixture derives its lifecycle status from. */
@@ -199,13 +200,17 @@ export async function GET(
         })
       : [];
 
-  const { owner, ruleset, ...rest } = league;
+  const { owner, ruleset, teams, ...rest } = league;
+  // RAU-14: member rosters carry their Player `pe` so the member list can show
+  // each team's experience at a glance.
+  const teamsWithPe = await attachPeToTeams(teams);
   return NextResponse.json({
     ...rest,
     status: rest.status,
     ownerName: owner?.name ?? owner?.email ?? null,
     rulesetName: ruleset?.name ?? null,
     ruleset: ruleset ? rulesetToDto(ruleset) : null,
+    teams: teamsWithPe,
     fixtures: fixtures.map((fixture) => enrichFixture(fixture as FixtureWithMatchday)),
     rounds: buildRoundsWithCompletion(fixtures as never),
   });

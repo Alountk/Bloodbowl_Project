@@ -75,10 +75,12 @@ export function positionName(raceId: string, positionalKey: string): string {
   return race?.positionals.find((pos) => pos.key === positionalKey)?.name ?? positionalKey;
 }
 
-/** RAU-48/RAU-13: the option label for a roster player — "Don Pelayo El Bestia
- * (Bull Centaur · #3)" — so causer/victim/scorer picks are unambiguous and the
- * dorsal (served-array index + 1) is visible. A Journeyman (Novato) is labeled
- * with the journeyman marker in the role slot: "Aldric Martillo (Novato · #12)". */
+/** RAU-48/RAU-13/RAU-14: the option label for a roster player — "Don Pelayo
+ * El Bestia (Bull Centaur · #3)" — so causer/victim/scorer picks are
+ * unambiguous and the dorsal (served-array index + 1) is visible. A Journeyman
+ * (Novato) is labeled with the journeyman marker in the role slot:
+ * "Aldric Martillo (Novato · #12)". RAU-14 appends the player's experience
+ * (★PE) when > 0 so the coach sees it at a glance. */
 function playerOptionLabel(
   p: MatchPlayer,
   raceId: string,
@@ -86,7 +88,8 @@ function playerOptionLabel(
   dorsal: number,
 ): string {
   const role = p.journeyman ? journeymanLabel : positionName(raceId, p.positionalKey);
-  return `${p.name} (${role} · #${dorsal})`;
+  const peSuffix = p.pe > 0 ? ` · ★${p.pe}` : "";
+  return `${p.name} (${role} · #${dorsal})${peSuffix}`;
 }
 
 interface EventControlsProps {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { attachPeToTeams } from "@/lib/players";
 
 /**
  * Pure visibility gate for the read-only scouting GET. A team is visible to:
@@ -78,12 +79,14 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Return strictly read-only fields; the relations must never leak.
+  // Return strictly read-only fields; the relations must never leak. RAU-14:
+  // the roster entries carry their Player `pe` so scouting shows experience.
+  const [attached] = await attachPeToTeams([{ id: team.id, roster: team.roster }]);
   return NextResponse.json({
     id: team.id,
     name: team.name,
     raceId: team.raceId,
-    roster: team.roster,
+    roster: attached.roster,
     coaching: team.coaching,
     leagueId: team.leagueId,
     treasury: team.treasury,
