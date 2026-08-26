@@ -16,6 +16,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Catálogo BB2025 = **31 razas / 163 posicionales** (Slann añadido), alineado con **rulebook** (composición, letras de acceso, skills BB2025 completas, nombres ES); el catálogo vive en JSON con validador y scraper rulebook como fuente | #106, #107, directos a main |
 | **Nombres fantásticos** por raza: bancos de jugadores ("Nombre Apellido") y nombres de equipo, dado 🎲 en la creación y re-roll en el renombrado | #106, directos a main |
 | **Roster estilo rulebook**: tabla densa con progresión integrada (barra SPP segmentada, NI, skills con marcador de compra), modal de improve con selects filtrados por PE, renombrar jugadores, dorsal junto al puesto y stats de carrera (CAS/MVP) | directos a main |
+| **PE/SPP visible en todas las vistas de plantilla** (RAU-14): scouting con badge ★PE por jugador, lista de miembros de liga con chip SPP total por equipo y opciones de jugador del live con sufijo ★PE; los rosters servidos llevan el `pe` adjunto (`PlayerEntry.pe`) | #151 |
 | **Contratar/despedir** contra el balance real de tesorería + **reordenar la plantilla** con flechas (el dorsal del feed sigue el orden) | #110, #111 |
 | **Bajas que se pierden el próximo partido** ("Baja la próxima", suspensión RAU-12; el hematoma nunca bloquea) | #108 |
 | **Página `/teams`**: secciones "Sin liga" / "En liga", cards con CTV, tesorería y hint "listos para mejorar" (cuenta PE disponibles), guard 409 al archivar | #121, #125–#127 |
