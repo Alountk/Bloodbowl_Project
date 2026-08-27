@@ -11,6 +11,7 @@ import type { PlayerAttribute } from "@/lib/rules/improvements";
 import { useI18n } from "@/lib/i18n";
 import { applyAttributeIncreases, isAttributeBetter } from "./characteristics";
 import { PlayerImproveModal, type ModalPlayer } from "./PlayerImproveModal";
+import { PlayerAvatar } from "../PlayerAvatar";
 
 /** Positional-role → tasteful emoji placeholder (no art assets). */
 const ROLE_ICONS: Record<string, string> = {
@@ -265,10 +266,15 @@ export function TeamRosterTable({
                   </td>
                   <td className="px-2 py-1.5 text-center">
                     <span
-                      className="inline-grid h-7 w-7 place-items-center rounded-full text-[15px]"
+                      className="inline-flex items-center justify-center"
                       data-testid="player-icon"
                     >
-                      {iconFor(positional?.role)}
+                      <PlayerAvatar
+                        raceId={race.id}
+                        positionalKey={entry.positionalKey}
+                        fallbackIcon={iconFor(positional?.role)}
+                        className="text-[15px]"
+                      />
                     </span>
                   </td>
                   <td className="px-2 py-1.5 text-left">
