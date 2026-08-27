@@ -1,85 +1,89 @@
 # Bloodbowl Teams
 
-Gestor de equipos, ligas y campeonatos de **Blood Bowl 2025** — con el diseño inspirado en el reglamento oficial (temática "libro": paneles claros, cabeceras navy/rojo, tablas estilo reglamento).
+**English** | [Español](README.es.md) | [Català](README.ca.md)
 
-Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailwind v4 · **Prisma + PostgreSQL** · **Auth.js v5** (email + contraseña) · Vitest + Playwright · Docker/GHCR.
+---
+
+Team, league and championship manager for **Blood Bowl 2025** — with a design inspired by the official rulebook ("book" theme: light panels, navy/red headers, rulebook-style tables).
+
+Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailwind v4 · **Prisma + PostgreSQL** · **Auth.js v5** (email + password) · Vitest + Playwright · Docker/GHCR.
 
 ---
 
 ## Features
 
-### Equipos (BB2025)
-- Catálogo completo de **31 razas / 163 posicionales** (Slann incluido) con stats (MV/FU/AG/PS/AR), skills en español, acceso de skills (G/A/P/S/M/F), costos y rangos alineados con **rulebook BB2025**. El catálogo vive en JSON (`features/teams/data/races.catalog.json`) con validador y un scraper rulebook como fuente de referencia.
-- **Nombres fantásticos** por raza: bancos de jugadores (composición "Nombre Apellido") y nombres de equipo, con botón 🎲 en la creación y al renombrar jugadores.
-- **Creación en 2 pasos**: nombre + raza → plantilla (mínimo **11 jugadores**, presupuesto 1 000 000 gc) → coaching staff → guardar.
-- **Roster estilo rulebook**: tabla densa con progresión integrada (barra SPP segmentada, NI, badge "Baja la próxima"), modal de improve con selects filtrados por PE, dorsal junto al puesto, reordenar con flechas y **contratar/despedir** contra el balance real de tesorería.
-- **Novatos (Journeymen)**: si quedan menos de 11 disponibles, se cubren con novatos del banco de la raza (nombres deterministas); ganan PE, son elegibles a MVP y tras el partido se pueden **fichar (cobro único) o dejar ir**.
-- **Detalle de equipo** estilo libro: plantilla, cuerpo técnico, tesorería; **archivo (soft delete)** con modal de confirmación; un equipo en una liga **no se puede archivar** (guard 409, expulsar primero).
-- **Página `/teams`**: tus equipos separados en "Sin liga" / "En liga", cards con CTV, tesorería y el hint "listos para mejorar".
+### Teams (BB2025)
+- Complete catalog of **31 races / 163 positionals** (Slann included) with stats (MV/ST/AG/PA/AV), skills in Spanish, skill access (G/A/P/S/M/T), costs and caps aligned with the **BB2025 rulebook**. The catalog lives in JSON (`features/teams/data/races.catalog.json`) with a validator and a rulebook scraper as the reference source.
+- **Fantasy names** per race: player name banks ("First Last" composition) and team names, with a 🎲 button in creation and when renaming players.
+- **2-step creation**: name + race → roster (minimum **11 players**, 1,000,000 gc budget) → coaching staff → save.
+- **Rulebook-style roster**: dense table with built-in progression (segmented SPP bar, NI, "Miss next" badge), improve modal with PE-filtered selects, jersey number next to the position, reorder arrows and **hire/fire** against the real treasury balance.
+- **Journeymen**: if fewer than 11 are available, the roster is filled with journeymen from the race's name bank (deterministic names); they earn PE, are MVP-eligible and after the match can be **signed (one-time fee) or released**.
+- **Team detail** book-style view: roster, coaching staff, treasury; **archive (soft delete)** with confirmation modal; a team in a league **cannot be archived** (409 guard, kick out first).
+- **`/teams` page**: your teams split into "No league" / "In league", cards with TV, treasury and a "ready to improve" hint.
 
-### Autenticación y cuenta
-- **Auth.js v5** (Credentials + JWT, bcryptjs): registro abierto, login, logout, rutas protegidas (`AUTH_MODE=auth`); **auth en modal** (top-sheet en mobile).
-- **Landing pública + dashboard**: `/` muestra la landing (anónimo) o el dashboard (logueado); nav unificado (**Teams · Leagues · Matches**).
-- **Roles de cuenta**: `user` y `developer`; el rol developer desbloquea la sección dev de tipos de reglas (guard 403 server-side).
-- **My Profile**: avatar (256×256 WebP), cambio de contraseña, **estadísticas de carrera** (campeonatos, victorias/empates/derrotas) e **idioma por cuenta** (ES/EN, cookie + selector).
-- **PostgreSQL + Prisma**: equipos y ligas por usuario; migraciones automáticas en el deploy.
-- **Storage**: el modo local (sin login) usa un store **en memoria** (localStorage deprecado); la **migración legacy localStorage → cuenta** se mantiene (idempotente, sin borrar el origen).
+### Authentication & account
+- **Auth.js v5** (Credentials + JWT, bcryptjs): open registration, login, logout, protected routes (`AUTH_MODE=auth`); **modal auth** (top-sheet on mobile).
+- **Public landing + dashboard**: `/` shows the landing (anonymous) or the dashboard (logged in); unified nav (**Teams · Leagues · Matches**).
+- **Account roles**: `user` and `developer`; the developer role unlocks the dev-only ruleset section (403 server-side guard).
+- **My Profile**: avatar (256×256 WebP), password change, **career stats** (championships, wins/draws/losses) and **per-account language** (ES/EN, cookie + selector).
+- **PostgreSQL + Prisma**: teams and leagues per user; automatic migrations on deploy.
+- **Storage**: local mode (no login) uses an **in-memory store** (localStorage deprecated); the **legacy localStorage → account migration** is kept (idempotent, source never deleted).
 
-### Ligas y campeonatos
-- **Tipos de reglas (rulesets)**: definen razas permitidas, tesorería inicial, TV cap, mín/máx de plantilla y gestión de contrataciones; las ligas eligen uno al crearse (seed "Estándar BB2025"). Sección dev-only con wizard de cards/tabs.
-- **Ligas abiertas públicas**: cualquier usuario logueado crea ligas (admin = creador) y se une con sus equipos; **un usuario = un equipo por liga** (guard 409).
-- **Campeonatos**: el admin elige el número de **jornadas** (1..equipos-1) y los **emparejamientos son automáticos** (round-robin con shuffle, sin repetir rivales; con equipos impares uno descansa).
-- **Cierre de liga y campeón**: al completarse la última jornada la liga se cierra automáticamente; las **standings 3/1/0** con desempates (puntos → diferencia de TD → TDs a favor → enfrentamiento directo) deciden el **campeón** (badge "Finalizada" + panel del campeón).
-- **Matchday**: negociación de fecha (toma y daca), forfeit del admin (walkover), scouting del rival, completitud de jornada, **rejornar** (renegociar antes de jugarse) y corrección de resultados por ambos capitanes.
-- **Resolución del partido** (wizard por lado, resumible): **ganancias** → **tirada de aficionados** (↑/=/↓) → **MVP** (checkboxes, máx. 6 por lado) → **bajas** → **novatos**; cuando ambos lados terminan, el partido se cierra solo.
-- **Partido en vivo**: turnos correctos (home T1 → away T1 → home T2), ★2 solo en el causador, **concesión**, corrección de resultados y eventos de kickoff (Error costoso + Factor de aficionados) con dados 100% server-side.
-- **Página `/matches`**: próximos partidos agrupados por fecha, con badge **EN VIVO** mientras corren.
+### Leagues & championships
+- **Rulesets**: define allowed races, starting treasury, TV cap, roster min/max and hiring policy; leagues pick one at creation (seed "Estándar BB2025"). Dev-only section with card/tab wizard.
+- **Open public leagues**: any logged-in user creates leagues (admin = creator) and joins with their teams; **one user = one team per league** (409 guard).
+- **Championships**: the admin picks the number of **matchdays** (1..teams-1) and **pairings are automatic** (round-robin with shuffle, no repeated rivals; with an odd number of teams one rests).
+- **League closure & champion**: when the last matchday completes the league closes automatically; **3/1/0 standings** with tiebreakers (points → TD difference → TDs scored → head-to-head) decide the **champion** ("Finished" badge + champion panel).
+- **Matchday**: date negotiation (give-and-take), admin forfeit (walkover), rival scouting, matchday completeness, **re-schedule** (renegotiate before playing) and result correction by both captains.
+- **Match resolution** (wizard per side, resumable): **winnings** → **fan factor roll** (↑/=/↓) → **MVP** (checkboxes, max. 6 per side) → **casualties** → **journeymen**; when both sides finish, the match closes itself.
+- **Live match**: correct turns (home T1 → away T1 → home T2), ★2 only on the causer, **concession**, result correction and kickoff events (Costly error + Fan factor) with 100% server-side dice.
+- **`/matches` page**: upcoming matches grouped by date, with **LIVE** badge while running.
 
 ### UI / UX
-- Diseño **rulebook light** coherente (shell, sidebar, cards, tablas, modales).
-- **i18n ES/EN**: diccionarios propios sin dependencias; idioma por cuenta (selector en My Profile) y por navegador (cookie `bb-locale`).
-- **Responsive / mobile**: drawer hamburger, tablas apiladas en mobile, combos nativos 16px, sin scroll horizontal.
+- Coherent **rulebook light** design (shell, sidebar, cards, tables, modals).
+- **i18n ES/EN**: own dictionaries with no dependencies; per-account language (selector in My Profile) and per-browser (cookie `bb-locale`).
+- **Responsive / mobile**: hamburger drawer, stacked tables on mobile, native 16px combos, no horizontal scroll.
 
 ---
 
 ## Getting started
 
-### Requisitos
-- Node.js 22+ · pnpm 8.6.6 · Docker (para Postgres y e2e)
+### Requirements
+- Node.js 22+ · pnpm 8.6.6 · Docker (for Postgres and e2e)
 
-### 1. Entorno local
+### 1. Local environment
 
 ```bash
 pnpm install
-cp .env.example .env.development.local   # y completá DATABASE_URL / AUTH_SECRET / AUTH_MODE
-docker compose up -d postgres            # Postgres (puerto publicado: POSTGRES_PORT, default 5433)
-pnpm db:generate && pnpm db:migrate      # Prisma client + migraciones
+cp .env.example .env.development.local   # then fill DATABASE_URL / AUTH_SECRET / AUTH_MODE
+docker compose up -d postgres            # Postgres (published port: POSTGRES_PORT, default 5433)
+pnpm db:generate && pnpm db:migrate      # Prisma client + migrations
 pnpm dev                                 # http://localhost:3000
 ```
 
-> `.env.development.local` (gitignored): `DATABASE_URL`, `AUTH_SECRET` (generar con `openssl rand -base64 32`), `AUTH_TRUST_HOST=true`, `AUTH_MODE=auth|local`.
-> `AUTH_MODE=local` = anónimo sin login (datos en memoria, sin persistencia); `AUTH_MODE=auth` = login + persistencia real en Postgres.
+> `.env.development.local` (gitignored): `DATABASE_URL`, `AUTH_SECRET` (generate with `openssl rand -base64 32`), `AUTH_TRUST_HOST=true`, `AUTH_MODE=auth|local`.
+> `AUTH_MODE=local` = anonymous without login (in-memory data, no persistence); `AUTH_MODE=auth` = login + real Postgres persistence.
 
 ### 2. Scripts
 
 ```bash
 pnpm test                # Unit + integration (Vitest)
-pnpm run test:e2e        # E2E local (AUTH_MODE=local) — requiere AUTH_MODE=local en el entorno
-pnpm run test:e2e:auth   # E2E real-DB (auth, ligas, matchday, partido en vivo) — levanta Postgres + app en AUTH_MODE=auth
+pnpm run test:e2e        # Local e2e (AUTH_MODE=local) — requires AUTH_MODE=local in the environment
+pnpm run test:e2e:auth   # Real-DB e2e (auth, leagues, matchday, live match) — starts Postgres + app in AUTH_MODE=auth
 pnpm lint                # ESLint
 pnpm db:generate         # Prisma client
-pnpm db:migrate          # Aplicar migraciones
-pnpm docker:build        # Construir imagen local
+pnpm db:migrate          # Apply migrations
+pnpm docker:build        # Build local image
 ```
 
 ### 3. Deploy (Docker / Arcane)
 
-Ver [docs/auth.md](./docs/auth.md) para el detalle completo. Resumen:
+See [docs/auth.md](./docs/auth.md) for the full detail. Summary:
 
-- La imagen se construye y publica en **GHCR** desde GitHub Actions (push a `main`); la CI publica tags versionados por fecha y un workflow semanal limpia las 10 imágenes más antiguas.
-- `docker-compose.yml`: servicio `web` (imagen `ghcr.io/<org>/bloodbowl_project:latest`) + `postgres` en red compartida.
-- El entrypoint del contenedor aplica `prisma migrate deploy` antes de arrancar.
-- Variables de entorno: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `AUTH_MODE=auth`, `POSTGRES_PORT` (default 5433).
+- The image is built and published to **GHCR** from GitHub Actions (push to `main`); CI publishes date-versioned tags and a weekly workflow prunes the 10 oldest images.
+- `docker-compose.yml`: `web` service (image `ghcr.io/<org>/bloodbowl_project:latest`) + `postgres` on a shared network.
+- The container entrypoint runs `prisma migrate deploy` before starting.
+- Environment variables: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `AUTH_MODE=auth`, `POSTGRES_PORT` (default 5433).
 
 ```bash
 docker compose pull web
@@ -88,22 +92,22 @@ docker compose up -d --force-recreate web
 
 ---
 
-## Estructura
+## Structure
 
 ```
-app/                  # Rutas (App Router): equipos, ligas, partidos, perfil, dev, API routes
+app/                  # Routes (App Router): teams, leagues, matches, profile, dev, API routes
 components/           # Shell (Sidebar/Topbar), AuthCard
 features/
-  teams/              # Catálogo (data/: JSON + validador, skills, nombres), roster rulebook, wizard
-  leagues/            # Ligas, campeonatos, matchday, partido en vivo, resolución, jornadas
-  matches/            # Página /matches (próximos agrupados por fecha)
-  rulesets/           # Tipos de reglas (sección dev-only)
-  profile/            # My Profile (avatar, contraseña, estadísticas, idioma)
-  migration/          # Migración localStorage → cuenta
+  teams/              # Catalog (data/: JSON + validator, skills, names), rulebook roster, wizard
+  leagues/            # Leagues, championships, matchday, live match, resolution, matchdays
+  matches/            # /matches page (upcoming grouped by date)
+  rulesets/           # Rulesets (dev-only section)
+  profile/            # My Profile (avatar, password, stats, language)
+  migration/          # localStorage → account migration
 lib/                  # Prisma client, roundRobin, standings, liveStore, i18n
-prisma/               # Schema + migraciones
-e2e/                  # Playwright: desktop, mobile, auth, ligas, matchday, partido en vivo
-openspec/             # SDD: specs, cambios archivados
+prisma/               # Schema + migrations
+e2e/                  # Playwright: desktop, mobile, auth, leagues, matchday, live match
+openspec/             # SDD: specs, archived changes
 docs/                 # auth.md (ops/deploy)
 ```
 
@@ -111,54 +115,54 @@ docs/                 # auth.md (ops/deploy)
 
 ## Development with Docker
 
-Entorno de desarrollo virtualizado (docker-compose.dev.yml): `next dev` con **Turbopack HMR** dentro del contenedor, bind mount del código y Postgres dev dedicado. No toca el compose de producción (`docker-compose.yml`).
+Virtualized development environment (docker-compose.dev.yml): `next dev` with **Turbopack HMR** inside the container, code bind mount and dedicated dev Postgres. It does not touch the production compose (`docker-compose.yml`).
 
-### Requisitos
-- Docker Desktop / Engine con Compose reciente (cualquier versión moderna sirve; el archivo no usa `develop.watch`).
-- Verificá con `docker compose version`; si tu plugin es muy viejo, usá el standalone `docker-compose` con los mismos comandos (`docker-compose -f docker-compose.dev.yml ...`).
+### Requirements
+- Docker Desktop / Engine with a recent Compose (any modern version works; the file does not use `develop.watch`).
+- Check with `docker compose version`; if your plugin is too old, use the standalone `docker-compose` with the same commands (`docker-compose -f docker-compose.dev.yml ...`).
 
-### Arranque
+### Start
 
 ```bash
-cp .env.example .env          # opcional
-pnpm dev:docker:up            # o: docker compose -f docker-compose.dev.yml up --build -d
-pnpm dev:docker:logs          # opcional: seguir los logs de next dev
-# abrir http://localhost:3000
+cp .env.example .env          # optional
+pnpm dev:docker:up            # or: docker compose -f docker-compose.dev.yml up --build -d
+pnpm dev:docker:logs          # optional: follow next dev logs
+# open http://localhost:3000
 ```
 
 ### Hot-reload
-- El código está **bind-mounteado** (`.:/app`): los cambios se reflejan al instante en el contenedor y **Turbopack HMR** recarga la página sin reiniciar nada.
-- Si tocás `prisma/schema.prisma`: creá la migración y **reiniciá el servicio** (`pnpm dev:docker:restart`).
+- The code is **bind-mounted** (`.:/app`): changes reflect instantly in the container and **Turbopack HMR** reloads the page without restarting anything.
+- If you touch `prisma/schema.prisma`: create the migration and **restart the service** (`pnpm dev:docker:restart`).
 
-### Migraciones nuevas durante dev
+### New migrations during dev
 
 ```bash
-docker compose -f docker-compose.dev.yml exec web-dev pnpm prisma migrate dev --name <nombre>
+docker compose -f docker-compose.dev.yml exec web-dev pnpm prisma migrate dev --name <name>
 ```
 
-### Postgres dev
-- `localhost:5434` (credenciales `bloodbowl`/`bloodbowl`, db `bloodbowl`).
+### Dev Postgres
+- `localhost:5434` (credentials `bloodbowl`/`bloodbowl`, db `bloodbowl`).
 
 ### AUTH_MODE
-- `local` por defecto (sin login); `AUTH_MODE=auth` para probar el flujo completo (requiere `AUTH_SECRET`).
+- `local` by default (no login); `AUTH_MODE=auth` to test the full flow (requires `AUTH_SECRET`).
 
 ### VS Code / Cursor
-- Instalar la extensión **Dev Containers** y "Reopen in Container" (usa `.devcontainer/devcontainer.json`).
+- Install the **Dev Containers** extension and "Reopen in Container" (uses `.devcontainer/devcontainer.json`).
 
-### Detener
+### Stop
 
 ```bash
-pnpm dev:docker:down          # conserva el volumen de Postgres
+pnpm dev:docker:down          # keeps the Postgres volume
 ```
 
 ---
 
-## Documentación
+## Documentation
 
-- [docs/auth.md](./docs/auth.md) — Auth, PostgreSQL, migraciones, e2e auth, deploy en Arcane.
-- [ROADMAP.md](./ROADMAP.md) — Historico de features/bugs y roadmap pendiente.
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — Cómo contribuir (branches, commits, PRs, tests).
+- [docs/auth.md](./docs/auth.md) — Auth, PostgreSQL, migrations, auth e2e, Arcane deploy.
+- [ROADMAP.md](./ROADMAP.md) — Feature/bug history and pending roadmap.
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — How to contribute (branches, commits, PRs, tests).
 
-## Licencia
+## License
 
-MIT (ver [LICENSE](./LICENSE)).
+MIT (see [LICENSE](./LICENSE)).
