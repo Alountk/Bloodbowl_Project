@@ -10,8 +10,6 @@ import {
   proposeConcede,
   declineConcede,
   acceptConcede,
-  proposeCasualty,
-  confirmCasualty,
   toLiveViewState,
   deriveLiveClock,
   isDisplayEvent,
@@ -19,7 +17,6 @@ import {
   EMPTY_RESOLUTION_STATE,
   type LiveMatchState,
   type LiveMatchTransitionEvent,
-  type PendingCasualty,
 } from "./liveMatch";
 
 /**
@@ -47,7 +44,6 @@ function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     clockStartedAt: 1000,
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: { home: null, away: null },
     resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
@@ -73,7 +69,6 @@ function pending(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     clockStartedAt: null,
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: { home: null, away: null },
     resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
@@ -463,171 +458,6 @@ describe("acceptConcede — the NON-proposer accepts → finished + concede even
     expect(next.homeTurnMs).toBe(100);
     expect(next.clockStartedAt).toBeNull();
     expect(next.paused).toBe(false);
-  });
-});
-
-describe("proposeCasualty — active coach proposes, one pending at a time (RAU-39)", () => {
-  const proposal = {
-    side: "home" as const,
-    victimRosterId: "p9",
-    causerRosterId: "p1",
-    cause: "blitz" as const,
-    roll16: 13,
-    roll6: 4,
-  };
-
-  it("sets pendingCasualty on a live match when the caller is the ACTIVE side", () => {
-    const next = proposeCasualty(state(), proposal);
-    expect(next.pendingCasualty).toEqual({
-      proposerSide: "home",
-      victimRosterId: "p9",
-      causerRosterId: "p1",
-      cause: "blitz",
-      roll16: 13,
-      roll6: 4,
-    });
-    // No event and no other state change — the proposal is purely the flag.
-    expect(next.events).toHaveLength(0);
-    expect(next.status).toBe("live");
-    expect(next.activeSide).toBe("home");
-  });
-
-  it("omits roll6 when the attacker did not roll it (non-permanent likely)", () => {
-    const next = proposeCasualty(state(), { ...proposal, roll6: undefined });
-    expect(next.pendingCasualty).toEqual({
-      proposerSide: "home",
-      victimRosterId: "p9",
-      causerRosterId: "p1",
-      cause: "blitz",
-      roll16: 13,
-    });
-    expect("roll6" in next.pendingCasualty!).toBe(false);
-  });
-
-  it("rejects a propose outside live (pending/ready/finished)", () => {
-    expect(() => proposeCasualty(pending(), proposal)).toThrow("live");
-    expect(() => proposeCasualty(pending({ status: "ready" }), proposal)).toThrow("live");
-    expect(() => proposeCasualty(state({ status: "finished" }), proposal)).toThrow("live");
-  });
-
-  it("rejects a second proposal while one is pending (no idempotent retry — the rolls differ)", () => {
-    const pendingState = state({
-      pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13 },
-    });
-    expect(() => proposeCasualty(pendingState, proposal)).toThrow("already");
-  });
-
-  it("rejects a propose from the NON-active side (out-of-turn)", () => {
-    expect(() => proposeCasualty(state(), { ...proposal, side: "away" })).toThrow("active");
-  });
-
-  it("rejects invalid rolls: roll16 must be an integer in 1..16, roll6 in 1..6", () => {
-    expect(() => proposeCasualty(state(), { ...proposal, roll16: 0 })).toThrow("roll16");
-    expect(() => proposeCasualty(state(), { ...proposal, roll16: 17 })).toThrow("roll16");
-    expect(() => proposeCasualty(state(), { ...proposal, roll16: 1.5 })).toThrow("roll16");
-    expect(() => proposeCasualty(state(), { ...proposal, roll6: 0 })).toThrow("roll6");
-    expect(() => proposeCasualty(state(), { ...proposal, roll6: 7 })).toThrow("roll6");
-  });
-});
-
-describe("confirmCasualty — the defender confirms, band derived server-side (RAU-39)", () => {
-  function withPending(over: Partial<PendingCasualty> = {}): LiveMatchState {
-    return state({
-      pendingCasualty: {
-        proposerSide: "home",
-        victimRosterId: "p9",
-        causerRosterId: "p1",
-        cause: "blitz",
-        roll16: 13,
-        roll6: 4,
-        ...over,
-      },
-    });
-  }
-
-  it("appends the casualty event on the VICTIM's side and clears the proposal", () => {
-    const next = confirmCasualty(withPending(), "away", 1100);
-    expect(next.pendingCasualty).toBeNull();
-    expect(next.events).toHaveLength(1);
-    const ev = next.events[0];
-    expect(ev.kind).toBe("casualty");
-    // side = the VICTIM's side = the OPPOSITE of the proposer (home).
-    expect(ev.side).toBe("away");
-    expect(ev.playerRosterId).toBe("p9");
-    expect(ev.seq).toBe(6);
-    expect(ev.at).toBe(1100);
-    expect(ev.half).toBe(1);
-    expect(ev.turnNumber).toBe(1);
-    expect(ev.payload).toEqual({
-      victimRosterId: "p9",
-      causerRosterId: "p1",
-      cause: "blitz",
-      roll16: 13,
-      roll6: 4,
-      band: "permanent",
-      permanentAttribute: "ps",
-    });
-    // No turn flip, no clock change — the match continues on the same turn.
-    expect(next.activeSide).toBe("home");
-    expect(next.clockStartedAt).toBe(1000);
-    expect(next.status).toBe("live");
-  });
-
-  it("derives the band from the 1D16 table: 8→bruise, 10→apaleado, 12→grave, 14→permanent, 16→dead", () => {
-    const cases: [number, string][] = [
-      [8, "bruise"],
-      [9, "apaleado"],
-      [10, "apaleado"],
-      [11, "grave"],
-      [12, "grave"],
-      [13, "permanent"],
-      [14, "permanent"],
-      [15, "dead"],
-      [16, "dead"],
-    ];
-    for (const [roll16, band] of cases) {
-      const permanent = roll16 === 13 || roll16 === 14;
-      const next = confirmCasualty(
-        withPending({ roll16, roll6: permanent ? 3 : undefined }),
-        "away",
-        1100,
-      );
-      expect(next.events[0].payload.band).toBe(band);
-    }
-  });
-
-  it("resolves the permanent attribute from the roll6 (1-2→ar, 3→mv, 4→ps, 5→ag, 6→st)", () => {
-    const cases: [number, string][] = [
-      [1, "ar"],
-      [2, "ar"],
-      [3, "mv"],
-      [4, "ps"],
-      [5, "ag"],
-      [6, "st"],
-    ];
-    for (const [roll6, attr] of cases) {
-      const next = confirmCasualty(withPending({ roll16: 14, roll6 }), "away", 1100);
-      expect(next.events[0].payload.permanentAttribute).toBe(attr);
-    }
-  });
-
-  it("rejects a permanent band without the roll6 attribute roll", () => {
-    expect(() => confirmCasualty(withPending({ roll16: 13, roll6: undefined }), "away", 1100)).toThrow("roll6");
-  });
-
-  it("rejects the PROPOSER confirming their own proposal", () => {
-    expect(() => confirmCasualty(withPending(), "home", 1100)).toThrow("own");
-  });
-
-  it("rejects a confirm with no pending proposal", () => {
-    expect(() => confirmCasualty(state(), "away", 1100)).toThrow("no casualty");
-  });
-
-  it("rejects a confirm outside live (finished or pre-live)", () => {
-    expect(() =>
-      confirmCasualty(state({ status: "finished", pendingCasualty: withPending().pendingCasualty }), "away", 1100),
-    ).toThrow("live");
-    expect(() => confirmCasualty(pending({ pendingCasualty: withPending().pendingCasualty }), "away", 1100)).toThrow("live");
   });
 });
 

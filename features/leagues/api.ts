@@ -597,16 +597,6 @@ export interface LiveMatchViewState {
   finishedAt: number | null;
   /** RAU-38: the side that proposed to concede, or null when none is pending. */
   concedeProposedBy: "home" | "away" | null;
-  /** RAU-39: the pending casualty proposal (proposer/causer/victim/cause/rolls),
-   * or null when none is pending. */
-  pendingCasualty: {
-    proposerSide: "home" | "away";
-    victimRosterId: string;
-    causerRosterId: string;
-    cause: CasualtyCause;
-    roll16: number;
-    roll6?: number;
-  } | null;
 /** RAU-51: the persisted per-side MJP nominations (null per side = that coach
  * has not nominated yet) — the resolution modal renders the per-coach pickers
  * and gates the server roll on BOTH sides. */
@@ -645,6 +635,12 @@ export interface LiveMatchEventDto {
   turnNumber: number;
   payload: Record<string, unknown>;
   at: number;
+  /** Design B: the rival's non-blocking acknowledgement of the card. Optional
+   * so older fixtures/streams default to `pending` (the UI treats missing as
+   * pending). */
+  ackStatus?: "pending" | "ok" | "nok";
+  ackAt?: number | null;
+  ackedBy?: string | null;
 }
 
 /** Control commands the live POST route accepts (LM-4/D10/D11/LM-11/LM-13).
@@ -663,9 +659,10 @@ export type LiveCommand =
       type: "casualty";
       side: "home" | "away";
       victimRosterId: string;
-      /** Self-inflicted only (dodge/crowd): the victim's own side records the
-       * injury directly, no confirmation. The band is DERIVED server-side from
-       * `roll16` — the client never sends a band. */
+      /** The causer, REQUIRED for blitz/foul/block (the active coach's own
+       * player, opposite the victim). Absent for self-inflicted dodge/crowd.
+       * The band is DERIVED server-side from `roll16` — never client-chosen. */
+      causerRosterId?: string;
       cause: CasualtyCause;
       /** The 1D16 injury roll the players actually rolled (1..16). */
       roll16: number;
@@ -673,15 +670,12 @@ export type LiveCommand =
       roll6?: number;
     }
   | {
-      type: "proposeCasualty";
-      victimRosterId: string;
-      causerRosterId: string;
-      /** One of blitz|foul|block (causer-required causes). */
-      cause: CasualtyCause;
-      roll16: number;
-      roll6?: number;
+      /** Design B: the RIVAL acknowledges an event card — "ok" (seen &
+       * correct) or "nok" (discrepancy). Informational only, never blocks. */
+      type: "acknowledgeEvent";
+      eventSeq: number;
+      status: "ok" | "nok";
     }
-  | { type: "confirmCasualty" }
   | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
   | { type: "endMatch" }

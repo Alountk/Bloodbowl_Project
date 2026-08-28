@@ -199,10 +199,14 @@ export function EventControls({
       if (!playerRosterId || cause === "" || roll16 === "") return;
       if (needsRoll6 && roll6 === "") return;
       if (isActive) {
-        // The ACTIVE coach PROPOSES: the defender confirms in the turn zone.
+        // Design B: the ACTIVE coach records the casualty DIRECTLY (one phase,
+        // no confirm) — the event's `side` is the VICTIM's side (the opponent,
+        // opposite the attacker). The rival's ✓/✗ acknowledgement is
+        // informational only and never blocks the match.
         if (!causerRosterId) return;
         const cmd: LiveCommand = {
-          type: "proposeCasualty",
+          type: "casualty",
+          side: side === "home" ? "away" : "home",
           victimRosterId: playerRosterId,
           causerRosterId,
           cause,
@@ -445,7 +449,8 @@ export function EventControls({
               disabled={!canSubmit}
               className="rounded bg-[#12225a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0f1d48] disabled:opacity-40"
             >
-              {isActive && kind === "casualty" ? t("match.controls.propose") : t("match.controls.record")}
+              {/* Design B: casualties are recorded DIRECTLY — every submit is "Registrar". */}
+              {t("match.controls.record")}
             </button>
           </div>
         </div>

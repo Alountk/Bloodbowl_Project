@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveMinute, playerRef, turnTag, derivePartialScore } from "@/lib/liveFeed";
+import { ACK_TIMEOUT_MS, eventAuthorSide } from "@/lib/livePhase";
 import {
   causeLabel,
   outcomeLabel,
@@ -209,6 +210,82 @@ function wallClockTime(at: number): string {
 }
 
 /**
+ * Design B (RAU-82): the non-blocking acknowledgement row on an event card.
+ * The event is consumed instantly; the RIVAL marks it ✓ (seen & correct) or
+ * ✗ (discrepancy) — informational only, the match never waits. If the rival
+ * does not respond, the card auto-verifies after `ACK_TIMEOUT_MS`. The AUTHOR
+ * (and spectators) only see the status badge.
+ */
+function EventAckRow({
+  event,
+  viewerSide,
+  now,
+  onAck,
+}: {
+  event: LiveMatchView["events"][number];
+  viewerSide: "home" | "away" | null;
+  /** The current wall-clock (ms), passed in so auto-verify never calls the
+   * impure `Date.now()` during render (React purity rule). */
+  now: number;
+  onAck: (eventSeq: number, status: "ok" | "nok") => void;
+}) {
+  const { t } = useI18n();
+  const author = eventAuthorSide(event.kind, event.side);
+  if (author === null) return null;
+  const ack = event.ackStatus ?? "pending";
+  const auto = ack === "pending" && now - event.at > ACK_TIMEOUT_MS;
+  const status = auto ? "auto" : ack;
+  const isRival = viewerSide !== null && viewerSide !== author;
+
+  const badgeClass =
+    status === "ok" || status === "auto"
+      ? "border-[#c6e9d0] bg-[#e6f6ea] text-[#1a7f37]"
+      : status === "nok"
+        ? "border-[#f3c6cd] bg-[#fef2f2] text-[#c0392b]"
+        : "border-[#e2e8f0] bg-[#f1f5f9] text-[#64748b]";
+  const badgeText =
+    status === "ok"
+      ? t("match.ack.ok")
+      : status === "nok"
+        ? t("match.ack.nok")
+        : status === "auto"
+          ? t("match.ack.auto")
+          : t("match.ack.pending");
+
+  if (!isRival || status !== "pending") {
+    return (
+      <div className="mt-1 flex items-center justify-end">
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
+          {badgeText}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1 flex items-center justify-end gap-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-[#64748b]">
+        {t("match.ack.pending")}
+      </span>
+      <button
+        type="button"
+        onClick={() => onAck(event.seq, "ok")}
+        className="rounded border border-[#c6e9d0] bg-white px-2 py-0.5 text-[10px] font-bold text-[#1a7f37] hover:bg-[#e6f6ea]"
+      >
+        {t("match.ack.okAction")}
+      </button>
+      <button
+        type="button"
+        onClick={() => onAck(event.seq, "nok")}
+        className="rounded border border-[#f3c6cd] bg-white px-2 py-0.5 text-[10px] font-bold text-[#c0392b] hover:bg-[#fef2f2]"
+      >
+        {t("match.ack.nokAction")}
+      </button>
+    </div>
+  );
+}
+
+/**
  * The rulebook chronology as a card grid (validated v7): a gray box (`#eef1f6`)
  * with a full 1px border, `12px 14px` inner padding and 2px gaps. Team events
  * sit at 68% with the side gradient and grid-template-areas (turn tag top on the
@@ -221,11 +298,20 @@ export function LiveEventCards({
   startedAt,
   homeTeam,
   awayTeam,
+  viewerSide,
+  now,
+  onAck,
 }: {
   events: LiveMatchView["events"];
   startedAt: number | null;
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
+  /** The session coach's side (D19): drives who sees the ✓/✗ ack buttons. */
+  viewerSide: "home" | "away" | null;
+  /** Current wall-clock (ms) for the non-blocking auto-verify derivation. */
+  now: number;
+  /** Fires `acknowledgeEvent` for the rival's ✓/✗ (informational only). */
+  onAck: (eventSeq: number, status: "ok" | "nok") => void;
 }) {
   const { t } = useI18n();
   // Module class map: kebab-case CSS source keys → readable locals (the class
@@ -527,6 +613,8 @@ export function LiveEventCards({
                   <p className="min-w-0 flex-1 truncate font-extrabold text-[#0f172a]">{label}</p>
                 </div>
               )}
+              {/* Design B: the non-blocking ack row on the event card. */}
+              <EventAckRow event={event} viewerSide={viewerSide} now={now} onAck={onAck} />
             </li>
             {/* RAU-39: the DERIVED action card on the CAUSER's side — the same
                 casualty event feeds BOTH the injury card (victim, above) and

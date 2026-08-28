@@ -31,8 +31,6 @@ import {
   proposeConcede,
   declineConcede,
   acceptConcede,
-  proposeCasualty,
-  confirmCasualty,
   toLiveViewState,
   isStartableFixture,
   parseMvpNominations,
@@ -43,12 +41,11 @@ import {
   type FixtureStartState,
   type LiveMatchState,
   type MvpNominations,
-  type PendingCasualty,
   type ResolutionSideState,
   type ResolutionState,
   type TeamSide,
 } from "./liveMatch";
-import type { CasualtyCause } from "./livePhase";
+import { eventAuthorSide } from "./livePhase";
 import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
 import { computeWinnings, preMatchFanFactor, rollPostMatchFanFactor, type MatchOutcome, type FanFactorDirection } from "@/lib/rules";
@@ -213,6 +210,10 @@ export interface StoreDeps {
       create(args: Prisma.LiveMatchCreateArgs): Promise<LiveMatch>;
       findFirst(args: Prisma.LiveMatchFindFirstArgs): Promise<LiveMatch | null>;
     };
+    liveEvent: {
+      findFirst(args: Prisma.LiveEventFindFirstArgs): Promise<LiveEvent | null>;
+      update(args: Prisma.LiveEventUpdateArgs): Promise<LiveEvent>;
+    };
   };
   hub: {
     publish(fixtureId: string, payload: unknown): void;
@@ -246,42 +247,12 @@ interface LiveMatchRowFields {
   finishedAt: Date | string | null;
   /** RAU-38: the side that proposed to concede (null until proposed/resolved). */
   concedeProposedBy: TeamSide | null;
-  /** RAU-39: the pending casualty proposal JSON (null until proposed/confirmed). */
-  pendingCasualty: Prisma.JsonValue | null;
   /** RAU-51: the persisted per-side MJP nominations JSON (`{ home, away }`,
    * null per side = that coach has not nominated yet). */
   mvpNominations: Prisma.JsonValue | null;
   /** The persisted per-side resolution wizard cursor JSON (`{ home, away }`),
    * null until the wizard's FIRST action persists it. */
   resolutionState: Prisma.JsonValue | null;
-}
-
-/** Defensively parses a persisted `pendingCasualty` JSON value into the pure
- * state shape; malformed/unknown values collapse to null (never crash). */
-function toPendingCasualty(value: Prisma.JsonValue | null): PendingCasualty | null {
-  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
-  const v = value as Record<string, unknown>;
-  const proposerSide = v.proposerSide;
-  const cause = v.cause;
-  const roll16 = v.roll16;
-  const roll6 = v.roll6;
-  if (
-    (proposerSide !== "home" && proposerSide !== "away") ||
-    typeof v.victimRosterId !== "string" ||
-    typeof v.causerRosterId !== "string" ||
-    typeof cause !== "string" ||
-    typeof roll16 !== "number"
-  ) {
-    return null;
-  }
-  return {
-    proposerSide,
-    victimRosterId: v.victimRosterId,
-    causerRosterId: v.causerRosterId,
-    cause: cause as CasualtyCause,
-    roll16,
-    ...(typeof roll6 === "number" ? { roll6 } : {}),
-  };
 }
 
 /** Converts a persisted LiveMatch row (ISO statuses/timestamps) into a pure state. */
@@ -305,7 +276,6 @@ export function liveMatchRowToState(
     clockStartedAt: row.clockStartedAt ? new Date(row.clockStartedAt).getTime() : null,
     finishedAt: row.finishedAt ? new Date(row.finishedAt).getTime() : null,
     concedeProposedBy: row.concedeProposedBy,
-    pendingCasualty: toPendingCasualty(row.pendingCasualty ?? null),
     mvpNominations: parseMvpNominations(row.mvpNominations ?? null),
     resolutionState: parseResolutionState(row.resolutionState ?? null),
     events: [],
@@ -329,12 +299,6 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
     clockStartedAt: next.clockStartedAt != null ? new Date(next.clockStartedAt) : null,
     finishedAt: next.finishedAt != null ? new Date(next.finishedAt) : null,
     concedeProposedBy: next.concedeProposedBy,
-    // Nullable JSON: SQL NULL when no proposal is pending (Prisma's TS input
-    // type omits bare `null`, so the value is cast — the runtime JSON write is
-    // exactly the object, or SQL NULL when cleared).
-    pendingCasualty: next.pendingCasualty as unknown as
-      | Prisma.NullableJsonNullValueInput
-      | Prisma.InputJsonValue,
     mvpNominations: next.mvpNominations as unknown as
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue,
@@ -605,7 +569,6 @@ async function createFirstConsent(
     clockStartedAt: null,
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: EMPTY_MVP_NOMINATIONS,
     resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
@@ -894,85 +857,102 @@ export async function acceptConcedeLiveMatch(
   return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
 }
 
-export interface ProposeCasualtyInput {
-  liveMatchId: string;
-  fixtureId: string;
-  /** The caller's side — MUST be the ACTIVE side (the state machine enforces). */
-  side: TeamSide;
-  victimRosterId: string;
-  causerRosterId: string;
-  cause: CasualtyCause;
-  roll16: number;
-  roll6?: number;
-  now: number;
+/** One acknowledgement state a rival can mark on an event card (design B). */
+export type EventAckStatus = "pending" | "ok" | "nok";
+
+/** The shared event DTO shape (route + store publish + client). */
+export interface LiveEventDto {
+  seq: number;
+  kind: string;
+  side: "home" | "away" | null;
+  playerRosterId: string | null;
+  half: number;
+  turnNumber: number;
+  payload: Record<string, unknown>;
+  at: number;
+  ackStatus: EventAckStatus;
+  ackAt: number | null;
+  ackedBy: string | null;
 }
 
-export interface ConfirmCasualtyInput {
+/** Maps a persisted LiveEvent row to the shared DTO (incl. ack state). */
+export function liveEventRowToDto(row: LiveEvent): LiveEventDto {
+  return {
+    seq: row.seq,
+    kind: row.kind,
+    side: row.side,
+    playerRosterId: row.playerRosterId,
+    half: row.half,
+    turnNumber: row.turnNumber,
+    payload:
+      typeof row.payload === "object" && row.payload !== null && !Array.isArray(row.payload)
+        ? (row.payload as Record<string, unknown>)
+        : {},
+    at: new Date(row.createdAt).getTime(),
+    ackStatus: (row.ackStatus === "ok" || row.ackStatus === "nok" ? row.ackStatus : "pending"),
+    ackAt: row.ackAt ? new Date(row.ackAt).getTime() : null,
+    ackedBy: row.ackedBy,
+  };
+}
+
+export interface AckEventInput {
   liveMatchId: string;
   fixtureId: string;
-  /** The caller's side — the responder, opposite the proposer. */
+  /** The event's seq on the LiveMatch row. */
+  eventSeq: number;
+  /** The caller's side — must be the RIVAL of the event's author. */
   side: TeamSide;
+  /** The session user id that acknowledged. */
+  userId: string;
+  /** "ok" = seen & correct; "nok" = discrepancy marked for review. */
+  status: "ok" | "nok";
   now: number;
 }
 
 /**
- * RAU-39 propose: persists `pendingCasualty` (the ACTIVE coach's casualty
- * proposal) under the optimistic seq guard. Any state-machine rejection
- * (non-live, double-propose, non-active caller, invalid rolls) is mapped to 409;
- * the optimistic guard catches a concurrent double-propose too.
+ * Design B (RAU-82): the RIVAL acknowledges an event card — informational only.
+ * The event was ALREADY consumed the moment it was recorded (single-phase), so
+ * the ack never blocks the match; an un-acked card auto-verifies in the UI
+ * after `ACK_TIMEOUT_MS`. Only the coach on the OPPOSITE side of the event's
+ * author may ack. Persists on the LiveEvent row and publishes an `ack` frame
+ * (same event seq — the client upserts it) so the other coach sees the check
+ * live without a reload.
  */
-export async function proposeCasualtyLiveMatch(
-  input: ProposeCasualtyInput,
+export async function acknowledgeEventLiveMatch(
+  input: AckEventInput,
   deps: StoreDeps,
-): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+): Promise<{ view: ReturnType<typeof toLiveViewState>; event: LiveEventDto }> {
   const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
   if (!row) throw Object.assign(new Error("not found"), { status: 404 });
-  const current = liveMatchRowToState(row);
-  let next: LiveMatchState;
-  try {
-    next = proposeCasualty(current, {
-      side: input.side,
-      victimRosterId: input.victimRosterId,
-      causerRosterId: input.causerRosterId,
-      cause: input.cause,
-      roll16: input.roll16,
-      roll6: input.roll6,
-    });
-  } catch (error) {
-    throw Object.assign(error as Error, { status: 409 });
+  const event = await deps.prisma.liveEvent.findFirst({
+    where: { liveMatchId: row.id, seq: input.eventSeq },
+  });
+  if (!event) throw Object.assign(new Error("event not found"), { status: 404 });
+  const authorSide = eventAuthorSide(event.kind, event.side);
+  if (authorSide === null || input.side === authorSide) {
+    throw Object.assign(new Error("Only the rival may acknowledge this event"), { status: 409 });
   }
-  const nextSeq = await persistAndPublish(
-    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
-    deps,
-  );
-  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
-}
-
-/**
- * RAU-39 confirm: the NON-proposer confirms a pending casualty → the `casualty`
- * event persists ATOMICALLY (band derived server-side from the 1D16 roll) and
- * `pendingCasualty` clears, all in the same transaction. A casualty has no money
- * effect — no treasury/winnings are involved (unlike the kickoff EM). Any
- * state-machine rejection (non-live, no proposal, proposer-self) → 409.
- */
-export async function confirmCasualtyLiveMatch(
-  input: ConfirmCasualtyInput,
-  deps: StoreDeps,
-): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
-  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
-  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  const updated = await deps.prisma.liveEvent.update({
+    where: { id: event.id },
+    data: { ackStatus: input.status, ackAt: new Date(input.now), ackedBy: input.userId },
+  });
+  const dto = liveEventRowToDto(updated);
   const current = liveMatchRowToState(row);
-  let next: LiveMatchState;
-  try {
-    next = confirmCasualty(current, input.side, input.now);
-  } catch (error) {
-    throw Object.assign(error as Error, { status: 409 });
-  }
-  const nextSeq = await persistAndPublish(
-    { liveMatchId: row.id, fixtureId: input.fixtureId, currentSeq: current.seq, next, now: input.now },
-    deps,
-  );
-  return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+  const view = toLiveViewState(current, input.now);
+  // Publish the ack with the EVENT's seq (≤ the row seq). The frame carries the
+  // full view at top level (so the client's `activeSide` guard passes) plus the
+  // updated event; live subscribers upsert by seq → the card's check appears
+  // instantly for both coaches. The SSE GET's rewind guard special-cases
+  // `kind: "ack"` frames so they are not dropped as "stale" (they modify an
+  // existing event, not the match state). The frame's seq is the EVENT seq
+  // (overrides the view's row seq on purpose).
+  deps.hub.publish(input.fixtureId, {
+    kind: "ack",
+    ...view,
+    seq: dto.seq,
+    event: dto,
+  });
+  return { view, event: dto };
 }
 
 export interface PauseResumeInput {

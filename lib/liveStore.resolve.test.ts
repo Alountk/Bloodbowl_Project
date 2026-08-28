@@ -97,7 +97,6 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
     clockStartedAt: null,
     finishedAt: new Date(5000),
     concedeProposedBy: null,
-    pendingCasualty: null,
     winnings: { home: 55000, away: 45000 },
     pendingResolution: null,
     // RAU-51: the default finished row carries BOTH sides' nominations so the
@@ -112,14 +111,17 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
     resolutionState: null,
     // RAU-14: the default finished row fields no journeymen.
     journeymen: null,
+    // The legacy pending-casualty column is unused since design B (RAU-82)
+    // made casualties single-phase; it stays nullable on the row.
+    pendingCasualty: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     events: [
-      { id: "e1", liveMatchId: "lm-1", seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, createdAt: new Date(0) },
-      { id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date(1000) },
-      { id: "e3", liveMatchId: "lm-1", seq: 3, kind: "completion", side: "home", playerRosterId: "h2", half: 1, turnNumber: 4, payload: { spp: 1 }, createdAt: new Date(2000) },
-      { id: "e4", liveMatchId: "lm-1", seq: 4, kind: "casualty", side: "home", playerRosterId: "h3", half: 1, turnNumber: 5, payload: { victimRosterId: "h3", causerRosterId: "a1", band: "apaleado" }, createdAt: new Date(3000) },
-      { id: "e5", liveMatchId: "lm-1", seq: 5, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, createdAt: new Date(4000) },
+      { id: "e1", liveMatchId: "lm-1", seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, createdAt: new Date(0), ackStatus: "pending", ackAt: null, ackedBy: null },
+      { id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date(1000), ackStatus: "pending", ackAt: null, ackedBy: null },
+      { id: "e3", liveMatchId: "lm-1", seq: 3, kind: "completion", side: "home", playerRosterId: "h2", half: 1, turnNumber: 4, payload: { spp: 1 }, createdAt: new Date(2000), ackStatus: "pending", ackAt: null, ackedBy: null },
+      { id: "e4", liveMatchId: "lm-1", seq: 4, kind: "casualty", side: "home", playerRosterId: "h3", half: 1, turnNumber: 5, payload: { victimRosterId: "h3", causerRosterId: "a1", band: "apaleado" }, createdAt: new Date(3000), ackStatus: "pending", ackAt: null, ackedBy: null },
+      { id: "e5", liveMatchId: "lm-1", seq: 5, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, createdAt: new Date(4000), ackStatus: "pending", ackAt: null, ackedBy: null },
     ],
     ...overrides,
   };
@@ -189,6 +191,7 @@ function makeResolveDeps(opts: {
     prisma: {
       $transaction,
       liveMatch: { create: vi.fn(), findFirst: liveMatchFindFirst },
+      liveEvent: { findFirst: vi.fn(), update: vi.fn() },
     },
     hub: { publish },
     ...(rolls.d3 ? { rollD3: fixedRolls(rolls.d3) } : {}),
@@ -407,17 +410,17 @@ describe("resolveLiveMatch", () => {
       rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
       row: finishedRow({
         events: [
-          { id: "e1", liveMatchId: "lm-1", seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, createdAt: new Date(0) },
-          { id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date(1000) },
-          { id: "e3", liveMatchId: "lm-1", seq: 3, kind: "completion", side: "home", playerRosterId: "h2", half: 1, turnNumber: 4, payload: {}, createdAt: new Date(2000) },
-          { id: "e4", liveMatchId: "lm-1", seq: 4, kind: "casualty", side: "home", playerRosterId: "h3", half: 1, turnNumber: 5, payload: { victimRosterId: "h3", causerRosterId: "a1", band: "apaleado" }, createdAt: new Date(3000) },
+          { id: "e1", liveMatchId: "lm-1", seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, createdAt: new Date(0), ackStatus: "pending", ackAt: null, ackedBy: null },
+          { id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 3, payload: {}, createdAt: new Date(1000), ackStatus: "pending", ackAt: null, ackedBy: null },
+          { id: "e3", liveMatchId: "lm-1", seq: 3, kind: "completion", side: "home", playerRosterId: "h2", half: 1, turnNumber: 4, payload: {}, createdAt: new Date(2000), ackStatus: "pending", ackAt: null, ackedBy: null },
+          { id: "e4", liveMatchId: "lm-1", seq: 4, kind: "casualty", side: "home", playerRosterId: "h3", half: 1, turnNumber: 5, payload: { victimRosterId: "h3", causerRosterId: "a1", band: "apaleado" }, createdAt: new Date(3000), ackStatus: "pending", ackAt: null, ackedBy: null },
           // Journeyman TD (scores) — earns its ★3 in the snapshot.
-          { id: "e6", liveMatchId: "lm-1", seq: 6, kind: "td", side: "home", playerRosterId: "journeyman-home-t-1", half: 1, turnNumber: 6, payload: {}, createdAt: new Date(4000) },
+          { id: "e6", liveMatchId: "lm-1", seq: 6, kind: "td", side: "home", playerRosterId: "journeyman-home-t-1", half: 1, turnNumber: 6, payload: {}, createdAt: new Date(4000), ackStatus: "pending", ackAt: null, ackedBy: null },
           // Journeyman VICTIM of a lasting casualty — documented in the
           // snapshot casualties (the hire carries their injury); the casualty
           // ★2 still goes to its causer (a1).
-          { id: "e7", liveMatchId: "lm-1", seq: 7, kind: "casualty", side: "home", playerRosterId: "journeyman-home-t-2", half: 1, turnNumber: 7, payload: { victimRosterId: "journeyman-home-t-2", causerRosterId: "a1", band: "grave" }, createdAt: new Date(5000) },
-          { id: "e8", liveMatchId: "lm-1", seq: 8, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, createdAt: new Date(6000) },
+          { id: "e7", liveMatchId: "lm-1", seq: 7, kind: "casualty", side: "home", playerRosterId: "journeyman-home-t-2", half: 1, turnNumber: 7, payload: { victimRosterId: "journeyman-home-t-2", causerRosterId: "a1", band: "grave" }, createdAt: new Date(5000), ackStatus: "pending", ackAt: null, ackedBy: null },
+          { id: "e8", liveMatchId: "lm-1", seq: 8, kind: "endMatch", side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, createdAt: new Date(6000), ackStatus: "pending", ackAt: null, ackedBy: null },
         ],
       }),
     });

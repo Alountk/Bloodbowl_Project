@@ -166,7 +166,17 @@ function ev(
 }
 
 function renderCards(events: LiveMatchEventDto[]) {
-  return render(<LiveEventCards events={events} startedAt={1000} homeTeam={homeTeam} awayTeam={awayTeam} />);
+  return render(
+    <LiveEventCards
+      events={events}
+      startedAt={1000}
+      homeTeam={homeTeam}
+      awayTeam={awayTeam}
+      viewerSide={null}
+      now={Date.now()}
+      onAck={() => undefined}
+    />,
+  );
 }
 
 describe("B. LiveEventCards — validated v7 rendered structure", () => {
@@ -470,7 +480,6 @@ function finishedLive(): LiveMatchView {
     paused: false,
     finishedAt: 5000,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     events: [
       { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
@@ -500,7 +509,6 @@ function liveMatch(): LiveMatchView {
     paused: false,
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     events: [
       { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },

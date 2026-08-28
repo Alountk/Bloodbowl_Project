@@ -322,8 +322,8 @@ async function driveJourneymenDone(dialog: ReturnType<Page["getByRole"]>) {
  * Records a live event through the REAL "+" FAB (LM-20/D26): opens the FAB,
  * clicks the given menu label and picks the player from the roster select,
  * then submits. The menu closes on submit. Casualty recording is NOT routed
- * here — the two-phase (propose → confirm) and self-inflicted paths are driven
- * inline (RAU-39: the band is never a select, it derives from the 1D16 roll).
+ * here — the DIRECT (design B) and self-inflicted paths are driven inline
+ * (RAU-82: the band is never a select, it derives from the 1D16 roll).
  */
 async function recordViaFab(page: Page, menuLabel: string, playerValue: string) {
   await page.getByRole("button", { name: "+" }).click();
@@ -505,10 +505,11 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     ).toBeVisible();
     await expect(homeCoach.getByTestId("live-event-row").filter({ hasText: "Tirada 1D16: 9" })).toBeVisible();
 
-    // [A2] TWO-PHASE casualty (RAU-39): the ACTIVE (away) coach PROPOSES the
-    // injury THEY inflicted (causer = away scorer, victim = home player, roll16);
-    // the NON-active (home) coach CONFIRMS it in the turn zone. The band is
-    // derived server-side from the roll — the proposal never carries a band.
+    // [A2] DIRECT casualty (design B, RAU-82): the ACTIVE (away) coach records
+    // the injury THEY inflicted (causer = away scorer, victim = home player,
+    // roll16) — ONE phase, the event is consumed instantly. The rival (home)
+    // sees the card with the non-blocking ✓/✗ ack row (informational only; the
+    // match never waits). The band is derived server-side from the roll.
     await awayCoach.getByRole("button", { name: "+" }).click();
     await awayCoach.getByRole("button", { name: /Herida/i }).click();
     await expect(awayCoach.getByLabel("Víctima")).toBeVisible();
@@ -517,23 +518,18 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await awayCoach.getByLabel("Autor de la lesión").selectOption({ value: awayScorerId });
     await awayCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
     await expect(awayCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
-    await awayCoach.getByRole("button", { name: /Proponer/i }).click();
+    await awayCoach.getByRole("button", { name: /Registrar/i }).click();
     await expect(awayCoach.getByLabel("Víctima")).toHaveCount(0);
-    // The proposer (away) waits inline; the defender (home) sees the derived
-    // details in an EXPLANATORY MODAL (RAU-43) and confirms — the SSE hub
-    // converges both pages without a reload.
-    await expect(awayCoach.getByText(/Esperando confirmación del rival/)).toBeVisible();
-    await expect(homeCoach.getByRole("dialog", { name: /Baja registrada por el rival/i })).toBeVisible();
-    await expect(homeCoach.getByText(/El rival registra una baja/)).toBeVisible();
-    await expect(homeCoach.getByText(/1D16 9/)).toBeVisible();
-    await homeCoach.getByRole("button", { name: "Confirmar" }).click();
-    await expect(homeCoach.getByRole("dialog", { name: /Baja registrada por el rival/i })).toHaveCount(0);
-    // The ONE casualty event renders the injury card on the victim's (home) side
-    // with the MVT-5 causer line AND the derived action card on the causer's
-    // (away) side — both feeds converge via the hub. The victim name alone is
-    // ambiguous (the earlier self-inflicted card [A1] carries the same name), so
-    // the injury card is matched by victim + causer line: the A1 card has NO
-    // "por …" line and the action card is not on this page's injury shape.
+    // The card appears INSTANTLY for the recorder (no waiting state, no confirm
+    // modal): the injury card on the victim's (home) side with the MVT-5 causer
+    // line AND the derived action card on the causer's (away) side — both feeds
+    // converge via the hub. The victim name alone is ambiguous (the earlier
+    // self-inflicted card [A1] carries the same name), so the injury card is
+    // matched by victim + causer line: the A1 card has NO "por …" line and the
+    // action card is not on this page's injury shape.
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName }),
+    ).toBeVisible();
     await expect(
       homeCoach
         .getByTestId("live-event-row")
@@ -546,6 +542,25 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(
       awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }),
     ).toBeVisible();
+    // The RIVAL (home) sees the non-blocking ack row on the injury card with the
+    // ✓/✗ buttons; the game never waits for it (the card is already consumed).
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }).getByRole("button", { name: /Correcto/i }),
+    ).toBeVisible();
+    await homeCoach
+      .getByTestId("live-event-row")
+      .filter({ hasText: `por ${awayScorerName}` })
+      .getByRole("button", { name: /Correcto/i })
+      .click();
+    // The ✓ persists and the badge shows "Cotejado" on both feeds (the ack frame
+    // upserts the card by seq via the hub).
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }).getByText(/Cotejado/),
+    ).toBeVisible();
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }).getByText(/Cotejado/),
+    ).toBeVisible();
+
     // RECURRING REGRESSION (RAU-47): the ★2 the CAUSER earns must show ONLY on
     // the causer's action card — the VICTIM's injury card must NOT show the
     // earned points (the star belongs to the player who DID the action). The

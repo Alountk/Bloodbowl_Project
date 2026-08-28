@@ -27,8 +27,10 @@ export interface UseLiveMatchResult {
 /** Upper bound on the client-side timeline so a long match cannot grow it unbounded. */
 const MAX_EVENTS = 200;
 
-/** A server/hub frame: the full view plus the delta events it carries (LM-8). */
-type LiveFrame = LiveMatchViewState & { events?: LiveMatchEventDto[]; kind?: string };
+/** A server/hub frame: the full view plus the delta events it carries (LM-8),
+ * or an `ack` frame (design B) that updates ONE existing event's cotejo state
+ * without touching the match state. */
+type LiveFrame = LiveMatchViewState & { events?: LiveMatchEventDto[]; kind?: string; event?: LiveMatchEventDto };
 
 /** Merges a frame's delta events into the accumulated timeline (upsert by seq). */
 function upsertEvents(existing: LiveMatchEventDto[], incoming: LiveMatchEventDto[]): LiveMatchEventDto[] {
@@ -107,6 +109,21 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
       const frame = parsed as LiveFrame;
       // The 1s info ticks are derived locally by useLiveClock — skip them.
       if (frame.kind === "tick") return;
+      // Design B: an `ack` frame updates ONE existing event's cotejo state
+      // (same seq — upsert replaces it) and carries a view for the header; it
+      // must NOT wipe the accumulated timeline.
+      if (frame.kind === "ack") {
+        setLive((prev) => {
+          if (frame.event == null) return prev;
+          return {
+            ...(prev != null && "activeSide" in prev ? prev : frame),
+            viewerSide: prev?.viewerSide ?? frame.viewerSide ?? null,
+            events: prev != null ? upsertEvents(prev.events, [frame.event]) : [frame.event],
+          };
+        });
+        setError(null);
+        return;
+      }
       setLive((prev) => ({
         ...frame,
         // Hub frames carry only the DELTA events of their transition; merge so

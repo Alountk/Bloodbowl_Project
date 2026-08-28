@@ -96,7 +96,11 @@ function makeDeps(opts: {
         },
   );
   const deps: StoreDeps = {
-    prisma: { $transaction, liveMatch: { create: vi.fn(), findFirst: liveMatchFindFirst } },
+    prisma: {
+      $transaction,
+      liveMatch: { create: vi.fn(), findFirst: liveMatchFindFirst },
+      liveEvent: { findFirst: vi.fn(), update: vi.fn() },
+    },
     hub: { publish: vi.fn() },
   };
   return { deps, liveMatchUpdate, teamUpdate, teamFind, matchResultFind, playerCreate };

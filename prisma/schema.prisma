@@ -250,6 +250,15 @@ model LiveEvent {
   turnNumber    Int
   payload       Json      @default("{}")
   createdAt     DateTime  @default(now())
+  /// Non-blocking acknowledgement (design B): the RIVAL marks the card
+  /// "ok" (seen & correct) or "nok" (discrepancy). Defaults to "pending";
+  /// the UI derives "auto-verified" after the ack timeout without a response —
+  /// the act is ALWAYS consumed, the ack is informational only.
+  ackStatus     String    @default("pending")
+  /// When the rival acknowledged the card (ok/nok).
+  ackAt         DateTime?
+  /// The user id of the coach who acknowledged.
+  ackedBy       String?
 
   @@unique([liveMatchId, seq])
 }

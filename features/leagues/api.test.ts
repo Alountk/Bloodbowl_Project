@@ -614,7 +614,6 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
       mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     };
     expect(live.status).toBe("pending");
@@ -648,7 +647,6 @@ describe("LiveMatchViewState DTO (LM-5 unified clock, D19)", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
       mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     };
     expect(live.homeTurnMs).toBe(5100);
@@ -679,7 +677,6 @@ describe("sendLiveCommand", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
       mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
     };
     vi.stubGlobal(
@@ -785,9 +782,11 @@ describe("LiveCommand — LM-6 foul casualty payloads and actor fields", () => {
       }),
     );
 
-    // Two-phase propose: causer + victim + cause + rolls (band derived server-side).
+    // Caused casualty (design B): recorded DIRECTLY — causer + victim + cause
+    // + rolls (band derived server-side); the event side is the VICTIM's side.
     await sendLiveCommand("lg-1", "f-1", {
-      type: "proposeCasualty",
+      type: "casualty",
+      side: "away",
       victimRosterId: "p9",
       causerRosterId: "p1",
       cause: "blitz",
@@ -798,7 +797,8 @@ describe("LiveCommand — LM-6 foul casualty payloads and actor fields", () => {
       "/api/leagues/lg-1/fixtures/f-1/live",
       expect.objectContaining({
         body: JSON.stringify({
-          type: "proposeCasualty",
+          type: "casualty",
+          side: "away",
           victimRosterId: "p9",
           causerRosterId: "p1",
           cause: "blitz",
@@ -808,11 +808,11 @@ describe("LiveCommand — LM-6 foul casualty payloads and actor fields", () => {
       }),
     );
 
-    // Confirm carries no body fields beyond the type.
-    await sendLiveCommand("lg-1", "f-1", { type: "confirmCasualty" });
+    // Design B: the RIVAL acknowledges an event card (informational, never blocks).
+    await sendLiveCommand("lg-1", "f-1", { type: "acknowledgeEvent", eventSeq: 3, status: "ok" });
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/leagues/lg-1/fixtures/f-1/live",
-      expect.objectContaining({ body: JSON.stringify({ type: "confirmCasualty" }) }),
+      expect.objectContaining({ body: JSON.stringify({ type: "acknowledgeEvent", eventSeq: 3, status: "ok" }) }),
     );
   });
 });
@@ -836,7 +836,6 @@ describe("LiveCommand — RAU-38 concede propose / respond", () => {
     awayScore: 0,
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
   };
 

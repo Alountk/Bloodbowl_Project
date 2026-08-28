@@ -303,9 +303,10 @@ describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
     expect(Array.from(causer.options).map((o) => o.textContent ?? "").some((o) => o.includes("Blitzer A"))).toBe(true);
     fireEvent.change(causer, { target: { value: "p2" } });
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
-    fireEvent.click(screen.getByRole("button", { name: /Proponer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Registrar/i }));
     expect(onSubmit).toHaveBeenCalledWith({
-      type: "proposeCasualty",
+      type: "casualty",
+      side: "away",
       victimRosterId: "o1",
       causerRosterId: "p2",
       cause: "blitz",
@@ -323,14 +324,15 @@ describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
     // roll16 14 → derived band permanent → the 1D6 select appears and Registrar
     // stays disabled until it is picked.
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "14" } });
-    const submit = screen.getByRole("button", { name: /Proponer/i }) as HTMLButtonElement;
+    const submit = screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement;
     expect(screen.getByLabelText(/Tirada 1D6/i)).toBeTruthy();
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Tirada 1D6/i), { target: { value: "5" } });
     expect(submit.disabled).toBe(false);
     fireEvent.click(submit);
     expect(onSubmit).toHaveBeenCalledWith({
-      type: "proposeCasualty",
+      type: "casualty",
+      side: "away",
       victimRosterId: "o1",
       causerRosterId: "p1",
       cause: "block",
@@ -346,7 +348,7 @@ describe("EventControls — ACTIVE coach casualty PROPOSAL (RAU-39)", () => {
     fireEvent.change(screen.getByLabelText(/^Víctima$/i), { target: { value: "o2" } });
     fireEvent.change(screen.getByLabelText(/Causa de la lesión/i), { target: { value: "blitz" } });
     fireEvent.change(screen.getByLabelText(/Tirada 1D16/i), { target: { value: "9" } });
-    const submit = screen.getByRole("button", { name: /Proponer/i }) as HTMLButtonElement;
+    const submit = screen.getByRole("button", { name: /Registrar/i }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(/Autor de la lesión/i), { target: { value: "p2" } });
     expect(submit.disabled).toBe(false);

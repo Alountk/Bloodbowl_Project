@@ -23,12 +23,24 @@ const resumeLiveMatchMock = vi.hoisted(() => vi.fn());
 const proposeConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
 const declineConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
 const acceptConcedeLiveMatchMock = vi.hoisted(() => vi.fn());
-const proposeCasualtyLiveMatchMock = vi.hoisted(() => vi.fn());
-const confirmCasualtyLiveMatchMock = vi.hoisted(() => vi.fn());
 const rollLiveMvpMock = vi.hoisted(() => vi.fn());
 const resolveLiveMatchMock = vi.hoisted(() => vi.fn());
 const nominateMvpLiveMatchMock = vi.hoisted(() => vi.fn());
 const hireJourneymanLiveMatchMock = vi.hoisted(() => vi.fn());
+const acknowledgeEventLiveMatchMock = vi.hoisted(() => vi.fn());
+const liveEventRowToDtoMock = vi.hoisted(() => vi.fn((row: Record<string, unknown>) => ({
+  seq: row.seq,
+  kind: row.kind,
+  side: row.side ?? null,
+  playerRosterId: row.playerRosterId ?? null,
+  half: row.half,
+  turnNumber: row.turnNumber,
+  payload: row.payload ?? {},
+  at: new Date((row.createdAt as Date) ?? 0).getTime(),
+  ackStatus: row.ackStatus ?? "pending",
+  ackAt: null,
+  ackedBy: null,
+})));
 
 const hubMock = vi.hoisted(() => ({
   subscribe: vi.fn(),
@@ -60,8 +72,8 @@ vi.mock("@/lib/liveStore", () => ({
   proposeConcedeLiveMatch: proposeConcedeLiveMatchMock,
   declineConcedeLiveMatch: declineConcedeLiveMatchMock,
   acceptConcedeLiveMatch: acceptConcedeLiveMatchMock,
-  proposeCasualtyLiveMatch: proposeCasualtyLiveMatchMock,
-  confirmCasualtyLiveMatch: confirmCasualtyLiveMatchMock,
+  acknowledgeEventLiveMatch: acknowledgeEventLiveMatchMock,
+  liveEventRowToDto: liveEventRowToDtoMock,
   rollLiveMvp: rollLiveMvpMock,
   resolveLiveMatch: resolveLiveMatchMock,
   nominateMvpLiveMatch: nominateMvpLiveMatchMock,
@@ -1368,63 +1380,64 @@ describe("POST .../live — LM-12 foul/casualty actor invariants + LM-6 payloads
     expect(applyTransitionMock).not.toHaveBeenCalled();
   });
 
-  it("409 (no mutation) when a proposeCasualty causer is on the VICTIM's side (invariant)", async () => {
-    // Home (active) proposes a blitz casualty: victim p9 is away (opposite OK),
-    // but the causer p9 is AWAY too — a causer must be on the PROPOSER's side.
+  it("409 (no mutation) when a DIRECT casualty causer is on the VICTIM's side (invariant)", async () => {
+    // Home (active) records a blitz casualty directly: victim p9 is away
+    // (opposite OK), but the causer p9 is AWAY too — a causer must be on the
+    // side OPPOSITE the victim.
     liveSetup("coach-home");
     const res = await POST(
-      req({ type: "proposeCasualty", victimRosterId: "p9", causerRosterId: "p9", cause: "blitz", roll16: 13 }),
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p9", cause: "blitz", roll16: 13 }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(409);
-    expect(proposeCasualtyLiveMatchMock).not.toHaveBeenCalled();
     expect(applyTransitionMock).not.toHaveBeenCalled();
   });
 
-  it("409 (no mutation) when a proposeCasualty victim is NOT on the OPPOSITE side", async () => {
-    // Home (active) proposes a casualty whose victim p1 is HOME (own side) — the
-    // victim must resolve to the OPPOSITE side (LM-12).
+  it("409 (no mutation) when a DIRECT casualty records a caused cause on the caller's OWN side", async () => {
+    // Home (active) records a blitz casualty whose victim p1 is HOME (own side):
+    // self-side casualties are dodge/crowd only — a caused cause is rejected.
     liveSetup("coach-home");
     const res = await POST(
-      req({ type: "proposeCasualty", victimRosterId: "p1", causerRosterId: "p1", cause: "blitz", roll16: 13 }),
+      req({ type: "casualty", side: "home", victimRosterId: "p1", causerRosterId: "p1", cause: "blitz", roll16: 13 }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(409);
-    expect(proposeCasualtyLiveMatchMock).not.toHaveBeenCalled();
+    expect(applyTransitionMock).not.toHaveBeenCalled();
   });
 
-  it("200 + wires proposeCasualty through proposeCasualtyLiveMatch when causer is on the PROPOSER side and victim opposite", async () => {
+  it("200 + records a DIRECT casualty with the causer when the causer is opposite the victim", async () => {
     liveSetup("coach-home");
-    proposeCasualtyLiveMatchMock.mockResolvedValue({ seq: 4, view: liveView() });
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
     const res = await POST(
-      req({ type: "proposeCasualty", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 }),
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(200);
-    expect(proposeCasualtyLiveMatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        liveMatchId: "lm-1",
-        fixtureId: "f-1",
-        side: "home",
-        victimRosterId: "p9",
-        causerRosterId: "p1",
-        cause: "blitz",
-        roll16: 13,
-        roll6: 4,
-      }),
-      expect.anything(),
-    );
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    expect(transitionArg.next.events[0]).toMatchObject({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "p9",
+    });
+    expect(transitionArg.next.events[0].payload).toMatchObject({
+      victimRosterId: "p9",
+      causerRosterId: "p1",
+      cause: "blitz",
+      roll16: 13,
+      roll6: 4,
+      band: "permanent",
+    });
   });
 
-  it("409 (no mutation) when a proposeCasualty dodge/crowd carries a causer (strict LM-12 self-inflicted)", async () => {
+  it("409 (no mutation) when a DIRECT casualty dodge/crowd carries a causer (strict LM-12 self-inflicted)", async () => {
     liveSetup("coach-home");
     for (const cause of ["dodge", "crowd"]) {
       const res = await POST(
-        req({ type: "proposeCasualty", victimRosterId: "p9", causerRosterId: "p1", cause, roll16: 9 }),
+        req({ type: "casualty", side: "home", victimRosterId: "p1", causerRosterId: "p1", cause, roll16: 9 }),
         { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
       );
       expect(res.status).toBe(409);
-      expect(proposeCasualtyLiveMatchMock).not.toHaveBeenCalled();
+      expect(applyTransitionMock).not.toHaveBeenCalled();
     }
   });
 
@@ -1490,7 +1503,7 @@ describe("POST .../live — LM-12 foul/casualty actor invariants + LM-6 payloads
   });
 });
 
-describe("POST .../live — casualty propose → confirm round trip (RAU-39)", () => {
+describe("POST .../live — design B: direct casualty + non-blocking ack (RAU-82)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     isAuthEnabledMock.mockReturnValue(true);
@@ -1508,11 +1521,17 @@ describe("POST .../live — casualty propose → confirm round trip (RAU-39)", (
       clockStartedAt: new Date(1000).toISOString(),
     });
     liveMatchRowToStateMock.mockReturnValue(liveState);
-    // Roster: p1/p2 home, p9 away — the proposer (home) causer is own-side.
+    // Roster: p1/p2 home, p9 away — the home causer is own-side.
     prismaMock.player.findMany.mockResolvedValue([
       { teamId: "home-t", rosterPlayerId: "p1" },
       { teamId: "home-t", rosterPlayerId: "p2" },
       { teamId: "away-t", rosterPlayerId: "p9" },
+    ]);
+    // The served-rosters derivation (actor-side maps) reads the team rows'
+    // rosters — mirror the Player rows so the invariant maps agree.
+    prismaMock.team.findMany.mockResolvedValue([
+      { id: "home-t", raceId: "human", roster: [{ id: "p1", name: "P1", positionalKey: "lineman" }, { id: "p2", name: "P2", positionalKey: "lineman" }] },
+      { id: "away-t", raceId: "human", roster: [{ id: "p9", name: "P9", positionalKey: "lineman" }] },
     ]);
   }
 
@@ -1524,64 +1543,90 @@ describe("POST .../live — casualty propose → confirm round trip (RAU-39)", (
     });
   }
 
-  it("maps a state-machine rejection on propose (double-propose / non-active) to 409", async () => {
+  it("records a DIRECT casualty (one phase) — the event is consumed instantly, no confirm", async () => {
     liveSetup("coach-home");
-    proposeCasualtyLiveMatchMock.mockRejectedValue(Object.assign(new Error("casualty already proposed"), { status: 409 }));
+    applyTransitionMock.mockResolvedValue({ seq: 9, view: liveView() });
     const res = await POST(
-      req({ type: "proposeCasualty", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13 }),
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 }),
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
-    expect(res.status).toBe(409);
-  });
-
-  it("rejects an invalid roll on propose with 409 (roll16 out of 1..16)", async () => {
-    liveSetup("coach-home");
-    // The command passes shape validation; the STATE MACHINE rejects the roll.
-    proposeCasualtyLiveMatchMock.mockRejectedValue(Object.assign(new Error("invalid roll16"), { status: 409 }));
-    const res = await POST(
-      req({ type: "proposeCasualty", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 99 }),
-      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
-    );
-    expect(res.status).toBe(409);
-  });
-
-  it("rejects a propose/confirm from the side-less league admin with 409 and no store call", async () => {
-    liveSetup("owner-1");
-    const proposeRes = await POST(
-      req({ type: "proposeCasualty", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13 }),
-      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
-    );
-    expect(proposeRes.status).toBe(409);
-    expect(proposeCasualtyLiveMatchMock).not.toHaveBeenCalled();
-
-    const confirmRes = await POST(req({ type: "confirmCasualty" }), {
-      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
-    } as never);
-    expect(confirmRes.status).toBe(409);
-    expect(confirmCasualtyLiveMatchMock).not.toHaveBeenCalled();
-  });
-
-  it("wires confirmCasualty through confirmCasualtyLiveMatch with the responder's side", async () => {
-    liveSetup("coach-away");
-    confirmCasualtyLiveMatchMock.mockResolvedValue({ seq: 9, view: liveView({ pendingCasualty: null, seq: 9 }) });
-    const res = await POST(req({ type: "confirmCasualty" }), {
-      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
-    } as never);
     expect(res.status).toBe(200);
-    expect(confirmCasualtyLiveMatchMock).toHaveBeenCalledWith(
-      expect.objectContaining({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away" }),
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an invalid roll on a DIRECT casualty with 409 (roll16 out of 1..16)", async () => {
+    liveSetup("coach-home");
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 99 }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a side-less league admin recording a casualty with 409 and no store call", async () => {
+    liveSetup("owner-1");
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 9 }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("wires acknowledgeEvent through acknowledgeEventLiveMatch for the RIVAL side", async () => {
+    // The home coach scored a TD (event side = home); the AWAY coach is the rival.
+    liveSetup("coach-away");
+    acknowledgeEventLiveMatchMock.mockResolvedValue({ view: liveView(), event: { seq: 2, kind: "td", side: "home", ackStatus: "ok" } });
+    prismaMock.liveEvent.findFirst.mockResolvedValue({
+      id: "e2",
+      liveMatchId: "lm-1",
+      seq: 2,
+      kind: "td",
+      side: "home",
+      playerRosterId: "p1",
+      half: 1,
+      turnNumber: 1,
+      payload: {},
+      createdAt: new Date(1000),
+      ackStatus: "pending",
+      ackAt: null,
+      ackedBy: null,
+    });
+    const res = await POST(
+      req({ type: "acknowledgeEvent", eventSeq: 2, status: "ok" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(acknowledgeEventLiveMatchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fixtureId: "f-1", eventSeq: 2, side: "away", status: "ok" }),
       expect.anything(),
     );
-    const body = await res.json();
-    expect(body.view.viewerSide).toBe("away");
   });
 
-  it("maps a confirm state-machine rejection (no pending / proposer-self) to 409", async () => {
+  it("rejects the AUTHOR acknowledging their own event (only the rival coteja)", async () => {
+    // The home coach scored the TD; home trying to ack their OWN card → 409.
     liveSetup("coach-home");
-    confirmCasualtyLiveMatchMock.mockRejectedValue(Object.assign(new Error("no casualty proposal"), { status: 409 }));
-    const res = await POST(req({ type: "confirmCasualty" }), {
-      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
-    } as never);
+    acknowledgeEventLiveMatchMock.mockRejectedValue(Object.assign(new Error("Only the rival may acknowledge this event"), { status: 409 }));
+    prismaMock.liveEvent.findFirst.mockResolvedValue({
+      id: "e2",
+      liveMatchId: "lm-1",
+      seq: 2,
+      kind: "td",
+      side: "home",
+      playerRosterId: "p1",
+      half: 1,
+      turnNumber: 1,
+      payload: {},
+      createdAt: new Date(1000),
+      ackStatus: "pending",
+      ackAt: null,
+      ackedBy: null,
+    });
+    const res = await POST(
+      req({ type: "acknowledgeEvent", eventSeq: 2, status: "ok" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
     expect(res.status).toBe(409);
   });
 });
