@@ -1784,12 +1784,20 @@ describe("MatchView — RAU-39 casualty propose → confirm (two-phase)", () => 
     roll6: 4,
   };
 
-  it("shows the PROPOSER waiting copy and NO Confirmar while a casualty proposal is pending", async () => {
+  it("shows the PROPOSER a pending-casualty CARD (waiting state) and NO Confirmar while a proposal is pending", async () => {
     stubLiveEventSource();
     stubMatch(casualtyLive(pendingCasualty));
     const { unmount } = renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Esperando confirmación del rival/)).toBeTruthy();
+    // The proposer sees their own pending action as a card — the action never
+    // hangs "in the air" (same pattern as the date negotiation fix).
+    const card = screen.getByTestId("pending-casualty-card");
+    expect(card).toBeTruthy();
+    expect(within(card).getByText(/Baja propuesta/)).toBeTruthy();
+    // Derived details ride the card: victim (away → "Blitzer B"), cause, roll,
+    // derived band + permanent attribute.
+    expect(within(card).getByText(/Blitzer B · Blitz · 1D16 13 · Permanente \(−PS\)/)).toBeTruthy();
+    expect(within(card).getByText(/Esperando confirmación del rival/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Confirmar" })).toBeNull();
     unmount();
   });

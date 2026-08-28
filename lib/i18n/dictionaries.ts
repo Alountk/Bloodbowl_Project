@@ -613,6 +613,7 @@ const es: Dict = {
   "match.concede.modalBody": "El rival propone rendirse. Si aceptas, el partido termina con la victoria para tu equipo; si rechazas, el partido continúa.",
 
   "match.casualty.waiting": "Esperando confirmación del rival…",
+  "match.casualty.pendingTitle": "Baja propuesta",
   "match.casualty.rivalRegisters": "El rival registra una baja",
   "match.casualty.details": "{victim} · {cause} · 1D16 {roll} · {band}",
   "match.casualty.confirm": "Confirmar",
@@ -1369,6 +1370,7 @@ const en: Dict = {
   "match.concede.modalBody": "The rival proposes to surrender. If you accept, the match ends with victory for your team; if you decline, the match continues.",
 
   "match.casualty.waiting": "Waiting for the rival's confirmation…",
+  "match.casualty.pendingTitle": "Proposed casualty",
   "match.casualty.rivalRegisters": "The rival records a casualty",
   "match.casualty.details": "{victim} · {cause} · 1D16 {roll} · {band}",
   "match.casualty.confirm": "Confirm",

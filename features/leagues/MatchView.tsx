@@ -319,33 +319,22 @@ function ConcedeControls({
 }
 
 /**
- * RAU-39 casualty confirm flow: while a casualty proposal is pending, the
- * PROPOSER (the attacker) sees "Esperando confirmación del rival…" inline; the
- * defender (perjudicado) sees an EXPLANATORY MODAL (RAU-43) — "El rival
- * registra una baja" with the derived details (víctima, causa, tirada 1D16,
- * banda derivada — the band is DERIVED client-side for display ONLY, the server
- * is authoritative) and a "Confirmar" button that fires
- * `{ type: "confirmCasualty" }`. There is NO reject — the defender can only
- * confirm. The server stays authoritative — a bypass POST by the proposer
- * returns 409.
+ * The PROPOSER (the active coach) sees their own pending casualty as a proper
+ * CARD in the live body — the same "waiting for the rival" pattern as the date
+ * negotiation: the recorded action never hangs "in the air". The card clears
+ * when the rival confirms and the casualty event card lands in the timeline
+ * (the confirmation itself is the "validated by the rival" step).
  */
-function CasualtyConfirmControls({
-  viewerSide,
+function PendingCasualtyCard({
   pending,
-  submitting,
-  onConfirm,
   homeTeam,
   awayTeam,
 }: {
-  viewerSide: "home" | "away";
-  pending: LiveMatchViewState["pendingCasualty"];
-  submitting: boolean;
-  onConfirm: () => void;
+  pending: NonNullable<LiveMatchViewState["pendingCasualty"]>;
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
 }) {
   const { t } = useI18n();
-  if (pending == null) return null;
   // The victim is on the side OPPOSITE the proposer (LM-12 invariant).
   const victimTeam = pending.proposerSide === "home" ? awayTeam : homeTeam;
   const victim = victimTeam.players.find((p) => p.rosterPlayerId === pending.victimRosterId);
@@ -366,13 +355,76 @@ function CasualtyConfirmControls({
   const bandText = casualtyKindLabel(band.kind, t);
   const bandLabel = attribute ? `${bandText} (−${attribute})` : bandText;
 
-  if (pending.proposerSide === viewerSide) {
-    return (
-      <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-        {t("match.casualty.waiting")}
-      </span>
-    );
-  }
+  return (
+    <div
+      role="status"
+      className="mx-4 mb-3 border border-[#d11938] bg-[#fef2f2] px-4 py-3"
+      data-testid="pending-casualty-card"
+    >
+      <p className="text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938]">
+        {t("match.casualty.pendingTitle")}
+      </p>
+      <p className="mt-1 text-sm font-semibold text-[#12225a]">
+        {t("match.casualty.details", {
+          victim: victim?.name ?? "?",
+          cause: causeLabel(pending.cause, t),
+          roll: pending.roll16,
+          band: bandLabel,
+        })}
+      </p>
+      <p className="mt-1 text-xs font-bold text-[#b45309]">⏳ {t("match.casualty.waiting")}</p>
+    </div>
+  );
+}
+
+/**
+ * RAU-39 casualty confirm flow: the DEFENDER (perjudicado) sees an EXPLANATORY
+ * MODAL (RAU-43) — "El rival registra una baja" with the derived details
+ * (víctima, causa, tirada 1D16, banda derivada — the band is DERIVED
+ * client-side for display ONLY, the server is authoritative) and a "Confirmar"
+ * button that fires `{ type: "confirmCasualty" }`. There is NO reject — the
+ * defender can only confirm. The PROPOSER's own pending casualty renders as the
+ * body CARD (`PendingCasualtyCard`), not here. The server stays authoritative —
+ * a bypass POST by the proposer returns 409.
+ */
+function CasualtyConfirmControls({
+  viewerSide,
+  pending,
+  submitting,
+  onConfirm,
+  homeTeam,
+  awayTeam,
+}: {
+  viewerSide: "home" | "away";
+  pending: LiveMatchViewState["pendingCasualty"];
+  submitting: boolean;
+  onConfirm: () => void;
+  homeTeam: MatchTeamDetail;
+  awayTeam: MatchTeamDetail;
+}) {
+  const { t } = useI18n();
+  if (pending == null) return null;
+  // The proposer's own pending casualty renders as the body card, not here.
+  if (pending.proposerSide === viewerSide) return null;
+  // The victim is on the side OPPOSITE the proposer (LM-12 invariant).
+  const victimTeam = pending.proposerSide === "home" ? awayTeam : homeTeam;
+  const victim = victimTeam.players.find((p) => p.rosterPlayerId === pending.victimRosterId);
+  const band = resolveInjury(pending.roll16);
+  const attribute = pending.roll6 != null
+    ? band.kind === "permanent"
+      ? pending.roll6 <= 2
+        ? "AR"
+        : pending.roll6 === 3
+          ? "MV"
+          : pending.roll6 === 4
+            ? "PS"
+            : pending.roll6 === 5
+              ? "AG"
+              : "ST"
+      : null
+    : null;
+  const bandText = casualtyKindLabel(band.kind, t);
+  const bandLabel = attribute ? `${bandText} (−${attribute})` : bandText;
 
   return (
     <IncomingEventModal
@@ -1105,16 +1157,29 @@ function LiveActiveMatch({
       />
     ) : null;
 
-  // RAU-39: the casualty confirm panel (same gating). The defender confirms the
-  // ACTIVE coach's proposal; the proposer sees the waiting copy. Null when the
-  // view still lacks a `pendingCasualty` (older persisted rows / no proposal).
+  // RAU-39: the casualty confirm modal (same gating). The DEFENDER confirms the
+  // ACTIVE coach's proposal; the PROPOSER sees their own pending casualty as a
+  // body CARD (`pendingCasualtyCard`) instead — the action never hangs in the
+  // air for the coach who recorded it.
+  const isCasualtyProposer =
+    state.pendingCasualty != null &&
+    state.viewerSide != null &&
+    state.pendingCasualty.proposerSide === state.viewerSide;
   const casualtyControls =
-    state.status === "live" && state.viewerSide != null && state.pendingCasualty != null ? (
+    state.status === "live" && state.viewerSide != null && state.pendingCasualty != null && !isCasualtyProposer ? (
       <CasualtyConfirmControls
         viewerSide={state.viewerSide}
         pending={state.pendingCasualty}
         submitting={submitting}
         onConfirm={() => void act({ type: "confirmCasualty" })}
+        homeTeam={homeTeam}
+        awayTeam={awayTeam}
+      />
+    ) : null;
+  const pendingCasualtyCard =
+    state.status === "live" && state.viewerSide != null && state.pendingCasualty != null && isCasualtyProposer ? (
+      <PendingCasualtyCard
+        pending={state.pendingCasualty}
         homeTeam={homeTeam}
         awayTeam={awayTeam}
       />
@@ -1176,6 +1241,7 @@ function LiveActiveMatch({
               {t("match.rivalRequestsTurn")}
             </p>
           ) : null}
+          {pendingCasualtyCard}
           <LiveEventCards
             events={events}
             startedAt={state.startedAt}
