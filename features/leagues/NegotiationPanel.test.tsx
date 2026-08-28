@@ -135,6 +135,29 @@ describe("NegotiationPanel — participant", () => {
     expect(screen.queryAllByRole("button", { name: "Aceptar" }).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("shows the 'waiting for the rival' state on the viewer's OWN latest active proposal", () => {
+    // The viewer proposed p1 and it is the LATEST active → the card appears
+    // immediately with the waiting state (edge-case fix: proposals no longer
+    // hang "in the air" for the proposer).
+    renderPanel({
+      currentUserId: "uHome",
+      fixture: fixtureWith([open1]),
+    });
+    expect(screen.getByText(/Esperando confirmación del rival/)).toBeTruthy();
+    // The proposer must NOT see an accept button on their own proposal.
+    expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
+  });
+
+  it("shows the 'validated by the rival' check on the viewer's own accepted proposal", () => {
+    // The rival (maria) accepted the viewer's proposal → the proposer sees the
+    // opponent-validated check instead of a generic agreement line.
+    renderPanel({
+      currentUserId: "uHome",
+      fixture: fixtureWith([{ ...open1, acceptedAt: "2026-02-04T20:00:00.000Z" }]),
+    });
+    expect(screen.getByText(/Validado por maria/)).toBeTruthy();
+  });
+
   it("shows negotiate controls for a league owner who is also a participant", () => {
     // Bug fix: an admin who owns one of the fixture's teams is a PARTICIPANT and
     // may negotiate (participant rule). Only a non-participant admin is read-only.

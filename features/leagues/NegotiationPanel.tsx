@@ -72,6 +72,15 @@ export function NegotiationPanel({
   for (const owner of [fixture.homeOwner, fixture.awayOwner]) {
     if (owner) ownerNameByUserId.set(owner.id, owner.name ?? owner.id);
   }
+  // The rival of a proposal author is the OTHER participant — used for the
+  // "✓ validated by the rival" marker on the proposer's own accepted proposal.
+  const opponentOf = (userId: string): string | undefined => {
+    const owners = [fixture.homeOwner, fixture.awayOwner].filter(
+      (o): o is NonNullable<typeof o> => o != null && o.id !== userId,
+    );
+    const name = owners[0] ? ownerNameByUserId.get(owners[0].id) : undefined;
+    return name ?? undefined;
+  };
   const title = t("negotiation.title", { home: homeName, away: awayName });
 
   return (
@@ -127,7 +136,17 @@ export function NegotiationPanel({
                     {formatProposalDateTime(proposal.date)} · {authorDisplay(proposal, t)}
                   </span>
                   {proposal.acceptedAt ? (
-                    <span className="font-bold text-green-600">{t("negotiation.accepted")}</span>
+                    proposal.userId === currentUserId ? (
+                      // The proposer sees the rival's confirmation as the
+                      // "validated by opponent" check they asked for.
+                      <span className="font-bold text-green-600">
+                        {t("negotiation.validatedBy", {
+                          name: opponentOf(proposal.userId) ?? "",
+                        })}
+                      </span>
+                    ) : (
+                      <span className="font-bold text-green-600">{t("negotiation.accepted")}</span>
+                    )
                   ) : otherActive?.id === proposal.id && negotiationOpen ? (
                     <button
                       type="button"
@@ -136,6 +155,10 @@ export function NegotiationPanel({
                     >
                       {t("negotiation.accept")}
                     </button>
+                  ) : active?.id === proposal.id && negotiationOpen ? (
+                    // The viewer's OWN pending proposal: shown immediately as a
+                    // card in "waiting for the rival" state (edge-case fix).
+                    <span className="font-bold text-slate-500">{t("negotiation.waiting")}</span>
                   ) : null}
                 </li>
               ))

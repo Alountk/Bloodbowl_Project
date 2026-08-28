@@ -409,6 +409,7 @@ describe("LeagueDetail — STARTED league", () => {
   it("keeps the viewed round when a refresh completes it (one-shot initializer)", async () => {    // Mount defaults to round 2 (the first incomplete round); a refresh that also
     // completes round 2 must NOT auto-advance the selection back to round 1.
     let round2Complete = false;
+    let proposed = false;
     const detail = () => ({
       ...startedLeague,
       rounds: [
@@ -417,7 +418,25 @@ describe("LeagueDetail — STARTED league", () => {
       ],
       fixtures: [
         { ...startedLeague.fixtures[0], status: "played", winnerId: "t2", scheduledAt: "2026-02-05" },
-        { ...startedLeague.fixtures[1], status: "pending", winnerId: null, scheduledAt: null },
+        {
+          ...startedLeague.fixtures[1],
+          status: "pending",
+          winnerId: null,
+          scheduledAt: null,
+          proposals: proposed
+            ? [
+                {
+                  id: "p-new",
+                  fixtureId: "f2",
+                  userId: me,
+                  date: "2026-03-05T19:00:00.000Z",
+                  createdAt: "2026-02-10",
+                  acceptedAt: null,
+                  closedAt: null,
+                },
+              ]
+            : [],
+        },
       ],
     });
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
@@ -430,6 +449,7 @@ describe("LeagueDetail — STARTED league", () => {
       }
       if (/\/api\/leagues\/l3\/fixtures\/f2\/propose$/.test(url)) {
         round2Complete = true;
+        proposed = true;
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(detail()) });
       }
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
@@ -441,13 +461,16 @@ describe("LeagueDetail — STARTED league", () => {
       expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("true"),
     );
 
-    // me owns the away team of f2 (round 2) → propose a date; success closes the panel.
+    // me owns the away team of f2 (round 2) → propose a date; the panel STAYS
+    // open and the pending proposal appears with the waiting-for-rival state
+    // (edge-case fix: the proposer must see their own pending card).
     fireEvent.click(within(screen.getByRole("region", { name: "Jornada 2" })).getByTestId("match-card-score"));
     fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
     fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.getByText(/Esperando confirmación del rival/)).toBeTruthy());
+    expect(screen.getByRole("dialog", { name: /Acordar fecha/ })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Jornada 2" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tab", { name: "Jornada 1" }).getAttribute("aria-selected")).toBe("false");
   });

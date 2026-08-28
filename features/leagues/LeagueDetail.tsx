@@ -481,7 +481,14 @@ function Jornadas({
     rounds.find((round) => !round.complete)?.round ?? firstRound,
   );
 
-  const [negotiateFixture, setNegotiateFixture] = useState<FixtureDraft | null>(null);
+  // The fixture whose negotiation panel is open, kept by id so the panel stays
+  // live: after a propose/refresh the fixture is re-derived from the league data
+  // and the new proposal appears immediately (the proposer must see their own
+  // pending card — edge-case fix, actions used to hang "in the air").
+  const [negotiateFixtureId, setNegotiateFixtureId] = useState<string | null>(null);
+  const negotiateFixture = negotiateFixtureId
+    ? (fixtures.find((f) => f.id === negotiateFixtureId) ?? null)
+    : null;
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [forfeitFixture, setForfeitFixture] = useState<FixtureDraft | null>(null);
   const { t } = useI18n();
@@ -559,7 +566,7 @@ function Jornadas({
             leagueFinished={leagueFinished}
             onNegotiate={(f) => {
               setProposalError(null);
-              setNegotiateFixture(f);
+              setNegotiateFixtureId(f.id);
             }}
             onForfeit={setForfeitFixture}
             onLoadResult={(f) => {
@@ -587,8 +594,10 @@ function Jornadas({
           onPropose={async (date) => {
             setProposalError(null);
             try {
+              // Keep the panel OPEN after proposing: the proposer must see their
+              // own pending proposal (with the waiting-for-rival state) instead
+              // of the action hanging "in the air" until the rival accepts.
               await onPropose(negotiateFixture.id, date);
-              setNegotiateFixture(null);
             } catch (e) {
               setProposalError(
                 e instanceof Error
@@ -601,7 +610,7 @@ function Jornadas({
             setProposalError(null);
             try {
               await onAccept(negotiateFixture.id, proposalId);
-              setNegotiateFixture(null);
+              setNegotiateFixtureId(null);
             } catch (e) {
               setProposalError(
                 e instanceof Error
@@ -612,7 +621,7 @@ function Jornadas({
           }}
           onClose={() => {
             setProposalError(null);
-            setNegotiateFixture(null);
+            setNegotiateFixtureId(null);
           }}
           submitError={proposalError}
         />
