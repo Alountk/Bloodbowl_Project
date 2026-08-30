@@ -32,7 +32,12 @@ OUT_ROOT = os.path.join(DESIGNS, "sprites-gemini", "comfy-variantes")
 # linewoman=Eagle Warrior, thrower=Python Warrior, catcher=Piranha Warrior,
 # blitzer=Jaguar Warrior. Empty = keep the generic flavor.
 ROLE_TAILS = {
-    "linewoman": "",
+    # Eagle Warrior (v4 approved + color pass): DARK BROWN leather gloves and
+    # boots (the model keeps painting fuchsia — the exact tone + negatives).
+    "linewoman": ("a graceful athletic bronze-skinned WOMAN warrior with NO "
+                  "helmet, bare head with hair, no feathers, no headdress, "
+                  "light leather armor, DARK BROWN (#5b3a1e) leather gloves "
+                  "and DARK BROWN (#5b3a1e) leather boots"),
     "thrower": ("a graceful athletic bronze-skinned WOMAN thrower wearing "
                 "Aztec-style feather plumage on the arms, feathered bracers "
                 "like an aztec warrior, holding a leather football"),
@@ -136,15 +141,12 @@ def preview_grid(team, teams, roles, variants, outdir):
         for v in range(1, variants + 1):
             rel = os.path.relpath(os.path.join(outdir, f"{role}-v{v}"), os.path.dirname(outdir))
             # The preview lives in sprites-gemini/, the outputs under comfy-variantes/.
-            keyed = f"comfy-variantes/{rel}/{team}-{role}-keyed.png"
-            crisp = f"comfy-variantes/{rel}/{team}-{role}-64.png"
-            cells.append(f"""<div class="cell">
-              <div class="stage">
-                <div class="imgbox"><img class="raw" src="{keyed}" alt="{pname} v{v} keyed"><span class="lbl">keyed</span></div>
-                <div class="imgbox"><img class="thumb" src="{crisp}" alt="{pname} v{v} crisp"><span class="lbl">crisp</span></div>
-              </div>
-              <p class="vlabel">v{v}</p>
-            </div>""")
+            raw = f"comfy-variantes/{rel}/{team}-{role}.raw.png"
+            cells.append(
+                '<div class="cell"><div class="stage"><img class="raw" src="'
+                + raw
+                + f'" alt="{pname} v{v}"></div><p class="vlabel">v{v}</p></div>',
+            )
         rows.append(f"""<div class="posrow">
           <h3>{pname}</h3>
           <div class="cells">{"".join(cells)}</div>

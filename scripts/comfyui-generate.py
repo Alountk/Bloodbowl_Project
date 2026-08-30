@@ -60,6 +60,10 @@ NEGATIVE_PROMPT = (
     "animal hybrids, bird-man, snake-woman, beast features, wings, scales, "
     "animal head, animal tail, claws, feathers, fur, "
     "men, male, masculine, "
+    "pink gloves, fuchsia gloves, magenta gloves, pink boots, fuchsia "
+    "boots, magenta boots, pink shoes, pink hands, pink armor, "
+    "feathered helmet, feather crest on helmet, headdress feathers, "
+    "plume on helmet, feather mohawk, "
     "blurry face, deformed face, bad face, ugly face, smudged facial "
     "features, asymmetric eyes, "
     "ornate decorations, flourishes, lace, ribbons, capes, "
@@ -82,9 +86,9 @@ STYLE_MODS = {
     "detallado": " Soft shading, detailed armor plates, subtle highlights, richer detail.",
     "retro": " Chunky blocky pixels, NES 8-bit retro style, hard edges, dithering, very limited palette.",
     "pixel": (" High-quality pixel art, smooth pixel shading, crisp clean pixels, "
-              "rich detail, polished, refined, vibrant colors, deep shadows, "
-              "soft highlights, clear expressive face, detailed eyes and "
-              "facial features."),
+              "rich detail, polished, refined, natural earthy colors, deep "
+              "shadows, soft highlights, clear expressive face, detailed eyes "
+              "and facial features."),
 }
 
 
@@ -317,7 +321,7 @@ def crisp_postprocess(raw_path, out_path, target, fit_height):
 
 
 def generate_one(g, teams, team, role, outdir, seed, prompt_override=None, style="retro",
-                  base_image=None, denoise=0.65):
+                  base_image=None, denoise=0.65, clean=False):
     base = os.path.join(outdir, f"{team}-{role}")
     raw = base + ".raw.png"
     thumb = base + "-64.png"
@@ -351,6 +355,10 @@ def generate_one(g, teams, team, role, outdir, seed, prompt_override=None, style
             return (role, "FAIL generation")
         print(f"  {role}: raw ok ({os.path.getsize(raw)} bytes)")
 
+    if not clean:
+        # Raw-only mode (the user asked to drop the field cleaner): nothing
+        # beyond the raw is produced.
+        return (role, "ok (raw only)")
     if not (os.path.exists(thumb) and os.path.getsize(thumb) > 100):
         if not crisp_postprocess(raw, thumb, 64, fit):
             return (role, "FAIL thumb")
@@ -390,6 +398,9 @@ def main():
     ap.add_argument("--base-image", default=None,
                     help="path to a base 'muñeco' PNG: img2img generates every "
                          "positional FROM this base (same pose/composition)")
+    ap.add_argument("--clean", action="store_true",
+                    help="run the background key + crisp post-process (OFF by "
+                         "default: only the raw is saved)")
     ap.add_argument("--denoise", type=float, default=0.65,
                     help="img2img denoise strength (0.65 keeps pose, repaints style)")
     args = ap.parse_args()
@@ -408,7 +419,7 @@ def main():
     def one(role):
         seed = args.seed if args.seed is not None else random.randint(0, 2**31 - 1)
         return generate_one(g, teams, args.team, role, outdir, seed, args.prompt, args.style,
-                          args.base_image, args.denoise)
+                          args.base_image, args.denoise, args.clean)
 
     if args.workers == 1:
         for role in roles:
