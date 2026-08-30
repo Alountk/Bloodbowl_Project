@@ -67,12 +67,20 @@ NEGATIVE_PROMPT = (
 
 FIT_BY_SIZE = {"big": 64, "normal": 52, "small": 38}
 
+# Higher-res generation (SDXL native) + a finer sampler for cleaner pixel art.
+RESOLUTION = 768
+STEPS = 30
+SAMPLER = "dpmpp_2m"
+SCHEDULER = "karras"
+
 # Visual style modifiers appended to the WHF prompt (V4 "Retro NES" approved).
 STYLE_MODS = {
     "clasico": "",
     "minimal": " Clean minimal palette, flat colors, bold black outlines, very limited color count.",
     "detallado": " Soft shading, detailed armor plates, subtle highlights, richer detail.",
     "retro": " Chunky blocky pixels, NES 8-bit retro style, hard edges, dithering, very limited palette.",
+    "pixel": (" Detailed high-quality pixel art, 16-bit style, smooth pixel shading, "
+              "crisp clean pixels, rich detail, polished, refined."),
 }
 
 
@@ -132,6 +140,11 @@ def queue_prompt(workflow, prompt, seed, base_image=None, denoise=0.65):
     workflow["4"]["inputs"]["text"] = prompt
     workflow["7"]["inputs"]["text"] = NEGATIVE_PROMPT + BKG_NEGATIVES
     workflow["5"]["inputs"]["noise_seed"] = seed
+    workflow["8"]["inputs"]["width"] = RESOLUTION
+    workflow["8"]["inputs"]["height"] = RESOLUTION
+    workflow["5"]["inputs"]["steps"] = STEPS
+    workflow["5"]["inputs"]["sampler_name"] = SAMPLER
+    workflow["5"]["inputs"]["scheduler"] = SCHEDULER
     if base_image:
         # img2img: load the base "muñeco" (LoadImage 10 -> ImageScale 11 ->
         # VAEEncode 12) and feed it as the KSampler latent; the denoise keeps
@@ -139,7 +152,7 @@ def queue_prompt(workflow, prompt, seed, base_image=None, denoise=0.65):
         name = upload_image(base_image)
         workflow["10"] = {"class_type": "LoadImage", "inputs": {"image": name}}
         workflow["11"] = {"class_type": "ImageScale", "inputs": {
-            "image": ["10", 0], "width": 512, "height": 512,
+            "image": ["10", 0], "width": RESOLUTION, "height": RESOLUTION,
             "upscale_method": "lanczos", "crop": "center",
         }}
         workflow["12"] = {"class_type": "VAEEncode", "inputs": {
@@ -147,7 +160,7 @@ def queue_prompt(workflow, prompt, seed, base_image=None, denoise=0.65):
         }}
         workflow["5"]["inputs"]["latent_image"] = ["12", 0]
         workflow["5"]["inputs"]["add_noise"] = "enable"
-        steps = int(workflow["5"]["inputs"].get("steps", 20))
+        steps = int(workflow["5"]["inputs"].get("steps", STEPS))
         workflow["5"]["inputs"]["start_at_step"] = int(steps * (1 - denoise))
         workflow["5"]["inputs"]["end_at_step"] = steps
     return http_post(f"{BASE}/prompt", {"prompt": workflow})
@@ -368,8 +381,8 @@ def main():
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--prompt", default=None,
                     help="full prompt override (otherwise the approved WHF builder)")
-    ap.add_argument("--style", default="retro", choices=list(STYLE_MODS.keys()),
-                    help="visual style modifier (default retro — V4 approved)")
+    ap.add_argument("--style", default="pixel", choices=list(STYLE_MODS.keys()),
+                    help="visual style modifier (default pixel — polished 16-bit)")
     ap.add_argument("--base-image", default=None,
                     help="path to a base 'muñeco' PNG: img2img generates every "
                          "positional FROM this base (same pose/composition)")
