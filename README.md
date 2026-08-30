@@ -76,6 +76,17 @@ pnpm db:migrate          # Apply migrations
 pnpm docker:build        # Build local image
 ```
 
+### Playground (local test scenario)
+
+Seeds a ready-to-use test scenario so you never build teams/leagues by hand again:
+
+```bash
+pnpm db:seed          # creates the playground data (idempotent, never touches your data)
+pnpm playground       # migrate + seed + start the dev server
+```
+
+It creates two coaches (`coach1@test.local` / `coach2@test.local`, password `password123`), a human team for each, and the started league **"Campo de pruebas"** with one pending matchday — ready for date negotiation and live match. For a live match open two browsers (one per coach). Automated verification: `pnpm test`, `pnpm run test:e2e`, `pnpm run test:e2e:auth`.
+
 ### 3. Deploy (Docker / Arcane)
 
 See [docs/auth.md](./docs/auth.md) for the full detail. Summary:
