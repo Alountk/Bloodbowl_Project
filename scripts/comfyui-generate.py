@@ -238,12 +238,13 @@ def main():
     badge = {"big": "badge big", "small": "badge small", "normal": "badge"}
     label = {"big": "big", "small": "small", "normal": "normal"}
     cards = []
+    img_prefix = os.path.basename(os.path.normpath(outdir)) + "/"
     for pkey, pname, _flavor, size, _role in entries:
         if args.role and pkey != args.role:
             continue
-        raw = f"{args.team}-{pkey}.raw.png"
-        thumb = f"{args.team}-{pkey}-64.png"
-        big = f"{args.team}-{pkey}-128.png"
+        raw = f"{img_prefix}{args.team}-{pkey}.raw.png"
+        thumb = f"{img_prefix}{args.team}-{pkey}-64.png"
+        big = f"{img_prefix}{args.team}-{pkey}-128.png"
         cards.append(f"""<div class="card">
           <div class="stage"><img class="raw" src="{raw}" alt="{pname}"><img class="thumb" src="{thumb}" alt="{pname} 64px"></div>
           <h3>{pname}</h3><span class="{badge[size]}">{label[size]}</span>
