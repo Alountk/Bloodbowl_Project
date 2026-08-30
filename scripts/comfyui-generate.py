@@ -79,8 +79,9 @@ STYLE_MODS = {
     "minimal": " Clean minimal palette, flat colors, bold black outlines, very limited color count.",
     "detallado": " Soft shading, detailed armor plates, subtle highlights, richer detail.",
     "retro": " Chunky blocky pixels, NES 8-bit retro style, hard edges, dithering, very limited palette.",
-    "pixel": (" Detailed high-quality pixel art, 16-bit style, smooth pixel shading, "
-              "crisp clean pixels, rich detail, polished, refined."),
+    "pixel": (" Detailed high-quality pixel art, 32-bit style, smooth pixel shading, "
+              "crisp clean pixels, rich detail, polished, refined, vibrant colors, "
+              "deep shadows, soft highlights."),
 }
 
 
