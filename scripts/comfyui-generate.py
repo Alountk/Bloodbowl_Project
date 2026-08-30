@@ -41,13 +41,39 @@ if not os.path.exists(GEN_MOD):
 WORKFLOW_PATH = os.path.join(REPO_ROOT, "pixel_art_api.json")
 BASE = os.environ.get("COMFYUI_BASE", "http://111.111.111.20:42007")
 
+# The spriteShaper model paints its own backgrounds (field/stadium). Force a
+# PLAIN solid studio background so the flood-fill key removes it cleanly.
+BKG_TAIL = (
+    " Plain simple solid light gray studio background, no scene, no lines, "
+    "no floor, no ground, no field, no stadium, no horizon."
+)
+BKG_NEGATIVES = (
+    ", field lines, stadium, stands, crowd, perspective, horizon, floor, "
+    "ground shadow, vignette, gradient background, textured background"
+)
+
 NEGATIVE_PROMPT = (
     "photorealistic, 3d render, smooth gradients, blurry, high resolution, "
     "modern digital painting, anti-aliasing, vector art, distorted anatomy, "
-    "running, jumping, dynamic pose, grass, field, ground, text, weapons"
+    "running, jumping, dynamic pose, grass, field, ground, text, weapons, "
+    "shields, swords, axes, spears, guns, "
+    "animal hybrids, bird-man, snake-woman, beast features, wings, scales, "
+    "animal head, animal tail, claws, feathers, fur, "
+    "men, male, masculine, "
+    "ornate decorations, flourishes, lace, ribbons, capes, "
+    "model base, pedestal, diorama, plaque, stand, miniature base, "
+    "multiple characters, two figures, group of people"
 )
 
 FIT_BY_SIZE = {"big": 64, "normal": 52, "small": 38}
+
+# Visual style modifiers appended to the WHF prompt (V4 "Retro NES" approved).
+STYLE_MODS = {
+    "clasico": "",
+    "minimal": " Clean minimal palette, flat colors, bold black outlines, very limited color count.",
+    "detallado": " Soft shading, detailed armor plates, subtle highlights, richer detail.",
+    "retro": " Chunky blocky pixels, NES 8-bit retro style, hard edges, dithering, very limited palette.",
+}
 
 
 def load_gemini_module():
@@ -70,10 +96,60 @@ def http_get(url):
         return json.load(r)
 
 
-def queue_prompt(workflow, prompt, seed):
+_UPLOAD_CACHE = {}
+
+
+def upload_image(path):
+    # Uploads a PNG to the ComfyUI server once and returns the temp filename
+    # LoadImage can reference (the API does NOT accept inline base64).
+    import uuid
+
+    if path in _UPLOAD_CACHE:
+        return _UPLOAD_CACHE[path]
+    boundary = uuid.uuid4().hex
+    filename = os.path.basename(path)
+    with open(path, "rb") as fh:
+        data = fh.read()
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'
+        f"Content-Type: image/png\r\n\r\n"
+    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    req = urllib.request.Request(
+        f"{BASE}/upload/image",
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        res = json.load(r)
+    name = res.get("name") or (res.get("image") or {}).get("name") or filename
+    _UPLOAD_CACHE[path] = name
+    return name
+
+
+def queue_prompt(workflow, prompt, seed, base_image=None, denoise=0.65):
     workflow["4"]["inputs"]["text"] = prompt
-    workflow["7"]["inputs"]["text"] = NEGATIVE_PROMPT
+    workflow["7"]["inputs"]["text"] = NEGATIVE_PROMPT + BKG_NEGATIVES
     workflow["5"]["inputs"]["noise_seed"] = seed
+    if base_image:
+        # img2img: load the base "muñeco" (LoadImage 10 -> ImageScale 11 ->
+        # VAEEncode 12) and feed it as the KSampler latent; the denoise keeps
+        # the base pose/composition while the prompt repaints role/style.
+        name = upload_image(base_image)
+        workflow["10"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        workflow["11"] = {"class_type": "ImageScale", "inputs": {
+            "image": ["10", 0], "width": 512, "height": 512,
+            "upscale_method": "lanczos", "crop": "center",
+        }}
+        workflow["12"] = {"class_type": "VAEEncode", "inputs": {
+            "pixels": ["11", 0], "vae": ["1", 2],
+        }}
+        workflow["5"]["inputs"]["latent_image"] = ["12", 0]
+        workflow["5"]["inputs"]["add_noise"] = "enable"
+        steps = int(workflow["5"]["inputs"].get("steps", 20))
+        workflow["5"]["inputs"]["start_at_step"] = int(steps * (1 - denoise))
+        workflow["5"]["inputs"]["end_at_step"] = steps
     return http_post(f"{BASE}/prompt", {"prompt": workflow})
 
 
@@ -137,12 +213,60 @@ def flood_fill_key(img, tol=40):
     return img
 
 
+def key_background(img, tol=55):
+    """Removes the pitch background ROBUSTLY: flood-fill from the borders PLUS a
+    global green-field key by hue (the spriteShaper model paints a green pitch
+    that often does NOT touch the image borders — between legs, around feet).
+    Hue-keyed in HSV so the green field (hue ~90-170) disappears even inside the
+    silhouette; human/retro sprites carry no such green. NOTE: revisit the hue
+    range for green-skinned races (orcs) — the dark outline usually separates
+    them from the pitch, so the flood-fill may suffice there."""
+    from PIL import Image
+
+    img = flood_fill_key(img, tol=tol)
+    px = img.load()
+    w, h = img.size
+    hsv = img.convert("HSV").load()
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            hue, sat, val = hsv[x, y]
+            # Green pitch ONLY (calibrated: the model's field is hue 80-130).
+            # Hue > 170 is the armor's teal — NEVER keyed. Recalibrate if a
+            # team's field shifts (e.g. yellowish grass or blue-ish turf).
+            if 75 <= hue <= 135 and sat > 45 and val > 50:
+                px[x, y] = (0, 0, 0, 0)
+    # A second flood-fill pass: the global green-key opened holes in the pitch,
+    # so leftover dim-green patches (below the hue/sat thresholds) are now
+    # CONNECTED to transparency and get removed by a border flood-fill again.
+    img = flood_fill_key(img, tol=45)
+    # Clean one-pixel remnants hugging the now-transparent edges.
+    px2 = img.load()
+    cleared = set()
+    for y in range(h):
+        for x in range(w):
+            if px2[x, y][3] == 0:
+                cleared.add((x, y))
+    for (x, y) in cleared:
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h and px2[nx, ny][3] > 0:
+                r, g, b, a = px2[nx, ny]
+                # Only drop edge remnants that are still greenish or too close
+                # to the field tint (the silhouette outline survives).
+                if g > r and g > b:
+                    px2[nx, ny] = (0, 0, 0, 0)
+    return img
+
+
 def crisp_postprocess(raw_path, out_path, target, fit_height):
     """Key + trim + box downscale + palette quantize (approved 'crisp' style)."""
     from PIL import Image
 
     img = Image.open(raw_path).convert("RGBA")
-    img = flood_fill_key(img)
+    img = key_background(img)
     bbox = img.getbbox()
     if not bbox:
         print("  fully transparent after keying — skipping")
@@ -167,7 +291,8 @@ def crisp_postprocess(raw_path, out_path, target, fit_height):
     return True
 
 
-def generate_one(g, teams, team, role, outdir, seed):
+def generate_one(g, teams, team, role, outdir, seed, prompt_override=None, style="retro",
+                  base_image=None, denoise=0.65):
     base = os.path.join(outdir, f"{team}-{role}")
     raw = base + ".raw.png"
     thumb = base + "-64.png"
@@ -181,9 +306,19 @@ def generate_one(g, teams, team, role, outdir, seed):
     fit = FIT_BY_SIZE.get(size, 52)
 
     if not (os.path.exists(raw) and os.path.getsize(raw) > 1000):
-        prompt = g.team_prompt(team, role, teams)
+        # The spriteShaper model sometimes paints TWO figures or adds shields —
+        # reinforce a SINGLE centered character with no equipment.
+        SINGLE_FIGURE = (
+            "ONE single centered character standing alone, no other figures, "
+            "no second player, no shields, no weapons, no banners."
+        )
+        if prompt_override:
+            prompt = prompt_override + " " + SINGLE_FIGURE
+        else:
+            prompt = g.team_prompt(team, role, teams) + STYLE_MODS.get(style, "") + " " + SINGLE_FIGURE
+        prompt += BKG_TAIL
         workflow = json.load(open(WORKFLOW_PATH))
-        res = queue_prompt(workflow, prompt, seed)
+        res = queue_prompt(workflow, prompt, seed, base_image, denoise)
         pid = res.get("prompt_id")
         if not pid:
             return (role, f"FAIL queue: {json.dumps(res)[:200]}")
@@ -196,6 +331,23 @@ def generate_one(g, teams, team, role, outdir, seed):
             return (role, "FAIL thumb")
     if not (os.path.exists(big) and os.path.getsize(big) > 100):
         crisp_postprocess(raw, big, 128, fit * 2)
+    # The spriteShaper model ALWAYS paints a pitch background — the raw is
+    # never "floating". Save the KEYED figure (background removed, transparent)
+    # as the display raw so the preview shows the re-usable floating sprite.
+    keyed = base + "-keyed.png"
+    if not (os.path.exists(keyed) and os.path.getsize(keyed) > 100):
+        from PIL import Image
+        img = Image.open(raw).convert("RGBA")
+        img = key_background(img)
+        bbox = img.getbbox()
+        if bbox:
+            img = img.crop(bbox)
+            iw, ih = img.size
+            scale = 256 / max(iw, ih)
+            img = img.resize((max(1, int(iw * scale)), max(1, int(ih * scale))), Image.LANCZOS)
+            canvas = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+            canvas.alpha_composite(img, ((256 - img.width) // 2, (256 - img.height) // 2))
+            canvas.save(keyed)
     return (role, "ok")
 
 
@@ -206,6 +358,15 @@ def main():
     ap.add_argument("--outdir", default=os.path.join(REPO_ROOT, "..", "bloodbowl_designs", "sprites-gemini", "comfy"))
     ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--seed", type=int, default=None)
+    ap.add_argument("--prompt", default=None,
+                    help="full prompt override (otherwise the approved WHF builder)")
+    ap.add_argument("--style", default="retro", choices=list(STYLE_MODS.keys()),
+                    help="visual style modifier (default retro — V4 approved)")
+    ap.add_argument("--base-image", default=None,
+                    help="path to a base 'muñeco' PNG: img2img generates every "
+                         "positional FROM this base (same pose/composition)")
+    ap.add_argument("--denoise", type=float, default=0.65,
+                    help="img2img denoise strength (0.65 keeps pose, repaints style)")
     args = ap.parse_args()
 
     g = load_gemini_module()
@@ -221,7 +382,8 @@ def main():
 
     def one(role):
         seed = args.seed if args.seed is not None else random.randint(0, 2**31 - 1)
-        return generate_one(g, teams, args.team, role, outdir, seed)
+        return generate_one(g, teams, args.team, role, outdir, seed, args.prompt, args.style,
+                          args.base_image, args.denoise)
 
     if args.workers == 1:
         for role in roles:
@@ -239,10 +401,10 @@ def main():
     label = {"big": "big", "small": "small", "normal": "normal"}
     cards = []
     img_prefix = os.path.basename(os.path.normpath(outdir)) + "/"
-    for pkey, pname, _flavor, size, _role in entries:
+    for pkey, pname, _flavor, size, _role, _subject in entries:
         if args.role and pkey != args.role:
             continue
-        raw = f"{img_prefix}{args.team}-{pkey}.raw.png"
+        raw = f"{img_prefix}{args.team}-{pkey}-keyed.png"
         thumb = f"{img_prefix}{args.team}-{pkey}-64.png"
         big = f"{img_prefix}{args.team}-{pkey}-128.png"
         cards.append(f"""<div class="card">
@@ -269,7 +431,7 @@ def main():
 </head>
 <body>
   <h1>{team_name} — ComfyUI (local, sin tokens)</h1>
-  <p class="caption" style="font-size:.8rem;color:#555">Raw 512 + thumbnail crisp 64px · flood-fill key + paleta del proyecto</p>
+  <p class="caption" style="font-size:.8rem;color:#555">Figura keyed (fondo removido, flotando) + thumbnail crisp 64px · paleta del proyecto</p>
   <div class="roles">{"".join(cards)}</div>
 </body>
 </html>"""
