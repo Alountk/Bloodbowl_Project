@@ -242,6 +242,14 @@ def key_background(img, tol=55):
     # so leftover dim-green patches (below the hue/sat thresholds) are now
     # CONNECTED to transparency and get removed by a border flood-fill again.
     img = flood_fill_key(img, tol=45)
+    # Remove HORIZON bands: rows whose opaque pixels touch BOTH image edges are
+    # the sky/pitch horizon line crossing the frame (the figure is centered and
+    # never spans edge-to-edge after keying) — not part of the sprite.
+    px2 = img.load()
+    for y in range(h):
+        if px2[0, y][3] > 0 and px2[w - 1, y][3] > 0:
+            for x in range(w):
+                px2[x, y] = (0, 0, 0, 0)
     # Clean one-pixel remnants hugging the now-transparent edges.
     px2 = img.load()
     cleared = set()
