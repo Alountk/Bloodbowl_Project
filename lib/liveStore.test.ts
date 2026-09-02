@@ -1316,6 +1316,71 @@ describe("acknowledgeEventLiveMatch — the rival marks a card ok/nok (design B,
       ),
     ).rejects.toMatchObject({ status: 404 });
   });
+
+  it("PASSES the payload causer (D2): the fallen player's coach acks a CAUSED casualty, never the recorder", async () => {
+    // A caused casualty: victim side home, causer an away player (payload). The
+    // author is the CAUSER's side (away) = the recorder; the HOME coach (the
+    // fallen player's side) is the rival who may ack. Both asserts prove the
+    // author is derived from `payload.causerRosterId`, not always the flipper.
+    const causedEvent = {
+      id: "e3", liveMatchId: "lm-1", seq: 3, kind: "casualty", side: "home",
+      playerRosterId: "h1", half: 1, turnNumber: 1,
+      payload: { victimRosterId: "h1", causerRosterId: "a1", cause: "block", band: "grave" },
+      createdAt: new Date(1000), ackStatus: "pending", ackAt: null, ackedBy: null,
+    };
+    const update = vi.fn().mockResolvedValue({ ...causedEvent, ackStatus: "ok", ackAt: new Date(2000), ackedBy: "u-home" });
+    const deps = makeDeps();
+    deps.prisma.liveMatch.findFirst = vi.fn().mockResolvedValue(liveRow);
+    deps.prisma.liveEvent.findFirst = vi.fn().mockResolvedValue(causedEvent);
+    deps.prisma.liveEvent.update = update;
+
+    // The recorder (causer side = away) must NEVER self-ack.
+    await expect(
+      acknowledgeEventLiveMatch(
+        { liveMatchId: "lm-1", fixtureId: "f-1", eventSeq: 3, side: "away", userId: "u-away", status: "ok", now: 2000 },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+
+    // The fallen player's coach (victim's side = home) acks → persists.
+    const result = await acknowledgeEventLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", eventSeq: 3, side: "home", userId: "u-home", status: "ok", now: 2000 },
+      deps,
+    );
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "e3" },
+      data: { ackStatus: "ok", ackAt: new Date(2000), ackedBy: "u-home" },
+    });
+    expect(result.event.ackStatus).toBe("ok");
+    expect(result.event.ackedBy).toBe("u-home");
+  });
+
+  it("rejects EVERY ack of a CAUSER-LESS casualty (author null → auto-verify only, LM-26)", async () => {
+    // A self-inflicted dodge/crowd casualty: victim side away, NO causer. It has
+    // no author, so no coach (recorder or rival) may ack it.
+    const causerless = {
+      id: "e4", liveMatchId: "lm-1", seq: 4, kind: "casualty", side: "away",
+      playerRosterId: "a9", half: 1, turnNumber: 1,
+      payload: { victimRosterId: "a9", cause: "dodge", band: "bruise" },
+      createdAt: new Date(1000), ackStatus: "pending", ackAt: null, ackedBy: null,
+    };
+    const update = vi.fn();
+    const deps = makeDeps();
+    deps.prisma.liveMatch.findFirst = vi.fn().mockResolvedValue(liveRow);
+    deps.prisma.liveEvent.findFirst = vi.fn().mockResolvedValue(causerless);
+    deps.prisma.liveEvent.update = update;
+
+    for (const side of ["away", "home"] as const) {
+      await expect(
+        acknowledgeEventLiveMatch(
+          { liveMatchId: "lm-1", fixtureId: "f-1", eventSeq: 4, side, userId: "u-" + side, status: "ok", now: 2000 },
+          deps,
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+    }
+    expect(update).not.toHaveBeenCalled();
+    expect(deps.hub.publish).not.toHaveBeenCalled();
+  });
 });
 
 describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", () => {

@@ -928,7 +928,17 @@ export async function acknowledgeEventLiveMatch(
     where: { liveMatchId: row.id, seq: input.eventSeq },
   });
   if (!event) throw Object.assign(new Error("event not found"), { status: 404 });
-  const authorSide = eventAuthorSide(event.kind, event.side);
+  // D2 (payload-aware author): a casualty is authored by ITS CAUSER. The causer's
+  // roster id rides in the event payload (`causerRosterId`); pass it so a
+  // causer-less (self-inflicted dodge/crowd) casualty has NO author (LM-26: only
+  // auto-verify) instead of a phantom flipped one. Non-casualty kinds ignore it.
+  const payload =
+    typeof event.payload === "object" && event.payload !== null && !Array.isArray(event.payload)
+      ? (event.payload as Record<string, unknown>)
+      : {};
+  const payloadCauser =
+    typeof payload.causerRosterId === "string" ? payload.causerRosterId : null;
+  const authorSide = eventAuthorSide(event.kind, event.side, payloadCauser);
   if (authorSide === null || input.side === authorSide) {
     throw Object.assign(new Error("Only the rival may acknowledge this event"), { status: 409 });
   }
