@@ -12,7 +12,7 @@ import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type
 import { LiveEventCards } from "./liveEventCards";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
-import { EventControls } from "./liveControls";
+import { PlayerActionStrip } from "./playerActionStrip";
 import { TeamEmblem } from "./TeamEmblem";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
@@ -1095,10 +1095,11 @@ function LiveActiveMatch({
               ) : null}
             </div>
           </div>
-          {/* D26: event recording controls — FAB + role-aware menu; renders only for a
-              live match with a viewer side (null → spectator/admin hidden). The
-              roster is the viewer's OWN side (alive players) for the mini-form. */}
-          <EventControls
+          {/* Design-B (b): the player-first action strip — chips of the viewer's
+              OWN alive players + a role-aware action bubble (no FAB/menu/selects).
+              Same gate + props as the removed EventControls: renders only for a
+              live match with a viewer side (a spectator/admin never sees it). */}
+          <PlayerActionStrip
             viewerSide={state.viewerSide}
             activeSide={state.activeSide}
             status={state.status}
