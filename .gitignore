@@ -47,6 +47,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# python tooling
+__pycache__/
+*.pyc
+
 # husky
 pre-commit*
 node_modules/.cache

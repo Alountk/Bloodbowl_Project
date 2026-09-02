@@ -113,13 +113,12 @@ def main():
             if os.path.exists(raw) and os.path.getsize(raw) > 1000:
                 print(f"  {role} v{v}: skip")
                 continue
-            r = subprocess.run(
-                [sys.executable, GEN, "--team", args.team, "--role", role,
-                 "--outdir", role_out, "--seed", str(seed), "--style", "pixel",
-                 "--base-image", args.base_image, "--denoise", str(args.denoise),
-                 "--prompt", prompt],
-                capture_output=True, text=True, timeout=600,
-            )
+            cmd = [sys.executable, GEN, "--team", args.team, "--role", role,
+                   "--outdir", role_out, "--seed", str(seed), "--style", "pixel",
+                   "--denoise", str(args.denoise), "--prompt", prompt]
+            if args.base_image:
+                cmd += ["--base-image", args.base_image]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
             status = "OK" if r.returncode == 0 else f"FAIL {(r.stderr or '')[-200:]}"
             print(f"  {role} v{v} (seed {seed}): {status}")
 
