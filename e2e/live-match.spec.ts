@@ -6,7 +6,7 @@ test.use({ locale: "es-ES" });
  * AUTH_MODE=auth + Postgres; ignored in the local `AUTH_MODE=local` suite).
  *
  * Covers the interactive 2-coach realtime slice (LM-1/LM-8/LM-11) PLUS the
- * Design-A history feed and the EventControls FAB (LM-17/LM-20):
+ * Design-A history feed and the PlayerActionStrip (LM-17/LM-20):
  *   1. a league is created (no clock option, D15); two coaches join and start a
  *      1-jornada season;
  *   2. both coaches consent through the REAL match-view buttons ("Iniciar
@@ -19,10 +19,19 @@ test.use({ locale: "es-ES" });
  *      make cross-context fan-out observable in `next dev`;
  *   4. new-device recovery: B reconnects from a FRESH page in a new context (same
  *      user — a new device equivalent) and gets a snapshot-first live view;
- *   5. Event recording via the REAL "+" FAB (LM-20/D26): the ACTIVE coach
- *      records a Pase completo (completion ★1) and a Touchdown (★3) through the
- *      mini-form (feed rows appear live), while the NON-active coach's "+" menu
- *      offers ONLY Herida and records a casualty to their own player (LM-12);
+ *   5. Event recording via the REAL PlayerActionStrip (LM-20/D26): a player-first
+ *      strip of own-roster chips → a role-aware bubble → the guided casualty
+ *      flows and the shared 1D16(+1D6) RollStepper (no FAB, no menu, no long
+ *      selects). The NON-active coach's bubble offers ONLY the self-inflicted
+ *      (dodge/crowd) wound and the both-down block casualty (LM-12). The ACTIVE
+ *      coach records a Pase completo (★1), a Touchdown (★3) and drives the
+ *      DIRECT blitz casualty; the canonical both-down pair is recorded through
+ *      the strip: record A by the away ACTIVE (plain `block`, victim = a home
+ *      defender, causer = an away blocker) and record B by the home NON-active
+ *      (`bothDown:true`, victim = an away blocker, causer = a home defender) —
+ *      DEC-1: BOTH records award ★2 on their causer action cards (no PE
+ *      exception), the pair renders as four separate rows (feed rows appear
+ *      live via the hub);
  *   6. reload persistence: the match page re-renders the same Design-A history
  *      from the persisted events (no turn rows, a reload does not drop them);
   *   7. a finished live match shows the RAU-49/RAU-52 guided RESOLUTION flow —
@@ -170,18 +179,20 @@ async function login(page: Page, email: string) {
   await expect(page).toHaveURL("/");
 }
 
-/** Returns the fixture id + home/away team names + their first roster scorers. */
-async function fixtureAndScorers(
+/** Returns the fixture id + team names + the served home/away rosters (dorsal
+ * order) so the recording flows can tap/assert distinct players by name. */
+async function loadFixtureContext(
   page: Page,
   leagueId: string,
 ): Promise<{
   fixtureId: string;
   homeTeamName: string;
   awayTeamName: string;
-  homeScorerId: string;
   homeScorerName: string;
-  awayScorerId: string;
-  awayScorerName: string;
+  /** The FULL served home/away rosters in dorsal order (index + 1) — the slice
+   * drives the both-down pair on distinct players and names the cards. */
+  homeRoster: { id: string; name: string }[];
+  awayRoster: { id: string; name: string }[];
 }> {
   const res = await page.request.get(`/api/leagues/${leagueId}`);
   expect(res.status()).toBe(200);
@@ -199,10 +210,9 @@ async function fixtureAndScorers(
     fixtureId: fixture.id,
     homeTeamName: home!.name,
     awayTeamName: away!.name,
-    homeScorerId: home!.roster[0].id,
     homeScorerName: home!.roster[0].name,
-    awayScorerId: away!.roster[0].id,
-    awayScorerName: away!.roster[0].name,
+    homeRoster: home!.roster,
+    awayRoster: away!.roster,
   };
 }
 
@@ -319,19 +329,28 @@ async function driveJourneymenDone(dialog: ReturnType<Page["getByRole"]>) {
 }
 
 /**
- * Records a live event through the REAL "+" FAB (LM-20/D26): opens the FAB,
- * clicks the given menu label and picks the player from the roster select,
- * then submits. The menu closes on submit. Casualty recording is NOT routed
- * here — the DIRECT (design B) and self-inflicted paths are driven inline
- * (RAU-82: the band is never a select, it derives from the 1D16 roll).
+ * The REAL recording strip for a coach's page (LM-20): a player-first bar of own
+ * alive chips → a role-aware bubble → the guided flows + RollStepper.
  */
-async function recordViaFab(page: Page, menuLabel: string, playerValue: string) {
-  await page.getByRole("button", { name: "+" }).click();
-  await page.getByRole("button", { name: new RegExp(menuLabel, "i") }).click();
-  await page.getByLabel("Jugador").selectOption({ value: playerValue });
-  await page.getByRole("button", { name: "Registrar" }).click();
-  // Menu + form close again after the submit.
-  await expect(page.getByLabel("Jugador")).toHaveCount(0);
+function coachStrip(coach: Page) {
+  return coach.getByTestId("player-action-strip");
+}
+
+/**
+ * Two-touch strip submit (LM-20): taps the coach's Nth own chip served-index
+ * (dorsal = index + 1), asserts the role-aware bubble opened, then clicks the
+ * given (regex-matched) action to FIRE a non-guided command (TD/Pase — 2nd tap
+ * submits; no cause/victim/roll stages). The bubble closes on submit.
+ */
+async function stripTapAction(coach: Page, actionName: string, dorsalIndex: number) {
+  const strip = coachStrip(coach);
+  const chip = strip.getByTestId("player-action-chip").nth(dorsalIndex);
+  await expect(chip).toBeVisible();
+  await chip.click();
+  const bubble = strip.getByTestId("player-action-bubble");
+  await expect(bubble).toBeVisible();
+  await bubble.getByRole("button", { name: new RegExp(actionName, "i") }).click();
+  await expect(strip.getByTestId("player-action-bubble")).toHaveCount(0);
 }
 
 test("two-context SSE sync + new-device recovery + result prefill", async ({ browser }) => {
@@ -339,7 +358,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
   const league = await buildStartedLeague(browser, tag);
   try {
     const { admin, rival, leagueId, rivalEmail, adminTeam, rivalTeam } = league;
-    const { fixtureId, homeTeamName, awayTeamName, homeScorerName, awayScorerName, homeScorerId, awayScorerId } = await fixtureAndScorers(admin, leagueId);
+    const { fixtureId, homeTeamName, awayTeamName, homeScorerName, homeRoster, awayRoster } = await loadFixtureContext(admin, leagueId);
     // Which team is home is randomized by buildRoundRobin (~50/50); the TD
     // below targets the AWAY side (valid after Coach A's turn flip), so the
     // score lands on whatever team is away. Assert side-relative below.
@@ -473,116 +492,243 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByText("Tu rival pide el turno")).toBeVisible();
     await expect(homeCoach.getByText("Tu rival pide el turno")).toHaveCount(0);
 
-    // DESIGN-A feed (LM-17) + EventControls (LM-20/D26) — recorded through the
-    // REAL "+" FAB. At Turn 1 the AWAY coach is ACTIVE and the HOME coach is
-    // NON-active, so each role's menu is exercised deterministically (home/away
-    // side is resolved above; the player names come from the fixture rosters).
+    // DESIGN-A feed (LM-17) + PlayerActionStrip (LM-20/D26) — recorded through
+    // the REAL player-first strip (no FAB, no menu, no selects). At Turn 1 the
+    // AWAY coach is ACTIVE and the HOME coach is NON-active, so each role's
+    // bubble is exercised deterministically (each coach's OWN alive chips are
+    // dorsal-served; both all alive so a served index == the chip index).
     //
-    // [A] NON-active (home) coach: the "+" menu offers ONLY Herida (casualty to
-    // their own player) — no TD / Pase completo / Falta rows (LM-20 scenario).
-    // RAU-39: the NON-active form records a SELF-INFLICTED (dodge/crowd)
-    // casualty with the 1D16 roll — the band is derived server-side, NEVER a
-    // band select.
-    await homeCoach.getByRole("button", { name: "+" }).click();
-    await expect(homeCoach.getByText("Herida")).toBeVisible();
-    await expect(homeCoach.getByRole("button", { name: /Touchdown/i })).toHaveCount(0);
-    await expect(homeCoach.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
-    await expect(homeCoach.getByRole("button", { name: /Falta/i })).toHaveCount(0);
-    await homeCoach.getByRole("button", { name: /Herida/i }).click();
-    await expect(homeCoach.getByLabel("Víctima")).toBeVisible();
-    await homeCoach.getByLabel("Víctima").selectOption({ value: homeScorerId });
-    // Only self-inflicted causes are offered to the NON-active coach.
-    await homeCoach.getByLabel("Causa de la lesión").selectOption({ label: "Esquivando — se cayó" });
-    await expect(homeCoach.getByLabel("Autor de la lesión")).toHaveCount(0);
-    await expect(homeCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
-    await homeCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
-    await homeCoach.getByRole("button", { name: "Registrar" }).click();
-    await expect(homeCoach.getByLabel("Víctima")).toHaveCount(0);
-    // The self-inflicted casualty card (victim = own home player) renders with
-    // the derived band + roll line, and NO "por …" causer line.
+    // [A] NON-active (home) coach: their chip bubble offers ONLY the casualty
+    // actions — "Baja propia" (self-inflicted dodge/crowd wound on the tapped
+    // own player) and "Baja ambos derribados" — with NO TD / Pase / Falta rows
+    // (LM-20 scenario). RAU-39: the record carries NO causer and the 1D16 roll
+    // (band derived server-side, NEVER a band select).
+    const homeStrip = coachStrip(homeCoach);
+    await expect(homeStrip).toBeVisible();
+    await homeStrip.getByTestId("player-action-chip").nth(0).click();
+    const homeBubble = homeStrip.getByTestId("player-action-bubble");
+    await expect(homeBubble).toBeVisible();
+    await expect(homeBubble.getByText("Baja propia")).toBeVisible();
+    await expect(homeBubble.getByText("Baja — ambos derribados")).toBeVisible();
+    await expect(homeBubble.getByRole("button", { name: /Touchdown/i })).toHaveCount(0);
+    await expect(homeBubble.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
+    await expect(homeBubble.getByRole("button", { name: /Falta/i })).toHaveCount(0);
+    await homeBubble.getByRole("button", { name: "Baja propia" }).click();
+    // Only self-inflicted causes are offered to the NON-active coach (dodge/crowd).
+    await expect(homeBubble.getByText("Causa de la lesión")).toBeVisible();
+    await expect(homeBubble.getByRole("button", { name: "Bloqueo" })).toHaveCount(0);
+    await expect(homeBubble.getByRole("button", { name: "Blitz" })).toHaveCount(0);
+    await expect(homeBubble.getByRole("button", { name: /Falta/i })).toHaveCount(0);
+    await homeBubble.getByRole("button", { name: "Esquivando — se cayó" }).click();
+    // Self-inflicted: no victim/author pick stage — jump straight to the 1D16 roll.
+    await expect(homeBubble.getByTestId("player-action-rival")).toHaveCount(0);
+    await expect(homeBubble.getByText("Autor de la lesión")).toHaveCount(0);
+    await homeBubble.getByTestId("roll-stepper-16").getByTestId("roll-option-9").click();
+    await homeBubble.getByTestId("player-action-submit").click();
+    await expect(homeStrip.getByTestId("player-action-bubble")).toHaveCount(0);
+    // The self-inflicted casualty card (victim = own home #1) renders with the
+    // derived band + roll line and NO "por …" causer line (no causer pays no-★).
     await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName }),
+      homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "Tirada 1D16: 9" }),
     ).toBeVisible();
-    await expect(homeCoach.getByTestId("live-event-row").filter({ hasText: "Tirada 1D16: 9" })).toBeVisible();
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "por " }),
+    ).toHaveCount(0);
 
     // [A2] DIRECT casualty (design B, RAU-82): the ACTIVE (away) coach records
-    // the injury THEY inflicted (causer = away scorer, victim = home player,
-    // roll16) — ONE phase, the event is consumed instantly. The rival (home)
-    // sees the card with the non-blocking ✓/✗ ack row (informational only; the
-    // match never waits). The band is derived server-side from the roll.
-    await awayCoach.getByRole("button", { name: "+" }).click();
-    await awayCoach.getByRole("button", { name: /Herida/i }).click();
-    await expect(awayCoach.getByLabel("Víctima")).toBeVisible();
-    await awayCoach.getByLabel("Víctima").selectOption({ value: homeScorerId });
-    await awayCoach.getByLabel("Causa de la lesión").selectOption({ label: "Blitz" });
-    await awayCoach.getByLabel("Autor de la lesión").selectOption({ value: awayScorerId });
-    await awayCoach.getByLabel("Tirada 1D16").selectOption({ value: "9" });
-    await expect(awayCoach.getByLabel("Tipo de lesión")).toHaveCount(0);
-    await awayCoach.getByRole("button", { name: /Registrar/i }).click();
-    await expect(awayCoach.getByLabel("Víctima")).toHaveCount(0);
-    // The card appears INSTANTLY for the recorder (no waiting state, no confirm
-    // modal): the injury card on the victim's (home) side with the MVT-5 causer
-    // line AND the derived action card on the causer's (away) side — both feeds
-    // converge via the hub. The victim name alone is ambiguous (the earlier
-    // self-inflicted card [A1] carries the same name), so the injury card is
-    // matched by victim + causer line: the A1 card has NO "por …" line and the
-    // action card is not on this page's injury shape.
+    // the DIRECT blitz injury THEY inflicted through the strip — tap the away #1
+    // chip → "Baja causada" → cause Blitz → home #1 as victim → 1D16 roll (ONE
+    // phase, consumed instantly; the rival (home) sees the card with the ✓/✗ ack
+    // row — informational only, the match never waits). The band is derived
+    // server-side from the roll (never a band select).
+    const awayStrip = coachStrip(awayCoach);
+    await expect(awayStrip).toBeVisible();
+    await awayStrip.getByTestId("player-action-chip").nth(0).click();
+    const awayBubble = awayStrip.getByTestId("player-action-bubble");
+    await expect(awayBubble).toBeVisible();
+    await expect(awayBubble.getByText("Baja causada")).toBeVisible();
+    await expect(awayBubble.getByText("Baja propia")).toHaveCount(0);
+    await awayBubble.getByRole("button", { name: "Baja causada" }).click();
+    await awayBubble.getByText("Causa de la lesión").waitFor();
+    await awayBubble.getByRole("button", { name: "Bloqueo" }).waitFor();
+    await awayBubble.getByRole("button", { name: "Blitz" }).click();
+    await expect(awayBubble.getByText("Víctima")).toBeVisible();
+    // Home #1 is the victim of this DIRECT blitz (causer = the tapped away #1).
+    await awayBubble.getByTestId("player-action-rival").nth(0).click();
+    await awayBubble.getByTestId("roll-stepper-16").getByTestId("roll-option-9").click();
+    await awayBubble.getByTestId("player-action-submit").click();
+    await expect(awayStrip.getByTestId("player-action-bubble")).toHaveCount(0);
+    // The DIRECT casualty card appears INSTANTLY for the recorder: the injury
+    // card on the victim's (home) side with the MVT-5 causer line AND the derived
+    // action card on the causer's (away) side — both feeds converge via the hub.
+    // The self-inflicted [A1] leaf has the SAME victim name but NO "por …" line,
+    // so the caused injury card is matched by victim + causer line.
     await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: homeScorerName }),
+      awayCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "· Blitz" }),
     ).toBeVisible();
     await expect(
       homeCoach
         .getByTestId("live-event-row")
-        .filter({ hasText: homeScorerName })
-        .filter({ hasText: `por ${awayScorerName}` }),
+        .filter({ hasText: homeRoster[0].name })
+        .filter({ hasText: `por ${awayRoster[0].name}` }),
     ).toBeVisible();
     await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }),
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }),
     ).toBeVisible();
     await expect(
       awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }),
     ).toBeVisible();
-    // The RIVAL (home) sees the non-blocking ack row on the injury card with the
-    // ✓/✗ buttons; the game never waits for it (the card is already consumed).
+    // LM-26 payload-aware ✓/✗: the RIVAL (home — the fallen player's coach) sees
+    // the ack row + ✓/✗ buttons on the DIRECT injury card; the recorder (away)
+    // never sees its own ack control. The game never waits — card already consumed.
     await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }).getByRole("button", { name: /Correcto/i }),
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }).getByRole("button", { name: /Correcto/i }),
     ).toBeVisible();
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }).getByRole("button", { name: /Correcto/i }),
+    ).toHaveCount(0);
     await homeCoach
       .getByTestId("live-event-row")
-      .filter({ hasText: `por ${awayScorerName}` })
+      .filter({ hasText: `por ${awayRoster[0].name}` })
       .getByRole("button", { name: /Correcto/i })
       .click();
-    // The ✓ persists and the badge shows "Cotejado" on both feeds (the ack frame
-    // upserts the card by seq via the hub).
+    // The ✓ persists and shows "Cotejado" on both feeds (the ack frame upserts
+    // the card by seq via the hub).
     await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }).getByText(/Cotejado/),
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }).getByText(/Cotejado/),
     ).toBeVisible();
     await expect(
       awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }).getByText(/Cotejado/),
     ).toBeVisible();
 
-    // RECURRING REGRESSION (RAU-47): the ★2 the CAUSER earns must show ONLY on
-    // the causer's action card — the VICTIM's injury card must NOT show the
-    // earned points (the star belongs to the player who DID the action). The
-    // e2e roll16 is 9 → apaleado → a lasting band (★2), never hidden.
+    // RECURRING REGRESSION (RAU-47): ★2 the CAUSER earns shows ONLY on the
+    // causer's action card — the VICTIM's injury card with "por {causer}" MUST
+    // NOT show the earned points (roll 9 → apaleado → lasting ★2, never hidden).
+    const blitzActionLine = `${awayRoster[0].name} hace una herida a ${homeRoster[0].name}`;
     for (const page of [awayCoach, homeCoach]) {
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: "hace una herida a" }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: blitzActionLine }).filter({ hasText: "(★2)" }),
       ).toBeVisible();
-      // The victim's injury card carries the "por {causer}" line but NO star.
+      // The victim's injury card (with the causer line) carries NO star.
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: `por ${awayScorerName}` }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }).filter({ hasText: "(★2)" }),
       ).toHaveCount(0);
     }
 
-    // [B] ACTIVE (away) coach records a Pase completo (completion ★1) through the
-    // FAB mini-form → a completion Design-A row (★1) streams into both feeds.
-    await recordViaFab(awayCoach, "Pase completo", awayScorerId);
-    await expect(awayCoach.getByText("Pase completo").first()).toBeVisible();
+    // [B] BOTH-DOWN CANONICAL PAIR (LM-12/D1, DEC-1 ★2-symmetric). Both records
+    // happen inside the away-active turn as CASUALTIES (they never flip the
+    // turn): record A by the away ACTIVE over the strip (plain `block` casualty:
+    // victim = a home defender, causer = an away blocker), then record B by the
+    // home NON-active ("Baja — ambos derribados": victim = an away blocker,
+    // causer = the tapped home defender, `bothDown: true`). DEC-1: BOTH causer
+    // records award ★2 on their derived action cards (no PE suppression) and the
+    // pair renders as FOUR separate rows — the blocker record's injury card alone
+    // carries the "(Ambos derribados)" marker copy.
+    const awayBlocker = awayRoster[2]; // record-A causer (away #3)
+    const homeDefenderDown = homeRoster[1]; // record-A victim (home #2)
+    const homeDefenderCauser = homeRoster[3]; // record-B causer (home #4)
+    const awayBlockerDown = awayRoster[4]; // record-B victim (away #5)
 
-    // [C] ACTIVE (away) coach records a Touchdown via the FAB → the Design-A TD
-    // row (★3) + the hero score update (away +1) + the turn flips back to home.
-    await recordViaFab(awayCoach, "Touchdown", awayScorerId);
+    const strip = (c: Page) => c.getByTestId("player-action-strip");
+
+    // Record A: away ACTIVE "Baja causada" → cause Bloqueo → home defender victim.
+    await strip(awayCoach).getByTestId("player-action-chip").nth(2).click();
+    const awayBubbleA = strip(awayCoach).getByTestId("player-action-bubble");
+    await expect(awayBubbleA).toBeVisible();
+    await awayBubbleA.getByRole("button", { name: "Baja causada" }).click();
+    await awayBubbleA.getByRole("button", { name: "Bloqueo" }).click();
+    await awayBubbleA.getByTestId("player-action-rival").nth(1).click();
+    await awayBubbleA.getByTestId("roll-stepper-16").getByTestId("roll-option-11").click();
+    await awayBubbleA.getByTestId("player-action-submit").click();
+    await expect(strip(awayCoach).getByTestId("player-action-bubble")).toHaveCount(0);
+    // DEC-1 ★2 on record-A causer's action card (both feeds), injury card no star.
+    const blockALine = `${awayBlocker.name} hace una herida a ${homeDefenderDown.name}`;
+    for (const page of [awayCoach, homeCoach]) {
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: blockALine }).filter({ hasText: "(★2)" }),
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: `por ${awayBlocker.name}` }).filter({ hasText: "(★2)" }),
+      ).toHaveCount(0);
+    }
+
+    // Record B: home NON-active tap own #4 → "Baja — ambos derribados" → victim
+    // = the rival fallen blocker (away #5), cause fixed block, then the roll →
+    // Registrar sends {cause:block, bothDown:true}.
+    await strip(homeCoach).getByTestId("player-action-chip").nth(3).click();
+    const homeBubbleB = strip(homeCoach).getByTestId("player-action-bubble");
+    await expect(homeBubbleB).toBeVisible();
+    await homeBubbleB.getByRole("button", { name: "Baja — ambos derribados" }).click();
+    await expect(homeBubbleB.getByText("Víctima")).toBeVisible();
+    await homeBubbleB.getByTestId("player-action-rival").nth(4).click();
+    await homeBubbleB.getByTestId("roll-stepper-16").getByTestId("roll-option-11").click();
+    await homeBubbleB.getByTestId("player-action-submit").click();
+    await expect(strip(homeCoach).getByTestId("player-action-bubble")).toHaveCount(0);
+    // DEC-1 ★2 on record-B causer's action card too (the both-down marker does
+    // NOT suppress PE under DEC-1), on both feeds; the victim injury card has no
+    // star but carries the marker copy once for the pair.
+    const blockBLine = `${homeDefenderCauser.name} hace una herida a ${awayBlockerDown.name}`;
+    for (const page of [awayCoach, homeCoach]) {
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: blockBLine }).filter({ hasText: "(★2)" }),
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).filter({ hasText: "(★2)" }),
+      ).toHaveCount(0);
+      // Exactly one both-down-blown row — the blocker record's injury card —
+      // carries the DEC-1 marker copy "Ambos derribados" (never on a plain block).
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: "Ambos derribados" }).filter({ hasText: awayBlockerDown.name }),
+      ).toHaveCount(1);
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: "Ambos derribados" }).filter({ hasText: homeDefenderDown.name }),
+      ).toHaveCount(0);
+    }
+    // LM-26 payload-aware ack author: record B is caused (home causer = home
+    // recorder) → its author side is home, so ✓/✗ controls render ONLY to the
+    // fallen blocker's coach (away) and appear on the INJURY card (matched by the
+    // causer line); the home recorder's own page must never offer a manual ack.
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).getByRole("button", { name: /(Correcto|Revisar)/ }),
+    ).toHaveCount(0);
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).getByRole("button", { name: /Correcto/i }),
+    ).toBeVisible();
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).getByRole("button", { name: /Revisar/i }),
+    ).toBeVisible();
+    // And the pair's earliest (record A) was a plain away block — recorder away,
+    // so ack controls belong to the fallen HOME defender's coach (homeCoach), not
+    // on the away recorder's action card.
+    await expect(
+      awayCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayBlocker.name}` }).getByRole("button", { name: /(Correcto|Revisar)/ }),
+    ).toHaveCount(0);
+    // The fallen player's coach (home, for record A) is the one offered the ack.
+    await expect(
+      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayBlocker.name}` }).getByRole("button", { name: /Correcto/i }),
+    ).toBeVisible();
+    // Each fallen player's coach acks their own falling record (LM-26 both-down
+    // symmetry): home acks record A, away acks record B.
+    await homeCoach
+      .getByTestId("live-event-row")
+      .filter({ hasText: `por ${awayBlocker.name}` })
+      .getByRole("button", { name: /Correcto/i })
+      .click();
+    await awayCoach
+      .getByTestId("live-event-row")
+      .filter({ hasText: `por ${homeDefenderCauser.name}` })
+      .getByRole("button", { name: /Correcto/i })
+      .click();
+
+    // [C] ACTIVE (away) Pase completo (★1) in TWO touches (chip → action):
+    // through the strip (no selects). The completion row (★1) streams to both.
+    await stripTapAction(awayCoach, "Pase completo", 0);
+    await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: `${awayRoster[0].name}` }).filter({ hasText: "Pase completo" }).first()).toBeVisible();
+    await expect(awayCoach.getByText("★1")).toBeVisible();
+
+    // [D] ACTIVE (away) Touchdown (★3) in TWO touches via the strip → the hero
+    // score update (away +1) + the turn flips back to home.
+    await stripTapAction(awayCoach, "Touchdown", 0);
     await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: "★3" })).toBeVisible();
     // MVT-1: the away TD card carries the per-TD partial score "(home - away)"
     // derived by accumulating TD events in seq order — home 0, away 1 here.
@@ -618,7 +764,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
 
     // Finish the match (lifecycle, admin MayEnd). The finished live DTO then
     // triggers the RAU-49 guided resolution flow (not the manual result form).
-    // (The away score is already 1 via the FAB TD.)
+    // (The away score is already 1 via the strip TD.)
     const afterEnd = await liveCommand(admin, leagueId, fixtureId, { type: "endMatch" });
     expect(afterEnd.view.status).toBe("finished");
 
@@ -697,7 +843,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await admin.goto(`/leagues/${leagueId}`);
     const region = admin.getByRole("region", { name: "Jornada 1" });
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    // The recorded score (home 0, away 1 via the FAB TD) + "Jornada completa".
+    // The recorded score (home 0, away 1 via the strip TD) + "Jornada completa".
     await expect(region.getByText(/(0 : 1)/)).toBeVisible();
     await expect(admin.getByText("Jornada completa")).toBeVisible();
   } finally {
