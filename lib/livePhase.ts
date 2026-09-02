@@ -28,6 +28,12 @@ export interface EventPermissionInput {
   kind: EventKind;
   /** For casualties: whose player is the victim (must be the caller's own for a non-active coach). */
   victimSide?: "home" | "away";
+  /** For casualties: the casualty CAUSE. Only `block` may open the non-active
+   * coach's gate (the both-down form, D1); other causes stay side-gated. */
+  cause?: CasualtyCause;
+  /** For casualties: the additive `bothDown` marker (LM-12/D1). Only accepted on
+   * the non-active rival-victim block form — the route bound-checks it. */
+  bothDown?: boolean;
 }
 
 export type EventPermission = "allow" | "deny";
@@ -37,13 +43,25 @@ export type EventPermission = "allow" | "deny";
  * casualties) the victim's side. Pure and deterministic (LM-12/D14).
  */
 export function resolveEventPermission(input: EventPermissionInput): EventPermission {
-  const { callerSide, activeSide, kind, victimSide } = input;
+  const { callerSide, activeSide, kind, victimSide, cause, bothDown } = input;
   // No side → no event recording (admin/spectator, D14).
   if (callerSide === null) return "deny";
   // The active coach may record any event on any victim.
   if (callerSide === activeSide) return "allow";
-  // Non-active coach: ONLY a casualty to one of their OWN players.
+  // Non-active coach: ONLY a casualty to one of their OWN players, OR the one
+  // additive BOTH-DOWN shape (D1): a rival-victim `block` casualty by the
+  // non-active coach marking the fallen blocker — that is the only remaining
+  // casualty a non-active coach may author. Never widened to any other cause.
   if (kind === "casualty" && victimSide === callerSide) return "allow";
+  if (
+    kind === "casualty" &&
+    cause === "block" &&
+    bothDown === true &&
+    victimSide !== null &&
+    victimSide !== undefined &&
+    victimSide !== callerSide
+  )
+    return "allow";
   return "deny";
 }
 
@@ -143,12 +161,27 @@ export const CAUSE_REQUIRES_CAUSER: ReadonlySet<string> = new Set([
  * VICTIM's side); for every other event kind (td/completion/foul) the author is
  * the event's own side. Null when the event carries no side → un-ackable.
  */
+/**
+ * Design B (RAU-82): the coach who AUTHORED an event card. For a casualty the
+ * author is the CAUSER's side — the OPPOSITE of the event's `side` (which is the
+ * VICTIM's side) — and the author exists ONLY when the casualty carries a
+ * causer (LM-12: a caused blitz/foul/block). A CAUSER-LESS casualty (self-
+ * inflicted `dodge`/`crowd`) has NO author (LM-26): the recorder must never see
+ * an ack — null → un-ackable (auto-verify). Every other event kind
+ * (td/completion/foul) has the event's own side as author. Null when the event
+ * carries no side → un-ackable.
+ */
 export function eventAuthorSide(
   kind: string,
   side: "home" | "away" | null,
+  causerRosterId?: string | null,
 ): "home" | "away" | null {
   if (side === null) return null;
-  return kind === "casualty" ? (side === "home" ? "away" : "home") : side;
+  if (kind !== "casualty") return side;
+  // A casualty is authored by its CAUSER (opposite the victim side); a
+  // causer-less casualty (self-inflicted dodge/crowd) has no author.
+  if (causerRosterId == null || causerRosterId === "") return null;
+  return side === "home" ? "away" : "home";
 }
 
 /**
