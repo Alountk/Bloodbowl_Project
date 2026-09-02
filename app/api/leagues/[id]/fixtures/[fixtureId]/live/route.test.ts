@@ -10,7 +10,7 @@ const prismaMock = vi.hoisted(() => ({
   team: { findMany: vi.fn() },
   player: { findMany: vi.fn(), createMany: vi.fn() },
   liveMatch: { findFirst: vi.fn() },
-  liveEvent: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+  liveEvent: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
 }));
 
 const consentLiveMatchMock = vi.hoisted(() => vi.fn());
@@ -1727,6 +1727,36 @@ describe("POST .../live — design B: direct casualty + non-blocking ack (RAU-82
       { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
     );
     expect(res.status).toBe(409);
+  });
+
+  it("rejects an ack of a NON-ACKABLE kind (turnStart) as 409 with no ack persisted", async () => {
+    // The store's shared ACKABLE_KINDS gate throws 409 for a system card; the
+    // route maps it to the generic "Cannot acknowledge" 409 (never 200).
+    liveSetup("coach-away");
+    acknowledgeEventLiveMatchMock.mockRejectedValue(
+      Object.assign(new Error("This event kind cannot be acknowledged"), { status: 409 }),
+    );
+    prismaMock.liveEvent.findFirst.mockResolvedValue({
+      id: "e5",
+      liveMatchId: "lm-1",
+      seq: 5,
+      kind: "turnStart",
+      side: "home",
+      playerRosterId: null,
+      half: 1,
+      turnNumber: 4,
+      payload: {},
+      createdAt: new Date(1000),
+      ackStatus: "pending",
+      ackAt: null,
+      ackedBy: null,
+    });
+    const res = await POST(
+      req({ type: "acknowledgeEvent", eventSeq: 5, status: "ok" }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(prismaMock.liveEvent.update).not.toHaveBeenCalled();
   });
 });
 

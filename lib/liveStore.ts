@@ -45,7 +45,7 @@ import {
   type ResolutionState,
   type TeamSide,
 } from "./liveMatch";
-import { eventAuthorSide } from "./livePhase";
+import { eventAuthorSide, isAckableKind } from "./livePhase";
 import { buildKickoffEvents, type BuildKickoffEventsInput } from "./kickoff";
 import { maybeCloseLeague } from "./standings";
 import { computeWinnings, preMatchFanFactor, rollPostMatchFanFactor, type MatchOutcome, type FanFactorDirection } from "@/lib/rules";
@@ -928,6 +928,14 @@ export async function acknowledgeEventLiveMatch(
     where: { liveMatchId: row.id, seq: input.eventSeq },
   });
   if (!event) throw Object.assign(new Error("event not found"), { status: 404 });
+  // Design B kind gate (defense in depth, shared with the UI): only coach-
+  // recorded events (td/completion/casualty/foul) carry an author the rival
+  // verifies. A system/state card (turnStart, mvp, expensive_mistake, ...) has
+  // no author → rejecting the ack here (409, no mutation) keeps the server from
+  // ever persisting an ack the UI must not render.
+  if (!isAckableKind(event.kind)) {
+    throw Object.assign(new Error("This event kind cannot be acknowledged"), { status: 409 });
+  }
   // D2 (payload-aware author): a casualty is authored by ITS CAUSER. The causer's
   // roster id rides in the event payload (`causerRosterId`); pass it so a
   // causer-less (self-inflicted dodge/crowd) casualty has NO author (LM-26: only
