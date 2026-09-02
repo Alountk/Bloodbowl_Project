@@ -92,6 +92,7 @@ Winnings MUST be computed as `((FF1+FF2)/2 + own TDs + 1 if the team never held 
 ### Requirement: Injury Table
 
 Injury resolution MUST follow 1D16: 1–8 Magullado (no long-term effect, no PE — only Magullado) · 9–10 Apaleado (misses next match) · 11–12 Herida grave (Lesión mal curada, misses next match) · 13–14 Permanente (−1 attribute + Lesión mal curada + misses next match; 1D6: 1–2 −AR, 3 −MV, 4 −PS, 5 −AG, 6 −FU) · 15–16 Muerto (eliminated). A player with a previous Lesión mal curada MUST add +1 to future injury rolls (LMC). The PE award for causing ANY injury that generates SPP is a flat 2 PE ("lesionar a un rival", rulebook p.104) regardless of severity — the earlier "(+PE)" annotations on grave/permanent rows referred to that same award, not an extra amount.
+(Note — both-down block casualty, DEC-1): a casualty recorded from a both-down block outcome (payload marker `bothDown: true`, the fallen blocker's record authored by the non-active coach) MUST NOT be treated as an SPP exception. Like the defender's record of the same both-down (a plain `block`, no marker), its causer MUST receive the flat 2 PE ("lesionar a un rival") for a lasting band, and the derived action card MUST show ★2. SPP derivation (`deriveLivePeAwards`/`eventSpp`) MUST key the award on the injury band alone; the `bothDown` marker MUST NOT suppress or alter it. This symmetric model is the resolved DEC-1 decision — the earlier "PE suppression" spec default is superseded and MUST NOT be reintroduced.
 
 #### Scenario: Apaleado misses next match
 

@@ -137,7 +137,7 @@ MatchView MUST use only rulebook-light tokens (navy `#12225a`, red `#d11938`, ba
 
 ### Requirement: MVT-1 · rulebook Event Cards
 
-The event feed MUST render display events (LM-16) as cards inside a gray box with 4px radius and 2px gap. Team events (`td|completion|casualty|foul|mvp`) MUST render at 68% width with an internal side-to-side gradient of the team color (navy home / red away), the turn tag on the team's side and the minute on the opposite side; generic events (`start|endHalf|endMatch`) MUST render centered at 100% width. A TD card MUST show the partial score "(H - A)" derived by accumulating TD events per side across the display feed up to that event. The `live-event-row` testid and existing feed labels MUST be preserved where the design keeps them; deliberate label/testid changes MUST ship with the behavior change, never silently.
+The event feed MUST render display events (LM-16) as cards inside a gray box with 4px radius and 2px gap. Team events (`td|completion|casualty|foul|mvp`) MUST render at 68% width with an internal side-to-side gradient of the team color (navy home / red away), the turn tag on the team's side and the minute on the opposite side; generic events (`start|endHalf|endMatch`) MUST render centered at 100% width. A TD card MUST show the partial score "(H - A)" derived by accumulating TD events per side across the display feed up to that event. A casualty event (side = the VICTIM's side, payload `{victimRosterId, causerRosterId?, cause, roll16, band, bothDown?}`) MUST render an INJURY card on the VICTIM's side AND a DERIVED ACTION card on the CAUSER's side; a self-inflicted (`dodge|crowd`) casualty MUST render ONLY the injury card. A casualty with `bothDown: true` (the fallen blocker's record) MUST render its derived action card WITH ★2 — DEC-1 keeps the award symmetric — and the defender record of the same both-down (a plain `block`) MUST keep ★2 on its action card too. The two symmetric both-down records MUST render as separate events (four cards total), never merged. ✓/✗ ack controls MUST render per LM-26 (only to the fallen player's coach, never the recorder). The `live-event-row` testid and existing feed labels MUST be preserved where the design keeps them; deliberate label/testid changes MUST ship with the behavior change, never silently.
 
 #### Scenario: Team card layout
 
@@ -169,12 +169,25 @@ The event feed MUST render display events (LM-16) as cards inside a gray box wit
 - WHEN the feed renders
 - THEN the card spans 100% width centered with the white-flag glyph, the "Concesión" label and the "{surrendering team} se rinde · Victoria de {acceptor team}" sub-line; a payload without the winner renders the bare label without throwing
 
-#### Scenario: Casualty injury card + derived action card (RAU-39)
+#### Scenario: Casualty injury card + derived action card (direct event)
 
-- GIVEN a confirmed two-phase casualty event (side = the VICTIM's side, payload carrying `victimRosterId`, `causerRosterId`, `cause`, `roll16` and the server-derived `band`)
+- GIVEN a recorded casualty event (side = the VICTIM's side, payload carrying `victimRosterId`, `causerRosterId`, `cause`, `roll16` and the server-derived `band` — with NO marker)
 - WHEN the feed renders
 - THEN the INJURY card renders on the victim's side (68% team card with the band sub-line, the cause line "por {causer} · {cause}" and the roll line "Tirada 1D16: {roll16}") AND a DERIVED ACTION card renders on the CAUSER's side (68% team card with the cause label — e.g. "Blitz" —, the causer token/dorsal/name and the roll sub-line "Tirada 1D16: 13 · Permanente (−PS)")
 - AND a self-inflicted (dodge/crowd) casualty renders ONLY the injury card, never an action card
+
+#### Scenario: Both-down pair renders four cards with ★2 on both causer action cards (DEC-1)
+
+- GIVEN a both-down block: defender casualty (plain `block`, victim the defender) and blocker casualty (`bothDown: true`, victim the blocker)
+- WHEN the feed renders
+- THEN four separate cards appear, never merged — defender record: injury card on the defender's side + action card on the blocker's side WITH ★2; blocker record: injury card on the blocker's side + action card on the defender's side WITH ★2 (DEC-1: the award is symmetric, no suppression)
+- AND the both-down recorder's card shows the "(Ambos derribados)" marker copy once on the both-down injury card
+
+#### Scenario: Acknowledgement row renders per LM-26
+
+- GIVEN a casualty with a causer (author = the causer's side)
+- WHEN the card renders
+- THEN the ✓/✗ ack row appears only for the fallen player's coach, never for the recorder; a causer-less casualty shows the auto-verified badge and no buttons
 
 ### Requirement: MVT-2 · Timeline Bar in the Sticky Header
 
