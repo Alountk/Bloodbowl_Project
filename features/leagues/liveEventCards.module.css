@@ -356,3 +356,30 @@
   margin-top: 3px;
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Mobile (<=430px, bugfix): the rulebook v7 grid is desktop-validated and stays
+ * untouched above this breakpoint. On a phone a 68% team card leaves the label
+ * lines cramped, so team cards go full width and the Design-B ack row drops to
+ * its own full-width row under the card body and wraps instead of overflowing.
+ *
+ * The two team selectors are listed with the away one FIRST on purpose: the
+ * design-lock suite resolves the standalone desktop away rule as the last
+ * selector occurrence that is directly followed by an opening brace, so the
+ * desktop away block must keep appearing AFTER this media group's selectors.
+ */
+@media (max-width: 430px) {
+  .ev--away,
+  .ev--home {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ack-row {
+    grid-column: 1 / -1;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 4px;
+  }
+}

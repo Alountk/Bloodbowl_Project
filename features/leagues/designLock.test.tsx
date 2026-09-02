@@ -108,6 +108,14 @@ describe("A. liveEventCards.module.css — validated v7 declarations", () => {
     expect(evBase).toContain("box-shadow: 0 1px 2px rgba(15, 23, 42, .05);");
     expect(evBase).toContain("padding: 6px 10px;");
   });
+
+  it("locks the mobile (<=430px) fix: team cards go full width and the ack row drops to its own wrapping row", () => {
+    const media = block(/@media \(max-width: 430px\) \{([\s\S]*?)\n\}/, "mobile media query");
+    expect(media).toContain("width: 100%;");
+    expect(media).toContain("max-width: 100%;");
+    expect(media).toContain("flex-wrap: wrap;");
+    expect(media).toContain("grid-column: 1 / -1;");
+  });
 });
 
 // ---------------------------------------------------------------------------
