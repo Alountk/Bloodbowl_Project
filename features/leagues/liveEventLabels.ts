@@ -99,6 +99,17 @@ export function casualtyIcon(payload: Record<string, unknown>): IconName {
 }
 
 /**
+ * LM-12/D1: reads the additive `bothDown` marker off a casualty payload. The
+ * non-active coach's both-down record (the fallen blocker's card) carries
+ * `bothDown: true`; a plain block defender record carries NO marker. Pure and
+ * strict: only a literal `true` counts — absent, `false` or a stray/type
+ * mismatch all read false (the server bound-checks the marker, D1).
+ */
+export function isBothDownCasualty(payload: Record<string, unknown>): boolean {
+  return payload.bothDown === true;
+}
+
+/**
  * The casualty band sub-line rendered under the label (v7): "¡Muerto!" for a
  * death, "Se pierde el próximo partido" for every lasting non-dead band, and
  * "Lesión molesta" for a bruise. Unknown/missing bands → null (no sub-line).

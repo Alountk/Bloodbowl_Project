@@ -10,6 +10,7 @@ import {
   casualtyIcon,
   bandSubLabel,
   journeymanJoinLabel,
+  isBothDownCasualty,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -257,5 +258,19 @@ describe("formatTreasury — es-ES dot-thousands + ' M.O.' (LM-24)", () => {
   it("keeps hundreds with the same es-ES grouping (no thousands separator needed)", () => {
     expect(formatTreasury(20_000)).toBe("20.000 M.O.");
     expect(formatTreasury(0)).toBe("0 M.O.");
+  });
+});
+
+describe("isBothDownCasualty — reads the additive bothDown marker (LM-12/D1)", () => {
+  it("returns true ONLY when the payload marker is literally true", () => {
+    expect(isBothDownCasualty({ victimRosterId: "h1", causerRosterId: "a1", cause: "block", bothDown: true })).toBe(true);
+  });
+
+  it("returns false for a plain casualty and for a marker absent or non-true (triangulation)", () => {
+    // A plain active-coach `block` defender record (no marker) is NOT both-down.
+    expect(isBothDownCasualty({ victimRosterId: "p9", causerRosterId: "p1", cause: "block" })).toBe(false);
+    expect(isBothDownCasualty({})).toBe(false);
+    expect(isBothDownCasualty({ cause: "block", bothDown: false })).toBe(false);
+    expect(isBothDownCasualty({ cause: "block", bothDown: "yes" as unknown })).toBe(false);
   });
 });
