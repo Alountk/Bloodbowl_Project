@@ -536,15 +536,15 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(screen.queryByTestId("mini-foul-home")).toBeNull();
   });
 
-  it("shows the EventControls FAB '+' for the ACTIVE coach (LM-20)", async () => {
+  it("shows the PlayerActionStrip for the ACTIVE coach in a live match (Design B, b1)", async () => {
     stubLiveEventSource();
-    stubMatch(liveDetail()); // home coach, active side home → FAB
+    stubMatch(liveDetail()); // home coach, active side home → live controls
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "+" })).toBeTruthy();
+    expect(screen.getByTestId("player-action-strip")).toBeTruthy();
   });
 
-  it("hides the EventControls FAB for a spectator (no side, LM-20 no-side)", async () => {
+  it("hides the PlayerActionStrip for a spectator (no side, LM-20 no-side)", async () => {
     stubLiveEventSource();
     // A spectator member user owns neither team → session-derived viewerSide null.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -552,7 +552,7 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     stubMatch(liveDetail());
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "+" })).toBeNull();
+    expect(screen.queryByTestId("player-action-strip")).toBeNull();
   });
 
   it("sends a control command when the coach clicks 'Dar el turno'", async () => {

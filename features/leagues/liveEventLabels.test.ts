@@ -11,6 +11,7 @@ import {
   bandSubLabel,
   journeymanJoinLabel,
   isBothDownCasualty,
+  bothDownMarkerLabel,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -272,5 +273,18 @@ describe("isBothDownCasualty — reads the additive bothDown marker (LM-12/D1)",
     expect(isBothDownCasualty({})).toBe(false);
     expect(isBothDownCasualty({ cause: "block", bothDown: false })).toBe(false);
     expect(isBothDownCasualty({ cause: "block", bothDown: "yes" as unknown })).toBe(false);
+  });
+});
+
+describe("bothDownMarkerLabel — localized '(Ambos derribados)' marker copy (b5)", () => {
+  it("returns the Spanish marker label for a both-down casualty", () => {
+    expect(bothDownMarkerLabel({ victimRosterId: "h1", causerRosterId: "a1", cause: "block", bothDown: true })).toBe("Ambos derribados");
+  });
+
+  it("returns null for a plain casualty, an absent marker or a non-true marker", () => {
+    expect(bothDownMarkerLabel({ victimRosterId: "p9", causerRosterId: "p1", cause: "block" })).toBeNull();
+    expect(bothDownMarkerLabel({})).toBeNull();
+    expect(bothDownMarkerLabel({ cause: "block", bothDown: false })).toBeNull();
+    expect(bothDownMarkerLabel({ cause: "block", bothDown: "yes" as unknown })).toBeNull();
   });
 });

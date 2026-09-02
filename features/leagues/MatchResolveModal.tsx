@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
 import { casualtyVictimsFromEvents } from "@/lib/liveResolve";
-import { positionName } from "./liveControls";
+import { positionName } from "./playerActionStrip";
 import { casualtyKindLabel } from "./matchSummary";
 import { JourneymenHireStep } from "./JourneymenHire";
 import {
