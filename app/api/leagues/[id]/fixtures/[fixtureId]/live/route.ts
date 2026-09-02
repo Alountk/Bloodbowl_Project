@@ -15,8 +15,9 @@ import {
   proposeConcedeLiveMatch,
   declineConcedeLiveMatch,
   acceptConcedeLiveMatch,
-  proposeCasualtyLiveMatch,
-  confirmCasualtyLiveMatch,
+  acknowledgeEventLiveMatch,
+  liveEventRowToDto,
+  type LiveEventDto,
   rollLiveMvp,
   resolveLiveMatch,
   nominateMvpLiveMatch,
@@ -39,14 +40,15 @@ import {
   toLiveViewState,
   isDisplayEvent,
   deriveCasualtyOutcome,
+  validateCasualtyRolls,
   type FixtureStartState,
   type LiveMatchState,
   type TeamSide,
 } from "@/lib/liveMatch";
 import {
   checkActorInvariant,
-  playerSide,
   resolveEventPermission,
+  CAUSE_REQUIRES_CAUSER,
   CASUALTY_CAUSES,
   type EventKind,
   type RosterSideMap,
@@ -87,7 +89,7 @@ type Gateway =
   | { kind: "allow"; context: FixtureContext };
 
 /** A persisted LiveEvent row as loaded for the snapshot timeline. */
-interface PersistedLiveEventRow {
+type PersistedLiveEventRow = {
   seq: number;
   kind: string;
   side: "home" | "away" | null;
@@ -96,20 +98,13 @@ interface PersistedLiveEventRow {
   turnNumber: number;
   payload: unknown;
   createdAt: Date;
-}
+  ackStatus: string;
+  ackAt: Date | null;
+  ackedBy: string | null;
+};
 
-/** The client DTO shape for a live event (mirrors `serializeLive` + `LiveMatchEventDto`). */
-interface LiveEventDto {
-  seq: number;
-  kind: string;
-  side: "home" | "away" | null;
-  playerRosterId: string | null;
-  half: number;
-  turnNumber: number;
-  payload: Record<string, unknown>;
-  at: number;
-}
-
+/** The client event DTO — the shared shape (route + store + client), which now
+ * carries the non-blocking ack state (design B). */
 /** Maps persisted LiveEvent rows to the DTO shape (LM-6/`serializeLive` parity),
  * filtering OUT non-display kinds (LM-16): the snapshot feed carries only
  * `start|td|completion|casualty|foul|endHalf|endMatch|mvp`. `turn`/`turnStart`/
@@ -118,19 +113,7 @@ interface LiveEventDto {
 function toEventDtos(rows: PersistedLiveEventRow[]): LiveEventDto[] {
   return rows
     .filter((e) => isDisplayEvent(e.kind))
-    .map((e) => ({
-      seq: e.seq,
-      kind: e.kind,
-      side: e.side,
-      playerRosterId: e.playerRosterId,
-      half: e.half,
-      turnNumber: e.turnNumber,
-      payload:
-        typeof e.payload === "object" && e.payload !== null && !Array.isArray(e.payload)
-          ? (e.payload as Record<string, unknown>)
-          : {},
-      at: new Date(e.createdAt).getTime(),
-    }));
+    .map((e) => liveEventRowToDto(e as unknown as Parameters<typeof liveEventRowToDto>[0]));
 }
 
 /**
@@ -376,12 +359,20 @@ export async function GET(
   const pending: { seq: number; payload: unknown }[] = [];
   const seen = new Set<number>();
   const notify: HubSubscriber["notify"] = (payload) => {
+    const isAck =
+      typeof payload === "object" &&
+      payload !== null &&
+      (payload as { kind?: unknown }).kind === "ack";
     const seq =
       typeof payload === "object" && payload !== null && typeof (payload as { seq?: unknown }).seq === "number"
         ? (payload as { seq: number }).seq
         : 0;
-    if (seq <= snapshotSeq) return; // dup/stale — below or equal snapshot cursor
-    if (seen.has(seq)) return;
+    // Design B: an `ack` frame modifies an EXISTING event (same seq, often ≤
+    // the snapshot cursor) — it must NOT be dropped as stale, otherwise the
+    // rival's ✓/✗ would only appear on a reload. Live subscribers upsert by
+    // seq (idempotent), so replays are harmless.
+    if (!isAck && seq <= snapshotSeq) return; // dup/stale — below or equal snapshot cursor
+    if (seen.has(seq) && !isAck) return;
     seen.add(seq);
     pending.push({ seq, payload });
   };
@@ -561,24 +552,21 @@ type ControlCommand =
       type: "casualty";
       side: TeamSide;
       victimRosterId: string;
-      /** Self-inflicted only (dodge/crowd): the victim's OWN side records the
-       * injury directly with NO confirmation (LM-12 self-inflicted). The band
-       * is derived server-side from `roll16`. */
+      /** The causer, REQUIRED for blitz/foul/block (the ACTIVE coach's own
+       * player, opposite the victim). Absent for self-inflicted dodge/crowd.
+       * The band is derived server-side from `roll16`. */
+      causerRosterId?: string;
       cause: CasualtyCause;
       roll16: number;
       roll6?: number;
     }
   | {
-      type: "proposeCasualty";
-      victimRosterId: string;
-      causerRosterId: string;
-      /** One of blitz|foul|block (causer-required causes — the
-       * dodge/crowd path is the direct self-inflicted `casualty`). */
-      cause: CasualtyCause;
-      roll16: number;
-      roll6?: number;
+      /** Design B (RAU-82): the RIVAL acknowledges an event card — "ok" (seen
+       * & correct) or "nok" (discrepancy). Informational only, never blocks. */
+      type: "acknowledgeEvent";
+      eventSeq: number;
+      status: "ok" | "nok";
     }
-  | { type: "confirmCasualty" }
   | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId: string }
   | { type: "requestTurn" }
   | { type: "endMatch" }
@@ -683,17 +671,10 @@ function isControlCommand(value: unknown): value is ControlCommand {
         (CASUALTY_CAUSES as readonly string[]).includes(c.cause) &&
         typeof c.roll16 === "number"
       );
-    case "proposeCasualty":
-      // The ACTIVE coach's proposal: causer + victim + a KNOWN cause + roll16.
+    case "acknowledgeEvent":
       return (
-        typeof c.victimRosterId === "string" &&
-        typeof c.causerRosterId === "string" &&
-        typeof c.cause === "string" &&
-        (CASUALTY_CAUSES as readonly string[]).includes(c.cause) &&
-        typeof c.roll16 === "number"
+        typeof c.eventSeq === "number" && (c.status === "ok" || c.status === "nok")
       );
-    case "confirmCasualty":
-      return true;
     case "foul":
       // LM-6: `victimRosterId` is REQUIRED on a foul command.
       return (
@@ -1236,43 +1217,23 @@ export async function POST(
     }
   }
 
-  // RAU-39 casualty commands: the ACTIVE coach PROPOSES a casualty they
-  // inflicted (causer + victim + cause + rolls); the NON-proposer CONFIRMS it.
-  // Like concede, these are NOT turn-phase events — they skip the LM-12 side
-  // gate below (the state machine enforces the active-proposer / responder
-  // roles). A spectator/admin without a side is rejected with 409.
-  if (command.type === "proposeCasualty") {
-    if (side === null) {
-      return Response.json({ error: "No side to propose a casualty" }, { status: 409 });
-    }
-    // LM-12 actor-side invariant: the causer MUST resolve to a roster player on
-    // the PROPOSER's side and the victim on the OPPOSITE side (the propose path
-    // reuses the shared invariant helper with `actorSide` = the VICTIM's side).
-    const rosters = await loadRosterSideMap(ctx);
-    const victimSide = side === "home" ? "away" : "home";
-    const causerOk =
-      checkActorInvariant({
-        kind: "casualty",
-        actorSide: victimSide,
-        opponentId: command.causerRosterId,
-        cause: command.cause,
-        rosters,
-      }) === "allow";
-    const victimOk = playerSide(rosters, command.victimRosterId) === victimSide;
-    if (!causerOk || !victimOk) {
-      return Response.json({ error: "Invalid actor side" }, { status: 409 });
+  // Design B (RAU-82): the RIVAL acknowledges an event card — informational
+  // only, never blocks the match (the event was already consumed at record
+  // time). Only a coach with a side may ack; the store enforces the
+  // author-vs-rival side rule and persists the ack on the LiveEvent row.
+  if (command.type === "acknowledgeEvent") {
+    if (side === null || userId === null) {
+      return Response.json({ error: "No side to acknowledge an event" }, { status: 409 });
     }
     try {
-      const result = await proposeCasualtyLiveMatch(
+      const result = await acknowledgeEventLiveMatch(
         {
           liveMatchId: row.id,
           fixtureId,
+          eventSeq: command.eventSeq,
           side,
-          victimRosterId: command.victimRosterId,
-          causerRosterId: command.causerRosterId,
-          cause: command.cause,
-          roll16: command.roll16,
-          roll6: command.roll6,
+          userId,
+          status: command.status,
           now,
         },
         deps,
@@ -1280,25 +1241,7 @@ export async function POST(
       return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
     } catch (error) {
       if ((error as { status?: number }).status === 409) {
-        return Response.json({ error: "Cannot propose a casualty in current state" }, { status: 409 });
-      }
-      throw error;
-    }
-  }
-
-  if (command.type === "confirmCasualty") {
-    if (side === null) {
-      return Response.json({ error: "No side to confirm a casualty" }, { status: 409 });
-    }
-    try {
-      const result = await confirmCasualtyLiveMatch(
-        { liveMatchId: row.id, fixtureId, side, now },
-        deps,
-      );
-      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
-    } catch (error) {
-      if ((error as { status?: number }).status === 409) {
-        return Response.json({ error: "Cannot confirm a casualty in current state" }, { status: 409 });
+        return Response.json({ error: "Cannot acknowledge this event" }, { status: 409 });
       }
       throw error;
     }
@@ -1339,20 +1282,28 @@ export async function POST(
     }
 
     if (command.type === "casualty") {
-      // RAU-39: the direct casualty command is SELF-INFLICTED ONLY (dodge/crowd
-      // on the caller's OWN player, no confirmation). A caused casualty (any
-      // other cause) MUST go through proposeCasualty → confirmCasualty; a
-      // dodge/crowd casualty on the OPPONENT is impossible (self-inflicted);
-      // a causer is strictly denied (LM-12).
-      const raw = command as unknown as Record<string, unknown>;
-      if (command.side !== side) {
-        return Response.json({ error: "Self-inflicted casualties only on your own player" }, { status: 409 });
-      }
-      if (command.cause !== "dodge" && command.cause !== "crowd") {
-        return Response.json({ error: "Caused casualties go through proposeCasualty" }, { status: 409 });
-      }
-      if (raw.causerRosterId != null) {
-        return Response.json({ error: "Invalid actor side" }, { status: 409 });
+      // Design B (RAU-82): casualties are recorded DIRECTLY — one phase, the
+      // event is consumed instantly and the rival's ack is informational.
+      // - Victim on the caller's OWN side (`command.side === side`):
+      //   self-inflicted dodge/crowd ONLY, NO causer (LM-12).
+      // - Victim on the OPPOSITE side: the caller MUST be the active coach (the
+      //   side gate already denied a non-active caller), the cause MUST require
+      //   a causer (blitz/foul/block) and the causer is REQUIRED (the invariant
+      //   check below validates causer-vs-victim sides).
+      if (command.side === side) {
+        if (command.cause !== "dodge" && command.cause !== "crowd") {
+          return Response.json({ error: "Self-inflicted casualties are dodge/crowd only" }, { status: 409 });
+        }
+        if (command.causerRosterId != null) {
+          return Response.json({ error: "Invalid actor side" }, { status: 409 });
+        }
+      } else {
+        if (!CAUSE_REQUIRES_CAUSER.has(command.cause)) {
+          return Response.json({ error: "Caused casualties require a causer cause" }, { status: 409 });
+        }
+        if (command.causerRosterId == null) {
+          return Response.json({ error: "A causer is required for this cause" }, { status: 409 });
+        }
       }
     }
 
@@ -1363,7 +1314,12 @@ export async function POST(
     if (command.type === "foul" || command.type === "casualty") {
       const rosters = await loadRosterSideMap(ctx);
       const actorSide = command.side; // foul = aggressor side; casualty = victim side
-      const opponentId = command.type === "foul" ? command.victimRosterId : undefined;
+      const opponentId =
+        command.type === "foul"
+          ? command.victimRosterId
+          : command.type === "casualty"
+            ? command.causerRosterId
+            : undefined;
       if (
         checkActorInvariant({
           kind: command.type,
@@ -1396,9 +1352,8 @@ export async function POST(
     // completion appends a ★1 event with NO turn flip.
     next = applyCompletion(current, { side: command.side, playerRosterId: command.playerRosterId }, now);
   } else if (command.type === "casualty") {
-    // RAU-39: a SELF-INFLICTED (dodge/crowd) casualty on the caller's own player
-    // is recorded directly, NO confirmation — the band is derived server-side
-    // from the 1D16 roll (mirrors `confirmCasualty`). A roll/derivation failure
+    // Design B: casualties are recorded DIRECTLY (one phase, no confirm) — the
+    // band is derived server-side from the 1D16 roll. A roll/derivation failure
     // (e.g. a permanent band without the 1D6) maps to 409, never a 500.
     try {
       next = recordCasualty(current, command, now);
@@ -1431,12 +1386,15 @@ export async function POST(
   return Response.json({ view: toLiveViewState(next, now, { viewerSide: side }) }, { status: 200 });
 }
 
-/** Records a SELF-INFLICTED (dodge/crowd) casualty on the caller's own player
- * (RAU-39): the band is DERIVED server-side from the 1D16 roll via the rulebook
- * table (with the 1D6 attribute roll when the band is permanent), never
- * client-chosen. The payload carries the same shape as a confirmed two-phase
- * casualty (minus the causer — the invariant gate already rejected one). */
+/** Records a casualty DIRECTLY (design B, RAU-82): the band is DERIVED
+ * server-side from the 1D16 roll via the rulebook table (with the 1D6 attribute
+ * roll when the band is permanent), never client-chosen. The event is consumed
+ * instantly — the rival's ✓/✗ acknowledgement is informational only. The
+ * payload carries the causer when the cause requires one (blitz/foul/block);
+ * self-inflicted dodge/crowd carries none (the invariant gate already
+ * rejected a causer). */
 function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { type: "casualty" }>, now: number): LiveMatchState {
+  validateCasualtyRolls(cmd.roll16, cmd.roll6);
   const { band, permanentAttribute: permanentAttributeOutcome } = deriveCasualtyOutcome(cmd.roll16, cmd.roll6);
   return {
     ...state,
@@ -1452,6 +1410,7 @@ function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { ty
         turnNumber: state.turnNumber,
         payload: {
           victimRosterId: cmd.victimRosterId,
+          ...(cmd.causerRosterId != null ? { causerRosterId: cmd.causerRosterId } : {}),
           cause: cmd.cause,
           roll16: cmd.roll16,
           ...(cmd.roll6 != null ? { roll6: cmd.roll6 } : {}),

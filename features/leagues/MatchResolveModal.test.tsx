@@ -114,7 +114,6 @@ function baseDetail(overrides: {
       paused: false,
       finishedAt: 5000,
       concedeProposedBy: null,
-      pendingCasualty: null,
       mvpNominations,
       resolutionState: rs,
       mvpGrantees,

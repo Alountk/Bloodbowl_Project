@@ -42,7 +42,10 @@ function ev(
   return { seq, kind, side, playerRosterId, half: 1, turnNumber, payload, at };
 }
 
-function renderCards(events: LiveMatchEventDto[]) {
+function renderCards(
+  events: LiveMatchEventDto[],
+  opts: { viewerSide?: "home" | "away" | null; onAck?: (eventSeq: number, status: "ok" | "nok") => void } = {},
+) {
   const live = {
     seq: events.length,
     status: "finished",
@@ -62,7 +65,17 @@ function renderCards(events: LiveMatchEventDto[]) {
     finishedAt: 5000,
     events,
   } as LiveMatchView;
-  return render(<LiveEventCards events={live.events} startedAt={live.startedAt} homeTeam={homeTeam} awayTeam={awayTeam} />);
+  return render(
+    <LiveEventCards
+      events={live.events}
+      startedAt={live.startedAt}
+      homeTeam={homeTeam}
+      awayTeam={awayTeam}
+      viewerSide={opts.viewerSide ?? null}
+      now={Date.now()}
+      onAck={opts.onAck ?? (() => undefined)}
+    />,
+  );
 }
 
 describe("LiveEventCards — team cards 68% + generic 100% (MVT-1/D3)", () => {
@@ -611,5 +624,44 @@ describe("LiveEventCards — kickoff fan_factor centered row (MVT-6/LM-24)", () 
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row.textContent).toContain("Local: 👥3 + 🎲1 = 4");
     expect(row.textContent).toContain("Visitante: 👥2 + 🎲2 = 4");
+  });
+});
+
+describe("LiveEventCards — design B non-blocking ack row (RAU-82)", () => {
+  function tdEvent(at = Date.now()): LiveMatchEventDto {
+    return { seq: 2, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 1, payload: {}, at, ackStatus: "pending", ackAt: null, ackedBy: null };
+  }
+
+  it("shows the AUTHOR only the pending badge (no buttons)", () => {
+    renderCards([tdEvent()], { viewerSide: "home" });
+    expect(screen.getByText(/Sin cotejar/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Revisar/i })).toBeNull();
+  });
+
+  it("shows the RIVAL the ✓/✗ buttons on a pending card and fires onAck", () => {
+    let acked: { seq: number; status: "ok" | "nok" } | null = null;
+    renderCards([tdEvent()], {
+      viewerSide: "away",
+      onAck: (seq, status) => {
+        acked = { seq, status };
+      },
+    });
+    const ok = screen.getByRole("button", { name: /Correcto/i });
+    expect(screen.getByRole("button", { name: /Revisar/i })).toBeTruthy();
+    ok.click();
+    expect(acked).toEqual({ seq: 2, status: "ok" });
+  });
+
+  it("shows the Cotejado badge on an acknowledged card (no buttons for either side)", () => {
+    renderCards([{ ...tdEvent(), ackStatus: "ok", ackAt: Date.now(), ackedBy: "u2" }], { viewerSide: "away" });
+    expect(screen.getByText(/Cotejado/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
+  });
+
+  it("auto-verifies a pending card older than the ack timeout (Verificado auto)", () => {
+    renderCards([tdEvent(Date.now() - 61_000)], { viewerSide: "away" });
+    expect(screen.getByText(/Verificado \(auto\)/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
   });
 });

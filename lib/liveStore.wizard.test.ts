@@ -106,7 +106,6 @@ function finishedRow(overrides: FinishedRowOverrides = {}): LiveMatch & { events
     clockStartedAt: null,
     finishedAt: new Date(5000),
     concedeProposedBy: null,
-    pendingCasualty: null,
     winnings: { home: 55000, away: 45000 },
     pendingResolution: null,
     mvpNominations: { home: homeNom, away: awayNom },
@@ -215,6 +214,7 @@ function makeDeps(opts: {
     prisma: {
       $transaction,
       liveMatch: { create: vi.fn(), findFirst: liveMatchFindFirst },
+      liveEvent: { findFirst: vi.fn(), update: vi.fn() },
     },
     hub: { publish },
     ...(rolls.d6 ? { rollD6: fixedRolls(rolls.d6) } : {}),

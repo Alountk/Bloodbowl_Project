@@ -5,13 +5,11 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
-import { resolveInjury } from "@/lib/rules/injuries";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
-import { buildMatchSummary, buildSummaryFeedRows, casualtyKindLabel, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
+import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
 import { LiveEventCards } from "./liveEventCards";
-import { causeLabel } from "./liveEventLabels";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
 import { EventControls } from "./liveControls";
@@ -134,7 +132,6 @@ function emptyPendingView(): LiveMatchViewState {
     awayScore: 0,
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: { home: null, away: null },
     resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
   };
@@ -315,93 +312,6 @@ function ConcedeControls({
     >
       {t("match.concede.action")}
     </button>
-  );
-}
-
-/**
- * RAU-39 casualty confirm flow: while a casualty proposal is pending, the
- * PROPOSER (the attacker) sees "Esperando confirmación del rival…" inline; the
- * defender (perjudicado) sees an EXPLANATORY MODAL (RAU-43) — "El rival
- * registra una baja" with the derived details (víctima, causa, tirada 1D16,
- * banda derivada — the band is DERIVED client-side for display ONLY, the server
- * is authoritative) and a "Confirmar" button that fires
- * `{ type: "confirmCasualty" }`. There is NO reject — the defender can only
- * confirm. The server stays authoritative — a bypass POST by the proposer
- * returns 409.
- */
-function CasualtyConfirmControls({
-  viewerSide,
-  pending,
-  submitting,
-  onConfirm,
-  homeTeam,
-  awayTeam,
-}: {
-  viewerSide: "home" | "away";
-  pending: LiveMatchViewState["pendingCasualty"];
-  submitting: boolean;
-  onConfirm: () => void;
-  homeTeam: MatchTeamDetail;
-  awayTeam: MatchTeamDetail;
-}) {
-  const { t } = useI18n();
-  if (pending == null) return null;
-  // The victim is on the side OPPOSITE the proposer (LM-12 invariant).
-  const victimTeam = pending.proposerSide === "home" ? awayTeam : homeTeam;
-  const victim = victimTeam.players.find((p) => p.rosterPlayerId === pending.victimRosterId);
-  const band = resolveInjury(pending.roll16);
-  const attribute = pending.roll6 != null
-    ? band.kind === "permanent"
-      ? pending.roll6 <= 2
-        ? "AR"
-        : pending.roll6 === 3
-          ? "MV"
-          : pending.roll6 === 4
-            ? "PS"
-            : pending.roll6 === 5
-              ? "AG"
-              : "ST"
-      : null
-    : null;
-  const bandText = casualtyKindLabel(band.kind, t);
-  const bandLabel = attribute ? `${bandText} (−${attribute})` : bandText;
-
-  if (pending.proposerSide === viewerSide) {
-    return (
-      <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-[#ffd9e0]">
-        {t("match.casualty.waiting")}
-      </span>
-    );
-  }
-
-  return (
-    <IncomingEventModal
-      ariaLabel={t("match.casualty.modalAria")}
-      title={t("match.casualty.rivalRegisters")}
-      body={
-        <>
-          <p className="mb-3 text-sm text-slate-600">{t("match.casualty.modalBody")}</p>
-          <p className="text-sm font-semibold text-[#12225a]">
-            {t("match.casualty.details", {
-              victim: victim?.name ?? "?",
-              cause: causeLabel(pending.cause, t),
-              roll: pending.roll16,
-              band: bandLabel,
-            })}
-          </p>
-        </>
-      }
-      actions={
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={submitting}
-          className="rounded-[4px] bg-[#d11938] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
-        >
-          {t("match.casualty.confirm")}
-        </button>
-      }
-    />
   );
 }
 
@@ -601,7 +511,6 @@ function LiveTopBar({
   leagueId,
   turnControls,
   concedeControls,
-  casualtyControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
@@ -612,8 +521,6 @@ function LiveTopBar({
   /** RAU-38: the turn-zone concede controls (null when the viewer has no side
    * or the match is not live — the FinishedLiveView passes nothing). */
   concedeControls?: React.ReactNode;
-  /** RAU-39: the turn-zone casualty confirm panel (same gating as concede). */
-  casualtyControls?: React.ReactNode;
 }) {
   const { t } = useI18n();
   const live = state.status === "live";
@@ -668,8 +575,6 @@ function LiveTopBar({
         {/* RAU-38: the concede controls sit in the turn zone next to the turn
             button — both coaches see them while live (submitting disabled). */}
         {concedeControls}
-        {/* RAU-39: the casualty confirm panel sits in the same turn zone. */}
-        {casualtyControls}
         <TurnTrack
           sideName={names.away}
           current={globalTurn}
@@ -899,7 +804,6 @@ function RulebookHeader({
   awayTeam,
   turnControls,
   concedeControls,
-  casualtyControls,
 }: {
   state: LiveMatchViewState;
   clock: DisplayClock;
@@ -915,7 +819,6 @@ function RulebookHeader({
   awayTeam: MatchTeamDetail;
   turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
   concedeControls?: React.ReactNode;
-  casualtyControls?: React.ReactNode;
 }) {
   return (
     <div
@@ -930,7 +833,6 @@ function RulebookHeader({
         leagueId={leagueId}
         turnControls={turnControls}
         concedeControls={concedeControls}
-        casualtyControls={casualtyControls}
       />
       <LiveHero
         state={state}
@@ -1105,21 +1007,6 @@ function LiveActiveMatch({
       />
     ) : null;
 
-  // RAU-39: the casualty confirm panel (same gating). The defender confirms the
-  // ACTIVE coach's proposal; the proposer sees the waiting copy. Null when the
-  // view still lacks a `pendingCasualty` (older persisted rows / no proposal).
-  const casualtyControls =
-    state.status === "live" && state.viewerSide != null && state.pendingCasualty != null ? (
-      <CasualtyConfirmControls
-        viewerSide={state.viewerSide}
-        pending={state.pendingCasualty}
-        submitting={submitting}
-        onConfirm={() => void act({ type: "confirmCasualty" })}
-        homeTeam={homeTeam}
-        awayTeam={awayTeam}
-      />
-    ) : null;
-
   return (
     <div className="bg-white border border-[#e2e8f0]">
       {/* Uniform sticky match header: renders in EVERY fixture state. */}
@@ -1142,7 +1029,6 @@ function LiveActiveMatch({
           onEndTurn: () => void act({ type: "endTurn", side: state.activeSide }),
         }}
         concedeControls={concedeControls}
-        casualtyControls={casualtyControls}
       />
 
       {/* RAU-13: the Journeymen (Novatos) notice — per affected side, whenever
@@ -1181,6 +1067,9 @@ function LiveActiveMatch({
             startedAt={state.startedAt}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
+            viewerSide={state.viewerSide}
+            now={state.startedAt != null ? state.startedAt + clock.elapsed : 0}
+            onAck={(eventSeq, status) => void act({ type: "acknowledgeEvent", eventSeq, status })}
           />
 
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
@@ -1242,6 +1131,9 @@ function FinishedLiveTimeline({
         startedAt={live.startedAt}
         homeTeam={homeTeam}
         awayTeam={awayTeam}
+        viewerSide={null}
+        now={live.startedAt != null ? live.startedAt + live.elapsed : 0}
+        onAck={() => undefined}
       />
     </div>
   );

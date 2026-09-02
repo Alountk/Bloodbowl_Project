@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  acknowledgeEventLiveMatch,
   consentLiveMatch,
   retractLiveConsent,
   beginLiveMatch,
@@ -9,8 +10,6 @@ import {
   proposeConcedeLiveMatch,
   declineConcedeLiveMatch,
   acceptConcedeLiveMatch,
-  proposeCasualtyLiveMatch,
-  confirmCasualtyLiveMatch,
   liveMatchRowToState,
   type StoreDeps,
 } from "./liveStore";
@@ -51,7 +50,6 @@ function fakeRow(): LiveMatchState {
     clockStartedAt: 1000,
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: null,
     mvpNominations: { home: null, away: null },
     resolutionState: EMPTY_RESOLUTION_STATE,
     events: [],
@@ -106,6 +104,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
     prisma: {
       $transaction,
       liveMatch: { create: liveMatchCreate, findFirst: liveMatchFindFirst },
+      liveEvent: { findFirst: vi.fn(), update: vi.fn() },
     },
     hub: { publish },
     ...(rollD3 ? { rollD3 } : {}),
@@ -149,7 +148,6 @@ describe("liveMatchRowToState", () => {
       clockStartedAt: null,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
       mvpNominations: null,
       resolutionState: null,
     });
@@ -182,52 +180,10 @@ describe("liveMatchRowToState", () => {
       clockStartedAt: null,
       finishedAt: null,
       concedeProposedBy: "home",
-      pendingCasualty: null,
       mvpNominations: null,
       resolutionState: null,
     });
     expect(state.concedeProposedBy).toBe("home");
-  });
-
-  it("maps a persisted pendingCasualty JSON value onto the pure state and nulls malformed JSON (RAU-39)", () => {
-    const base = {
-      id: "lm-1",
-      fixtureId: "f-1",
-      status: "live",
-      half: 1,
-      turnNumber: 2,
-      activeSide: "home",
-      homeConsented: true,
-      awayConsented: true,
-      startedAt: new Date(1000),
-      homeTurnMs: 0,
-      awayTurnMs: 0,
-      homeScore: 0,
-      awayScore: 0,
-      seq: 9,
-      paused: false,
-      clockStartedAt: null,
-      finishedAt: null,
-      concedeProposedBy: null,
-      mvpNominations: null,
-      resolutionState: null,
-    } as const;
-    const parsed = liveMatchRowToState({
-      ...base,
-      pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 },
-    });
-    expect(parsed.pendingCasualty).toEqual({
-      proposerSide: "home",
-      victimRosterId: "p9",
-      causerRosterId: "p1",
-      cause: "blitz",
-      roll16: 13,
-      roll6: 4,
-    });
-    // Malformed JSON (not an object / missing fields) collapses to null — never crash.
-    expect(liveMatchRowToState({ ...base, pendingCasualty: "garbage" }).pendingCasualty).toBeNull();
-    expect(liveMatchRowToState({ ...base, pendingCasualty: { proposerSide: "nope", victimRosterId: 1 } }).pendingCasualty).toBeNull();
-    expect(liveMatchRowToState({ ...base, pendingCasualty: null }).pendingCasualty).toBeNull();
   });
 
   it("maps the persisted per-side mvpNominations JSON onto the pure state (RAU-51)", () => {
@@ -250,7 +206,6 @@ describe("liveMatchRowToState", () => {
       clockStartedAt: null,
       finishedAt: new Date(5000),
       concedeProposedBy: null,
-      pendingCasualty: null,
       mvpNominations: { home: ["h1", "h2", "h3", "h4", "h5", "h6"], away: null },
       resolutionState: null,
     });
@@ -289,7 +244,6 @@ describe("liveMatchRowToState", () => {
       clockStartedAt: null,
       finishedAt: new Date(5000),
       concedeProposedBy: null,
-      pendingCasualty: null,
       mvpNominations: null,
       resolutionState: {
         home: { step: "casualties", fansDone: true, fans: { roll: 4, before: 2, after: 3, direction: "up" }, mvpConfirmed: true, mvpRolled: true, casualtiesDone: false, journeymenDone: false },
@@ -935,7 +889,6 @@ describe("proposeConcedeLiveMatch — persists the proposal under the seq guard 
       clockStartedAt: new Date(1000).toISOString(),
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
       ...overrides,
     };
   }
@@ -1085,7 +1038,6 @@ describe("declineConcedeLiveMatch — clears the proposal so the match continues
       clockStartedAt: new Date(1000).toISOString(),
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
     };
   }
 });
@@ -1131,7 +1083,6 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
           status: "finished",
           finishedAt: new Date(2000),
           concedeProposedBy: null,
-          pendingCasualty: null,
           paused: false,
           clockStartedAt: null,
         }),
@@ -1222,7 +1173,6 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
       status: "finished",
       finishedAt: new Date(2000).toISOString(),
       concedeProposedBy: null,
-      pendingCasualty: null,
     });
 
     await expect(
@@ -1253,171 +1203,118 @@ describe("acceptConcedeLiveMatch — finishes the match and awards the victory i
   });
 });
 
-describe("proposeCasualtyLiveMatch — persists pendingCasualty under the seq guard (RAU-39)", () => {
-  function liveRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+
+
+describe("acknowledgeEventLiveMatch — the rival marks a card ok/nok (design B, RAU-82)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeDeps(over: Partial<StoreDeps> = {}): StoreDeps {
     return {
-      id: "lm-1",
-      fixtureId: "f-1",
-      status: "live",
-      half: 1,
-      turnNumber: 2,
-      activeSide: "home",
-      homeConsented: true,
-      awayConsented: true,
-      startedAt: new Date(1000).toISOString(),
-      homeTurnMs: 0,
-      awayTurnMs: 0,
-      homeScore: 0,
-      awayScore: 0,
-      seq: 5,
-      paused: false,
-      clockStartedAt: new Date(1000).toISOString(),
-      finishedAt: null,
-      concedeProposedBy: null,
-      pendingCasualty: null,
-      ...overrides,
-    };
+      prisma: {
+        $transaction: vi.fn(),
+        liveMatch: { create: vi.fn(), findFirst: vi.fn() },
+        liveEvent: { findFirst: vi.fn(), update: vi.fn() },
+      },
+      hub: { publish: vi.fn() },
+      ...over,
+    } as StoreDeps;
   }
 
-  const proposal = {
-    liveMatchId: "lm-1",
-    fixtureId: "f-1",
-    side: "home" as const,
-    victimRosterId: "p9",
-    causerRosterId: "p1",
-    cause: "blitz" as const,
-    roll16: 13,
-    roll6: 4,
-    now: 2000,
-  };
-
-  it("persists pendingCasualty = the proposal, bumps the seq and publishes", async () => {
-    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
-    liveMatchFindFirst.mockResolvedValue(liveRow());
-
-    const result = await proposeCasualtyLiveMatch(proposal, deps);
-
-    expect(updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "lm-1", seq: 5 },
-        data: expect.objectContaining({
-          seq: 6,
-          pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 },
-        }),
-      }),
-    );
-    expect(publish).toHaveBeenCalledWith(
-      "f-1",
-      expect.objectContaining({ seq: 6, pendingCasualty: expect.objectContaining({ proposerSide: "home" }) }),
-    );
-    expect(result.view.pendingCasualty).toEqual(expect.objectContaining({ victimRosterId: "p9" }));
-  });
-
-  it("maps a state-machine rejection (double-propose / non-live / non-active) to 409 with no mutation", async () => {
-    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
-    liveMatchFindFirst.mockResolvedValue(
-      liveRow({ pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13 } }),
-    );
-
-    await expect(proposeCasualtyLiveMatch(proposal, deps)).rejects.toMatchObject({ status: 409 });
-    expect(updateMany).not.toHaveBeenCalled();
-    expect(publish).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 when no LiveMatch row exists", async () => {
-    const { deps } = makeDeps(1);
-    await expect(proposeCasualtyLiveMatch(proposal, deps)).rejects.toMatchObject({ status: 404 });
-  });
-});
-
-describe("confirmCasualtyLiveMatch — persists the casualty event atomically and clears the proposal (RAU-39)", () => {
-  /** Home proposed a blitz casualty (roll16 13 → permanent, roll6 4 → ps). */
-  const pendingRow = {
+  const liveRow = {
     id: "lm-1",
     fixtureId: "f-1",
     status: "live",
     half: 1,
-    turnNumber: 2,
+    turnNumber: 3,
     activeSide: "home",
     homeConsented: true,
     awayConsented: true,
-    startedAt: new Date(1000).toISOString(),
+    startedAt: new Date(1000),
     homeTurnMs: 0,
     awayTurnMs: 0,
     homeScore: 0,
     awayScore: 0,
     seq: 5,
     paused: false,
-    clockStartedAt: new Date(1000).toISOString(),
+    clockStartedAt: new Date(1000),
     finishedAt: null,
     concedeProposedBy: null,
-    pendingCasualty: { proposerSide: "home", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 },
-  };
+    mvpNominations: null,
+    resolutionState: null,
+    journeymen: null,
+    pendingCasualty: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  } as never;
 
-  it("persists the casualty event + pendingCasualty null in the SAME transaction, then publishes", async () => {
-    const { deps, liveMatchFindFirst, updateMany, liveEventCreate, publish } = makeDeps(1);
-    liveMatchFindFirst.mockResolvedValue(pendingRow);
+  it("persists the ack on the rival's side and publishes an ack frame (no seq bump)", async () => {
+    const liveMatchFindFirst = vi.fn().mockResolvedValue(liveRow);
+    const liveEventFindFirst = vi.fn().mockResolvedValue({
+      id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home",
+      playerRosterId: "p1", half: 1, turnNumber: 1, payload: {}, createdAt: new Date(1000),
+      ackStatus: "pending", ackAt: null, ackedBy: null,
+    });
+    const liveEventUpdate = vi.fn().mockResolvedValue({
+      id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home",
+      playerRosterId: "p1", half: 1, turnNumber: 1, payload: {}, createdAt: new Date(1000),
+      ackStatus: "ok", ackAt: new Date(2000), ackedBy: "u-away",
+    });
+    const deps = makeDeps();
+    deps.prisma.liveMatch.findFirst = liveMatchFindFirst;
+    deps.prisma.liveEvent.findFirst = liveEventFindFirst;
+    deps.prisma.liveEvent.update = liveEventUpdate;
 
-    const result = await confirmCasualtyLiveMatch(
-      { liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 },
+    const result = await acknowledgeEventLiveMatch(
+      { liveMatchId: "lm-1", fixtureId: "f-1", eventSeq: 2, side: "away", userId: "u-away", status: "ok", now: 2000 },
       deps,
     );
-
-    expect(updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "lm-1", seq: 5 },
-        data: expect.objectContaining({ seq: 6, pendingCasualty: null }),
-      }),
-    );
-    // The casualty event row commits atomically with the cleared proposal.
-    expect(liveEventCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          liveMatchId: "lm-1",
-          seq: 6,
-          kind: "casualty",
-          side: "away",
-          playerRosterId: "p9",
-          payload: {
-            victimRosterId: "p9",
-            causerRosterId: "p1",
-            cause: "blitz",
-            roll16: 13,
-            roll6: 4,
-            band: "permanent",
-            permanentAttribute: "ps",
-          },
-        }),
-      }),
-    );
-    expect(publish).toHaveBeenCalledWith(
+    expect(liveEventUpdate).toHaveBeenCalledWith({
+      where: { id: "e2" },
+      data: { ackStatus: "ok", ackAt: new Date(2000), ackedBy: "u-away" },
+    });
+    expect(result.event.ackStatus).toBe("ok");
+    expect(result.event.ackedBy).toBe("u-away");
+    // The ack frame rides the EVENT seq so live clients upsert the card.
+    expect(deps.hub.publish).toHaveBeenCalledWith(
       "f-1",
-      expect.objectContaining({ seq: 6, pendingCasualty: null }),
+      expect.objectContaining({
+        kind: "ack",
+        seq: 2,
+        activeSide: "home",
+        event: expect.objectContaining({ seq: 2, ackStatus: "ok" }),
+      }),
     );
-    expect(result.view.pendingCasualty).toBeNull();
   });
 
-  it("maps a confirm with no pending proposal / proposer-self to 409 with no mutation", async () => {
-    const { deps, liveMatchFindFirst, updateMany, liveEventCreate, publish } = makeDeps(1);
-    liveMatchFindFirst.mockResolvedValue({ ...pendingRow, pendingCasualty: null });
-
+  it("rejects the AUTHOR acknowledging their own event (only the rival coteja)", async () => {
+    const deps = makeDeps();
+    deps.prisma.liveMatch.findFirst = vi.fn().mockResolvedValue(liveRow);
+    deps.prisma.liveEvent.findFirst = vi.fn().mockResolvedValue({
+      id: "e2", liveMatchId: "lm-1", seq: 2, kind: "td", side: "home",
+      playerRosterId: "p1", half: 1, turnNumber: 1, payload: {}, createdAt: new Date(1000),
+      ackStatus: "pending", ackAt: null, ackedBy: null,
+    });
     await expect(
-      confirmCasualtyLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 }, deps),
+      acknowledgeEventLiveMatch(
+        { liveMatchId: "lm-1", fixtureId: "f-1", eventSeq: 2, side: "home", userId: "u-home", status: "ok", now: 2000 },
+        deps,
+      ),
     ).rejects.toMatchObject({ status: 409 });
-    expect(updateMany).not.toHaveBeenCalled();
-    expect(liveEventCreate).not.toHaveBeenCalled();
-    expect(publish).not.toHaveBeenCalled();
+    expect(deps.hub.publish).not.toHaveBeenCalled();
   });
 
-  it("rolls back the whole transaction when the event row fails (atomicity)", async () => {
-    const { deps, liveMatchFindFirst, liveEventCreate, publish } = makeDeps(1);
-    liveMatchFindFirst.mockResolvedValue(pendingRow);
-    liveEventCreate.mockRejectedValue(Object.assign(new Error("db down"), { code: "P2028" }));
-
+  it("404 when the event does not exist", async () => {
+    const deps = makeDeps();
+    deps.prisma.liveMatch.findFirst = vi.fn().mockResolvedValue(liveRow);
+    deps.prisma.liveEvent.findFirst = vi.fn().mockResolvedValue(null);
     await expect(
-      confirmCasualtyLiveMatch({ liveMatchId: "lm-1", fixtureId: "f-1", side: "away", now: 2500 }, deps),
-    ).rejects.toMatchObject({ code: "P2028" });
-    expect(publish).not.toHaveBeenCalled();
+      acknowledgeEventLiveMatch(
+        { liveMatchId: "lm-1", fixtureId: "f-1", eventSeq: 99, side: "away", userId: "u-away", status: "nok", now: 2000 },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -1432,7 +1329,6 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
       awayScore: 1,
       finishedAt: 2000,
       concedeProposedBy: null,
-      pendingCasualty: null,
       events: [
         { seq: 6, kind: "endMatch" as const, side: null, playerRosterId: null, half: 2, turnNumber: 8, payload: {}, at: 2000 },
       ],
@@ -1539,7 +1435,6 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
       clockStartedAt: new Date(1000).toISOString(),
       finishedAt: null,
       concedeProposedBy: "home",
-      pendingCasualty: null,
     });
 
     // Away accepts the home proposal → home 0, away 2 (walkover scores).

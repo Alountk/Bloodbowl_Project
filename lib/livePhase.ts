@@ -129,3 +129,32 @@ export const CASUALTY_CAUSES = [
   "block",
 ] as const;
 export type CasualtyCause = (typeof CASUALTY_CAUSES)[number];
+
+/** The causes that require an explicit causer (opposite the victim). */
+export const CAUSE_REQUIRES_CAUSER: ReadonlySet<string> = new Set([
+  "blitz",
+  "foul",
+  "block",
+]);
+
+/**
+ * Design B (RAU-82): the coach who AUTHORED an event card. For a casualty the
+ * author is the CAUSER's side (opposite the event's `side`, which is the
+ * VICTIM's side); for every other event kind (td/completion/foul) the author is
+ * the event's own side. Null when the event carries no side → un-ackable.
+ */
+export function eventAuthorSide(
+  kind: string,
+  side: "home" | "away" | null,
+): "home" | "away" | null {
+  if (side === null) return null;
+  return kind === "casualty" ? (side === "home" ? "away" : "home") : side;
+}
+
+/**
+ * Design B: how long a recorded event card stays "pending" before the UI marks
+ * it "✓ Verificado (auto)". The act is ALWAYS consumed instantly; the ack is
+ * informational only, and an un-acked card auto-verifies after this window so
+ * it never hangs "in the air" (30–60s agreed with the product owner).
+ */
+export const ACK_TIMEOUT_MS = 60_000;

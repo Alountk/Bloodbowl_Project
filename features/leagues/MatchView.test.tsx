@@ -415,7 +415,6 @@ function liveDetail(overrides: Partial<MatchDetail> = {}): MatchDetail {
       paused: false,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
@@ -478,7 +477,6 @@ function finishedLiveDetail(): MatchDetail {
       paused: false,
       finishedAt: 5000,
       concedeProposedBy: null,
-      pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
@@ -910,7 +908,6 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
@@ -943,7 +940,6 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
@@ -975,7 +971,6 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
       awayScore: 0,
       finishedAt: null,
       concedeProposedBy: null,
-      pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [],
     };
@@ -1689,7 +1684,6 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
       homeScore: 0,
       awayScore: 2,
       concedeProposedBy: null,
-      pendingCasualty: null,
     };
     const rivalDetail = concedeLive("home");
     rivalDetail.live = { ...rivalDetail.live!, viewerSide: "away" };
@@ -1748,7 +1742,6 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
       status: "finished",
       finishedAt: 9000,
       concedeProposedBy: null,
-      pendingCasualty: null,
     mvpNominations: { home: null, away: null }, resolutionState: { home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false }, away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false } },
       events: [
         { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
@@ -1766,43 +1759,78 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
   });
 });
 
-describe("MatchView — RAU-39 casualty propose → confirm (two-phase)", () => {
+describe("MatchView — design B: single-phase casualty + non-blocking ack (RAU-82)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  function casualtyLive(pending: NonNullable<LiveMatchViewState["pendingCasualty"]>): MatchDetail {
+  it("renders a DIRECT casualty event card (no confirm modal, no waiting copy) when the active coach records one", async () => {
+    // The casualty event is consumed instantly as a card in the timeline — the
+    // rival's ✓/✗ acknowledgement is informational only, never a gate.
     const detail = liveDetail();
-    detail.live = { ...detail.live!, pendingCasualty: pending };
-    return detail;
-  }
-
-  const pendingCasualty = {
-    proposerSide: "home" as const,
-    victimRosterId: "p3",
-    causerRosterId: "p1",
-    cause: "blitz" as const,
-    roll16: 13,
-    roll6: 4,
-  };
-
-  it("shows the PROPOSER waiting copy and NO Confirmar while a casualty proposal is pending", async () => {
+    detail.live = {
+      ...detail.live!,
+      events: [
+        {
+          seq: 7,
+          kind: "casualty",
+          side: "away",
+          playerRosterId: "p3",
+          half: 1,
+          turnNumber: 3,
+          payload: {
+            victimRosterId: "p3",
+            causerRosterId: "p1",
+            cause: "blitz",
+            roll16: 13,
+            roll6: 4,
+            band: "permanent",
+            permanentAttribute: "ps",
+          },
+          at: 9200,
+          ackStatus: "pending",
+          ackAt: null,
+          ackedBy: null,
+        },
+      ],
+    };
     stubLiveEventSource();
-    stubMatch(casualtyLive(pendingCasualty));
+    stubMatch(detail);
     const { unmount } = renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Esperando confirmación del rival/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Confirmar" })).toBeNull();
+    // The direct casualty card renders with the causer/victim line (no modal).
+    expect(screen.getByText(/hace una herida a/)).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: /Baja registrada por el rival/i })).toBeNull();
+    expect(screen.queryByText(/El rival registra una baja/)).toBeNull();
+    expect(screen.queryByText(/Esperando confirmación del rival/)).toBeNull();
     unmount();
   });
 
-  it("shows the DEFENDER the derived casualty details + Confirmar, and the button fires confirmCasualty", async () => {
-    const confirmView = { ...liveDetail().live, pendingCasualty: null };
-    const rivalDetail = casualtyLive(pendingCasualty);
-    rivalDetail.live = { ...rivalDetail.live!, viewerSide: "away" };
+  it("renders the RIVAL's acknowledge buttons on a card and fires acknowledgeEvent on click", async () => {
+    const detail = liveDetail();
+    detail.live = {
+      ...detail.live!,
+      viewerSide: "away",
+      events: [
+        {
+          seq: 2,
+          kind: "td",
+          side: "home",
+          playerRosterId: "p1",
+          half: 1,
+          turnNumber: 1,
+          payload: {},
+          // Recent: stays "pending" (auto-verify only after ACK_TIMEOUT_MS).
+          at: Date.now(),
+          ackStatus: "pending",
+          ackAt: null,
+          ackedBy: null,
+        },
+      ],
+    };
     const fetchMock = vi.fn((url: string) =>
       Promise.resolve(
         /\/live$/.test(url)
-          ? { ok: true, status: 200, json: () => Promise.resolve({ view: confirmView }) }
-          : { ok: true, status: 200, json: () => Promise.resolve(rivalDetail) },
+          ? { ok: true, status: 200, json: () => Promise.resolve({ view: detail.live }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(detail) },
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -1810,32 +1838,44 @@ describe("MatchView — RAU-39 casualty propose → confirm (two-phase)", () => 
     vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // The defender's confirmation lives in the explanatory modal (RAU-43).
-    expect(screen.getByRole("dialog", { name: /Baja registrada por el rival/i })).toBeTruthy();
-    expect(screen.getByText(/El rival registra una baja/)).toBeTruthy();
-    // Derived details: the victim is on the side OPPOSITE the proposer (away →
-    // "Blitzer B"), the cause, the 1D16 roll and the DERIVED band + permanent
-    // attribute (the band is never a select — it derives from the roll).
-    expect(screen.getByText(/Blitzer B · Blitz · 1D16 13 · Permanente \(−PS\)/)).toBeTruthy();
-
-    act(() => screen.getByRole("button", { name: "Confirmar" }).click());
+    // The rival (away) sees the ack buttons on the home-scored TD card.
+    const okButton = screen.getByRole("button", { name: /Correcto/i });
+    expect(okButton).toBeTruthy();
+    act(() => okButton.click());
     await waitFor(() => {
       const posts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
       expect(posts).toHaveLength(1);
       const init = (posts[0] as unknown as [string, RequestInit])[1];
-      expect(JSON.parse(String(init.body))).toEqual({ type: "confirmCasualty" });
+      expect(JSON.parse(String(init.body))).toEqual({ type: "acknowledgeEvent", eventSeq: 2, status: "ok" });
     });
   });
 
-  it("hides the confirm panel entirely when no casualty proposal is pending", async () => {
+  it("renders the ack status badge on an acknowledged card", async () => {
+    const detail = liveDetail();
+    detail.live = {
+      ...detail.live!,
+      events: [
+        {
+          seq: 2,
+          kind: "td",
+          side: "home",
+          playerRosterId: "p1",
+          half: 1,
+          turnNumber: 1,
+          payload: {},
+          at: 9000,
+          ackStatus: "ok",
+          ackAt: 9500,
+          ackedBy: "u2",
+        },
+      ],
+    };
     stubLiveEventSource();
-    stubMatch(liveDetail());
-    renderPlayed();
+    stubMatch(detail);
+    const { unmount } = renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: "Confirmar" })).toBeNull();
-    expect(screen.queryByRole("dialog", { name: /Baja registrada por el rival/i })).toBeNull();
-    expect(screen.queryByText(/El rival registra una baja/)).toBeNull();
-    expect(screen.queryByText(/Esperando confirmación del rival/)).toBeNull();
+    expect(screen.getByText(/Cotejado/)).toBeTruthy();
+    unmount();
   });
 });
 
