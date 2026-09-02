@@ -53,6 +53,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Bajas en dos fases** (RAU-34/LM-12): causa + víctima por el coach activo, panel de confirmación del defensor y **action card derivada** solo en el lado del causador | #105, #103 |
 | **Diseño match view rulebook v7 restaurado/validado** (header sticky 3 filas, timeline, cards de eventos con iconos SVG) y arranque de partido sin fecha acordada | #103 |
 | **Cierre de liga + campeón** (RAU-40): standings **3/1/0** con desempates (puntos → diff. TD → TDs a favor → enfrentamiento directo → id), cierre atómico al completar la última jornada (hook en result/forfeit/concede), badge **"Finalizada"** + **panel del campeón** | directos a main |
+| **Cards de evento no bloqueantes con cotejo ✓/✗** (RAU-83, Diseño B): cada evento sale INSTANTÁNEO (una fase, sin confirmación obligatoria — desaparecen proposeCasualty/confirmCasualty del flujo), el rival lo coteja con ✓/✗ informativo y el juego nunca se detiene; auto-verificación a los 60s (ACK_TIMEOUT_MS); migración aditiva `ackStatus/ackAt/ackedBy` | #157 |
 | **Ganancias al terminar el partido en vivo** (RAU-44): winnings deterministas por equipo persistidos en el cierre y expuestos en el resumen (sin refresco) | directos a main |
 | **Resolución del partido para partidos en vivo finalizados** (RAU-48/49): modal guiado con MVP y FF con previsualización confirmada | directos a main |
 | **i18n ES/EN** (cero dependencias): núcleo con diccionarios, migración de shell, auth, wizard, detalle, ligas y match view; idioma por cuenta | directos a main + #120 |
@@ -71,6 +72,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 |---|---|
 | Limpieza de referencias al servicio externo (38 archivos: docs, código, tests, i18n, archive; terminología neutral/rulebook) | #137 |
 | Suite e2e auth paralelizada: bcrypt cost 4 en tests + 2 proyectos Playwright (chromium paralelo + sse-heavy serial) — 9:18 → 5:06 | #138 |
+| Seed de playground (campo de pruebas dev) en `prisma/seed.mjs` | #158 |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -93,6 +95,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | El turno no avanzaba al empezar una nueva ronda | Avance solo cuando vuelve el starter (home T1 → away T1 → home T2) (#133) |
 | El fichaje de un novato cobraba el coste dos veces | Flag `hired` que evita el recuento de balance (#133) |
 | Mezcla de idiomas (sesión vs cookie) en la navegación | Locale solo por cookie/cuenta + precedencia SSR (#118, #120) |
+| La propuesta de fecha no salía para el proponente hasta el OK del rival | El panel ya NO se cierra al proponer: el proponente ve su card con "⏳ Esperando confirmación" y luego "✓ Validado por {rival}"; el fixture del panel se deriva por id desde datos refrescados (#155) |
 | Keys duplicadas de React por víctimas de lesión repetidas en la resolución en vivo | Dedup de `casualtyVictimsFromEvents` por (equipo, jugador) con la banda más severa (#139) |
 | Flaky del locator de live-match (filter ambiguo → strict violation cuando el SSE era rápido) | Locator por víctima + línea del causante, resuelve a una sola card (#140) |
 
@@ -102,6 +105,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Feature | Notas |
 |---|---|
 | **Histórico completo con replay / taxonomía amplia** | El modo en vivo (SSE, turnos, relojes, timeline), kickoff (#100–#102) y la resolución por lado (#133/#134) ya están en Completado; lo que queda es replay de partidos, taxonomía completa de eventos (intercepciones, skills, clima, resto de la tabla de kickoff), filtros y visualización pública. |
+| **Mejorar cómo se añaden acciones a la cronología** | El alta de eventos del partido en vivo es hoy el FAB "+" genérico; falta mejorar la UI y ampliar las opciones para añadir acciones a la cronología (tipos por contexto, acceso más rápido, editar/corregir eventos). Sin RAU asignado aún. |
 | **Escudo de equipo personalizado** (RAU-78) | Poder poner un escudo propio al equipo desde el detalle (subir/elegir), visible en cards, detalle, MatchCard y standings — reemplaza el emblema determinista de `TeamEmblem`; reutiliza el pipeline de avatares (WebP 256, storage local/S3). |
 | **Historial en My Profile** | El perfil muestra estadísticas de carrera (RAU-57); falta el historial de temporadas y equipos pasados. |
 | **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
