@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CASUALTY_CAUSES,
   checkActorInvariant,
+  eventAuthorSide,
   playerSide,
   resolveEventPermission,
   type EventKind,
@@ -70,6 +71,57 @@ describe("resolveEventPermission — NON-ACTIVE coach is side-gated (LM-12)", ()
     // away active; the home coach records a casualty to an AWAY (opponent) player.
     expect(resolveEventPermission({ callerSide: "home", activeSide: "away", kind: "casualty", victimSide: "away" })).toBe("deny");
     expect(resolveEventPermission({ callerSide: "away", activeSide: "home", kind: "casualty", victimSide: "home" })).toBe("deny");
+  });
+
+  it("ALLOWS the NON-active both-down form (LM-12/D1): rival victim + cause block + bothDown marker", () => {
+    // away active; the HOME coach records their rival's fallen blocker (a home
+    // victim) whose cause is their own defender's `block` both-down: allow.
+    expect(resolveEventPermission({ callerSide: "home", activeSide: "away", kind: "casualty", victimSide: "away", cause: "block", bothDown: true })).toBe("allow");
+    // mirror: home active; the AWAY coach records the home fallen blocker.
+    expect(resolveEventPermission({ callerSide: "away", activeSide: "home", kind: "casualty", victimSide: "home", cause: "block", bothDown: true })).toBe("allow");
+  });
+
+  it("DENIES the non-active both-down form when the marker is absent (only dodge/crowd own-victim otherwise)", () => {
+    // Missing `bothDown` on the same rival-victim block shape stays out-of-turn.
+    expect(resolveEventPermission({ callerSide: "home", activeSide: "away", kind: "casualty", victimSide: "away", cause: "block" })).toBe("deny");
+    expect(resolveEventPermission({ callerSide: "away", activeSide: "home", kind: "casualty", victimSide: "home", cause: "block" })).toBe("deny");
+  });
+
+  it("DENIES the non-active both-down form with a NON-block cause (marker never widens beyond block)", () => {
+    // bothDown on a blitz rival victim must NOT open the non-active to other causes.
+    expect(resolveEventPermission({ callerSide: "home", activeSide: "away", kind: "casualty", victimSide: "away", cause: "blitz", bothDown: true })).toBe("deny");
+    expect(resolveEventPermission({ callerSide: "away", activeSide: "home", kind: "casualty", victimSide: "home", cause: "foul", bothDown: true })).toBe("deny");
+  });
+
+  it("keeps the non-active OWN-victim casualty allowed (own-victim branch untouched by the marker, D1)", () => {
+    expect(resolveEventPermission({ callerSide: "home", activeSide: "away", kind: "casualty", victimSide: "home" })).toBe("allow");
+    expect(resolveEventPermission({ callerSide: "away", activeSide: "home", kind: "casualty", victimSide: "away" })).toBe("allow");
+  });
+
+  it("DENIES the marker shape to a side-less caller (admin/spectator D14 never records)", () => {
+    expect(resolveEventPermission({ callerSide: null, activeSide: "home", kind: "casualty", victimSide: "home", cause: "block", bothDown: true })).toBe("deny");
+  });
+});
+
+describe("eventAuthorSide — payload-aware casualty author (D2), recorder never self-acks", () => {
+  it("returns the CAUSER's side for a caused casualty (opposite the victim side)", () => {
+    // A casualty carries the VICTIM side; the author is the OPPOSITE (causer) side.
+    expect(eventAuthorSide("casualty", "home", "causer-away")).toBe("away");
+    expect(eventAuthorSide("casualty", "away", "causer-home")).toBe("home");
+  });
+
+  it("returns null for a CAUSER-LESS casualty (self-inflicted dodge/crowd → un-ackable auto-verify, LM-26)", () => {
+    expect(eventAuthorSide("casualty", "home")).toBeNull();
+    expect(eventAuthorSide("casualty", "away", undefined)).toBeNull();
+    expect(eventAuthorSide("casualty", "home", null)).toBeNull();
+  });
+
+  it("keeps the non-casualty author semantics (event side; null side → null)", () => {
+    expect(eventAuthorSide("td", "home")).toBe("home");
+    expect(eventAuthorSide("completion", "away", "irrelevant")).toBe("away");
+    expect(eventAuthorSide("foul", "home")).toBe("home");
+    expect(eventAuthorSide("casualty", null, "causer")).toBeNull();
+    expect(eventAuthorSide("td", null)).toBeNull();
   });
 });
 

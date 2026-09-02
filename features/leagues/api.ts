@@ -668,6 +668,10 @@ export type LiveCommand =
       roll16: number;
       /** The 1D6 attribute roll, REQUIRED when the derived band is permanent. */
       roll6?: number;
+      /** LM-12 additive marker (absent for a plain block): set by the NON-active
+       * coach on the both-down casualty they record — rival blocker victim,
+       * own defender causer, cause `block`. Accepted ONLY on that shape. */
+      bothDown?: boolean;
     }
   | {
       /** Design B: the RIVAL acknowledges an event card — "ok" (seen &

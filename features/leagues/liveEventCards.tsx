@@ -230,12 +230,17 @@ function EventAckRow({
   onAck: (eventSeq: number, status: "ok" | "nok") => void;
 }) {
   const { t } = useI18n();
-  const author = eventAuthorSide(event.kind, event.side);
-  if (author === null) return null;
+  // D2/LM-26: the ack author is payload-aware — a casualty's author is its
+  // CAUSER (opposite the victim side). A CAUSER-LESS casualty (self-inflicted
+  // dodge/crowd) has no author → no ✓/✗ ever renders (auto-verify only).
+  const payloadCauser = typeof event.payload.causerRosterId === "string" ? event.payload.causerRosterId : null;
+  const author = eventAuthorSide(event.kind, event.side, payloadCauser);
   const ack = event.ackStatus ?? "pending";
   const auto = ack === "pending" && now - event.at > ACK_TIMEOUT_MS;
   const status = auto ? "auto" : ack;
-  const isRival = viewerSide !== null && viewerSide !== author;
+  // No author (author null is only reachable via a causer-less casualty or a
+  // side-less generic) → nobody is the rival → badge branch only.
+  const isRival = author !== null && viewerSide !== null && viewerSide !== author;
 
   const badgeClass =
     status === "ok" || status === "auto"

@@ -1459,6 +1459,105 @@ describe("POST .../live — LM-12 foul/casualty actor invariants + LM-6 payloads
     });
   });
 
+  // --- LM-12/D1: the NON-active coach's ONE additive casualty shape (both-down) ---
+
+  it("200 records the NON-active both-down form: rival blocker victim, own defender causer, block, bothDown — no turn flip", async () => {
+    // Home active (liveState). The away coach records their rival's fallen
+    // blocker (home p1), causer their own defender (away p9), cause `block`,
+    // marker `bothDown: true` — exactly the LM-12/D1 shape.
+    liveSetup("coach-away");
+    applyTransitionMock.mockResolvedValue({ seq: 5, view: liveView() });
+    const res = await POST(
+      req({ type: "casualty", side: "home", victimRosterId: "p1", causerRosterId: "p9", cause: "block", roll16: 9, bothDown: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    // Exactly ONE casualty event appended; no turn/flip event and the match
+    // state's turn number/side are untouched (a casualty NEVER flips the turn).
+    expect(transitionArg.next.events).toHaveLength(1);
+    expect(transitionArg.next.events[0]).toMatchObject({
+      kind: "casualty",
+      side: "home",
+      playerRosterId: "p1",
+    });
+    expect(transitionArg.next.events[0].payload).toMatchObject({
+      victimRosterId: "p1",
+      causerRosterId: "p9",
+      cause: "block",
+      roll16: 9,
+      bothDown: true,
+    });
+  });
+
+  it("409 (no mutation) when the NON-active both-down shape posts WITHOUT the bothDown marker", async () => {
+    // Same rival-victim block casualty, but the marker is absent → permission
+    // deny → 409 "Not your turn"; no store call.
+    liveSetup("coach-away");
+    const res = await POST(
+      req({ type: "casualty", side: "home", victimRosterId: "p1", causerRosterId: "p9", cause: "block", roll16: 9 }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when the ACTIVE coach's defender record carries bothDown (plain block keeps ★2, LM-12)", async () => {
+    // Home active records their own defender casualty of the rival — WITH the
+    // bothDown marker: rejected (the active's record is a plain `block`).
+    liveSetup("coach-home");
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p1", cause: "block", roll16: 9, bothDown: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when bothDown is carried on the non-active OWN-victim shape", async () => {
+    // Non-active away records a victim on their OWN side with the marker.
+    liveSetup("coach-away");
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", cause: "block", roll16: 9, bothDown: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when bothDown is carried on a NON-block cause", async () => {
+    // Non-active away, marker with cause `blitz` (not the both-down block form).
+    liveSetup("coach-away");
+    const res = await POST(
+      req({ type: "casualty", side: "home", victimRosterId: "p1", causerRosterId: "p9", cause: "blitz", roll16: 9, bothDown: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when bothDown is carried WITHOUT a causer", async () => {
+    // Non-active away, rival victim but no causer → both-down shape invalid.
+    liveSetup("coach-away");
+    const res = await POST(
+      req({ type: "casualty", side: "home", victimRosterId: "p1", cause: "block", roll16: 9, bothDown: true }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("400 when bothDown carries a non-`true` marker (isControlCommand only accepts null|true)", async () => {
+    liveSetup("coach-away");
+    const res = await POST(
+      req({ type: "casualty", side: "home", victimRosterId: "p1", causerRosterId: "p9", cause: "block", roll16: 9, bothDown: false }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(400);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
   it("RAU-13: a foul against a served Journeyman (opposite side) passes the actor invariant", async () => {
     // The away team fields only 10 players (roster JSON) → the fixture GET would
     // serve `journeyman-away-t-1`. The active HOME coach fouls that journeyman:

@@ -665,3 +665,59 @@ describe("LiveEventCards — design B non-blocking ack row (RAU-82)", () => {
     expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
   });
 });
+
+describe("LiveEventCards — payload-aware casualty ack author (D2/LM-26)", () => {
+  function casualtyEvent(
+    seq: number,
+    side: "home" | "away",
+    payload: Record<string, unknown>,
+    at = Date.now(),
+  ): LiveMatchEventDto {
+    return { seq, kind: "casualty", side, playerRosterId: side === "home" ? "p1" : "p9", half: 1, turnNumber: 1, payload, at, ackStatus: "pending", ackAt: null, ackedBy: null };
+  }
+
+  it("renders NO ack buttons on a CAUSER-LESS casualty for EITHER viewer (badge-only, auto-verifies later)", () => {
+    // Self-inflicted dodge on a home player: no causer → no author (LM-26), so
+    // neither the recorder (home) nor the rival ever sees ✓/✗ controls.
+    const selfInflicted = casualtyEvent(3, "home", { victimRosterId: "p1", cause: "dodge", band: "bruise" });
+    renderCards([selfInflicted], { viewerSide: "home" });
+    expect(screen.getByText(/Sin cotejar/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Revisar/i })).toBeNull();
+  });
+
+  it("auto-verifies a CAUSER-LESS casualty after the ack timeout (no buttons even then)", () => {
+    // The same causer-less card, now older than the timeout → "auto" badge.
+    const selfInflicted = casualtyEvent(4, "home", { victimRosterId: "p1", cause: "dodge", band: "bruise" }, Date.now() - 61_000);
+    renderCards([selfInflicted], { viewerSide: "away" });
+    expect(screen.getByText(/Verificado \(auto\)/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
+  });
+
+  it("derives the CAUSED casualty author from the payload causer: the FALLEN coach sees buttons, the recorder only the badge", async () => {
+    // A caused both-down/plain-block casualty: victim HOME (p1), causer an AWAY
+    // player (payload) → author = AWAY (the recorder). The HOME fallen coach is
+    // the author's rival and may ack; the AWAY recorder never sees the buttons.
+    const caused = casualtyEvent(5, "home", { victimRosterId: "p1", causerRosterId: "a1", cause: "block", band: "grave", bothDown: true });
+
+    let acked: { seq: number; status: "ok" | "nok" } | null = null;
+    renderCards([caused], {
+      viewerSide: "home", // the fallen player's coach (rival of author away)
+      onAck: (seq, status) => {
+        acked = { seq, status };
+      },
+    });
+    const ok = screen.getByRole("button", { name: /Correcto/i });
+    expect(screen.getByRole("button", { name: /Revisar/i })).toBeTruthy();
+    ok.click();
+    expect(acked).toEqual({ seq: 5, status: "ok" });
+  });
+
+  it("the RECORDER (causer side) of a caused casualty sees only the badge, never buttons", () => {
+    const caused = casualtyEvent(6, "home", { victimRosterId: "p1", causerRosterId: "a1", cause: "block", band: "grave" });
+    renderCards([caused], { viewerSide: "away" }); // recorder = author (away)
+    expect(screen.getByText(/Sin cotejar/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Revisar/i })).toBeNull();
+  });
+});

@@ -559,6 +559,10 @@ type ControlCommand =
       cause: CasualtyCause;
       roll16: number;
       roll6?: number;
+      /** LM-12 additive marker (absent for a plain block): the NON-active
+       * coach's both-down record — rival blocker victim, own defender causer,
+       * `cause: "block"`. Bound-checked by the route (D1). */
+      bothDown?: boolean;
     }
   | {
       /** Design B (RAU-82): the RIVAL acknowledges an event card — "ok" (seen
@@ -664,12 +668,15 @@ function isControlCommand(value: unknown): value is ControlCommand {
       return (c.side === "home" || c.side === "away") && typeof c.playerRosterId === "string";
     case "casualty":
       // Self-inflicted direct casualty: victim side + a KNOWN cause + roll16.
+      // The `bothDown` marker is additive — accepted only absent or `true`
+      // (a `false`/stray marker is NOT a well-formed command, D1).
       return (
         (c.side === "home" || c.side === "away") &&
         typeof c.victimRosterId === "string" &&
         typeof c.cause === "string" &&
         (CASUALTY_CAUSES as readonly string[]).includes(c.cause) &&
-        typeof c.roll16 === "number"
+        typeof c.roll16 === "number" &&
+        (c.bothDown == null || c.bothDown === true)
       );
     case "acknowledgeEvent":
       return (
@@ -1270,12 +1277,19 @@ export async function POST(
               ? "casualty"
               : "foul";
     const victimSide = command.type === "casualty" ? command.side : undefined;
+    // D1: for a casualty pass the cause + `bothDown` marker INTO the pure side
+    // matrix so the ONE additive non-active both-down shape can open the gate
+    // (and only that shape — every other marker combination still denies here).
+    const casualtyCause = command.type === "casualty" ? command.cause : undefined;
+    const casualtyBothDown = command.type === "casualty" ? command.bothDown : undefined;
     if (
       resolveEventPermission({
         callerSide: side,
         activeSide: current.activeSide,
         kind,
         victimSide,
+        cause: casualtyCause,
+        bothDown: casualtyBothDown,
       }) === "deny"
     ) {
       return Response.json({ error: "Not your turn" }, { status: 409 });
@@ -1284,12 +1298,27 @@ export async function POST(
     if (command.type === "casualty") {
       // Design B (RAU-82): casualties are recorded DIRECTLY — one phase, the
       // event is consumed instantly and the rival's ack is informational.
-      // - Victim on the caller's OWN side (`command.side === side`):
-      //   self-inflicted dodge/crowd ONLY, NO causer (LM-12).
-      // - Victim on the OPPOSITE side: the caller MUST be the active coach (the
-      //   side gate already denied a non-active caller), the cause MUST require
-      //   a causer (blitz/foul/block) and the causer is REQUIRED (the invariant
-      //   check below validates causer-vs-victim sides).
+      // D1 SHAPE GATE (LM-12): `bothDown` is accepted ONLY on the NON-active
+      // both-down block form — rival victim, own (defender) causer, cause
+      // `block`, and a caller who is NOT the active coach. Any other marker
+      // combination (the active's defender record, an own-victim, a non-block
+      // cause, or a missing causer) is REJECTED with no mutation.
+      if (command.bothDown === true) {
+        const validBothDown =
+          side !== current.activeSide &&
+          command.side !== side &&
+          command.cause === "block" &&
+          command.causerRosterId != null;
+        if (!validBothDown) {
+          return Response.json(
+            { error: "bothDown marker only valid on the non-active both-down block form" },
+            { status: 409 },
+          );
+        }
+        // Valid non-active both-down: it is an OPPONENT-victim `block` casualty
+        // with the causer already required below (the actor invariant validates
+        // the causer resolves OPPOSITE the victim).
+      }
       if (command.side === side) {
         if (command.cause !== "dodge" && command.cause !== "crowd") {
           return Response.json({ error: "Self-inflicted casualties are dodge/crowd only" }, { status: 409 });
@@ -1415,6 +1444,9 @@ function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { ty
           roll16: cmd.roll16,
           ...(cmd.roll6 != null ? { roll6: cmd.roll6 } : {}),
           band,
+          /** LM-12/D1: the non-active both-down casualty carries the additive
+           * marker onto the persisted payload (absent for a plain block). */
+          ...(cmd.bothDown === true ? { bothDown: true } : {}),
           ...(permanentAttributeOutcome != null ? { permanentAttribute: permanentAttributeOutcome } : {}),
         },
         at: now,
