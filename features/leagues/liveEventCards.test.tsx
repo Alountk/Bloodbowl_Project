@@ -220,6 +220,26 @@ describe("LiveEventCards — victim and cause lines (MVT-5)", () => {
     expect(dodge!.textContent).toContain("Esquivando — se cayó");
     expect(dodge!.textContent).not.toContain("por ");
   });
+
+  it("renders the '(Ambos derribados)' marker suffix on a both-down casualty card (b5)", () => {
+    const { container } = renderCards([
+      // Non-active coach's both-down block record — rival AWAY blocker (p2)
+      // falls, causer is the HOME defender (p4), cause fixed `block`, marker on.
+      ev(9, "casualty", "away", { band: "grave", cause: "block", causerRosterId: "p4", bothDown: true }, "p2", 6, 3000),
+    ]);
+    const victimRow = Array.from(container.querySelectorAll("[data-testid='live-event-row']")).find((li) =>
+      li.textContent?.includes("Ambos derribados"),
+    );
+    expect(victimRow).toBeTruthy();
+    expect(victimRow!.textContent).toContain("por Arnau (#2) · Bloqueo");
+  });
+
+  it("does NOT append the both-down marker to a plain block defender casualty", () => {
+    const { container } = renderCards([
+      ev(9, "casualty", "away", { band: "grave", cause: "block", causerRosterId: "p4" }, "p2", 6, 3000),
+    ]);
+    expect(container.textContent).not.toContain("Ambos derribados");
+  });
 });
 
 describe("LiveEventCards — legacy fallback (LM-6) and unknown cause pass-through", () => {

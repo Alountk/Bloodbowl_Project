@@ -15,6 +15,7 @@ import {
   casualtyRollLine,
   casualtyActionLine,
   journeymanJoinLabel,
+  bothDownMarkerLabel,
   type TFunc,
 } from "./liveEventLabels";
 import { Icon, type IconName } from "./icons";
@@ -420,6 +421,10 @@ export function LiveEventCards({
             ? casualtyCauseParts(event.payload, oppositeTeam, oppositeRef, t)
             : null;
         const bandSub = event.kind === "casualty" ? bandSubLabel(event.payload, t) : null;
+        // b5: the "(Ambos derribados)" marker copy — only on the non-active
+        // coach's both-down block record (D1); a plain defender block card (no
+        // marker) and every other casualty render no suffix.
+        const bothDownMarker = event.kind === "casualty" ? bothDownMarkerLabel(event.payload, t) : null;
         // RAU-39: the injury card's roll line ("Tirada 1D16: {roll16}") — the
         // band is server-derived from this roll, shown as the sub-line/cause.
         const rollLine = event.kind === "casualty" ? casualtyRollLine(event.payload, t) : null;
@@ -565,10 +570,10 @@ export function LiveEventCards({
                           the ★2 the CAUSER earns (the causer's derived action
                           card below carries the star). TD ★3 / completion ★1 /
                           MVP ★4 keep their stars here (the event's player IS
-                          the actor). NOTE: the BB2025 "ambos derribados"
-                          (both-down) block result is NOT implemented — a block
-                          casualty records the ★2 on the causer exactly like a
-                          blitz. */}
+                          the actor). The BB2025 "ambos derribados" (both-down)
+                          block result records the ★2 on the causer (DEC-1):
+                          non-active coach's record carries `bothDown: true` and
+                          the marker copy renders via `bothDownMarkerLabel`. */}
                       {spp > 0 && event.kind !== "casualty" ? (
                         <span className={c.stars}>(★{spp})</span>
                       ) : null}
@@ -604,6 +609,7 @@ export function LiveEventCards({
                         ) : (
                           causeParts.cause
                         )}
+                        {bothDownMarker ? <span> {bothDownMarker}</span> : null}
                       </p>
                     ) : null}
                   </span>

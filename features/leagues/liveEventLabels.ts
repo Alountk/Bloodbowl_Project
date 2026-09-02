@@ -110,6 +110,19 @@ export function isBothDownCasualty(payload: Record<string, unknown>): boolean {
 }
 
 /**
+ * b5: the localized "(Ambos derribados)" marker copy for a both-down casualty.
+ * Returns null for a casualty that is NOT both-down (the marker only renders on
+ * the non-active coach's own block record — D1). Falls back to the Spanish copy
+ * when the active locale lacks `match.event.bothDown` (slice c wires the EN key).
+ */
+export function bothDownMarkerLabel(payload: Record<string, unknown>, fn: TFunc = esT): string | null {
+  if (!isBothDownCasualty(payload)) return null;
+  const key = "match.event.bothDown";
+  const translated = fn(key);
+  return translated === key ? "Ambos derribados" : translated;
+}
+
+/**
  * The casualty band sub-line rendered under the label (v7): "¡Muerto!" for a
  * death, "Se pierde el próximo partido" for every lasting non-dead band, and
  * "Lesión molesta" for a bruise. Unknown/missing bands → null (no sub-line).
