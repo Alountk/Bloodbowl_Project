@@ -191,3 +191,23 @@ export function eventAuthorSide(
  * it never hangs "in the air" (30–60s agreed with the product owner).
  */
 export const ACK_TIMEOUT_MS = 60_000;
+
+/**
+ * Design B: the event kinds a coach RECORDS and the RIVAL verifies (✓/✗). Only
+ * these carry an ack row/badge and only they may be acknowledged server-side.
+ * Every other kind (turnStart, start, endHalf, endMatch, turn, requestTurn,
+ * mvp, expensive_mistake, fan_factor, journeyman, concede) is a system/state
+ * card with NO author to verify — the UI renders no ack row and the server
+ * rejects any ack with 409 (defense in depth, shared with the UI).
+ */
+export const ACKABLE_KINDS: ReadonlySet<string> = new Set([
+  "td",
+  "completion",
+  "casualty",
+  "foul",
+]);
+
+/** Shorthand for the shared ackable-kind membership check (UI + server). */
+export function isAckableKind(kind: string): boolean {
+  return ACKABLE_KINDS.has(kind);
+}

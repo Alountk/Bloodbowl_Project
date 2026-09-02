@@ -305,12 +305,18 @@ describe("LiveEventCards — turn transition (RAU-36/37)", () => {
     expect(row.textContent).toContain("Turno Reavers");
     expect(row.textContent).toContain("T4");
     expect(row.textContent).not.toContain("Tu turno");
-    // v7 body: 30×30 token (NO dorsal), "Empieza el turno" position line and a
-    // hand detail line repeating the "Turno {team}" label.
+    // v7 body: 30×30 token (NO dorsal) + "Empieza el turno" position line. The
+    // "Turno {team}" label renders ONCE in `.name` — the right-hand `.detail`
+    // that repeated it is gone (mobile bugfix).
     expect(row.querySelector(".token")).toBeTruthy();
     expect(row.querySelector(".dorsal")).toBeNull();
     expect(row.textContent).toContain("Empieza el turno");
-    expect(row.querySelector(".dline")?.textContent).toContain("Turno Reavers");
+    expect(row.querySelector(".name")?.textContent).toBe("Turno Reavers");
+    expect(row.querySelectorAll(".name")).toHaveLength(1);
+    expect(row.querySelector(".detail")).toBeNull();
+    // System card → no Design-B ack row/badge (kind not ackable).
+    expect(row.querySelector("[class*='ack-row']")).toBeNull();
+    expect(row.textContent).not.toContain("Sin cotejar");
   });
 
   it("renders an away turnStart with the away (red) gradient and 'Turno Dwarves'", () => {
@@ -739,5 +745,44 @@ describe("LiveEventCards — payload-aware casualty ack author (D2/LM-26)", () =
     expect(screen.getByText(/Sin cotejar/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Revisar/i })).toBeNull();
+  });
+});
+
+describe("LiveEventCards — ack kind gate: only coach-recorded kinds carry the row/badge (mobile bugfix)", () => {
+  // Non-ackable system/state cards: no recorder-author → NO ✓/✗ row and NO
+  // status badge for ANY viewer (author, rival or spectator).
+  const SYSTEM_KINDS: { kind: string; side: "home" | "away" | null }[] = [
+    { kind: "turnStart", side: "home" },
+    { kind: "start", side: null },
+    { kind: "endHalf", side: null },
+    { kind: "endMatch", side: null },
+    { kind: "requestTurn", side: "home" },
+    { kind: "mvp", side: "home" },
+    { kind: "expensive_mistake", side: "home" },
+    { kind: "fan_factor", side: null },
+    { kind: "journeyman", side: "home" },
+    { kind: "concede", side: "home" },
+  ];
+
+  it.each(SYSTEM_KINDS)("renders NO ack row/badge on a $kind card for EITHER viewer", ({ kind, side }) => {
+    for (const viewerSide of ["home", "away", null] as const) {
+      const { container, unmount } = renderCards([ev(1, kind, side, {}, null, 1, Date.now())], { viewerSide });
+      expect(container.textContent).not.toMatch(/Sin cotejar|Cotejado|Verificado \(auto\)|Correcto|Revisar/);
+      expect(container.querySelectorAll("button")).toHaveLength(0);
+      expect(container.querySelector("[class*='ack-row']")).toBeNull();
+      unmount();
+    }
+  });
+
+  it("keeps the ack row on a turnStart-free TD, foul and completion for the RIVAL (still ackable)", () => {
+    for (const kind of ["td", "foul", "completion"] as const) {
+      const { container, unmount } = renderCards(
+        [ev(1, kind, "home", { victimRosterId: "p2" }, "p1", 1, Date.now())],
+        { viewerSide: "away" },
+      );
+      expect(container.querySelector("[class*='ack-row']")).toBeTruthy();
+      expect(container.textContent).toMatch(/Correcto|Revisar/);
+      unmount();
+    }
   });
 });

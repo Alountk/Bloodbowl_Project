@@ -1381,6 +1381,30 @@ describe("acknowledgeEventLiveMatch — the rival marks a card ok/nok (design B,
     expect(update).not.toHaveBeenCalled();
     expect(deps.hub.publish).not.toHaveBeenCalled();
   });
+
+  it("rejects an ack of a NON-ACKABLE kind (turnStart) with 409 and no mutation", async () => {
+    // System/state cards (turnStart, mvp, expensive_mistake, ...) have no
+    // recorder-author the rival verifies — the kind gate (shared ACKABLE_KINDS
+    // with the UI) rejects the ack even for the "rival" side, no update/publish.
+    const update = vi.fn();
+    const deps = makeDeps();
+    deps.prisma.liveMatch.findFirst = vi.fn().mockResolvedValue(liveRow);
+    deps.prisma.liveEvent.findFirst = vi.fn().mockResolvedValue({
+      id: "e5", liveMatchId: "lm-1", seq: 5, kind: "turnStart", side: "home",
+      playerRosterId: null, half: 1, turnNumber: 4, payload: {}, createdAt: new Date(1000),
+      ackStatus: "pending", ackAt: null, ackedBy: null,
+    });
+    deps.prisma.liveEvent.update = update;
+
+    await expect(
+      acknowledgeEventLiveMatch(
+        { liveMatchId: "lm-1", fixtureId: "f-1", eventSeq: 5, side: "away", userId: "u-away", status: "nok", now: 2000 },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(update).not.toHaveBeenCalled();
+    expect(deps.hub.publish).not.toHaveBeenCalled();
+  });
 });
 
 describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", () => {

@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveMinute, playerRef, turnTag, derivePartialScore } from "@/lib/liveFeed";
-import { ACK_TIMEOUT_MS, eventAuthorSide } from "@/lib/livePhase";
+import { ACK_TIMEOUT_MS, eventAuthorSide, isAckableKind } from "@/lib/livePhase";
 import {
   causeLabel,
   outcomeLabel,
@@ -30,8 +30,9 @@ import styles from "./liveEventCards.module.css";
  * bottom on the opposite side). The kickoff `expensive_mistake` is a team card
  * too (LM-24, no turn tag/minute/player — kbody with money-bag + outcome +
  * treasury). `turnStart` is a team card for the side whose turn starts
- * (RAU-36/37): token + "Turno {team}" / "Empieza el turno" + hand detail line,
- * no dorsal. Every other display kind (start/endHalf/endMatch/fan_factor) is a
+ * (RAU-36/37): token + "Turno {team}" / "Empieza el turno", no dorsal and no
+ * right-hand `.detail` repetition (the label renders once, in `.name`). Every
+ * other display kind (start/endHalf/endMatch/fan_factor) is a
  * GENERIC event card at 100% (icon left + content flex-1 + optional right data).
  * The `turn` ("Fin de turno") kind is NOT in the set — it is skipped outright
  * (RAU-36/37).
@@ -216,6 +217,13 @@ function wallClockTime(at: number): string {
  * ✗ (discrepancy) — informational only, the match never waits. If the rival
  * does not respond, the card auto-verifies after `ACK_TIMEOUT_MS`. The AUTHOR
  * (and spectators) only see the status badge.
+ *
+ * KIND GATE (mobile bugfix): the cotejo applies ONLY to events a coach records
+ * that the rival must verify — `td`/`completion`/`casualty`/`foul`. System and
+ * state cards (`turnStart`, `start`, `endHalf`, `endMatch`, `turn`,
+ * `requestTurn`, `mvp`, `expensive_mistake`, `fan_factor`, `journeyman`,
+ * `concede`) have no recorder-author to verify → this row returns null (no ✓/✗
+ * AND no status badge), matching the shared `ACKABLE_KINDS` server gate.
  */
 function EventAckRow({
   event,
@@ -231,6 +239,8 @@ function EventAckRow({
   onAck: (eventSeq: number, status: "ok" | "nok") => void;
 }) {
   const { t } = useI18n();
+  // Non-ackable kind → no ack row and no badge on this card at all.
+  if (!isAckableKind(event.kind)) return null;
   // D2/LM-26: the ack author is payload-aware — a casualty's author is its
   // CAUSER (opposite the victim side). A CAUSER-LESS casualty (self-inflicted
   // dodge/crowd) has no author → no ✓/✗ ever renders (auto-verify only).
@@ -260,7 +270,7 @@ function EventAckRow({
 
   if (!isRival || status !== "pending") {
     return (
-      <div className="mt-1 flex items-center justify-end">
+      <div className={`${styles["ack-row"]} mt-1 flex items-center justify-end`}>
         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
           {badgeText}
         </span>
@@ -269,7 +279,7 @@ function EventAckRow({
   }
 
   return (
-    <div className="mt-1 flex items-center justify-end gap-1.5">
+    <div className={`${styles["ack-row"]} mt-1 flex items-center justify-end gap-1.5`}>
       <span className="text-[10px] font-bold uppercase tracking-wide text-[#64748b]">
         {t("match.ack.pending")}
       </span>
@@ -468,8 +478,10 @@ export function LiveEventCards({
                 </>
               ) : null}
 
-              {/* turnStart team card (RAU-36/37): token + team line + hand detail,
-                  no dorsal — exactly the validated card. */}
+              {/* turnStart team card (RAU-36/37): token + team line + the
+                  "empieza el turno" sub-line, no dorsal — exactly the validated
+                  card. The label is NOT repeated in a right-hand `.detail`
+                  (mobile bugfix: "Turno {team}" must render once, in `.name`). */}
               {event.kind === "turnStart" ? (
                 <div className={c.cardBody}>
                   <span
@@ -482,14 +494,6 @@ export function LiveEventCards({
                     <p className={c.name}>{label}</p>
                     <p className={c.pos}>{t("match.turnStarts")}</p>
                   </div>
-                  <span className={c.detail}>
-                    <span className={`${c.dline} ${isHome ? c.dlineHome : c.dlineAway}`}>
-                      <span className={c.dicon}>
-                        <Icon name={iconName} className="h-[15px] w-[15px]" />
-                      </span>
-                      {label}
-                    </span>
-                  </span>
                 </div>
               ) : event.kind === "journeyman" ? (
                 // RAU-13: the journeyman join team card — shirt token + the
