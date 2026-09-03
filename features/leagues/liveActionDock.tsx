@@ -580,7 +580,7 @@ export function LiveActionDock({
       {/* The fixed dock grows upward: the sheet renders ABOVE the chips row. */}
       <div className="mx-auto w-full max-w-3xl px-3 pt-1">
         {sheetContent}
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-[#e2e8f0] py-2">
+        <div className="flex flex-wrap items-center gap-1.5 py-2">
           <p className="mr-1 hidden text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:inline">
             {t("match.dock.actions")}
           </p>
