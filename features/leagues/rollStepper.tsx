@@ -1,7 +1,11 @@
 "use client";
 
 import { t as translate, DEFAULT_LOCALE } from "@/lib/i18n/dictionaries";
-import { resolveInjury, permanentAttribute } from "@/lib/rules/injuries";
+import {
+  resolveInjury,
+  permanentAttribute,
+  type InjuryOutcomeKind,
+} from "@/lib/rules/injuries";
 import { casualtyBandLabel, type TFunc } from "./liveEventLabels";
 
 /**
@@ -22,6 +26,28 @@ const esT: TFunc = (key, params) => translate(DEFAULT_LOCALE, key, params);
 
 export const ROLL16_VALUES = Array.from({ length: 16 }, (_, i) => i + 1);
 export const ROLL6_VALUES = Array.from({ length: 6 }, (_, i) => i + 1);
+
+/**
+ * LM-27: the 1D16 severity chip styling per injury band — SAME `resolveInjury`
+ * mapping that drives the label. `chip` fills the option background so each band
+ * carries its severity color (the band is never hidden when selected); `text`
+ * is the dark-on-fill text color that keeps every chip readable under WCAG AA on
+ * the light panel. The coloured fills and dark text are the ONLY new colors
+ * (MV-7's five-band ramp); Tailwind JIT needs each arbitrary value spelled out.
+ *
+ * Selected = band fill + a navy ring (the ring, not a navy fill, marks the
+ * choice) so the severity band stays visible AND the selection is unambiguous.
+ */
+export const SEVERITY_CLASS: Record<InjuryOutcomeKind, { chip: string; text: string }> = {
+  bruise: { chip: "border-[#cbd5e1] bg-[#f1f5f9]", text: "text-[#334155]" },
+  apaleado: { chip: "border-[#fde047] bg-[#fef9c3]", text: "text-[#854d0e]" },
+  grave: { chip: "border-[#fcd34d] bg-[#fef3c7]", text: "text-[#92400e]" },
+  permanent: { chip: "border-[#fdba74] bg-[#ffedd5]", text: "text-[#9a3412]" },
+  dead: { chip: "border-[#fca5a5] bg-[#fee2e2]", text: "text-[#991b1b]" },
+};
+
+/** The navy ring marking the selected 1D16 chip on top of its band fill. */
+const SELECTED_RING = "ring-2 ring-[#12225a]";
 
 /**
  * RAU-42: the 1D16 option label — "{roll} → {band}" ("8 → Magullado"), with the
@@ -67,18 +93,19 @@ export function RollStepper({ roll16, roll6, onRoll16, onRoll6, fn }: RollSteppe
       >
         {ROLL16_VALUES.map((n) => {
           const label = roll16OptionLabel(n, resolve);
+          const kind = resolveInjury(n).kind;
+          const severity = SEVERITY_CLASS[kind];
           const selected = roll16 === n;
           return (
             <button
               key={n}
               type="button"
               data-testid={`roll-option-${n}`}
+              data-band={kind}
               aria-pressed={selected}
               onClick={() => onRoll16(n)}
-              className={`rounded border px-2 py-1 text-xs font-bold ${
-                selected
-                  ? "border-[#12225a] bg-[#12225a] text-white"
-                  : "border-[#e2e8f0] bg-white text-[#12225a] hover:bg-[#f8fafc]"
+              className={`rounded border px-2 py-1 text-xs font-bold ${severity.text} ${severity.chip} ${
+                selected ? SELECTED_RING : ""
               }`}
             >
               {label}
