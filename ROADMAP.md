@@ -59,6 +59,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Roll de herida 1D16 con severidad por color**: chips pintados por banda (≤8 gris → 15-16 rojo) | #167 |
 | **Cards del feed compactas mobile-first** (todas las resoluciones): reemplaza la grilla rulebook v7 | #168 |
 | **Pasar turno con motivo**: botón inferior junto al dock con hoja de motivos (voluntario/tirada fallida/baja); el motivo se persiste (`lastTurnReason`, aditivo) y sobrevive a la recarga | #169 |
+| **Header del partido turn-first (Concepto B)** (SDD `match-header-turn-first`): la torre sticky navy se compacta — score por columna junto al emblema-ACRÓNIMO (fallback sin imagen: siglas del nombre, tope 3, nombre completo en tooltip hover desktop), panel central con pista única de turnos + 'Tu turno · reloj', mini-stats al feed | #172, #173, #174 |
 | **Cotejo solo en acciones de coach + fix cards móvil**: ack ✓/✗ únicamente en TD/Pase/Baja/Falta (ACKABLE_KINDS); card de turno sin label duplicado; layout móvil 430px | #165 |
 | **Ganancias al terminar el partido en vivo** (RAU-44): winnings deterministas por equipo persistidos en el cierre y expuestos en el resumen (sin refresco) | directos a main |
 | **Resolución del partido para partidos en vivo finalizados** (RAU-48/49): modal guiado con MVP y FF con previsualización confirmada | directos a main |
