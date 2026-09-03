@@ -12,7 +12,7 @@ import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type
 import { LiveEventCards } from "./liveEventCards";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
-import { PlayerActionStrip } from "./playerActionStrip";
+import { LiveActionDock } from "./liveActionDock";
 import { TeamEmblem } from "./TeamEmblem";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
@@ -1095,11 +1095,13 @@ function LiveActiveMatch({
               ) : null}
             </div>
           </div>
-          {/* Design-B (b): the player-first action strip — chips of the viewer's
-              OWN alive players + a role-aware action bubble (no FAB/menu/selects).
-              Same gate + props as the removed EventControls: renders only for a
-              live match with a viewer side (a spectator/admin never sees it). */}
-          <PlayerActionStrip
+          {/* Design-A (d): the contextual action dock — a FIXED bar over the
+              viewport bottom showing the actions legal RIGHT NOW per role
+              (TD/Pase/Baja/Falta when ACTIVE; only casualty records when the
+              turn is the rival's). Tapping opens a player-chip sheet. Same gate
+              as the removed strip: a live match with a viewer side only — a
+              spectator/admin or a non-live match never sees it. */}
+          <LiveActionDock
             viewerSide={state.viewerSide}
             activeSide={state.activeSide}
             status={state.status}
@@ -1109,6 +1111,8 @@ function LiveActiveMatch({
             opponentRaceId={state.viewerSide === "away" ? homeTeam.raceId : awayTeam.raceId}
             onSubmit={act}
           />
+          {/* Spacer so the fixed dock never covers the tail of the live feed. */}
+          <div aria-hidden className="h-20" />
         </>
       )}
     </div>

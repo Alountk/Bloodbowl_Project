@@ -6,7 +6,7 @@ test.use({ locale: "es-ES" });
  * AUTH_MODE=auth + Postgres; ignored in the local `AUTH_MODE=local` suite).
  *
  * Covers the interactive 2-coach realtime slice (LM-1/LM-8/LM-11) PLUS the
- * Design-A history feed and the PlayerActionStrip (LM-17/LM-20):
+ * Design-A history feed and the Design-A contextual action DOCK (LM-17/LM-46):
  *   1. a league is created (no clock option, D15); two coaches join and start a
  *      1-jornada season;
  *   2. both coaches consent through the REAL match-view buttons ("Iniciar
@@ -19,19 +19,21 @@ test.use({ locale: "es-ES" });
  *      make cross-context fan-out observable in `next dev`;
  *   4. new-device recovery: B reconnects from a FRESH page in a new context (same
  *      user — a new device equivalent) and gets a snapshot-first live view;
- *   5. Event recording via the REAL PlayerActionStrip (LM-20/D26): a player-first
- *      strip of own-roster chips → a role-aware bubble → the guided casualty
- *      flows and the shared 1D16(+1D6) RollStepper (no FAB, no menu, no long
- *      selects). The NON-active coach's bubble offers ONLY the self-inflicted
- *      (dodge/crowd) wound and the both-down block casualty (LM-12). The ACTIVE
- *      coach records a Pase completo (★1), a Touchdown (★3) and drives the
- *      DIRECT blitz casualty; the canonical both-down pair is recorded through
- *      the strip: record A by the away ACTIVE (plain `block`, victim = a home
- *      defender, causer = an away blocker) and record B by the home NON-active
- *      (`bothDown:true`, victim = an away blocker, causer = a home defender) —
- *      DEC-1: BOTH records award ★2 on their causer action cards (no PE
- *      exception), the pair renders as four separate rows (feed rows appear
- *      live via the hub);
+ *   5. Event recording via the REAL contextual action dock (LM-46/D26): a fixed
+ *      bar over the viewport shows the actions legal RIGHT NOW per role and
+ *      opens a player-chip SHEET (dorsal + short name; alive, non-suspended
+ *      only). Two-touch TD/Pase (action → own player chip fires instantly) and
+ *      the guided casualty / foul steppers reuse 1D16(+1D6) `RollStepper`
+ *      (no FAB, no menu, no long selects). The NON-active coach's dock offers
+ *      ONLY "Baja propia" (dodge/crowd) and "Baja — ambos derribados" (LM-12).
+ *      The ACTIVE coach records a Pase completo (★1), a Touchdown (★3) and
+ *      drives the DIRECT blitz casualty; the canonical both-down pair is
+ *      recorded through the dock: record A by the away ACTIVE (plain `block`,
+ *      victim = a home defender, causer = an away blocker) and record B by the
+ *      home NON-active (`bothDown:true`, victim = an away blocker, causer = a
+ *      home defender) — DEC-1: BOTH records award ★2 on their causer action
+ *      cards (no PE exception), the pair renders as four separate rows (feed
+ *      rows appear live via the hub);
  *   6. reload persistence: the match page re-renders the same Design-A history
  *      from the persisted events (no turn rows, a reload does not drop them);
   *   7. a finished live match shows the RAU-49/RAU-52 guided RESOLUTION flow —
@@ -329,29 +331,77 @@ async function driveJourneymenDone(dialog: ReturnType<Page["getByRole"]>) {
 }
 
 /**
- * The REAL recording strip for a coach's page (LM-20): a player-first bar of own
- * alive chips → a role-aware bubble → the guided flows + RollStepper.
+ * The REAL action dock for a coach's page (Design A): a fixed contextual bar
+ * that shows the actions legal RIGHT NOW by role, which opens a chip sheet.
  */
-function coachStrip(coach: Page) {
-  return coach.getByTestId("player-action-strip");
+function actionDock(coach: Page) {
+  return coach.getByTestId("live-action-dock");
+}
+
+/** Opens the dock sheet for the coach's given action (matched by name). */
+async function openDockAction(coach: Page, actionName: string): Promise<ReturnType<Page["getByTestId"]>> {
+  const dock = actionDock(coach);
+  await expect(dock).toBeVisible();
+  await dock.getByRole("button", { name: new RegExp(actionName, "i") }).click();
+  const sheet = dock.getByTestId("live-action-sheet");
+  await expect(sheet).toBeVisible();
+  return dock;
+}
+
+/** Taps the coach's Nth OWN dorsal chip currently offered by the sheet pool. */
+async function dockTapOwn(coach: Page, ownIndex: number) {
+  const dock = actionDock(coach);
+  const pool = dock.getByTestId("dock-pool-own");
+  await expect(pool).toBeVisible();
+  const chip = pool.getByTestId("dock-player-own").nth(ownIndex);
+  await expect(chip).toBeVisible();
+  await chip.click();
+}
+
+/** Taps the RIVAL team's Nth dorsal chip currently offered by the sheet pool. */
+async function dockTapRival(coach: Page, rivalIndex: number) {
+  const dock = actionDock(coach);
+  const pool = dock.getByTestId("dock-pool-rival");
+  await expect(pool).toBeVisible();
+  const chip = pool.getByTestId("dock-player-rival").nth(rivalIndex);
+  await expect(chip).toBeVisible();
+  await chip.click();
 }
 
 /**
- * Two-touch strip submit (LM-20): taps the coach's Nth own chip served-index
- * (dorsal = index + 1), asserts the role-aware bubble opened, then clicks the
- * given (regex-matched) action to FIRE a non-guided command (TD/Pase — 2nd tap
- * submits; no cause/victim/roll stages). The bubble closes on submit.
+ * Two-touch TD / Pase from the dock: action → the coach's OWN player chip,
+ * which fires the command instantly and closes the sheet (no roll stages).
  */
-async function stripTapAction(coach: Page, actionName: string, dorsalIndex: number) {
-  const strip = coachStrip(coach);
-  const chip = strip.getByTestId("player-action-chip").nth(dorsalIndex);
-  await expect(chip).toBeVisible();
-  await chip.click();
-  const bubble = strip.getByTestId("player-action-bubble");
-  await expect(bubble).toBeVisible();
-  await bubble.getByRole("button", { name: new RegExp(actionName, "i") }).click();
-  await expect(strip.getByTestId("player-action-bubble")).toHaveCount(0);
+async function dockScoredAction(coach: Page, actionName: string, ownIndex: number) {
+  await openDockAction(coach, actionName);
+  await dockTapOwn(coach, ownIndex);
+  const dock = actionDock(coach);
+  await expect(dock.getByTestId("live-action-sheet")).toHaveCount(0);
 }
+
+/** Picks the active coach's injury CAUSE from the step's cause chips. */
+async function dockPickCause(coach: Page, causeLabel: string) {
+  const dock = actionDock(coach);
+  const causes = dock.getByTestId("dock-cause-pool");
+  await expect(causes).toBeVisible();
+  await causes.getByRole("button", { name: new RegExp(causeLabel, "i") }).click();
+}
+
+/** Rolls the 1D16 (+1D6 when permanent) inside the dock sheet + Registers. */
+async function dockRollAndRecord(coach: Page, roll16: number, roll6?: number) {
+  const dock = actionDock(coach);
+  const stepper = dock.getByTestId("dock-roll-stage");
+  await expect(stepper).toBeVisible();
+  await stepper.getByTestId(`roll-option-${roll16}`).click();
+  if (roll6 != null) {
+    const six = dock.getByTestId("roll-stepper-6");
+    await expect(six).toBeVisible();
+    await six.getByTestId(`roll-option-${roll6}`).click();
+  }
+  await dock.getByTestId("live-action-submit").click();
+  await expect(actionDock(coach).getByTestId("live-action-sheet")).toHaveCount(0);
+}
+
 
 test("two-context SSE sync + new-device recovery + result prefill", async ({ browser }) => {
   const tag = Date.now().toString(36);
@@ -492,40 +542,36 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByText("Tu rival pide el turno")).toBeVisible();
     await expect(homeCoach.getByText("Tu rival pide el turno")).toHaveCount(0);
 
-    // DESIGN-A feed (LM-17) + PlayerActionStrip (LM-20/D26) — recorded through
-    // the REAL player-first strip (no FAB, no menu, no selects). At Turn 1 the
-    // AWAY coach is ACTIVE and the HOME coach is NON-active, so each role's
-    // bubble is exercised deterministically (each coach's OWN alive chips are
-    // dorsal-served; both all alive so a served index == the chip index).
+    // DESIGN-A feed (LM-17) + contextual action dock (LM-46/D26) — recorded
+    // through the REAL dock (no FAB, no player-first strip, no selects). At this
+    // point the AWAY coach is ACTIVE and the HOME coach is NON-active, so each
+    // role's dock is exercised deterministically (each coach's OWN alive players
+    // are dorsal-served; both all alive so a served index == the chip index).
     //
-    // [A] NON-active (home) coach: their chip bubble offers ONLY the casualty
-    // actions — "Baja propia" (self-inflicted dodge/crowd wound on the tapped
-    // own player) and "Baja ambos derribados" — with NO TD / Pase / Falta rows
-    // (LM-20 scenario). RAU-39: the record carries NO causer and the 1D16 roll
-    // (band derived server-side, NEVER a band select).
-    const homeStrip = coachStrip(homeCoach);
-    await expect(homeStrip).toBeVisible();
-    await homeStrip.getByTestId("player-action-chip").nth(0).click();
-    const homeBubble = homeStrip.getByTestId("player-action-bubble");
-    await expect(homeBubble).toBeVisible();
-    await expect(homeBubble.getByText("Baja propia")).toBeVisible();
-    await expect(homeBubble.getByText("Baja — ambos derribados")).toBeVisible();
-    await expect(homeBubble.getByRole("button", { name: /Touchdown/i })).toHaveCount(0);
-    await expect(homeBubble.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
-    await expect(homeBubble.getByRole("button", { name: /Falta/i })).toHaveCount(0);
-    await homeBubble.getByRole("button", { name: "Baja propia" }).click();
-    // Only self-inflicted causes are offered to the NON-active coach (dodge/crowd).
-    await expect(homeBubble.getByText("Causa de la lesión")).toBeVisible();
-    await expect(homeBubble.getByRole("button", { name: "Bloqueo" })).toHaveCount(0);
-    await expect(homeBubble.getByRole("button", { name: "Blitz" })).toHaveCount(0);
-    await expect(homeBubble.getByRole("button", { name: /Falta/i })).toHaveCount(0);
-    await homeBubble.getByRole("button", { name: "Esquivando — se cayó" }).click();
-    // Self-inflicted: no victim/author pick stage — jump straight to the 1D16 roll.
-    await expect(homeBubble.getByTestId("player-action-rival")).toHaveCount(0);
-    await expect(homeBubble.getByText("Autor de la lesión")).toHaveCount(0);
-    await homeBubble.getByTestId("roll-stepper-16").getByTestId("roll-option-9").click();
-    await homeBubble.getByTestId("player-action-submit").click();
-    await expect(homeStrip.getByTestId("player-action-bubble")).toHaveCount(0);
+    // [A1] NON-active (home) coach: their dock offers ONLY the casualty
+    // records — "Baja propia" (self-inflicted dodge/crowd wound on their own
+    // player) and "Baja — ambos derribados" — with NO TD / Pase / Falta
+    // (LM-20 scenario). RAU-39: the record carries NO causer; the 1D16 roll
+    // band is derived server-side (NEVER a band select).
+    const homeDock = actionDock(homeCoach);
+    await expect(homeDock).toBeVisible();
+    await expect(homeDock.getByRole("button", { name: "Baja propia" })).toBeVisible();
+    await expect(homeDock.getByRole("button", { name: "Baja — ambos derribados" })).toBeVisible();
+    await expect(homeDock.getByRole("button", { name: /Touchdown/i })).toHaveCount(0);
+    await expect(homeDock.getByRole("button", { name: /Pase completo/i })).toHaveCount(0);
+    await expect(homeDock.getByRole("button", { name: /Falta/i })).toHaveCount(0);
+    await openDockAction(homeCoach, "Baja propia");
+    // The own fallen player is picked as the VICTIM of their own dodge.
+    await dockTapOwn(homeCoach, 0);
+    // Only self-inflicted causes are offered (dodge/crowd) — never blitz/foul.
+    const causePool = await actionDock(homeCoach).getByTestId("dock-cause-pool");
+    await expect(causePool.getByRole("button", { name: "Bloqueo" })).toHaveCount(0);
+    await expect(causePool.getByRole("button", { name: "Blitz" })).toHaveCount(0);
+    await expect(causePool.getByRole("button", { name: /Falta/i })).toHaveCount(0);
+    await causePool.getByRole("button", { name: "Esquivando — se cayó" }).click();
+    // Self-inflicted: no rival pool stage; jump to the RollStepper.
+    await expect(actionDock(homeCoach).getByTestId("dock-pool-rival")).toHaveCount(0);
+    await dockRollAndRecord(homeCoach, 9);
     // The self-inflicted casualty card (victim = own home #1) renders with the
     // derived band + roll line and NO "por …" causer line (no causer pays no-★).
     await expect(
@@ -536,28 +582,21 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     ).toHaveCount(0);
 
     // [A2] DIRECT casualty (design B, RAU-82): the ACTIVE (away) coach records
-    // the DIRECT blitz injury THEY inflicted through the strip — tap the away #1
-    // chip → "Baja causada" → cause Blitz → home #1 as victim → 1D16 roll (ONE
-    // phase, consumed instantly; the rival (home) sees the card with the ✓/✗ ack
-    // row — informational only, the match never waits). The band is derived
-    // server-side from the roll (never a band select).
-    const awayStrip = coachStrip(awayCoach);
-    await expect(awayStrip).toBeVisible();
-    await awayStrip.getByTestId("player-action-chip").nth(0).click();
-    const awayBubble = awayStrip.getByTestId("player-action-bubble");
-    await expect(awayBubble).toBeVisible();
-    await expect(awayBubble.getByText("Baja causada")).toBeVisible();
-    await expect(awayBubble.getByText("Baja propia")).toHaveCount(0);
-    await awayBubble.getByRole("button", { name: "Baja causada" }).click();
-    await awayBubble.getByText("Causa de la lesión").waitFor();
-    await awayBubble.getByRole("button", { name: "Bloqueo" }).waitFor();
-    await awayBubble.getByRole("button", { name: "Blitz" }).click();
-    await expect(awayBubble.getByText("Víctima")).toBeVisible();
-    // Home #1 is the victim of this DIRECT blitz (causer = the tapped away #1).
-    await awayBubble.getByTestId("player-action-rival").nth(0).click();
-    await awayBubble.getByTestId("roll-stepper-16").getByTestId("roll-option-9").click();
-    await awayBubble.getByTestId("player-action-submit").click();
-    await expect(awayStrip.getByTestId("player-action-bubble")).toHaveCount(0);
+    // the DIRECT blitz injury THEY inflicted through the dock — "Baja causada"
+    // → cause Blitz → the away #1 as CAUSER → home #1 as VICTIM → 1D16 roll.
+    // One phase, consumed instantly; the rival (home) sees the card with the
+    // ✓/✗ ack row — informational only, the match never waits). The band is
+    // derived server-side from the roll (never a band select).
+    const awayDock = actionDock(awayCoach);
+    await expect(awayDock).toBeVisible();
+    await expect(awayDock.getByRole("button", { name: "Baja propia" })).toHaveCount(0);
+    await expect(awayDock.getByRole("button", { name: "Baja causada" })).toBeVisible();
+    await openDockAction(awayCoach, "Baja causada");
+    await dockPickCause(awayCoach, "Blitz");
+    // Own causer (away #1) then rival victim (home #1) — action wins.
+    await dockTapOwn(awayCoach, 0);
+    await dockTapRival(awayCoach, 0);
+    await dockRollAndRecord(awayCoach, 9);
     // The DIRECT casualty card appears INSTANTLY for the recorder: the injury
     // card on the victim's (home) side with the MVT-5 causer line AND the derived
     // action card on the causer's (away) side — both feeds converge via the hub.
@@ -617,10 +656,10 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
 
     // [B] BOTH-DOWN CANONICAL PAIR (LM-12/D1, DEC-1 ★2-symmetric). Both records
     // happen inside the away-active turn as CASUALTIES (they never flip the
-    // turn): record A by the away ACTIVE over the strip (plain `block` casualty:
+    // turn): record A by the away ACTIVE over the dock (plain `block` casualty:
     // victim = a home defender, causer = an away blocker), then record B by the
     // home NON-active ("Baja — ambos derribados": victim = an away blocker,
-    // causer = the tapped home defender, `bothDown: true`). DEC-1: BOTH causer
+    // causer = the home defender, `bothDown: true`). DEC-1: BOTH causer
     // records award ★2 on their derived action cards (no PE suppression) and the
     // pair renders as FOUR separate rows — the blocker record's injury card alone
     // carries the "(Ambos derribados)" marker copy.
@@ -629,18 +668,13 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     const homeDefenderCauser = homeRoster[3]; // record-B causer (home #4)
     const awayBlockerDown = awayRoster[4]; // record-B victim (away #5)
 
-    const strip = (c: Page) => c.getByTestId("player-action-strip");
-
-    // Record A: away ACTIVE "Baja causada" → cause Bloqueo → home defender victim.
-    await strip(awayCoach).getByTestId("player-action-chip").nth(2).click();
-    const awayBubbleA = strip(awayCoach).getByTestId("player-action-bubble");
-    await expect(awayBubbleA).toBeVisible();
-    await awayBubbleA.getByRole("button", { name: "Baja causada" }).click();
-    await awayBubbleA.getByRole("button", { name: "Bloqueo" }).click();
-    await awayBubbleA.getByTestId("player-action-rival").nth(1).click();
-    await awayBubbleA.getByTestId("roll-stepper-16").getByTestId("roll-option-11").click();
-    await awayBubbleA.getByTestId("player-action-submit").click();
-    await expect(strip(awayCoach).getByTestId("player-action-bubble")).toHaveCount(0);
+    // Record A: away ACTIVE "Baja causada" → cause Bloqueo → away #3 CAUSER →
+    // then home #2 VICTIM (dock order: cause → causer → victim).
+    await openDockAction(awayCoach, "Baja causada");
+    await dockPickCause(awayCoach, "Bloqueo");
+    await dockTapOwn(awayCoach, 2);
+    await dockTapRival(awayCoach, 1);
+    await dockRollAndRecord(awayCoach, 11);
     // DEC-1 ★2 on record-A causer's action card (both feeds), injury card no star.
     const blockALine = `${awayBlocker.name} hace una herida a ${homeDefenderDown.name}`;
     for (const page of [awayCoach, homeCoach]) {
@@ -652,18 +686,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       ).toHaveCount(0);
     }
 
-    // Record B: home NON-active tap own #4 → "Baja — ambos derribados" → victim
-    // = the rival fallen blocker (away #5), cause fixed block, then the roll →
-    // Registrar sends {cause:block, bothDown:true}.
-    await strip(homeCoach).getByTestId("player-action-chip").nth(3).click();
-    const homeBubbleB = strip(homeCoach).getByTestId("player-action-bubble");
-    await expect(homeBubbleB).toBeVisible();
-    await homeBubbleB.getByRole("button", { name: "Baja — ambos derribados" }).click();
-    await expect(homeBubbleB.getByText("Víctima")).toBeVisible();
-    await homeBubbleB.getByTestId("player-action-rival").nth(4).click();
-    await homeBubbleB.getByTestId("roll-stepper-16").getByTestId("roll-option-11").click();
-    await homeBubbleB.getByTestId("player-action-submit").click();
-    await expect(strip(homeCoach).getByTestId("player-action-bubble")).toHaveCount(0);
+    // Record B: home NON-active dock action "Baja — ambos derribados" → the
+    // home #4 defender is the CAUSER (own pool first) → victim = the rival
+    // fallen blocker away #5 (rival pool) → fixed block roll → Registrar sends
+    // {cause:block, bothDown:true}.
+    await openDockAction(homeCoach, "Baja — ambos derribados");
+    await dockTapOwn(homeCoach, 3);
+    await dockTapRival(homeCoach, 4);
+    await dockRollAndRecord(homeCoach, 11);
     // DEC-1 ★2 on record-B causer's action card too (the both-down marker does
     // NOT suppress PE under DEC-1), on both feeds; the victim injury card has no
     // star but carries the marker copy once for the pair.
@@ -720,15 +750,15 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       .getByRole("button", { name: /Correcto/i })
       .click();
 
-    // [C] ACTIVE (away) Pase completo (★1) in TWO touches (chip → action):
-    // through the strip (no selects). The completion row (★1) streams to both.
-    await stripTapAction(awayCoach, "Pase completo", 0);
+    // [C] ACTIVE (away) Pase completo (★1) in TWO dock touches (action → own
+    // scorer chip): through the dock (no selects). The row (★1) streams to both.
+    await dockScoredAction(awayCoach, "Pase completo", 0);
     await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: `${awayRoster[0].name}` }).filter({ hasText: "Pase completo" }).first()).toBeVisible();
     await expect(awayCoach.getByText("★1")).toBeVisible();
 
-    // [D] ACTIVE (away) Touchdown (★3) in TWO touches via the strip → the hero
+    // [D] ACTIVE (away) Touchdown (★3) in TWO touches via the dock → the hero
     // score update (away +1) + the turn flips back to home.
-    await stripTapAction(awayCoach, "Touchdown", 0);
+    await dockScoredAction(awayCoach, "Touchdown", 0);
     await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: "★3" })).toBeVisible();
     // MVT-1: the away TD card carries the per-TD partial score "(home - away)"
     // derived by accumulating TD events in seq order — home 0, away 1 here.
@@ -764,7 +794,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
 
     // Finish the match (lifecycle, admin MayEnd). The finished live DTO then
     // triggers the RAU-49 guided resolution flow (not the manual result form).
-    // (The away score is already 1 via the strip TD.)
+    // (The away score is already 1 via the dock TD.)
     const afterEnd = await liveCommand(admin, leagueId, fixtureId, { type: "endMatch" });
     expect(afterEnd.view.status).toBe("finished");
 
@@ -843,7 +873,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await admin.goto(`/leagues/${leagueId}`);
     const region = admin.getByRole("region", { name: "Jornada 1" });
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    // The recorded score (home 0, away 1 via the strip TD) + "Jornada completa".
+    // The recorded score (home 0, away 1 via the dock TD) + "Jornada completa".
     await expect(region.getByText(/(0 : 1)/)).toBeVisible();
     await expect(admin.getByText("Jornada completa")).toBeVisible();
   } finally {
