@@ -23,28 +23,29 @@ import type { LiveMatchView, MatchTeamDetail } from "./api";
 import styles from "./liveEventCards.module.css";
 
 /**
- * The validated rulebook v7 card set (`previews/cards-rulebook-duplicado.html`).
- * A wide-event usually names a player on one side, so it renders as a TEAM card
- * at 68% width sitting on that team's side with a navy (home) / red (away)
- * gradient and mirrored grid corners (turn tag top on the team's side, minute
- * bottom on the opposite side). The kickoff `expensive_mistake` is a team card
- * too (LM-24, no turn tag/minute/player — kbody with money-bag + outcome +
+ * The validated COMPACT live event card set (`bloodbowl_designs/
+ * timeline-action-entry-designs.html`, the "mini rows" study). Every display
+ * event renders as a WHITE full-width card on the `#f8fafc` token feed shell,
+ * read left → right at every viewport: token/dorsal + name + label + optional
+ * sub-lines on one row, with the turn-tag + minute as inline meta. TEAM events
+ * (usually naming a player on one side) carry a 3px left side accent at the
+ * navy/red opacity tokens (home `rgba(18,34,90,.18)` / away `rgba(209,25,56,.18)`)
+ * plus the per-side token/tag colors. The kickoff `expensive_mistake` is a team
+ * card too (LM-24, no turn tag/minute/player — kbody with money-bag + outcome +
  * treasury). `turnStart` is a team card for the side whose turn starts
  * (RAU-36/37): token + "Turno {team}" / "Empieza el turno", no dorsal and no
  * right-hand `.detail` repetition (the label renders once, in `.name`). Every
- * other display kind (start/endHalf/endMatch/fan_factor) is a
- * GENERIC event card at 100% (icon left + content flex-1 + optional right data).
+ * other display kind (start/endHalf/endMatch/fan_factor/concede) is a GENERIC
+ * centered card at full width (icon left + content + optional right minute).
  * The `turn` ("Fin de turno") kind is NOT in the set — it is skipped outright
  * (RAU-36/37).
  *
- * LAYOUT SOURCE OF TRUTH: `liveEventCards.module.css`, which ports the
- * duplicate's plain CSS VERBATIM. The previous Tailwind arbitrary-value classes
- * (`[grid-template-areas:'tag_body_._'…]`, `bg-[linear-gradient(…)]`) generated
- * INVALID CSS — Tailwind turns every `_` in an arbitrary value into a space, so
- * the quoted `grid-template-areas` strings collapsed and the declaration was
- * dropped, and the grid then auto-placed children in DOM order (broken layout).
- * A CSS module cannot be mangled that way, so the grid, gradients and per-side
- * mirroring live there; Tailwind remains only for simple utilities.
+ * LAYOUT SOURCE OF TRUTH: `liveEventCards.module.css` (plain CSS module). The
+ * earlier Tailwind arbitrary-value classes (`[grid-template-areas:…]`,
+ * `bg-[linear-gradient(…)]`) generated INVALID CSS because Tailwind turns every
+ * `_` inside an arbitrary value into a space, collapsing the quoted area
+ * strings; the geometry therefore lives in the module, where it cannot be
+ * mangled, and Tailwind only supplies simple spacing/alignment utilities.
  */
 const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake", "turnStart", "journeyman"]);
 
@@ -302,11 +303,11 @@ function EventAckRow({
 }
 
 /**
- * The rulebook chronology as a card grid (validated v7): a gray box (`#eef1f6`)
- * with a full 1px border, `12px 14px` inner padding and 2px gaps. Team events
- * sit at 68% with the side gradient and grid-template-areas (turn tag top on the
- * team's side, minute bottom on the opposite side); generic events span 100%
- * left-aligned with the icon left + expanded content + a right side.
+ * The compact event feed: a single full-width column on the `#f8fafc` token
+ * shell. Each event card (`li.live-event-row`) is a WHITE full-width card at
+ * every viewport (team events carry a 3px left side accent; generic events are
+ * centered with no accent), with the turn-tag + minute as inline meta — no 68%
+ * split, no side gradients, no corner grid, and no width media override.
  * `live-event-row` is preserved on each card `li` (spec continuity).
  */
 export function LiveEventCards({
@@ -391,7 +392,7 @@ export function LiveEventCards({
   return (
     <ol
       aria-label={t("match.chronologyAria")}
-      className="flex flex-col gap-[2px] border border-[#e2e8f0] bg-[#eef1f6] px-[14px] py-[12px]"
+      className="flex flex-col gap-1.5 bg-[#f8fafc]"
     >
       {ordered.map((event) => {
         // RAU-36/37: the generic "Fin de turno" row is noise — the turn change
@@ -469,11 +470,11 @@ export function LiveEventCards({
             >
               {showCorners ? (
                 <>
-                  {/* Turn tag: grid-area tag (top, own side — home left / away right). */}
+                  {/* Inline meta: turn tag pill (per-side navy/red). */}
                   <span className={`${c.turnTag} ${isAway ? c.turnTagAway : c.turnTagHome}`}>
                     {turnTag(event.half, event.turnNumber)}
                   </span>
-                  {/* Minute: grid-area min (bottom, OPPOSITE side). */}
+                  {/* Inline meta: minute as muted time, right before the body. */}
                   <span className={c.minute}>{minute}</span>
                 </>
               ) : null}
@@ -634,8 +635,9 @@ export function LiveEventCards({
             {/* RAU-39: the DERIVED action card on the CAUSER's side — the same
                 casualty event feeds BOTH the injury card (victim, above) and
                 this action card (causer + cause + roll/band sub-line). The
-                causer is on the OPPOSITE side of the victim (LM-12), so the
-                card mirrors with the rival tint and its own turn/minute. */}
+                causer is on the OPPOSITE side of the victim (LM-12), so the card
+                is a compact full-width row with the rival side's accent + inline
+                turn tag/minute meta. */}
             {actionCard ? (
               <li
                 key={`${event.seq}-action`}
