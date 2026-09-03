@@ -4,10 +4,10 @@ import { LiveEventCards } from "./liveEventCards";
 import type { LiveMatchView, MatchTeamDetail, LiveMatchEventDto } from "./api";
 
 /**
- * rulebook event cards (MVT-1/D3): team events at 68% width with the side
- * gradient + turn tag (own side) / minute (opposite side); generic events at
- * 100% centered; TD cards carry the derived partial score; foul/casualty cards
- * carry victim/cause-causer lines (MVT-5). Strict TDD RED suite.
+ * Compact full-width event cards (MVT-1/D3): team events are full-width white
+ * rows with a left side accent + inline turn tag/minute; generic events are
+ * centered full-width rows. TD cards carry the derived partial score; foul/
+ * casualty cards carry victim/cause-causer lines (MVT-5). Strict TDD suite.
  */
 
 function player(id: string, name: string, positionalKey = "blitzer", valueBonus = 0) {
@@ -78,19 +78,19 @@ function renderCards(
   );
 }
 
-describe("LiveEventCards — team cards 68% + generic 100% (MVT-1/D3)", () => {
-  it("renders a home TD as a team card with the turn tag, minute, player and partial score", () => {
+describe("LiveEventCards — full-width team cards + centered generics (MVT-1)", () => {
+  it("renders a home TD as a full-width team card with inline turn tag + minute, player and partial score", () => {
     const { container } = renderCards([ev(5, "td", "home", {}, "p1", 4, 241000)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row).toBeTruthy();
-    // The team card is 68%-width-sourced via the module `.ev--home` (home reads
-    // left→right); behaviorally it carries a turn tag on the team's side + the minute.
+    // The team card is a full-width white row (home navy accent via the module).
+    // Behaviorally it still carries the inline turn tag, minute, player + score.
     expect(row.textContent).toContain("T4");
     expect(row.textContent).toContain("4'");
     expect(row.textContent).toContain("Touchdown");
     expect(row.textContent).toContain("Blitzer A");
-    // v7 structure: navy turn tag + navy helmet token + dorsal column +
-    // name/position, then the right detail column with the ★3 dline + partial.
+    // navy turn tag + navy helmet token + dorsal column + name/position, then
+    // the right detail column with the ★3 dline + partial.
     expect(row.querySelector(".turn-tag")?.className).toContain("turn-tag--home");
     expect(row.querySelector(".token")?.className).toContain("token--home");
     expect(row.querySelector(".token svg")).toBeTruthy();
@@ -103,17 +103,14 @@ describe("LiveEventCards — team cards 68% + generic 100% (MVT-1/D3)", () => {
     expect(row.querySelector(".score-note")?.textContent).toBe("(1 - 0)");
   });
 
-  it("mirrors an away team card (red gradient, right-aligned, reversed body, tag right / minute left)", () => {
+  it("renders an away TD with the red accent token/tag and the same left→right anatomy", () => {
     const { container } = renderCards([ev(5, "td", "away", {}, "p2", 5, 241000)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row.className).toContain("ev--away");
-    // Away corners: red turn tag top-right, minute bottom-left, red token tint.
+    // Away inline meta + tinted token/detail read token → dorsal → who → detail.
     expect(row.querySelector(".turn-tag")?.className).toContain("turn-tag--away");
     expect(row.querySelector(".minute")?.textContent).toBe("4'");
     expect(row.querySelector(".token")?.className).toContain("token--away");
-    // The away body mirrors (row-reverse via the module's `.ev--away .card-body`
-    // rule) with the name right-aligned and the detail column left-aligned; the
-    // DOM still reads token → dorsal → who → detail before the visual flip.
     expect(row.querySelector(".card-body")).toBeTruthy();
     expect(row.querySelector(".card-body")?.firstElementChild?.className).toContain("token");
     expect(row.querySelector(".who")).toBeTruthy();
@@ -294,20 +291,19 @@ describe("LiveEventCards — turn transition (RAU-36/37)", () => {
     expect(container.textContent).not.toContain("Fin de turno");
   });
 
-  it("renders a home turnStart as a team-assigned 68% card labeled 'Turno Reavers'", () => {
+  it("renders a home turnStart as a full-width team card labeled 'Turno Reavers'", () => {
     const { container } = renderCards([ev(5, "turnStart", "home", {}, null, 4, 4000)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row).toBeTruthy();
-    // Team-card treatment: 68% width + home (navy) side gradient + left edge
-    // (all module-owned via `.ev--home`).
+    // Full-width team card with the home (navy) accent (module `.ev--home`).
     expect(row.className).toContain("ev--home");
     // Team-specific text instead of the generic audit label.
     expect(row.textContent).toContain("Turno Reavers");
     expect(row.textContent).toContain("T4");
     expect(row.textContent).not.toContain("Tu turno");
-    // v7 body: 30×30 token (NO dorsal) + "Empieza el turno" position line. The
-    // "Turno {team}" label renders ONCE in `.name` — the right-hand `.detail`
-    // that repeated it is gone (mobile bugfix).
+    // Compact body: 28px token (NO dorsal) + "Empieza el turno" position line.
+    // The "Turno {team}" label renders ONCE in `.name` — the right-hand `.detail`
+    // that repeated it is gone (single-line compact card).
     expect(row.querySelector(".token")).toBeTruthy();
     expect(row.querySelector(".dorsal")).toBeNull();
     expect(row.textContent).toContain("Empieza el turno");
@@ -319,20 +315,20 @@ describe("LiveEventCards — turn transition (RAU-36/37)", () => {
     expect(row.textContent).not.toContain("Sin cotejar");
   });
 
-  it("renders an away turnStart with the away (red) gradient and 'Turno Dwarves'", () => {
+  it("renders an away turnStart with the away red-accent token/tag and 'Turno Dwarves'", () => {
     const { container } = renderCards([ev(6, "turnStart", "away", {}, null, 5, 4500)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row.className).toContain("ev--away");
     expect(row.textContent).toContain("Turno Dwarves");
     expect(row.textContent).not.toContain("Tu turno");
-    // Away turn card mirrors: red token tint + the turn-start position line.
+    // Away card: red token tint + the turn-start position line.
     expect(row.querySelector(".token")?.className).toContain("token--away");
     expect(row.textContent).toContain("Empieza el turno");
   });
 });
 
 describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)", () => {
-  it("renders a home em as a 68% team card with the money-bag glyph, outcome label and treasury before → after (LM-24)", () => {
+  it("renders a home em as a full-width team card with the money-bag glyph, outcome label and treasury before → after (LM-24)", () => {
     const { container } = renderCards([
       ev(
         6,
@@ -345,7 +341,7 @@ describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)",
       ),
     ]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    // MVT-6: team card width + the navy (home) side gradient (module `.ev--home`).
+    // MVT-6: full-width team card with the home navy accent (module `.ev--home`).
     expect(row.className).toContain("ev--home");
     // Label, outcome label and the es-ES treasury line.
     expect(row.textContent).toContain("Error costoso");
@@ -361,7 +357,7 @@ describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)",
     expect(row.querySelector(".kbody")).toBeTruthy();
   });
 
-  it("renders the away em with the away (red) gradient and money-bag glyph", () => {
+  it("renders the away em with the away red accent and money-bag glyph", () => {
     const { container } = renderCards([
       ev(
         7,
@@ -419,7 +415,7 @@ describe("LiveEventCards — concede centered card (RAU-38)", () => {
     expect(row.querySelector(".turn-tag")).toBeNull();
   });
 
-  it("renders the away-surrender mirror and a label-only fallback when the payload lacks the winner", () => {
+  it("renders the away-surrender row and a label-only fallback when the payload lacks the winner", () => {
     const { container } = renderCards([
       ev(10, "concede", "away", { winnerSide: "home" }, null, 5, 5000),
       ev(11, "concede", "home", {}, null, 5, 5100),
@@ -440,7 +436,7 @@ describe("LiveEventCards — concede centered card (RAU-38)", () => {
 describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)", () => {
   it("renders a caused casualty as TWO cards: the injury card (victim) AND the action card (causer + cause + roll/band)", () => {
     // The victim is Blitzer B (away, p2); the causer Arnau (home, p4) is an
-    // OPPONENT of the victim (LM-12), so the action card mirrors on home.
+    // OPPONENT of the victim (LM-12), so the action card carries the home navy accent.
     const { container } = renderCards([
       ev(
         9,

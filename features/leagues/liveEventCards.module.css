@@ -1,296 +1,215 @@
 /**
- * The validated rulebook v7 event-card design, ported VERBATIM from
- * `previews/cards-rulebook-duplicado.html` (the user-validated spec).
+ * Compact full-width live event cards (MVT-1/MVT-6, validated `compact-study`).
  *
- * WHY A PLAIN-CSS MODULE: the previous Tailwind ARBITRARY-VALUE classes
- * (`[grid-template-areas:'tag_body_._'…]`, `bg-[linear-gradient(…)]`) produced
- * INVALID CSS. Tailwind converts every `_` inside an arbitrary value to a
- * space, so the quoted `grid-template-areas` strings collapsed
- * (`'tag body .''tag body .'` — no separator, and the last row was unquoted)
- * and the whole declaration was dropped; the grid then auto-placed children in
- * DOM order and the card layout broke. Plain CSS in a module cannot be
- * mangled, so this file is the layout source of truth.
+ * Ruleset-light portrait of the mini rulebook row from
+ * `bloodbowl_designs/timeline-action-entry-designs.html`: every event renders as
+ * a white full-width card on the `#f8fafc` token feed shell, read left → right
+ * at EVERY viewport — the previous narrow rulebook split, its side gradients
+ * and the mirrored grid corners are gone, and there is no width media override.
+ * Team side identity is carried ONLY by a 3px left accent at the opacity token
+ * (`rgba(18,34,90,.18)` home / `rgba(209,25,56,.18)` away) plus the existing
+ * per-side token/tag/dline colors; generic rows are centered with no accent.
+ * The turn-tag and the minute are INLINE meta (small pill / muted time), not
+ * grid corners.
  *
- * Scoped to the event cards only — the header/timeline modules are untouched.
+ * PLAIN CSS MODULE = layout source of truth: Tailwind arbitrary-value
+ * grid/area/gradient utilities generated invalid CSS here (each `_` became a
+ * space, collapsing quoted area strings), so the geometry lives in this module
+ * and Tailwind only supplies simple spacing/typography utilities in the TSX.
+ * This file intentionally never emits a width media query.
  */
 
-/* Base card (both team and generic) */
+/* ---- base card (all event rows: identified, centered, kickoff) ---- */
 .ev {
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 4px;
+  border-radius: 8px;
   box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
   padding: 6px 10px;
+  box-sizing: border-box;
 }
 
-/* Team cards: 68% grid with side gradient and mirrored corners */
+/* ---- team rows: full-width, 3px left accent; content reads left→right ---- */
 .ev--home,
 .ev--away {
-  width: 68%;
-  max-width: 68%;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-rows: auto 1fr auto;
-  gap: 0 8px;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
 }
-
 .ev--home {
-  align-self: flex-start;
-  background: linear-gradient(90deg, rgba(18, 34, 90, .12), rgba(255, 255, 255, 0) 45%), #fff;
-  grid-template-areas:
-    "tag   body  ."
-    "tag   body  ."
-    ".     body  min";
+  border-left: 3px solid rgba(18, 34, 90, .18);
 }
-
 .ev--away {
-  align-self: flex-end;
-  background: linear-gradient(270deg, rgba(209, 25, 56, .12), rgba(255, 255, 255, 0) 45%), #fff;
-  grid-template-areas:
-    ".     body  tag"
-    ".     body  tag"
-    "min   body  .";
+  border-left: 3px solid rgba(209, 25, 56, .18);
 }
 
-/* Corners: turn tag on the team's side, minute on the opposite side */
-.turn-tag {
-  grid-area: tag;
-  align-self: start;
-}
-
-.minute {
-  grid-area: min;
-  align-self: end;
-}
-
-.ev--home .minute {
-  text-align: right;
-}
-
-.ev--away .minute {
-  text-align: left;
-}
-
-/* Body column (player card + kickoff kbody), mirrored for away */
-.card-body,
-.kbody {
-  grid-area: body;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.ev--away .card-body,
-.ev--away .kbody {
-  flex-direction: row-reverse;
-}
-
-.ev--away .who,
-.ev--away .kwho {
-  text-align: right;
-}
-
-.detail {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
-}
-
-.ev--away .detail {
-  align-items: flex-start;
-  text-align: left;
-}
-
-.victim-line {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  justify-content: flex-end;
-}
-
-.ev--away .victim-line {
-  justify-content: flex-start;
-}
-
-/* Components (exact from the duplicate) */
+/* Inline meta (turn tag + minute) sit on the card, never grid corners. */
 .turn-tag {
   border-radius: 3px;
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 900;
+  line-height: 1.4;
   color: #fff;
+  flex: 0 0 auto;
 }
-
 .turn-tag--home {
   background: #12225a;
 }
-
 .turn-tag--away {
   background: #d11938;
 }
-
 .minute {
-  flex: 0 0 42px;
-  text-align: center;
+  flex: 0 0 auto;
   font-size: 11px;
+  line-height: 1.6;
   color: #64748b;
   font-variant-numeric: tabular-nums;
 }
 
-.dorsal {
-  flex: 0 0 24px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 900;
-  color: #64748b;
-}
-
-.token {
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
+/* Body column (player card + kickoff kbody): the whole flexible row inside the
+ * full-width card. No per-side mirroring — both sides read token→who→detail. */
+.card-body,
+.kbody {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.token--home {
-  background: rgba(18, 34, 90, .13);
-  color: #12225a;
-}
-
-.token--away {
-  background: rgba(209, 25, 56, .11);
-  color: #d11938;
-}
-
-.who {
+.who,
+.kwho {
   flex: 1;
   min-width: 0;
 }
-
 .who .name {
   font-weight: 800;
+  font-size: 12.5px;
+  line-height: 1.25;
   color: #0f172a;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.who .pos {
+.who .pos,
+.kwho .ksub {
   font-size: 11px;
+  line-height: 1.4;
   color: #64748b;
 }
+.who .pos {
+  margin-top: 1px;
+}
 
+/* Right detail column (event label + SPP stars + optional lines), never
+ * mirrored — left side accent/colors carry the side identity. */
+.detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  max-width: 62%;
+}
 .detail .dline {
   display: flex;
   align-items: center;
   gap: 5px;
   font-weight: 800;
+  font-size: 12px;
+  line-height: 1.4;
   color: #0f172a;
+  white-space: nowrap;
 }
-
 .detail .dline--home .dicon {
   color: #12225a;
 }
-
 .detail .dline--away .dicon {
   color: #d11938;
 }
-
 .detail .stars {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   color: #b8860b;
 }
-
 .detail .score-note {
   font-size: 11px;
   font-weight: 700;
   color: #64748b;
 }
-
 .detail .sub {
   font-size: 11px;
+  line-height: 1.5;
   color: #64748b;
 }
 
+/* Player row atomic pieces (sizes from the compact study) */
+.token {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.token--home { background: rgba(18, 34, 90, .13); color: #12225a; }
+.token--away { background: rgba(209, 25, 56, .11); color: #d11938; }
+
+.dorsal {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 900;
+  color: #64748b;
+}
+
+/* victim / cause lines (MVT-5) */
 .victim-line {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
   font-weight: 700;
   color: #64748b;
 }
-
 .vtoken {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-
-.vtoken--home {
-  background: rgba(18, 34, 90, .13);
-  color: #12225a;
-}
-
-.vtoken--away {
-  background: rgba(209, 25, 56, .11);
-  color: #d11938;
-}
-
+.vtoken--home { background: rgba(18, 34, 90, .13); color: #12225a; }
+.vtoken--away { background: rgba(209, 25, 56, .11); color: #d11938; }
 .cause-line {
   font-size: 11px;
   font-weight: 700;
   color: #64748b;
 }
-
-.cause-line b {
-  color: #0f172a;
-}
+.cause-line b { color: #0f172a; }
 
 /* Kickoff expensive_mistake (LM-24): money-bag icon + outcome + treasury */
 .kcicon {
-  flex: 0 0 30px;
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
-  display: flex;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-
-.kcicon--home {
-  background: rgba(18, 34, 90, .13);
-  color: #12225a;
-}
-
-.kcicon--away {
-  background: rgba(209, 25, 56, .11);
-  color: #d11938;
-}
-
-.kwho {
-  flex: 1;
-  min-width: 0;
-}
-
+.kcicon--home { background: rgba(18, 34, 90, .13); color: #12225a; }
+.kcicon--away { background: rgba(209, 25, 56, .11); color: #d11938; }
 .kwho .ktitle {
   font-weight: 800;
   color: #0f172a;
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.25;
 }
-
-.kwho .ksub {
-  font-size: 11px;
-  color: #64748b;
-  margin-top: 1px;
-}
-
 .kwho .ktreasury {
   font-size: 11px;
   font-weight: 700;
@@ -299,24 +218,52 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Generic centered cards: 100% width, icon left + content + optional right */
+/* ---- generic centered rows (start/endHalf/endMatch/fan_factor/concede):
+   full width, centered, NO left accent ---- */
 .ev--center {
-  align-self: stretch;
   width: 100%;
   max-width: 100%;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-start;
+  gap: 6px 8px;
   text-align: left;
-  border-left: none;
-  border-right: none;
-  background: #fff;
 }
-
+.ev--center .cicon {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #12225a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .ev--center .cbody {
   flex: 1;
   min-width: 0;
 }
-
+.ev--center .cbody .ctitle {
+  font-weight: 800;
+  color: #0f172a;
+  font-size: 12.5px;
+  line-height: 1.25;
+}
+.ev--center .cbody .csub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 1px;
+  line-height: 1.4;
+}
+.ev--center .cbody .ff-line {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
 .ev--center .cright {
   flex: 0 0 auto;
   font-size: 11px;
@@ -325,61 +272,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.cicon {
-  flex: 0 0 26px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: #f1f5f9;
-  color: #12225a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.cbody .ctitle {
-  font-weight: 800;
-  color: #0f172a;
-  font-size: 13px;
-}
-
-.cbody .csub {
-  font-size: 11px;
-  color: #64748b;
-  margin-top: 1px;
-}
-
-.cbody .ff-line {
-  font-size: 11px;
-  font-weight: 600;
-  color: #0f172a;
-  margin-top: 3px;
-  font-variant-numeric: tabular-nums;
-}
-
-/*
- * Mobile (<=430px, bugfix): the rulebook v7 grid is desktop-validated and stays
- * untouched above this breakpoint. On a phone a 68% team card leaves the label
- * lines cramped, so team cards go full width and the Design-B ack row drops to
- * its own full-width row under the card body and wraps instead of overflowing.
- *
- * The two team selectors are listed with the away one FIRST on purpose: the
- * design-lock suite resolves the standalone desktop away rule as the last
- * selector occurrence that is directly followed by an opening brace, so the
- * desktop away block must keep appearing AFTER this media group's selectors.
- */
-@media (max-width: 430px) {
-  .ev--away,
-  .ev--home {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .ack-row {
-    grid-column: 1 / -1;
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    row-gap: 4px;
-  }
+/* ---- design-B ack row: full-width line under the card (mobile-first) ---- */
+.ack-row {
+  flex: 1 0 100%;
+  margin-top: 4px;
 }

@@ -10,14 +10,14 @@ import { EVENT_GLYPH } from "./liveEventLabels";
 import type { LiveMatchEventDto, LiveMatchView, MatchDetail, MatchTeamDetail } from "./api";
 
 /**
- * DESIGN-LOCK suite: the user validated the rulebook v7 design (event cards,
- * sticky header, light timeline) on `fix/rau-35-39-design`. These tests lock
- * TODAY's output so any future drift (class rename, gradient change, removed
- * corner, skipped icon, duplicated page header, emoji glyph replacing an SVG)
- * fails the suite. TEST-ONLY: no production file is touched.
+ * DESIGN-LOCK suite: the user validated the COMPACT full-width event-card and
+ * rulebook layout on the design-study branch. These tests lock TODAY's output so
+ * any drift (class rename, geometry change, reintroduced split corner, skipped
+ * icon, duplicated page header, emoji glyph replacing an SVG) fails the suite.
+ * TEST-ONLY: no production file is touched.
  *
- * A  — `liveEventCards.module.css` is read as a raw string and the exact
- *       validated declarations are asserted (deleting/changing one fails).
+ * A  — `liveEventCards.module.css` is read as a raw string and the validated
+ *       compact declarations are asserted (deleting/changing one fails).
  * B  — rendered card structure per kind (TD / casualty / foul / turnStart /
  *       expensive_mistake / fan_factor / start·endMatch) + the icon set.
  * C  — the rulebook sticky header via a stubbed MatchView (back arrow, no
@@ -52,69 +52,75 @@ const home = block(/\.ev--home\s*\{([\s\S]*?)\}/, ".ev--home");
 const away = lastBlock(/\.ev--away\s*\{([\s\S]*?)\}/, ".ev--away");
 const evBase = block(/\.ev\s*\{([\s\S]*?)\}/, ".ev");
 const token = block(/\.token\s*\{([\s\S]*?)\}/, ".token");
-const dorsal = block(/\.dorsal\s*\{([\s\S]*?)\}/, ".dorsal");
-const dline = block(/\.detail\s+\.dline\s*\{([\s\S]*?)\}/, ".detail .dline");
-const stars = block(/\.detail\s+\.stars\s*\{([\s\S]*?)\}/, ".detail .stars");
-const vtoken = block(/\.vtoken\s*\{([\s\S]*?)\}/, ".vtoken");
 const center = block(/\.ev--center\s*\{([\s\S]*?)\}/, ".ev--center");
+const turnTag = block(/\.turn-tag\s*\{([\s\S]*?)\}/, ".turn-tag");
+const minute = block(/\.minute\s*\{([\s\S]*?)\}/, ".minute");
+const cardBody = block(/\.card-body,\s*\.kbody\s*\{([\s\S]*?)\}/, ".card-body, .kbody");
+const ackRow = block(/\.ack-row\s*\{([\s\S]*?)\}/, ".ack-row");
 
-describe("A. liveEventCards.module.css — validated v7 declarations", () => {
-  it("locks the 68% team-card grid (auto 1fr auto, 8px column gap, mirrored align-self)", () => {
-    expect(homeAway).toContain("width: 68%;");
-    expect(homeAway).toContain("max-width: 68%;");
-    expect(homeAway).toContain("grid-template-columns: auto 1fr auto;");
-    expect(homeAway).toContain("grid-template-rows: auto 1fr auto;");
-    expect(homeAway).toContain("gap: 0 8px;");
-    expect(home).toContain("align-self: flex-start;");
-    expect(away).toContain("align-self: flex-end;");
+/** Banned locked-out geometry: the old split/gradient/corners/media must not
+ * return. The module never contains these atoms (comments included). */
+const BANNED = ["linear-gradient", "grid-template-areas", "max-width: 68", "(@media", "430"];
+
+describe("A. liveEventCards.module.css — validated COMPACT full-width declarations", () => {
+  it("never re-introduces the 68% grid, its gradients/areas or the width media query", () => {
+    for (const atom of BANNED) {
+      expect(css, `module must not contain "${atom}"`).not.toContain(atom);
+    }
   });
 
-  it("locks the home (navy) gradient and its exact grid areas", () => {
-    expect(home).toContain(
-      "background: linear-gradient(90deg, rgba(18, 34, 90, .12), rgba(255, 255, 255, 0) 45%), #fff;",
-    );
-    expect(home).toContain(
-      'grid-template-areas:\n    "tag   body  ."\n    "tag   body  ."\n    ".     body  min";',
-    );
+  it("locks the full-width flex team-row shell (100%, no mirror, side-agnostic read order)", () => {
+    expect(homeAway).toContain("width: 100%;");
+    expect(homeAway).toContain("max-width: 100%;");
+    expect(homeAway).toContain("display: flex;");
+    expect(homeAway).toContain("flex-wrap: wrap;");
+    // No per-side content mirroring: both rows read token→who→detail directly.
+    expect(homeAway).not.toContain("row-reverse");
   });
 
-  it("locks the away (red) gradient and its mirrored grid areas", () => {
-    expect(away).toContain(
-      "background: linear-gradient(270deg, rgba(209, 25, 56, .12), rgba(255, 255, 255, 0) 45%), #fff;",
-    );
-    expect(away).toContain(
-      'grid-template-areas:\n    ".     body  tag"\n    ".     body  tag"\n    "min   body  .";',
-    );
+  it("locks the 3px left side accent at the navy/red opacity tokens", () => {
+    expect(home).toContain("border-left: 3px solid rgba(18, 34, 90, .18);");
+    expect(away).toContain("border-left: 3px solid rgba(209, 25, 56, .18);");
+    // Neither side keeps a faint all-over fill above the white card base.
+    expect(home).not.toContain("background:");
+    expect(away).not.toContain("background:");
   });
 
-  it("locks the component sizes: token 30px/7px, dorsal 24px/900, stars #b8860b, dline 800, vtoken 16px, center 100%", () => {
-    expect(token).toContain("flex: 0 0 30px;");
-    expect(token).toContain("width: 30px;");
-    expect(token).toContain("height: 30px;");
-    expect(token).toContain("border-radius: 7px;");
-    expect(dorsal).toContain("flex: 0 0 24px;");
-    expect(dorsal).toContain("font-weight: 900;");
-    expect(stars).toContain("color: #b8860b;");
-    expect(dline).toContain("font-weight: 800;");
-    expect(vtoken).toContain("width: 16px;");
-    expect(vtoken).toContain("height: 16px;");
-    expect(center).toContain("width: 100%;");
-    expect(center).toContain("display: flex;");
-  });
-
-  it("locks the card base (.ev): radius 4px, soft shadow, 6px 10px padding", () => {
+  it("locks the card base (.ev): white, 1px rulebook border, 8px radius, soft shadow", () => {
     expect(evBase).toContain("background: #fff;");
-    expect(evBase).toContain("border-radius: 4px;");
+    expect(evBase).toContain("border: 1px solid #e2e8f0;");
+    expect(evBase).toContain("border-radius: 8px;");
     expect(evBase).toContain("box-shadow: 0 1px 2px rgba(15, 23, 42, .05);");
     expect(evBase).toContain("padding: 6px 10px;");
+    expect(evBase).toContain("box-sizing: border-box;");
   });
 
-  it("locks the mobile (<=430px) fix: team cards go full width and the ack row drops to its own wrapping row", () => {
-    const media = block(/@media \(max-width: 430px\) \{([\s\S]*?)\n\}/, "mobile media query");
-    expect(media).toContain("width: 100%;");
-    expect(media).toContain("max-width: 100%;");
-    expect(media).toContain("flex-wrap: wrap;");
-    expect(media).toContain("grid-column: 1 / -1;");
+  it("locks inline meta: turn-tag as a small white-on-token pill and the minute as muted tabular time", () => {
+    expect(turnTag).toContain("font-size: 10px;");
+    expect(turnTag).toContain("font-weight: 900;");
+    expect(turnTag).toContain("color: #fff;");
+    expect(minute).toContain("font-size: 11px;");
+    expect(minute).toContain("color: #64748b;");
+    expect(minute).toContain("font-variant-numeric: tabular-nums;");
+  });
+
+  it("locks the compact token size (28px/6px radius) and a flexible no-mirror card body", () => {
+    expect(token).toContain("flex: 0 0 28px;");
+    expect(token).toContain("width: 28px;");
+    expect(token).toContain("height: 28px;");
+    expect(token).toContain("border-radius: 6px;");
+    expect(cardBody).toContain("display: flex;");
+    expect(cardBody).toContain("flex: 1 1 auto;");
+    expect(cardBody).not.toContain("row-reverse");
+  });
+
+  it("locks the centered generic row (no side accent) and the full-width wrapping ack row", () => {
+    expect(center).toContain("width: 100%;");
+    expect(center).toContain("max-width: 100%;");
+    expect(center).toContain("display: flex;");
+    expect(center).not.toMatch(/border-left:\s*3px/);
+    expect(center).not.toContain("rgba(18, 34, 90, .18)");
+    expect(ackRow).toContain("flex: 1 0 100%;");
   });
 });
 
@@ -187,20 +193,20 @@ function renderCards(events: LiveMatchEventDto[]) {
   );
 }
 
-describe("B. LiveEventCards — validated v7 rendered structure", () => {
-  it("locks the feed container shell (gray box, 1px border, 12px/14px padding, 2px gaps)", () => {
+describe("B. LiveEventCards — validated COMPACT rendered structure", () => {
+  it("locks the token feed shell bg-[#f8fafc] with a 6px column gap (no heavy panel border/padding)", () => {
     const { container } = renderCards([ev(1, "td", "home", {}, "p1", 3, 2000)]);
     const ol = container.querySelector("ol");
     const cls = ol?.getAttribute("class") ?? "";
     expect(ol).toBeTruthy();
     expect(ol?.getAttribute("aria-label")).toBe("Cronología del partido");
-    expect(cls).toContain("bg-[#eef1f6]");
-    expect(cls).toContain("border border-[#e2e8f0]");
-    expect(cls).toContain("px-[14px] py-[12px]");
-    expect(cls).toContain("gap-[2px]");
+    expect(cls).toContain("bg-[#f8fafc]");
+    expect(cls).toContain("flex flex-col");
+    expect(cls).toContain("gap-1.5");
+    expect(cls).not.toContain("bg-[#eef1f6]");
   });
 
-  it("locks the home TD card: ev--home, T-turn tag, minute, 30px token, dorsal, dline--home, partial score", () => {
+  it("locks the home TD card: ev--home accent, inline T-turn tag, minute, 28px token, dorsal, dline--home, partial score", () => {
     const { container } = renderCards([ev(5, "td", "home", {}, "p1", 4, 241000)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row).toBeTruthy();
@@ -223,7 +229,7 @@ describe("B. LiveEventCards — validated v7 rendered structure", () => {
     expect(row.querySelector(".score-note")?.textContent).toBe("(1 - 0)");
   });
 
-  it("locks the away TD mirror: ev--away, red tag/token, dline--away, both corners present", () => {
+  it("locks the away TD card: ev--away red accent/tag/token, dline--away and its inline minute meta", () => {
     const { container } = renderCards([ev(6, "td", "away", {}, "p2", 5, 241000)]);
     const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
     expect(row.className).toContain("ev--away");
@@ -365,8 +371,8 @@ describe("B. LiveEventCards — validated v7 rendered structure", () => {
 
   it("locks the RAU-39 derived ACTION card: a caused casualty renders the injury card PLUS a causer-side action card (cause label + roll/band sub-line, no stars)", () => {
     // Victim Blitzer B (away, p2) hit by a blitz from Arnau (home, p4) — the
-    // causer is an OPPONENT of the victim (LM-12), so the action card mirrors
-    // on the home (navy) side with the standard player-card anatomy.
+    // causer is an OPPONENT of the victim (LM-12), so the action card carries
+    // the home (navy) accent with the standard player-card anatomy.
     const { container } = renderCards([
       ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 14, roll6: 5, band: "permanent", permanentAttribute: "ag" }, "p2", 6, 3000),
     ]);
