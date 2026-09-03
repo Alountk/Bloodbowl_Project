@@ -47,7 +47,8 @@ type Flow =
   | "casualtyCaused"
   | "foul"
   | "selfInflicted"
-  | "bothDown";
+  | "bothDown"
+  | "passTurn";
 
 export interface LiveActionDockProps {
   viewerSide: "home" | "away" | null;
@@ -63,6 +64,10 @@ export interface LiveActionDockProps {
   opponentRaceId: string;
   /** Wraps `act`: the `/api/.../live` POST command. */
   onSubmit: (cmd: LiveCommand) => Promise<void>;
+  /** LM-28/MVT-7: the ACTIVE team's display name for the bottom "Turno {team}"
+   * status small inside the red pass-turn chip. Optional so direct-dock tests
+   * (which render no header) can omit it; MatchView provides it. */
+  activeTeamName?: string;
 }
 
 /** A guided step inside the dock sheet: pick chips vs a RollStepper stage. */
@@ -135,11 +140,13 @@ export function LiveActionDock({
   rosterRaceId,
   opponentRaceId,
   onSubmit,
+  activeTeamName,
 }: LiveActionDockProps) {
   const { t } = useI18n();
   const [flow, setFlow] = useState<Flow | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [selections, setSelections] = useState<GuidedSelections>({});
+  const [reason, setReason] = useState<"voluntary" | "turnover" | "injury">("voluntary");
 
   // Gates: spectator (no side) or a non-live match → no dock at all.
   if (viewerSide == null || status !== "live") return null;
@@ -160,12 +167,14 @@ export function LiveActionDock({
     setFlow(next);
     setStepIndex(0);
     setSelections({});
+    setReason("voluntary"); // the sheet always opens with Voluntario PRESELECTED
   };
 
   const close = () => {
     setFlow(null);
     setStepIndex(0);
     setSelections({});
+    setReason("voluntary");
   };
 
   const setRoll16 = (n: number) => setSelections((s) => ({ ...s, roll16: n, roll6: "" }));
@@ -253,6 +262,14 @@ export function LiveActionDock({
     if (cmd) submit(cmd);
   };
 
+  /** LM-28: fires the ACTIVE coach's pass with the selected reason (default
+   * voluntary). The ACTIVITY dock gate already proved viewerSide === activeSide
+   * (only an active coach reaches this); ends once via `submit`. */
+  const confirmPassTurn = () => {
+    if (flow !== "passTurn" || viewerSide == null) return;
+    submit({ type: "endTurn", side: viewerSide, reason });
+  };
+
   // Lay out the fixed dock bar + an expanding sheet (when a flow is open).
   const sheetContent = (() => {
     if (!openFlow) return null;
@@ -285,7 +302,9 @@ export function LiveActionDock({
               </p>
             ) : null}
             <p className="truncate text-sm font-bold text-[#12225a]">
-              {t("match.dock.sheetTitle")}
+              {flow === "passTurn"
+                ? t("match.turnReason.heading")
+                : t("match.dock.sheetTitle")}
             </p>
           </div>
           <button
@@ -386,8 +405,53 @@ export function LiveActionDock({
           </div>
         ) : null}
 
-        {/* Registrar: any guided flow after its chip/roll stages are met. */}
-        {openFlow !== "td" && openFlow !== "completion" ? (
+        {/* LM-28/MVT-7: the ACTIVE coach's pass-turn reason stage. Three reason
+            chips (Voluntario preselected) + Confirmar (fires endTurn once) or
+            Cerrar (dismiss = cancel, no command — the sheet's top-right close). */}
+        {openFlow === "passTurn" ? (
+          <div data-testid="dock-turnreason-stage" className="mt-1">
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["voluntary", t("match.turnReason.voluntary")],
+                  ["turnover", t("match.turnReason.turnover")],
+                  ["injury", t("match.turnReason.injury")],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="button"
+                  aria-pressed={reason === value}
+                  onClick={() => setReason(value)}
+                  className={`rounded border px-3 py-1 text-xs font-bold ${
+                    reason === value
+                      ? "border-[#d11938] bg-[#d11938] text-white"
+                      : "border-[#e2e8f0] bg-white text-[#12225a] hover:bg-[#f8fafc]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                data-testid="dock-confirm-passturn"
+                onClick={confirmPassTurn}
+                className="rounded bg-[#d11938] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#b0142f]"
+              >
+                {t("match.turnReason.confirm")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Registrar: any guided flow after its chip/roll stages are met.
+            The pass-turn flow has NO guided Registrar (it uses Confirmar). */}
+        {openFlow !== "td" &&
+        openFlow !== "completion" &&
+        openFlow !== "passTurn" ? (
           <div className="mt-3 flex justify-end">
             <button
               type="button"
@@ -410,6 +474,28 @@ export function LiveActionDock({
     if (active) {
       return (
         <>
+          {/* MVT-7: the ONLY pass-turn control lives here in the bottom dock —
+              never in the sticky header (MVT-3). The red chip keeps the inner
+              "Turno {team}" status small; opening it shows a reason sheet whose
+              preselected Voluntario confirms without extra interaction. */}
+          <button
+            type="button"
+            onClick={() => begin("passTurn")}
+            role="button"
+            aria-label={t("match.endTurn")}
+            title={t("match.endTurn")}
+            className="flex flex-col items-center gap-0 rounded border border-[#d11938] bg-[#d11938] px-3 py-1 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f]"
+          >
+            {activeTeamName ? (
+              <small
+                role="status"
+                className="text-[9px] font-bold uppercase tracking-[0.03em] text-[#ffd9e0]"
+              >
+                {t("match.turnOfTeam", { team: activeTeamName })}
+              </small>
+            ) : null}
+            {t("match.endTurn")}
+          </button>
           <button
             type="button"
             onClick={() => begin("td")}

@@ -303,6 +303,22 @@ function EventAckRow({
 }
 
 /**
+ * LM-28: the visible reason tag on a LIVE turnStart team card. Returns null when
+ * the payload has no legal reason (a TD-auto-flip/kickoff turn renders no tag).
+ * `turnStart` stays NON-ackable and never becomes a feed row — the tag is
+ * read off its live payload only.
+ */
+function turnReasonTag(
+  reason: unknown,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string | null {
+  if (reason === "voluntary") return t("match.turnReason.voluntary");
+  if (reason === "turnover") return t("match.turnReason.turnover");
+  if (reason === "injury") return t("match.turnReason.injury");
+  return null;
+}
+
+/**
  * The compact event feed: a single full-width column on the `#f8fafc` token
  * shell. Each event card (`li.live-event-row`) is a WHITE full-width card at
  * every viewport (team events carry a 3px left side accent; generic events are
@@ -493,7 +509,14 @@ export function LiveEventCards({
                   </span>
                   <div className={c.who}>
                     <p className={c.name}>{label}</p>
-                    <p className={c.pos}>{t("match.turnStarts")}</p>
+                    {/* LM-29: when this live START carries the reason it began
+                        with (a manual pass), render it as a small reason tag on
+                        the sub-line. No ✓/✗ and never a feed row (non-ackable). */}
+                    <p className={c.pos}>
+                      {turnReasonTag(event.payload.reason, t) != null
+                        ? `${t("match.turnStarts")} · ${turnReasonTag(event.payload.reason, t)}`
+                        : t("match.turnStarts")}
+                    </p>
                   </div>
                 </div>
               ) : event.kind === "journeyman" ? (

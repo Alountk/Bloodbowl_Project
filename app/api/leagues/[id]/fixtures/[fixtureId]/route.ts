@@ -85,6 +85,11 @@ export interface LiveDto {
    * the resolution reveal in `pendingResolution.mvp`; null per side until the
    * BOTH-sides reveal runs. The modal's casualties step shows them. */
   mvpGrantees: { home: string | null; away: string | null };
+  /** LM-29: the reason the current turn began (`voluntary|turnover|injury`),
+   * persisted so a reload keeps it visible. Feed event lists are UNCHANGED —
+   * the reason is state, never a feed row (LM-16 intact). Null for a legacy
+   * match or an auto-started turn. */
+  lastTurnReason?: "voluntary" | "turnover" | "injury" | null;
   events: LiveEventDto[];
 }
 
@@ -116,6 +121,9 @@ interface LiveMatchRow {
   journeymen: unknown;
   /** RAU-49: the persisted reveal/preview JSON (the MVP grantees, `pendingResolution`). */
   pendingResolution: unknown;
+  /** LM-28/LM-29: the reason the current turn began (`voluntary|turnover|injury`),
+   * null for an auto-started/legacy turn. Optional (null after additive deploy). */
+  lastTurnReason?: "voluntary" | "turnover" | "injury" | null;
   /** RAU-44: the persisted per-team live winnings JSON (`{ home, away }`),
    * null until the match reaches `finished`. */
   winnings: unknown;
@@ -185,6 +193,10 @@ export function serializeLive(
     // The revealed MVP grantees (persisted at the BOTH-sides reveal) — the
     // casualties step shows them; null until the reveal runs.
     mvpGrantees: parseMvpGrantees(row.pendingResolution),
+    // LM-29: expose the current turn's reason (OPTIONAL: absent for old rows).
+    // It is STATE, never feed — the filter below keeps turn/turnStart/requestTurn
+    // out of the served event list regardless.
+    lastTurnReason: row.lastTurnReason ?? null,
     // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
     // `requestTurn` stay in the DB (audit/replay) and are never shown here.
     events: row.events

@@ -52,6 +52,7 @@ function fakeRow(): LiveMatchState {
     concedeProposedBy: null,
     mvpNominations: { home: null, away: null },
     resolutionState: EMPTY_RESOLUTION_STATE,
+    lastTurnReason: null,
     events: [],
   };
 }

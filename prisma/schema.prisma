@@ -214,6 +214,12 @@ model LiveMatch {
   /// ROLLED result. Additive JSON, never re-typed; null until the first side
   /// nominates.
   mvpNominations    Json?
+  /// LM-28/LM-29: the reason the CURRENT turn began (`voluntary|turnover|injury`),
+  /// persisted so the reason survives a full reload. Null for a legacy match,
+  /// the kickoff first turn, or a turn started by a TD auto-flip — a manual end
+  /// (`endTurn`) carries its reason (`reason ?? "voluntary"`); a NON-manual
+  /// start clears it. Additive, never re-typed; no backfill for existing rows.
+  lastTurnReason    String?
   /// The PER-SIDE end-of-match resolution wizard cursor (`{ home: { step,
   /// fansDone, fans, mvpConfirmed, mvpRolled, casualtiesDone, journeymenDone },
   /// away: {...} }`). Each coach advances THEIR OWN side independently through

@@ -1020,6 +1020,98 @@ describe("POST .../live — side-aware event permission (LM-12, D14)", () => {
   });
 });
 
+describe("POST .../live — endTurn reason validation (LM-28)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active (liveState.activeSide = home); home coach = active. */
+  function activeLiveSetup() {
+    authMock.mockResolvedValue(authSession("coach-home"));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("accepts a manual pass with a legal reason and persists it on the next turn", async () => {
+    activeLiveSetup();
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "endTurn", side: "home", reason: "turnover" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
+    // the pure transition carried `reason` into `applyEndTurn` → next state reason
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    expect(transitionArg.next.lastTurnReason).toBe("turnover");
+  });
+
+  it("treats a legacy endTurn (no reason) as voluntary default (LM-28)", async () => {
+    activeLiveSetup();
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "endTurn", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    expect(res.status).toBe(200);
+    expect(transitionArg.next.lastTurnReason).toBe("voluntary");
+  });
+
+  it("returns 409 + NO mutation when the reason is outside {voluntary,turnover,injury}", async () => {
+    activeLiveSetup();
+    const res = await POST(req({ type: "endTurn", side: "home", reason: "cheat" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+    expect(prismaMock.liveEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 + NO mutation when a NON-active coach passes with any reason (side gate first)", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+    const res = await POST(req({ type: "endTurn", side: "away", reason: "injury" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 + NO mutation when the reason is malformed (not a string)", async () => {
+    activeLiveSetup();
+    const res = await POST(req({ type: "endTurn", side: "home", reason: 7 }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST .../live — completion command (LM-15) + mvp-not-a-command (LM-14)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

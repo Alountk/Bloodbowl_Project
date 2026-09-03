@@ -563,17 +563,27 @@ describe("C. rulebook sticky header (MatchView)", () => {
     expect(screen.getByText("2ª Parte")).toBeTruthy();
     expect(screen.getByText("Mitad 2 · Turno 8")).toBeTruthy();
     expect(screen.queryByText(/En juego · Tiempo/)).toBeNull();
-    expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    // MVT-3/MVT-7: a FINISHED match has NO pass control anywhere — the bottom
+    // dock is hidden (not live / no side), so the "Dar el turno" button appears
+    // nowhere (count 0) and no "Turno {team}" status/foot-top reason chip.
+    expect(within(header).queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /Dar el turno/i })).toHaveLength(0);
     expect(screen.queryByText("Turno Reavers")).toBeNull();
-    // RAU-38: a finished match shows no concede control.
+    // RAU-38: a finished match shows no concede control either.
     expect(screen.queryByRole("button", { name: /Conceder/i })).toBeNull();
   });
 
-  it("locks the live header: TURNO button + 'Turno {team}', half badge, 'Mitad · Turno' line and the hero mini-line", async () => {
+  it("locks the live header: NO pass control inside it, half badge, 'Mitad · Turno' line, hero mini-line, and the bottom-dock chip + sheet", async () => {
     stubMatch(fixtureDetail(liveMatch()));
     const { container } = render(<MatchView leagueId="l1" fixtureId="f1" />);
     await waitFor(() => expect(container.textContent).toContain("Mitad 1 · Turno 3"));
 
+    const header = screen.getByTestId("rulebook-header");
+    // MVT-3: the sticky header itself must NEVER carry the pass-turn control.
+    expect(within(header).queryByRole("button", { name: /Dar el turno/i })).toBeNull();
+    expect(within(header).queryByText(/Turno Reavers/)).toBeNull();
+    // MVT-7: the "Turno {team}" status + the red "Dar el turno" button live ONLY
+    // in the bottom dock (position-agnostic page queries still resolve them).
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
     expect(screen.getByText("Turno Reavers")).toBeTruthy();
     expect(screen.getByText("1ª Parte")).toBeTruthy();
@@ -581,7 +591,8 @@ describe("C. rulebook sticky header (MatchView)", () => {
     expect(screen.getByTestId("live-score").textContent).toMatch(/1\s*:\s*0/);
     expect(screen.getByText(/En juego · Tiempo/)).toBeTruthy();
     expect(screen.getByText("Clima · Estándar")).toBeTruthy();
-    // RAU-38: the live header turn zone carries the concede control for a coach.
+    // RAU-38: the live header turn zone still carries the concede control (it is
+    // NOT a pass control — it stays in the header turn area per RAU-38).
     expect(screen.getByRole("button", { name: "Conceder" })).toBeTruthy();
   });
 });

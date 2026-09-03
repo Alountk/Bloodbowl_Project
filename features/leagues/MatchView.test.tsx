@@ -569,9 +569,10 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
 
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    act(() => {
-      screen.getByRole("button", { name: /Dar el turno/i }).click();
-    });
+    // MVT-7: the pass control lives in the bottom dock — open the reason
+    // sheet and confirm the PRESELECTED voluntary reason (one flip).
+    fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirmar/ }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -608,6 +609,41 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(screen.queryByText(/Turno Reavers/)).toBeNull();
+  });
+
+  it("shows the LM-29 reason feed-top chip on a reload-shaped live view (no live turnStart row)", async () => {
+    stubLiveEventSource();
+    // A reloaded fixture GET carries `lastTurnReason` state but NO turnStart row
+    // in the (display-only) events → the feed-top chip surfaces the reason.
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, lastTurnReason: "injury" };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    const chip = screen.getByTestId("turn-reason-chip");
+    expect(chip.getAttribute("data-reason")).toBe("injury");
+    expect(chip.textContent).toBe("Baja");
+  });
+
+  it("does NOT duplicate the reason when a live turnStart row already carries it (steady-live)", async () => {
+    stubLiveEventSource();
+    // Steady live: a hub-frame turnStart for the ACTIVE side carries the same
+    // reason the state records → no feed-top chip (rendered on that row only).
+    const detail = liveDetail();
+    detail.live = {
+      ...detail.live!,
+      lastTurnReason: "turnover",
+      events: [
+        ...detail.live!.events,
+        { seq: 9, kind: "turnStart", side: "home", playerRosterId: null, half: 1, turnNumber: 3, payload: { reason: "turnover" }, at: 16000 },
+      ],
+    };
+    stubMatch(detail);
+    renderPlayed();
+
+    expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("turn-reason-chip")).toBeNull();
   });
 });
 
@@ -657,9 +693,10 @@ describe("MatchView — double-click guard on live commands (in-flight lock)", (
 
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    act(() => {
-      screen.getByRole("button", { name: /Dar el turno/i }).click();
-    });
+    // MVT-7: open the bottom dock's reason sheet and confirm the PRESELECTED
+    // voluntary (single interaction after the chip → exactly one flip).
+    fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Confirmar/ }));
 
     // Exactly ONE live POST, and the turn advances by one (3 → 4, no jump to 5).
     await waitFor(() => {
@@ -688,12 +725,14 @@ describe("MatchView — double-click guard on live commands (in-flight lock)", (
 
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    const button = screen.getByRole("button", { name: /Dar el turno/i });
 
-    // Two synchronous clicks while the first POST is still pending (a double-click).
+    // Open the reason sheet ONCE, then double-click its Confirmar while the
+    // first POST is still pending — the in-flight lock drops the 2nd command.
+    fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
+    const confirmButton = await screen.findByRole("button", { name: /Confirmar/ });
     act(() => {
-      button.click();
-      button.click();
+      confirmButton.click();
+      confirmButton.click();
     });
 
     // The in-flight ref lock drops the second invocation — ONE command.
@@ -838,17 +877,18 @@ describe("MatchView — casi rulebook hero (Design 10)", () => {
     expect(screen.getByText(/Estadio · Reglamentario/)).toBeTruthy();
   });
 
-  it("moves the 'Dar el turno' control into the navy top bar and keeps 'Turno {team}' as a status", async () => {
+  it("passes the turn ONLY from the bottom dock (Dar el turno + 'Turno {team}' status inside it)", async () => {
     stubLiveEventSource();
-    stubMatch(liveDetail()); // home coach active → sees the pass control
+    stubMatch(liveDetail()); // home coach active → sees the channel dock pass chip
     const { container } = renderPlayed();
     await screen.findAllByText(/Mitad 1 · Turno 3/);
 
-    // The top bar is navy (Design 10) and hosts the red turn button + status.
+    // MVT-3/MVT-7: the 'Dar el turno' action now lives in the bottom dock, not
+    // the navy header — the active coach sees the red chip + its status line.
     expect(container.textContent).toMatch(/1ª PARTE/i);
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
     expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
-    // The active coach sees no "Pedir turno" (it stays in the bottom controls).
+    // The active coach sees no "Pedir turno" (that stays for the NON-active).
     expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
   });
 

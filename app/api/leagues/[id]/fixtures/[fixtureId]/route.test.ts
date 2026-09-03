@@ -408,6 +408,7 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
         home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
         away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
       },
+      lastTurnReason: null,
       events: [],
     },
     now,
@@ -428,6 +429,28 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
   // serializers (resume-at-step parity).
   expect(liveDto.resolutionState).toEqual(stateView.resolutionState);
 });
+
+  it("exposes an OPTIONAL lastTurnReason from the fixture GET (LM-29 reload) and returns null when the row predates the column", async () => {
+    const { serializeLive } = await import("./route");
+    const base = {
+      id: "lm-1", fixtureId: "f1", status: "live" as const,
+      half: 1, turnNumber: 3, activeSide: "home" as const,
+      homeConsented: true, awayConsented: true,
+      startedAt: new Date("2026-03-01T20:00:00"), homeTurnMs: 5000, awayTurnMs: 3000,
+      homeScore: 1, awayScore: 0, seq: 6, paused: false,
+      clockStartedAt: new Date("2026-03-01T20:00:10"), finishedAt: null,
+      mvpNominations: null, events: [],
+    };
+    const now = new Date("2026-03-01T20:00:15").getTime();
+    // Reload of a manual pass: the persisted row carries `lastTurnReason: "injury"`.
+    const withReason = serializeLive({ ...base, lastTurnReason: "injury" } as never, "away", now);
+    expect(withReason.lastTurnReason).toBe("injury");
+    // Legacy row (pre-column) reads back as null and the DTO never leaks a tag
+    // nor a turnStart feed row.
+    const legacy = serializeLive(base as never, "away", now);
+    expect(legacy.lastTurnReason ?? null).toBeNull();
+    expect(legacy.events.some((e) => e.kind === "turnStart")).toBe(false);
+  });
 
   it("returns 200 for a member-team owner (not league owner)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } }); // home team owner, league member

@@ -604,6 +604,11 @@ mvpNominations: { home: string[] | null; away: string[] | null };
 /** The per-side resolution wizard cursor — the modal resumes at the persisted
  * step after a close/refresh (defaults to "winnings" while never started). */
 resolutionState: ResolutionState;
+/** LM-28/LM-29: the reason the current turn began (`voluntary|turnover|injury`),
+ * exposed on the live-state DTO (fixture GET + SSE snapshot) so the current
+ * turn's reason stays visible after a reload. Absent/null = auto-started turn.
+ * Never a feed row. */
+lastTurnReason?: "voluntary" | "turnover" | "injury" | null;
 }
 
 /** The per-side resolution wizard step cursor (see the store's `ResolutionState`
@@ -652,7 +657,7 @@ export type LiveCommand =
   | { type: "consent"; side: "home" | "away" }
   | { type: "retractConsent"; side: "home" | "away" }
   | { type: "begin" }
-  | { type: "endTurn"; side: "home" | "away" }
+  | { type: "endTurn"; side: "home" | "away"; reason?: "voluntary" | "turnover" | "injury" }
   | { type: "td"; side: "home" | "away"; playerRosterId: string }
   | { type: "completion"; side: "home" | "away"; playerRosterId: string }
   | {

@@ -488,8 +488,7 @@ function TurnTrack({
  * The v7 rulebook navy header, three stacked rows:
  *  row 1 (top-row): back arrow (32px circle) + league·jornada label + the
  *    count-up (timer SVG + total elapsed H:MM:SS, right-aligned);
- *  row 2 (turn-row): home turn track · the red TURNO button ("Dar el turno"
- *    with the "Turno {team}" small line) · away turn track;
+ *  row 2 (turn-row): home turn track · (concede controls) · away turn track;
  *  row 3 (clock-row): per-coach H:MM:SS clocks + the translucent half badge
  *    ("1ª Parte"/"2ª Parte") + the always-visible "Mitad H · Turno N" note.
  * The rows render UNIFORMLY in every fixture state (pending/scheduled/live/
@@ -497,11 +496,11 @@ function TurnTrack({
  * the SAME global numbers with the ACTIVE side's current turn highlighted ONLY
  * while live (inert otherwise — no `aria-current`), the clocks/count-up show
  * H:MM:SS while live (or the frozen base value once it carries real time) and
- * "–" before kickoff, and the red TURNO button (with its "Turno {team}"
- * status line) renders ONLY when `status === "live"` AND the viewer is the
- * active participant (spectator/admin → hidden). All strings stay byte-identical
- * where the e2e/unit suites assert them. The unified "Tiempo" clock lives in
- * the hero scoreboard.
+ * "–" before kickoff. MVT-3/MVT-7: the header NEVER renders a pass-turn control
+ * — "Dar el turno" lives ONLY in the bottom dock (active coach, live), and the
+ * "Turno {team}" status line moved INTO that dock chip. A spectator/admin sees
+ * no turn/consent control in the turn zone (concede only for a side). Strings
+ * stay byte-identical where the e2e/unit suites assert them.
  */
 function LiveTopBar({
   state,
@@ -509,7 +508,6 @@ function LiveTopBar({
   label,
   names,
   leagueId,
-  turnControls,
   concedeControls,
 }: {
   state: LiveMatchViewState;
@@ -517,7 +515,6 @@ function LiveTopBar({
   label: string;
   names: { home: string; away: string };
   leagueId: string;
-  turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
   /** RAU-38: the turn-zone concede controls (null when the viewer has no side
    * or the match is not live — the FinishedLiveView passes nothing). */
   concedeControls?: React.ReactNode;
@@ -528,7 +525,6 @@ function LiveTopBar({
   // Inert pre-kickoff clocks render "–"; once a value exists (live or finished)
   // the H:MM:SS (base or ticking) renders.
   const clockValue = (ms: number) => (live || ms > 0 ? <FormatHms ms={ms} /> : "–");
-  const showTurnControls = live && turnControls.isActive;
   return (
     <>
       {/* Row 1 — back + label + count-up. */}
@@ -549,31 +545,16 @@ function LiveTopBar({
           {clockValue(clock.elapsed)}
         </span>
       </div>
-      {/* Row 2 — home track · TURNO button · away track. */}
+      {/* Row 2 — home track · away track (concede controls sit beside). MVT-3:
+          NO "Dar el turno" here — it lives in the bottom dock (MVT-7). */}
       <div className="flex flex-wrap items-center justify-center gap-2.5 px-3 pt-[7px] pb-0.5">
         <TurnTrack
           sideName={names.home}
           current={globalTurn}
           isActive={live && state.activeSide === "home"}
         />
-        {showTurnControls ? (
-          <button
-            type="button"
-            onClick={turnControls.onEndTurn}
-            disabled={turnControls.submitting}
-            className="flex items-center gap-1.5 rounded-[4px] bg-[#d11938] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
-          >
-            <small
-              role="status"
-              className="text-[9px] font-bold uppercase tracking-[0.03em] text-[#ffd9e0]"
-            >
-              {t("match.turnOfTeam", { team: names[state.activeSide] })}
-            </small>
-            {t("match.endTurn")}
-          </button>
-        ) : null}
-        {/* RAU-38: the concede controls sit in the turn zone next to the turn
-            button — both coaches see them while live (submitting disabled). */}
+        {/* RAU-38: the concede controls sit in the turn zone — both coaches see
+            them while live (submitting disabled). Never a pass control. */}
         {concedeControls}
         <TurnTrack
           sideName={names.away}
@@ -802,7 +783,6 @@ function RulebookHeader({
   events,
   homeTeam,
   awayTeam,
-  turnControls,
   concedeControls,
 }: {
   state: LiveMatchViewState;
@@ -817,7 +797,8 @@ function RulebookHeader({
   events: LiveMatchView["events"];
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
-  turnControls: { isActive: boolean; submitting: boolean; onEndTurn: () => void };
+  /** RAU-38: the turn-zone concede controls. MVT-3: NO pass-turn control lives
+   * here — it is gated to the bottom dock (MVT-7). */
   concedeControls?: React.ReactNode;
 }) {
   return (
@@ -831,7 +812,6 @@ function RulebookHeader({
         label={label}
         names={names}
         leagueId={leagueId}
-        turnControls={turnControls}
         concedeControls={concedeControls}
       />
       <LiveHero
@@ -994,6 +974,30 @@ function LiveActiveMatch({
   const events = hookLive != null && hookLive.events.length > 0 ? hookLive.events : live?.events ?? [];
   const showNudgeBanner = rivalRequestsTurn(events, state.viewerSide, state.activeSide);
 
+  // LM-29: the feed-top reason chip shows ONLY when the live feed cannot already
+  // show the reason on its newest turnStart row (steady-live has the row; a
+  // reload / reconnect shape does not). Steady-live never duplicates it.
+  const newestTurnStart = [...events]
+    .filter((e) => e.kind === "turnStart")
+    .sort((a, b) => b.seq - a.seq)[0];
+  const feedAlreadyCarriesReason =
+    newestTurnStart != null &&
+    newestTurnStart.side === state.activeSide &&
+    newestTurnStart.payload.reason === state.lastTurnReason;
+  const showTurnReasonChip =
+    state.status === "live" &&
+    state.lastTurnReason != null &&
+    !feedAlreadyCarriesReason;
+  /** LM-28 visible label for the feed-top chip / card tag. */
+  const turnReasonLabel = (r: string) =>
+    r === "voluntary"
+      ? t("match.turnReason.voluntary")
+      : r === "turnover"
+        ? t("match.turnReason.turnover")
+        : r === "injury"
+          ? t("match.turnReason.injury")
+          : "";
+
   // RAU-38: the concede controls render only while the match is LIVE and the
   // viewer has a side (a spectator/admin or a finished match never sees them).
   const concedeControls =
@@ -1023,11 +1027,6 @@ function LiveActiveMatch({
         events={events}
         homeTeam={homeTeam}
         awayTeam={awayTeam}
-        turnControls={{
-          isActive: state.viewerSide === state.activeSide,
-          submitting,
-          onEndTurn: () => void act({ type: "endTurn", side: state.activeSide }),
-        }}
         concedeControls={concedeControls}
       />
 
@@ -1060,6 +1059,19 @@ function LiveActiveMatch({
               className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
             >
               {t("match.rivalRequestsTurn")}
+            </p>
+          ) : null}
+          {/* LM-29: the current turn's reason at the top of the feed — only when
+              the reload/reconnect shape has no live turnStart row carrying it
+              (steady-live renders it ON that row via LiveEventCards). The reason
+              is STATE, never a feed row (LM-16). */}
+          {showTurnReasonChip ? (
+            <p
+              data-testid="turn-reason-chip"
+              data-reason={state.lastTurnReason}
+              className="border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-1.5 text-center text-xs font-semibold text-[#12225a]"
+            >
+              {state.lastTurnReason != null ? turnReasonLabel(state.lastTurnReason) : ""}
             </p>
           ) : null}
           <LiveEventCards
@@ -1110,6 +1122,11 @@ function LiveActiveMatch({
             rosterRaceId={state.viewerSide === "away" ? awayTeam.raceId : homeTeam.raceId}
             opponentRaceId={state.viewerSide === "away" ? homeTeam.raceId : awayTeam.raceId}
             onSubmit={act}
+            activeTeamName={
+              state.viewerSide != null && state.activeSide != null
+                ? names[state.activeSide]
+                : undefined
+            }
           />
           {/* Spacer so the fixed dock never covers the tail of the live feed. */}
           <div aria-hidden className="h-20" />
@@ -1279,7 +1296,6 @@ function FinishedLiveView({
         events={live.events}
         homeTeam={homeTeam}
         awayTeam={awayTeam}
-        turnControls={{ isActive: false, submitting: false, onEndTurn: () => {} }}
       />
       {onResolve ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d11938] bg-[#f8fafc] px-3.5 py-2">
