@@ -204,16 +204,33 @@ The sticky header MUST render a horizontal timeline bar: a full-bleed light trac
 - WHEN the bar renders
 - THEN home icons sit on the top half, away icons on the bottom half, and the start/end markers anchor 0% and 100%
 
-### Requirement: MVT-3 · rulebook Sticky Header
+### Requirement: MVT-3 · rulebook Sticky Header (Concept B)
 
-The sticky header MUST render: an integrated back arrow (to the jornada), the league·round label, two turn tracks (each covering the active half's turns — T1–T8 in half 1, T9–T16 in half 2 — with the current turn highlighted), per-coach clocks (home and away accumulated turn time), and a half indicator ("2ª Parte" badge with "Mitad N · Turno M"). The header MUST NOT render any pass-turn control: the "Dar el turno" action lives ONLY in the bottom control area beside the action dock (MVT-7), gated to the active coach while live. The header MUST derive every value from the existing live DTO, MUST NOT add fields, and MUST NOT depend on `lastTurnReason`; the turn/clock model does not change.
+`rulebook-header` (sticky, `top-0 z-40 bg-[#12225a]`) MUST be compact; the gradient hero (54px emblems, full names, subtitles, mini-stat pills) is REMOVED. Invariants: row 1 = sole back link (aria "Volver a la jornada" → `/leagues/{id}`) · league/round label · count-up; row 3 = per-coach clocks + 1ª/2ª Parte badge; "Mitad 1 · Turno 3"/"Mitad 2 · Turno 8" byte texts survive; the header MUST NOT host pass/request controls ("Dar el turno" dock-only per MVT-7; consent/"Pedir turno" stay in the body) nor any `role=status`; "Conceder" stays in the header turn area while live for a sided coach (none while finished); Clima/Estadio meta and the `match-timeline` bar stay inside the header; every value MUST come from the existing live DTO — no new fields, no `lastTurnReason`. The header MUST derive every value from the existing live DTO and MUST NOT depend on `lastTurnReason`; the turn/clock model does not change.
 
-#### Scenario: Header anatomy
+| State | Main row behavior |
+|---|---|
+| pending/scheduled | Scores "−" per side; track inert (no `aria-current`); clocks "–"; no concede |
+| live | Scores = DTO per side; chip "Mitad {half} · Turno {turn}" BYTE-IDENTICAL (`match.halfTurn`); ONE 8-cell track (T1–T8 / T9–T16) replacing the duplicated per-side tracks — cells labeled "Turno {n}", current cell `aria-current`; the active coach sees "Tu turno · {clock}" (new keys es "Tu turno" / en "Your turn") — never spectators/side-less admins, never `role=status`, never a button; "Conceder" for sided coaches |
+| finished | Frozen DTO scores per side; chip/badge frozen; no concede, no accent label, no "En juego · Tiempo" |
 
-- GIVEN a live match in half 2, turn 16, with the home coach active
+Scores render PER SIDE next to the acronyms; the composed center "Marcador" node (`live-score`) is retired, keeping the "Marcador"/"Scoreboard" copy on the score region for screen readers; the "En juego · Tiempo" mini-line is removed.
+
+(Previously: a full-height 3-row top bar plus hero — 54px emblems, names/subtitles, mini-stats, style-composed center scoreboard, "En juego · Tiempo" — and two per-side tracks labelled "Turnos de {team}".)
+
+#### Scenario: Live anatomy, home active
+
+- GIVEN a live match in half 1 turn 3, home active, home coach viewing
 - WHEN the header renders
-- THEN the back arrow, league·round label, T9–T16 tracks, both coach clocks, and the "2ª Parte · Mitad 2 · Turno 16" indicator appear
-- AND no "Dar el turno" button appears anywhere in the header (the pass-turn control is at the bottom, MVT-7)
+- THEN acronym emblems flank per-side scores ("R"/"D" with "1"/"0"), chip "Mitad 1 · Turno 3", one 8-cell track with cell "3" `aria-current`, badge "1ª Parte", "Tu turno · {clock}", and "Conceder" appear
+- AND no `role=status`, no "Dar el turno"/"Pedir turno", no full-name/subtitle text appear in the header; spectators see plain clocks and no concede
+
+#### Scenario: Finished frozen
+
+- GIVEN a finished match half 2 turn 8, final 2 : 1
+- WHEN the header renders
+- THEN per-side scores "2"/"1", chip "Mitad 2 · Turno 8", badge "2ª Parte", and one "Volver" back link appear
+- AND no "Partido {n}" heading appears and the `match-timeline` bar sits inside the header
 
 #### Scenario: UI-only constraint
 
@@ -292,6 +309,71 @@ Passing the turn MUST be offered ONLY in the bottom control area, as a "Dar el t
 - GIVEN a finished match, a NON-active coach, a spectator member, or a side-less admin
 - WHEN the view renders
 - THEN no "Dar el turno" button appears anywhere
+
+### Requirement: MVT-8 · teamAcronym Header Glyphs
+
+`teamAcronym(name)` MUST be pure and deterministic: tokens are whitespace-separated runs (hyphenated names count as one token); skip particles (de, del, la, las, los, el, y, e, of, the) and digit-leading tokens; output the uppercased first letter of up to 3 significant tokens; a single significant token → its first letter; none → "?". Acronyms MUST render ONLY in match-header emblems (additive variant; keeps the `emblem-{id}` testid + "Emblema de {name}" aria-label; the glyph is presentational). The TeamEmblem default stays single-initial; MatchCard/TeamCard/teams grid are unchanged (header-only blast radius).
+
+| name | acronym |
+|---|---|
+| Reavers / Dwarves | R / D |
+| Los Dragones de Nurgle | DN |
+| Reyes-Corsarios de la Costa | RC |
+| The Ancient Blood Bowl Warriors of the North | ABB |
+| AA 1757982 / 1776 / blank | A / ? / ? |
+
+#### Scenario: Header-only blast radius
+
+- GIVEN one fixture in the Jornadas grid and its match page
+- WHEN both render
+- THEN the header shows the team acronym while MatchCard/TeamCard keep the emblem initial; their tests are untouched
+
+### Requirement: MVT-9 · Full-Name Header Tooltip
+
+Hover-capable pointers AND keyboard focus of a reachable emblem host MUST reveal the full team name; hover-out/blur hides it. The tooltip: ~190px max width, wraps, flips inside the right viewport edge; MUST NOT reflow the sticky header, MUST NOT enter the a11y tree (the emblems aria-label already names the team), and MUST NOT appear on coarse-pointer devices.
+
+#### Scenario: Desktop hover and keyboard focus
+
+- GIVEN a hover-capable pointer over the home acronym emblem near the right edge
+- WHEN the user hovers or tabs to the emblem host
+- THEN a ~190px tooltip with the full name appears inside the viewport with the header geometry unchanged
+
+#### Scenario: No hover capability
+
+- GIVEN a touch device
+- WHEN the header renders and the emblem is focused
+- THEN no tooltip appears and the full name stays in the emblem aria-label
+
+### Requirement: MVT-10 · Mini-Stats Relocate to the Feed
+
+The per-team pills (⚽/🤝/⚰️/★) MUST leave the sticky header and render in the scrolling feed — per-team summary strip above the event rows — for live/finished matches with display events, preserving the `mini-{td|comp|cas|spp}-{home|away}` testids and the symmetric visibility rule (`deriveTeamStats` unchanged). Pending/scheduled: none. Out of scope: tablet redesign; global TeamEmblem→acronym; consent/"Pedir turno" in the header; replay.
+
+#### Scenario: Pills in the feed, never the header
+
+- GIVEN a live match, home with 1 TD + 1 lasting casualty, away 0
+- WHEN the body renders
+- THEN `mini-td-home` "1", `mini-cas-home` "1", and `mini-td-away` "0" sit in the feed strip, none inside `rulebook-header`
+
+### Requirement: MVT-11 · Intentional Header-Lock Updates
+
+Suites MUST change WITH the behavior; nothing else drifts:
+
+| Suite | Delta |
+|---|---|
+| designLock C live | Score assert retargets to per-side; drop the "En juego · Tiempo" positive assert; add a header-scoped "Tu turno" assert; structural locks kept (sticky/navy/one "Volver"/no page heading/meta/badges/chip/Conceder/no pass control/0 role=status) |
+| designLock C finished | Only the "2 : 1" assert retargets to per-side `score-home`/`score-away` nodes |
+| designLock D | Untouched (D is the `match-timeline`-bar lock only; it carries no score assert) |
+| MatchView.test 298/319/333/502/505 | "- : -"/"2 : 1"/"1 : 0"/"Tiempo" asserts retarget to per-side scores + header-scoped "Tu turno" clock |
+| MatchView.test 761-837 | Two 8-cell tracks + "Turnos de {team}" labels + per-track `aria-current` collapse to ONE 8-cell track; drop "Human · Coach A"/"Dwarf · Coach B" asserts |
+| MatchView.test 861-908 | Emblems keep "R"/"D" glyphs + "Emblema de" aria; mini-stat asserts keep testids, re-home to the feed strip |
+| e2e live-match | Structural header locks 489-557 unchanged; the score assert retargets to per-side; optionally assert "Tu turno" |
+| MatchCard/TeamCard, avatar e2e | Untouched |
+
+#### Scenario: Suites green
+
+- GIVEN the Concept B header implemented
+- WHEN unit tests, lint, `tsc`, and the local e2e run
+- THEN designLock C/D, MatchView/MatchCard/TeamCard, avatar, and live-match e2e pass with exactly the deltas above
 
 ## Acceptance Criteria
 
