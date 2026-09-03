@@ -17,6 +17,11 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "playwright-report-auth/**",
     "test-results/**",
+    // Storybook static build output (also gitignored).
+    "storybook-static/**",
+    // Storybook CSF stories (co-located with components): linted separately by
+    // Storybook's own tooling, not by the Next.js eslint config.
+    "**/*.stories.@(js|jsx|ts|tsx)",
   ]),
 ]);
 
