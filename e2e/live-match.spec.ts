@@ -510,6 +510,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // so the status checks target the role=status small specifically.
     await expect(homeCoach.getByRole("status")).toHaveText(`Turno ${homeTeamName}`);
     await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
+    // MVT-3 Concept B: the ACTIVE coach's rulebook-header shows the coach-only
+    // accent "Tu turno · clock". The query is HELD within the header because the
+    // feed's newest turnStart tag also reads "Tu turno" (page-scope would be
+    // ambiguous). role=status stays 0 in the header (line above); this accent is
+    // a plain <p>, not a status.
+    await expect(
+      homeCoach.getByTestId("rulebook-header").getByText("Tu turno"),
+    ).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
     await expect(awayCoach.getByRole("status")).toHaveCount(0);
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
@@ -546,6 +554,16 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByRole("status")).toHaveText(`Turno ${awayTeamName}`);
     await expect(homeCoach.getByText(/Mitad 1 · Turno 2/)).toHaveCount(0);
     await expect(homeCoach.getByRole("status")).toHaveCount(0);
+    // The accent tracks the ACTIVE coach only: after the flip away holds the
+    // turn, so away's header carries "Tu turno" while home's no longer does
+    // (both scoped within each rulebook-header; the feed turnStart tags also
+    // use "Tu turno", so page-scope would leak).
+    await expect(
+      awayCoach.getByTestId("rulebook-header").getByText(/Tu turno/),
+    ).toBeVisible();
+    await expect(
+      homeCoach.getByTestId("rulebook-header").getByText(/Tu turno/),
+    ).toHaveCount(0);
 
     // LM-13: the now-NON-active coach (home) clicks "Pedir turno" → the
     // requestTurn delta event streams to the ACTIVE (away) coach's page and the
@@ -779,8 +797,10 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(
       awayCoach.getByTestId("live-event-row").filter({ hasText: "(0 - 1)" }),
     ).toBeVisible();
-    // The away TD lands on the away side → hero reads "0 : 1" (home : away).
-    await expect(awayCoach.getByTestId("live-score")).toHaveText(/0\s*:\s*1/);
+    // The away TD lands on the away side → the PER-SIDE scores read home 0,
+    // away 1 (Concept B/MVT-3 retired the composed "live-score" center node).
+    await expect(awayCoach.getByTestId("score-home")).toHaveText("0");
+    await expect(awayCoach.getByTestId("score-away")).toHaveText("1");
     // Turn1 away active → after the away TD the active side flips home; the TD
     // auto-end does NOT advance the round (home resumes their TURN 1 — the
     // round advances only when the round starter comes back after an end-turn).
