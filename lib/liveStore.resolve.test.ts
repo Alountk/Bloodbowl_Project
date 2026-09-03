@@ -109,6 +109,8 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
     // The per-side resolution wizard cursor (null = never ran; the legacy
     // resolve path then falls back to fresh rolls as before).
     resolutionState: null,
+    // LM-28/LM-29: a finished live match carries no current-turn reason.
+    lastTurnReason: null,
     // RAU-14: the default finished row fields no journeymen.
     journeymen: null,
     // The legacy pending-casualty column is unused since design B (RAU-82)

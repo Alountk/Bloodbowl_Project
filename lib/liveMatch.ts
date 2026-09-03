@@ -24,6 +24,17 @@ import type { InjuryOutcomeKind, PermanentAttribute } from "./rules/injuries";
 
 export type TeamSide = "home" | "away";
 export type LiveMatchStatus = "pending" | "ready" | "live" | "finished";
+/**
+ * LM-28: the reason a turn began when it was started by a MANUAL pass
+ * (`endTurn`). The kickoff first turn and every TD auto-flip carry NO reason
+ * (null). An absent reason on a legacy `endTurn` payload behaves as `voluntary`.
+ */
+export type TurnReason = "voluntary" | "turnover" | "injury";
+
+/** LM-28 server-side guard: the ONLY legal turn reasons are the three below. */
+export function isTurnReason(value: unknown): value is TurnReason {
+  return value === "voluntary" || value === "turnover" || value === "injury";
+}
 export type LiveEventKind =
   | "start"
   | "turn"
@@ -125,6 +136,12 @@ export interface LiveMatchState {
    * resumable end-of-match step machine. Not part of the turn lifecycle;
    * carried so the shared DTO exposes it for the modal's resume-at-step. */
   resolutionState: ResolutionState;
+  /** LM-28/LM-29: the reason the CURRENT turn began (`voluntary|turnover|injury`),
+   * persisted so the reason survives a reload; null for a legacy match, the
+   * kickoff first turn, or a turn started by a TD auto-flip (never propagated
+   * from a previous turn). REQUIRED in the internal state; mirrored as OPTIONAL
+   * on the DTO so old test/serializer stubs still compile. */
+  lastTurnReason: TurnReason | null;
   events: LiveEventRecord[];
 }
 
@@ -327,6 +344,10 @@ export interface LiveMatchViewState {
   /** The per-side resolution wizard cursor — the modal resumes at the persisted
    * step after a close/refresh (see `ResolutionState`). */
   resolutionState: ResolutionState;
+  /** LM-29: the reason the current turn began, exposed on the view DTO so the
+   * live UI can show it after a reload. OPTIONAL so old stubs/serializers still
+   * compile; absent/null = no reason (auto-started turn). Never a feed row. */
+  lastTurnReason?: TurnReason | null;
 }
 
 const TURNS_PER_HALF = 8;
@@ -436,6 +457,8 @@ export function beginMatch(
     paused: false,
     clockStartedAt: now,
     finishedAt: null,
+    // LM-28: a kickoff first turn NEVER carries a reason — clear any stored one.
+    lastTurnReason: null,
     events: [
       ...state.events,
       ...normalizedKickoff,
@@ -470,16 +493,31 @@ export function beginMatch(
  * new segment start to `now`; flips the active side and increments the turn; at
  * half-1 turn 8 the half flips to 2 (away starts turn 1); at half-2 turn 8 the
  * match auto-finishes (D5).
+ *
+ * LM-28: an optional `reason` ("voluntary"|"turnover"|"injury") records WHY this
+ * PASS happened and is persisted for the NEXT turn (the route validates the set
+ * BEFORE calling — an invalid reason never reaches this pure function). An
+ * absent reason behaves as `voluntary` (legacy payloads). The FINAL pass (match
+ * auto-finish) clears the reason to null so no stale reason survives a finished
+ * match; every state it returns carries the resolved `lastTurnReason`.
  */
 export function applyEndTurn(
   state: LiveMatchState,
-  cmd: { side: TeamSide },
+  cmd: { side: TeamSide; reason?: TurnReason },
   now: number,
 ): LiveMatchState {
   if (cmd.side !== state.activeSide) throwInvalid("out-of-turn");
   if (state.status !== "live") throwInvalid("match not live");
+  const resolved: TurnReason | null = cmd.reason ?? "voluntary";
   const { nextActive, nextHalf, nextTurnNumber, final } = advanceTurnIndex(state);
-  return turnTransition(accumulate(state, now), { nextActive, nextHalf, nextTurnNumber, final }, now);
+  const transitioned = turnTransition(
+    accumulate({ ...state, lastTurnReason: resolved }, now),
+    { nextActive, nextHalf, nextTurnNumber, final },
+    now,
+    resolved,
+  );
+  // A final pass (match auto-finish) carries NO next turn — never keep a reason.
+  return final ? { ...transitioned, lastTurnReason: null } : transitioned;
 }
 
 /**
@@ -516,6 +554,9 @@ export function applyTD(
       finishedAt: now,
       paused: false,
       clockStartedAt: null,
+      // LM-28: a TD auto-flip starts the next turn with NO reason — never
+      // propagate a manual pass's reason into a TD-started turn.
+      lastTurnReason: null,
       events: [...state.events, tdEvent],
     };
   }
@@ -527,6 +568,8 @@ export function applyTD(
     activeSide: other(state.activeSide),
     paused: false,
     clockStartedAt: now,
+    // LM-28: same rule for a live TD flip — the next turn has no reason.
+    lastTurnReason: null,
     events: [...bumped.events, tdEvent],
   };
 }
@@ -547,6 +590,8 @@ export function applyEndMatch(
     finishedAt: now,
     paused: false,
     clockStartedAt: null,
+    // LM-28: a finished match has no "current turn" — clear any stored reason.
+    lastTurnReason: null,
     events: [
       ...state.events,
       {
@@ -605,11 +650,16 @@ function accumulate(state: LiveMatchState, now: number): LiveMatchState {
   return { ...state, awayTurnMs: state.awayTurnMs + inFlight };
 }
 
-/** Shared end-of-turn transition: applies indices, appends the turn event. */
+/** Shared end-of-turn transition: applies indices, appends the turn event and —
+ * for a NON-final pass — the labeled `turnStart(nextActive)` event whose payload
+ * carries the resolved reason (LM-28) so the next turn's live row can render it.
+ * The FINAL pass emits only `endMatch` (no turnStart, no reason stamp).
+ */
 function turnTransition(
   state: LiveMatchState,
   n: { nextActive: TeamSide; nextHalf: number; nextTurnNumber: number; final: boolean },
   now: number,
+  reason?: TurnReason,
 ): LiveMatchState {
   const kind: LiveEventKind = n.final ? "endMatch" : n.nextHalf !== state.half ? "endHalf" : "turn";
   // LM-13: whenever a turn begins (the flip lands), persist an explicit labeled
@@ -647,7 +697,9 @@ function turnTransition(
           playerRosterId: null,
           half: n.nextHalf,
           turnNumber: n.nextTurnNumber,
-          payload: {},
+          // LM-28: the reason this turn began rides on the live turnStart row so
+          // the feed's live row can render the reason tag (never a feed DTO).
+          payload: reason ? { reason } : {},
           at: now,
         },
       ];
@@ -785,6 +837,8 @@ export function acceptConcede(
     paused: false,
     clockStartedAt: null,
     concedeProposedBy: null,
+    // LM-28: a conceded/finished match clears any stored turn reason.
+    lastTurnReason: null,
     events: [
       ...state.events,
       {
@@ -917,5 +971,7 @@ export function toLiveViewState(
     concedeProposedBy: state.concedeProposedBy,
     mvpNominations: state.mvpNominations,
     resolutionState: state.resolutionState,
+    // LM-29: expose the current turn's reason so a reload keeps it visible.
+    lastTurnReason: state.lastTurnReason,
   };
 }

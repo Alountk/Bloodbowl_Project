@@ -253,6 +253,10 @@ interface LiveMatchRowFields {
   /** The persisted per-side resolution wizard cursor JSON (`{ home, away }`),
    * null until the wizard's FIRST action persists it. */
   resolutionState: Prisma.JsonValue | null;
+  /** LM-28/LM-29: the reason the current turn began
+   * (`voluntary|turnover|injury`), null for an auto-started/legacy turn.
+   * OPTIONAL so a pre-column row cast still satisfies the row shape. */
+  lastTurnReason?: string | null;
 }
 
 /** Converts a persisted LiveMatch row (ISO statuses/timestamps) into a pure state. */
@@ -278,6 +282,12 @@ export function liveMatchRowToState(
     concedeProposedBy: row.concedeProposedBy,
     mvpNominations: parseMvpNominations(row.mvpNominations ?? null),
     resolutionState: parseResolutionState(row.resolutionState ?? null),
+    lastTurnReason:
+      row.lastTurnReason === "voluntary" ||
+      row.lastTurnReason === "turnover" ||
+      row.lastTurnReason === "injury"
+        ? row.lastTurnReason
+        : null,
     events: [],
   };
 }
@@ -305,6 +315,8 @@ function rowData(next: LiveMatchState): Prisma.LiveMatchUpdateManyMutationInput 
     resolutionState: next.resolutionState as unknown as
       | Prisma.NullableJsonNullValueInput
       | Prisma.InputJsonValue,
+    // LM-28/LM-29: persist the current turn's reason (or its explicit clear).
+    lastTurnReason: next.lastTurnReason,
   };
 }
 
@@ -571,6 +583,7 @@ async function createFirstConsent(
     concedeProposedBy: null,
     mvpNominations: EMPTY_MVP_NOMINATIONS,
     resolutionState: EMPTY_RESOLUTION_STATE,
+    lastTurnReason: null,
     events: [],
   };
 

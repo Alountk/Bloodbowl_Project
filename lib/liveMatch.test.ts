@@ -13,6 +13,7 @@ import {
   toLiveViewState,
   deriveLiveClock,
   isDisplayEvent,
+  isTurnReason,
   parseResolutionState,
   EMPTY_RESOLUTION_STATE,
   type LiveMatchState,
@@ -46,6 +47,7 @@ function state(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     concedeProposedBy: null,
     mvpNominations: { home: null, away: null },
     resolutionState: EMPTY_RESOLUTION_STATE,
+    lastTurnReason: null,
     events: [],
     ...overrides,
   };
@@ -71,6 +73,7 @@ function pending(overrides: Partial<LiveMatchState> = {}): LiveMatchState {
     concedeProposedBy: null,
     mvpNominations: { home: null, away: null },
     resolutionState: EMPTY_RESOLUTION_STATE,
+    lastTurnReason: null,
     events: [],
     ...overrides,
   };
@@ -291,6 +294,86 @@ describe("applyEndTurn — round-shared turn numbers (home T1 → away T1 → ho
     expect(next.status).toBe("live");
     expect(next.activeSide).toBe("home");
     expect(next.turnNumber).toBe(8);
+  });
+});
+
+describe("applyEndTurn — lastTurnReason carry/clear (LM-28)", () => {
+  it("defaults a reason-less legacy endTurn payload to 'voluntary' (LM-28)", () => {
+    const next = applyEndTurn(state({ lastTurnReason: null }), { side: "home" }, 1100);
+    expect(next.lastTurnReason).toBe("voluntary");
+    expect(next.status).toBe("live");
+    expect(next.activeSide).toBe("away");
+  });
+
+  it("stamps an explicit reason on the next turn (manual pass with `turnover`)", () => {
+    const next = applyEndTurn(
+      state({ lastTurnReason: null }),
+      { side: "home", reason: "turnover" },
+      1100,
+    );
+    expect(next.lastTurnReason).toBe("turnover");
+    // the turnStart event carries the reason in its payload for the live row
+    const turnStart = next.events.find((e) => e.kind === "turnStart");
+    expect(turnStart?.payload.reason).toBe("turnover");
+    expect(turnStart?.side).toBe("away");
+  });
+
+  it("stamps `injury` on a half-flipping end (incl. endHalf) and clears it on the FINAL pass", () => {
+    const atAwayTurn8 = state({ activeSide: "away", half: 1, turnNumber: 8, lastTurnReason: "turnover" });
+    // away T8 → half 2, away starts turn 1 (NOT final) — reason stays.
+    const nextHalfFlip = applyEndTurn(atAwayTurn8, { side: "away", reason: "injury" }, 1100);
+    expect(nextHalfFlip.lastTurnReason).toBe("injury");
+    expect(nextHalfFlip.half).toBe(2);
+    const halfFlipStart = nextHalfFlip.events.find((e) => e.kind === "turnStart");
+    expect(halfFlipStart?.payload.reason).toBe("injury");
+
+    // half-2 home T8 (round starter) final pass → the match finishes and reason → null.
+    const atHalf2End = state({ activeSide: "home", half: 2, turnNumber: 8, lastTurnReason: "voluntary" });
+    const finished = applyEndTurn(atHalf2End, { side: "home", reason: "voluntary" }, 1100);
+    expect(finished.status).toBe("finished");
+    expect(finished.lastTurnReason).toBeNull();
+    // a finished transition emits NO turnStart (only endMatch) → no reason tag leak
+    expect(finished.events.some((e) => e.kind === "turnStart")).toBe(false);
+  });
+
+  it("clears the stored reason when a NON-manual start (kickoff) begins the match (LM-28)", () => {
+    const prev = pending({ homeConsented: true, awayConsented: true, status: "ready", lastTurnReason: "turnover" });
+    const next = beginMatch(prev, 1000);
+    expect(next.lastTurnReason).toBeNull();
+    // the kickoff's home turnStart carries NO reason
+    const kickoffStart = next.events.find((e) => e.kind === "turnStart" && e.side === "home");
+    expect(kickoffStart?.payload.reason).toBeUndefined();
+  });
+
+  it("clears the stored reason when a TD auto-flip starts the next turn (LM-28)", () => {
+    const prev = state({ lastTurnReason: "turnover" });
+    const next = applyTD(prev, { side: "home", playerRosterId: "p-1" }, 1100);
+    expect(next.lastTurnReason).toBeNull();
+  });
+});
+
+describe("isTurnReason — server-side guard (LM-28)", () => {
+  it("accepts exactly the three legal reasons and rejects everything else", () => {
+    expect(isTurnReason("voluntary")).toBe(true);
+    expect(isTurnReason("turnover")).toBe(true);
+    expect(isTurnReason("injury")).toBe(true);
+    expect(isTurnReason("")).toBe(false);
+    expect(isTurnReason("cheat")).toBe(false);
+    expect(isTurnReason(undefined)).toBe(false);
+    expect(isTurnReason(42)).toBe(false);
+    expect(isTurnReason(null)).toBe(false);
+  });
+});
+
+describe("toLiveViewState — surfaces lastTurnReason (LM-29 DTO) while keeping the feed shape", () => {
+  it("exposes the current turn reason on the view DTO", () => {
+    const view = toLiveViewState(state({ lastTurnReason: "injury" }), 1100);
+    expect(view.lastTurnReason).toBe("injury");
+  });
+
+  it("exposes null when the current turn began automatically (no stored reason)", () => {
+    const view = toLiveViewState(state({ lastTurnReason: null }), 1100);
+    expect(view.lastTurnReason).toBeNull();
   });
 });
 

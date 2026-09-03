@@ -408,6 +408,7 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
         home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
         away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
       },
+      lastTurnReason: null,
       events: [],
     },
     now,

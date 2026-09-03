@@ -41,9 +41,11 @@ import {
   isDisplayEvent,
   deriveCasualtyOutcome,
   validateCasualtyRolls,
+  isTurnReason,
   type FixtureStartState,
   type LiveMatchState,
   type TeamSide,
+  type TurnReason,
 } from "@/lib/liveMatch";
 import {
   checkActorInvariant,
@@ -545,7 +547,7 @@ type ControlCommand =
   | { type: "consent"; side: TeamSide }
   | { type: "retractConsent"; side: TeamSide }
   | { type: "begin" }
-  | { type: "endTurn"; side: TeamSide }
+  | { type: "endTurn"; side: TeamSide; reason?: TurnReason }
   | { type: "td"; side: TeamSide; playerRosterId: string }
   | { type: "completion"; side: TeamSide; playerRosterId: string }
   | {
@@ -662,6 +664,10 @@ function isControlCommand(value: unknown): value is ControlCommand {
     case "requestTurn":
       return true;
     case "endTurn":
+      // LM-28: the command SHAPE requires a valid team side. The optional
+      // `reason` is validated SEPARATELY (an out-of-set value → 409, checked in
+      // the dispatch before applyEndTurn, never here — so a malformed reason
+      // reaches the 409 guard, not the generic 400 unsupported path).
       return c.side === "home" || c.side === "away";
     case "td":
     case "completion":
@@ -1365,8 +1371,20 @@ export async function POST(
 
   let next: LiveMatchState | null = null;
   if (command.type === "endTurn") {
+    // LM-28: reject an out-of-set or malformed reason with 409 + NO mutation
+    // BEFORE applyEndTurn (the side gate / live-only gate already 409 above;
+    // this closes the last invalid input that must never mutate).
+    if (command.reason != null && !isTurnReason(command.reason)) {
+      return Response.json({ error: "Invalid turn reason" }, { status: 409 });
+    }
     try {
-      next = applyEndTurn(current, { side: command.side }, now);
+      // LM-28: an optional, pre-validated reason is forwarded into the pure
+      // transition (the check above proved it legal; absent → voluntary default).
+      next = applyEndTurn(
+        current,
+        { side: command.side, reason: command.reason ?? "voluntary" },
+        now,
+      );
     } catch {
       return Response.json({ error: "Invalid transition" }, { status: 409 });
     }
