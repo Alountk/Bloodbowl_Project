@@ -556,13 +556,19 @@ describe("C. rulebook sticky header (MatchView)", () => {
     expect(screen.getAllByRole("link", { name: /Volver/i })).toHaveLength(1);
     // The duplicated "Partido {round}" page header is GONE (no heading above it).
     expect(screen.queryByRole("heading", { name: /Partido 1/ })).toBeNull();
-    // Meta row + frozen hero score + half/turn note; the live mini-line is absent.
+    // Meta row + frozen PER-SIDE scores + half/turn note; the live mini-line is
+    // absent (Concept B: no "En juego · Tiempo", no composed center score).
     expect(screen.getByText("Clima · Estándar")).toBeTruthy();
     expect(screen.getByText("Estadio · Reglamentario")).toBeTruthy();
-    expect(screen.getByTestId("live-score").textContent).toMatch(/2\s*:\s*1/);
+    expect(screen.getByTestId("score-home").textContent).toBe("2");
+    expect(screen.getByTestId("score-away").textContent).toBe("1");
+    expect(screen.queryByTestId("live-score")).toBeNull();
     expect(screen.getByText("2ª Parte")).toBeTruthy();
     expect(screen.getByText("Mitad 2 · Turno 8")).toBeTruthy();
     expect(screen.queryByText(/En juego · Tiempo/)).toBeNull();
+    // Concept B: a finished header shows NO coach accent (not live) and keeps
+    // the per-team clocks frozen — the accent is live-and-active-coach only.
+    expect(within(header).queryByText(/Tu turno/)).toBeNull();
     // MVT-3/MVT-7: a FINISHED match has NO pass control anywhere — the bottom
     // dock is hidden (not live / no side), so the "Dar el turno" button appears
     // nowhere (count 0) and no "Turno {team}" status/foot-top reason chip.
@@ -573,7 +579,7 @@ describe("C. rulebook sticky header (MatchView)", () => {
     expect(screen.queryByRole("button", { name: /Conceder/i })).toBeNull();
   });
 
-  it("locks the live header: NO pass control inside it, half badge, 'Mitad · Turno' line, hero mini-line, and the bottom-dock chip + sheet", async () => {
+  it("locks the live header: NO pass control inside it, half badge, 'Mitad · Turno' chip, coach accent, per-side scores, and the bottom-dock chip + sheet", async () => {
     stubMatch(fixtureDetail(liveMatch()));
     const { container } = render(<MatchView leagueId="l1" fixtureId="f1" />);
     await waitFor(() => expect(container.textContent).toContain("Mitad 1 · Turno 3"));
@@ -588,8 +594,15 @@ describe("C. rulebook sticky header (MatchView)", () => {
     expect(screen.getByText("Turno Reavers")).toBeTruthy();
     expect(screen.getByText("1ª Parte")).toBeTruthy();
     expect(screen.getByText("Mitad 1 · Turno 3")).toBeTruthy();
-    expect(screen.getByTestId("live-score").textContent).toMatch(/1\s*:\s*0/);
-    expect(screen.getByText(/En juego · Tiempo/)).toBeTruthy();
+    // Concept B (MVT-3): per-side frozen/"live" scores under the acronyms + the
+    // coach-only header accent "Tu turno · clock" (plain text, never role=status).
+    expect(screen.getByTestId("score-home").textContent).toBe("1");
+    expect(screen.getByTestId("score-away").textContent).toBe("0");
+    expect(within(header).getByText(/Tu turno/)).toBeTruthy();
+    // The former "En juego · Tiempo" mini-line is REMOVED (the count-up covers).
+    expect(screen.queryByText(/En juego · Tiempo/)).toBeNull();
+    // No composed "live-score" node survives — the score is per-side now.
+    expect(screen.queryByTestId("live-score")).toBeNull();
     expect(screen.getByText("Clima · Estándar")).toBeTruthy();
     // RAU-38: the live header turn zone still carries the concede control (it is
     // NOT a pass control — it stays in the header turn area per RAU-38).

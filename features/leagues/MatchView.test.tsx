@@ -295,7 +295,9 @@ describe("MatchView — uniform sticky rulebook header across states", () => {
     expect(screen.getAllByText("–").length).toBeGreaterThan(0);
     expect(screen.queryByText(/0:00/)).toBeNull();
     // Hero: no-played score + the meta row.
-    expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
+    // Concept B: scores are per-side under each acronym emblem column.
+    expect(screen.getByTestId("score-home").textContent).toBe("-");
+    expect(screen.getByTestId("score-away").textContent).toBe("-");
     expect(screen.getByText(/Clima · Estándar/)).toBeTruthy();
     // Gating: no highlight, no "Turno {team}"/"Dar el turno" before live.
     const highlighted = screen
@@ -316,7 +318,9 @@ describe("MatchView — uniform sticky rulebook header across states", () => {
     expect(screen.getByTestId("rulebook-header")).toBeTruthy();
     expect(screen.getByText(/Mitad 1 · Turno 1/)).toBeTruthy();
     expect(screen.getByText(/1ª PARTE/i)).toBeTruthy();
-    expect(screen.getByTestId("live-score").textContent).toMatch(/-\s*:\s*-/);
+    // Concept B: scores are per-side under each acronym emblem column.
+    expect(screen.getByTestId("score-home").textContent).toBe("-");
+    expect(screen.getByTestId("score-away").textContent).toBe("-");
     // The consent panel stays in the BODY below the header.
     expect(screen.getByRole("button", { name: /Iniciar partido/i })).toBeTruthy();
     // Gating: the home coach HAS a side but the match is not live → no turn button.
@@ -330,7 +334,9 @@ describe("MatchView — uniform sticky rulebook header across states", () => {
     await waitFor(() => expect(screen.getByText(/Fin del partido/)).toBeTruthy());
 
     expect(screen.getByTestId("rulebook-header")).toBeTruthy();
-    expect(screen.getByTestId("live-score").textContent).toMatch(/2\s*:\s*1/);
+    // Frozen per-side final scores (Concept B — no composed center league score).
+    expect(screen.getByTestId("score-home").textContent).toBe("2");
+    expect(screen.getByTestId("score-away").textContent).toBe("1");
     expect(screen.getByText(/2ª PARTE/i)).toBeTruthy();
     expect(screen.getByText(/Mitad 2 · Turno 8/)).toBeTruthy();
     // Frozen base clocks render H:MM:SS (finished values carry real time).
@@ -498,11 +504,12 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
 
     // The live section shows real server state: header (half/turn), score.
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // Hero scoreboard: big "1 : 0" digits (mockup format).
-    expect(screen.getByTestId("live-score").textContent).toMatch(/1\s*:\s*0/);
-    // Per-coach clock (homeTurnMs=2100 → H:MM:SS 0:00:02) + the unified Tiempo.
+    // Concept B: live scores are per-side next to the acronym emblems.
+    expect(screen.getByTestId("score-home").textContent).toBe("1");
+    expect(screen.getByTestId("score-away").textContent).toBe("0");
+    // Per-coach clock (homeTurnMs=2100 → H:MM:SS 0:00:02) + the coach accent.
     expect(container.textContent).toMatch(/0:00:02/);
-    expect(container.textContent).toMatch(/Tiempo/);
+    expect(container.textContent).toMatch(/Tu turno/);
     // The timeline legend reuses the Spanish labels for the TD + start events.
     expect(screen.getAllByText(/Touchdown/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Inicio del partido/).length).toBeGreaterThan(0);
@@ -768,38 +775,36 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(container.textContent).toMatch(/Jornada 1/);
     expect(container.textContent).toMatch(/1ª PARTE/i);
 
-    // Turn tracks: 8 cells per team (16 total), the SAME GLOBAL sequence 1-8 on
-    // BOTH tracks (rulebook), with exactly ONE highlighted cell — the ACTIVE
-    // side's current GLOBAL turn. Half 1 turn 3 (home active) → "3" (supersedes
-    // the per-team isolated counters from #79).
+    // Turn track (Concept B): ONE shared 8-cell inline track at the header
+    // center — the global 1-8 sequence in half 1 with exactly ONE highlighted
+    // cell, the ACTIVE side's current GLOBAL turn (home active turn 3 → "3").
     const cells = screen.getAllByLabelText(/Turno \d/);
-    expect(cells).toHaveLength(16);
+    expect(cells).toHaveLength(8);
     const highlighted = cells.filter((c) => c.getAttribute("aria-current") === "true");
     expect(highlighted).toHaveLength(1);
     expect(highlighted[0].textContent).toBe("3");
 
-    // Both tracks show the same global numbers 1-8; only the ACTIVE (home) track
-    // highlights its current turn — the away track shows no aria-current.
-    const homeTrack = screen.getByLabelText(/Turnos de Reavers/);
-    const awayTrack = screen.getByLabelText(/Turnos de Dwarves/);
-    expect(within(homeTrack).getByLabelText("Turno 1").textContent).toBe("1");
-    expect(within(homeTrack).getByLabelText("Turno 8").textContent).toBe("8");
-    expect(within(awayTrack).getByLabelText("Turno 1").textContent).toBe("1");
-    expect(within(awayTrack).getByLabelText("Turno 8").textContent).toBe("8");
-    expect(homeTrack.querySelector('[aria-current="true"]')?.textContent).toBe("3");
-    expect(awayTrack.querySelector('[aria-current="true"]')).toBeNull();
-    // Design-10 navy bar: the ACTIVE turn is the red highlight; the rest are the
-    // muted navy cells (mockup `.tn`).
-    expect(within(homeTrack).getByLabelText("Turno 3").className).toContain("bg-[#d11938]");
-    expect(within(homeTrack).getByLabelText("Turno 2").className).toContain("bg-[#1f3a7a]");
+    // The single track renders the full global range 1-8; the per-side wrapper
+    // labels ("Turnos de {team}") are GONE (D5) — one track, no teamsOf label.
+    expect(cells[0].textContent).toBe("1");
+    expect(cells[7].textContent).toBe("8");
+    expect(screen.queryByLabelText(/Turnos de/)).toBeNull();
+    // Design-10 navy bar on the single track: the ACTIVE turn is the red
+    // highlight; the rest are the muted navy cells (mockup `.tn`).
+    expect(screen.getByLabelText("Turno 3").className).toContain("bg-[#d11938]");
+    expect(screen.getByLabelText("Turno 2").className).toContain("bg-[#1f3a7a]");
 
-    // Hero: the team blocks mirror the center scoreboard (race · coach line).
-    expect(screen.getAllByText(/Reavers/).length).toBeGreaterThan(0);
-    expect(container.textContent).toMatch(/Human · Coach A/);
-    expect(container.textContent).toMatch(/Dwarf · Coach B/);
+    // Concept B header: NO full-name/subtitle visible text — only the per-side
+    // acronym emblem + the header center coach accent (home coach active).
+    const header = screen.getByTestId("rulebook-header");
+    expect(within(header).getByText(/Tu turno/)).toBeTruthy();
+    expect(screen.queryByText(/Human · Coach A/)).toBeNull();
+    expect(screen.queryByText(/Dwarf · Coach B/)).toBeNull();
 
-    // Per-team mini pills derived via deriveTeamStats: only stats with data on
+    // Per-team mini pills in the FEED strip (MVT-10) — derived via
+    // deriveTeamStats, never inside the sticky header: only stats with data on
     // either side render (TD present via the live td; no casualties → no cas pill).
+    expect(within(header).queryByTestId("mini-td-home")).toBeNull();
     expect(screen.getByTestId("mini-td-home")).toBeTruthy();
     expect(screen.queryByTestId("mini-cas-home")).toBeNull();
 
@@ -818,22 +823,18 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     renderPlayed();
     await screen.findAllByText(/Mitad 2 · Turno 5/);
 
-    // Half 2 → both tracks show 9-16; the ACTIVE (away) track highlights its
-    // current GLOBAL turn: half 2 turn 5 → 13.
+    // Half 2 → the single shared track shows the global 9-16 range; the ACTIVE
+    // (away) coach's current GLOBAL turn: half 2 turn 5 → cell "13".
     const cells = screen.getAllByLabelText(/Turno \d/);
-    expect(cells).toHaveLength(16);
+    expect(cells).toHaveLength(8);
     const highlighted = cells.filter((c) => c.getAttribute("aria-current") === "true");
     expect(highlighted).toHaveLength(1);
     expect(highlighted[0].textContent).toBe("13");
 
-    const homeTrack = screen.getByLabelText(/Turnos de Reavers/);
-    const awayTrack = screen.getByLabelText(/Turnos de Dwarves/);
-    expect(within(homeTrack).getByLabelText("Turno 9").textContent).toBe("9");
-    expect(within(homeTrack).getByLabelText("Turno 16").textContent).toBe("16");
-    expect(within(awayTrack).getByLabelText("Turno 9").textContent).toBe("9");
-    expect(within(awayTrack).getByLabelText("Turno 16").textContent).toBe("16");
-    expect(awayTrack.querySelector('[aria-current="true"]')?.textContent).toBe("13");
-    expect(homeTrack.querySelector('[aria-current="true"]')).toBeNull();
+    expect(screen.getByLabelText("Turno 9").textContent).toBe("9");
+    expect(screen.getByLabelText("Turno 16").textContent).toBe("16");
+    expect(screen.getByLabelText("Turno 13").getAttribute("aria-current")).toBe("true");
+    expect(screen.queryByLabelText(/Turnos de/)).toBeNull();
   });
 
   it("ticks the unified clock and the ACTIVE coach's clock every second while live", async () => {
@@ -1348,9 +1349,12 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     // ★ SPP via eventSpp: td ★3, lasting casualty ★2.
     expect(container.textContent).toContain("★3");
     expect(container.textContent).toContain("★2");
-    // The final score now lives in the UNIFORM sticky header hero ("2:1"),
-    // not in the finished-live body (removed to avoid duplication).
-    expect(container.textContent).toMatch(/2\s*:\s*1/);
+    // The final score now lives in the UNIFORM sticky header as frozen PER-SIDE
+    // scores ("2"/"1" under the acronym columns) — no composed "2 : 1" node.
+    expect(screen.getByTestId("score-home")).toBeTruthy();
+    expect(screen.getByTestId("score-home").textContent).toBe("2");
+    expect(screen.getByTestId("score-away").textContent).toBe("1");
+    expect(screen.queryByText("2 : 1")).toBeNull();
   });
 
   it("renders minute, global turn tag and dorsal per row from liveFeed derivations", async () => {
