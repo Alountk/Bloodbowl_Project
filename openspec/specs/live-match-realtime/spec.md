@@ -743,6 +743,79 @@ Cause→label MUST map: `blitz` → "Blitz", `foul` → "Falta", `dodge` → "Es
 - WHEN the card renders
 - THEN it shows "a Trash (#8)" under the aggressor row
 
+### Requirement: LM-27 · 1D16 Severity Band Presentation
+
+The casualty 1D16 roll-stepper MUST present each option chip with the severity color of its band, derived client-side from the SAME band mapping as its label: rolls 1–8 grey (Herida), 9–10 yellow (Apaleado), 11–12 amber (Grave), 13–14 orange (Permanente), 15–16 intense red (Muerte). This is presentation-only: chip value text and "{n} → {band}" labels MUST stay byte-identical; the chip set, count (16), order, aria-pressed/selected semantics and the roll value submitted on click MUST NOT change; no severity field MAY be added to any command (band stays server-derived, LM-12). Each chip MUST expose an accessible name that includes its band. Text/fill contrast MUST meet WCAG AA on white — yellow/amber/orange fills MUST use dark text. New a11y copy MUST reuse existing band keys and MUST land in BOTH es/en dictionaries in the same change.
+
+#### Scenario: Chips color by band
+
+- GIVEN the live casualty 1D16 stepper rendering its 16 chips
+- WHEN the chips draw
+- THEN chips 1–8 carry the grey treatment, 9–10 yellow, 11–12 amber, 13–14 orange, 15–16 intense red
+- AND every chip keeps its byte-identical value and "{n} → {band}" label
+
+#### Scenario: Accessible severity and contrast
+
+- GIVEN the colored stepper
+- WHEN an assistive technology or a contrast audit inspects a chip
+- THEN its accessible name includes the band and its text/fill contrast passes WCAG AA, including the yellow/amber chips
+
+#### Scenario: Selection semantics unchanged
+
+- GIVEN the stepper after coloring
+- WHEN a coach selects a value and confirms the casualty
+- THEN the submitted roll value and select state behave exactly as before, with no severity field added to the command payload
+
+### Requirement: LM-28 · Pass-Turn with Reason
+
+The `endTurn` command (pass-turn, LM-12 active-coach action) MUST accept an optional `reason`: `voluntary | turnover | injury`. An absent reason SHALL behave as `voluntary` — legacy `{type:"endTurn", side}` payloads and the current e2e double-click pass path stay valid with no picker interaction. When a manual pass commits, the reason MUST persist with the turn transition and MUST be stamped on the emitted `turnStart` payload (including when the pass ends the half) so the next turn's live row can render it. A reason outside the three values MUST return 409 with no mutation; the LM-4 side gate and live-only control gate still apply (NON-active coach or finished match → 409, no mutation). A turn that starts WITHOUT a manual pass — the kickoff first turn or a TD auto-flip — MUST carry no reason and MUST clear any previously stored reason. New copy MUST use `match.turnReason.{voluntary,turnover,injury}` (visible ES labels "Voluntario" | "Tirada fallida" | "Baja") and MUST be added to BOTH es/en dictionaries in the same change.
+
+#### Scenario: Manual pass with each reason
+
+- GIVEN a live match with home's turn active
+- WHEN the home coach ends the turn with reason `turnover` (or `voluntary` / `injury`)
+- THEN the endTurn commits, activeSide flips to away, and the persisted `turnStart` for away carries that reason
+
+#### Scenario: Default voluntary
+
+- GIVEN an endTurn POST with no reason, or with `voluntary`
+- WHEN it commits
+- THEN behavior equals today's pass — exactly one flip and one turn event, with no reason selection required
+
+#### Scenario: Invalid or gated reason rejected
+
+- GIVEN an endTurn carrying an unknown reason, sent by the NON-active coach, or on a finished match
+- WHEN it reaches the route
+- THEN it returns 409 and neither the side, the reason, nor any event changes
+
+#### Scenario: Auto start clears the reason
+
+- GIVEN a stored reason from a prior manual pass
+- WHEN a TD auto-flip starts the next turn, or the first kickoff turn begins
+- THEN the new turn carries no reason and the stored value is cleared (null)
+
+### Requirement: LM-29 · Turn Reason Persistence and Reload Exposure
+
+`LiveMatch` MUST persist an ADDITIVE nullable column `lastTurnReason` (`voluntary|turnover|injury`, NULL otherwise) via an additive migration — no backfill, no rewrite of legacy rows. The live-state DTO returned by the fixture GET and by the SSE snapshot MUST expose `lastTurnReason`; feed event lists MUST stay unchanged — `turn|turnStart|requestTurn` remain out of every feed DTO, and the reason is state, never a feed row (LM-16 intact). The current turn's reason MUST remain visible after a full reload, sourced from the persisted field. The live turn-start row (LM-13, live-only) MUST render a reason tag when the turn began with one; it MUST NOT gain ✓/✗ or auto-verify controls — `turnStart` stays outside ACKABLE_KINDS and LM-26 semantics are unchanged. Matches without a stored reason (legacy or auto-started) MUST render no reason tag and no error.
+
+#### Scenario: Reason survives reload
+
+- GIVEN a manual pass committed with reason `injury`
+- WHEN a coach reloads the match page
+- THEN the DTO exposes `lastTurnReason: "injury"`, the current-turn reason remains visible in the live UI, and no turnStart/feed row appears
+
+#### Scenario: Null for legacy and auto starts
+
+- GIVEN a pre-column match, the kickoff first turn, or a TD-started turn
+- WHEN the live-state DTO is read
+- THEN `lastTurnReason` is null, no reason tag renders, and no error occurs
+
+#### Scenario: Turn row stays non-ackable
+
+- GIVEN a live turn-start row carrying a reason tag
+- WHEN it renders
+- THEN no ✓/✗ controls and no auto-verify badge appear (ACKABLE_KINDS unchanged)
+
 ## Acceptance Criteria
 
 | # | Requirement(s) |
