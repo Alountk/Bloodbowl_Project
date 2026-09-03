@@ -66,3 +66,6 @@ node_modules/.cache
 
 # local design previews (never committed)
 /previews/
+
+*storybook.log
+storybook-static

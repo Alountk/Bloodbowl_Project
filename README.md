@@ -71,6 +71,8 @@ pnpm test                # Unit + integration (Vitest)
 pnpm run test:e2e        # Local e2e (AUTH_MODE=local) — requires AUTH_MODE=local in the environment
 pnpm run test:e2e:auth   # Real-DB e2e (auth, leagues, matchday, live match) — starts Postgres + app in AUTH_MODE=auth
 pnpm lint                # ESLint
+pnpm storybook           # Storybook design system http://localhost:6006
+pnpm build-storybook     # Static Storybook build → storybook-static/
 pnpm db:generate         # Prisma client
 pnpm db:migrate          # Apply migrations
 pnpm docker:build        # Build local image
