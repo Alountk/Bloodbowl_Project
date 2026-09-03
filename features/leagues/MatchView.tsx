@@ -575,20 +575,23 @@ function LiveTopBar({
         {scoreCol(names.away, awayTeamId, "away")}
       </div>
       {/* Row 3 — relojes compacta: per-coach clocks + the 1ª/2ª badge (+ the
-          turn-zone concede while live for a sided coach). */}
-      <div className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-2 text-[11px] font-bold tabular-nums">
-        <span className="flex flex-1 items-center gap-1 text-white">
-          <Icon name="timer" className="h-[13px] w-[13px] text-[#cbd5e1]" />
+          turn-zone concede while live for a sided coach). The outer row WRAPS on
+          narrow viewports so the expanded 1ª/2ª + Conceder cluster never pushes
+          past the ~430px compact-header width — the away clock folds onto its
+          own line instead of overflowing the viewport (design polish, open Q2). */}
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-white/10 px-3 py-2 text-[11px] font-bold tabular-nums">
+        <span className="flex min-w-0 flex-1 items-center gap-1 text-white">
+          <Icon name="timer" className="h-[13px] w-[13px] shrink-0 text-[#cbd5e1]" />
           {clockValue(clock.homeTurnMs)}
         </span>
-        <span className="flex flex-wrap items-center justify-center gap-2">
-          <span className="rounded-[3px] border border-[rgba(209,25,56,0.45)] bg-[rgba(209,25,56,0.25)] px-2 py-[1px] text-[10px] font-black uppercase tracking-[0.05em] text-white">
+        <span className="flex max-w-full flex-wrap items-center justify-center gap-2">
+          <span className="whitespace-nowrap rounded-[3px] border border-[rgba(209,25,56,0.45)] bg-[rgba(209,25,56,0.25)] px-2 py-[1px] text-[10px] font-black uppercase tracking-[0.05em] text-white">
             {state.half === 2 ? t("match.halfTwo") : t("match.halfOne")}
           </span>
           {concedeControls}
         </span>
-        <span className="flex flex-1 items-center justify-end gap-1 text-white">
-          <Icon name="timer" className="h-[13px] w-[13px] text-[#cbd5e1]" />
+        <span className="flex min-w-0 flex-1 items-center justify-end gap-1 text-white">
+          <Icon name="timer" className="h-[13px] w-[13px] shrink-0 text-[#cbd5e1]" />
           {clockValue(clock.awayTurnMs)}
         </span>
       </div>
