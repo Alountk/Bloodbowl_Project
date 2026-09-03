@@ -120,36 +120,35 @@ A schema migration adding `LiveMatch`/`LiveEvent` and a chronological event time
 
 ### Requirement: MV-7 · Design System and Copy
 
-MatchView MUST use only rulebook-light tokens (navy `#12225a`, red `#d11938`, background `#f8fafc`, white square panels) and MUST NOT add a dark theme, dependencies, or an icon library (inline glyphs/SVG only). The rulebook card box, the 68% internal gradients, and the "Partido reportado" success style MUST be composed exclusively from existing token values: navy/red at reduced opacity for the team gradients, the neutral background token for the gray box, and the green semantic family already in use (green-50/600/700) for success; no new color values. League-section copy MUST be Spanish.
-(Previously: no color/shadow variants at all — the gradients and the success style did not exist.)
+MatchView MUST use only rulebook-light tokens (navy `#12225a`, red `#d11938`, background `#f8fafc`, white square panels) and MUST NOT add a dark theme, dependencies, or an icon library (inline glyphs/SVG only). The compact feed panel, the rulebook card surfaces, and the "Partido reportado" success style MUST be composed from existing token values: navy/red at reduced opacity for the team-row side accents, the neutral background token for gray surfaces, and the green semantic family already in use (green-50/600/700) for success. The 68%-width rulebook grid and its internal side-to-side gradients are removed with the card redesign (MVT-1). The ONLY new color values permitted are the five-band 1D16 severity ramp (grey, yellow, amber, orange, red) introduced by LM-27, used solely for the severity chips and their WCAG-contrast text; no other new color values. League-section copy MUST be Spanish.
 
 #### Scenario: Token and copy audit
 
 - GIVEN the rendered match page
 - WHEN classes and visible text are audited
-- THEN only existing tokens appear and all copy is Spanish
+- THEN only existing tokens plus the five severity-ramp colors on the 1D16 chips appear, and all copy is Spanish
 
-#### Scenario: Success and gradient tokens
+#### Scenario: Success tokens and severity ramp
 
-- GIVEN the rendered rulebook cards and the "Partido reportado" row
+- GIVEN the rendered compact feed, the "Partido reportado" row, and the severity stepper
 - WHEN classes are audited
-- THEN the gradients use only navy/red at reduced opacity, the box uses the neutral background token, and success uses the existing green family — no new hex values
+- THEN team rows use navy/red token accents, gray surfaces use the neutral background token, success uses the existing green family, and the only non-token colors are the five severity band values on the 1D16 chips
 
 ### Requirement: MVT-1 · rulebook Event Cards
 
-The event feed MUST render display events (LM-16) as cards inside a gray box with 4px radius and 2px gap. Team events (`td|completion|casualty|foul|mvp`) MUST render at 68% width with an internal side-to-side gradient of the team color (navy home / red away), the turn tag on the team's side and the minute on the opposite side; generic events (`start|endHalf|endMatch`) MUST render centered at 100% width. A TD card MUST show the partial score "(H - A)" derived by accumulating TD events per side across the display feed up to that event. A casualty event (side = the VICTIM's side, payload `{victimRosterId, causerRosterId?, cause, roll16, band, bothDown?}`) MUST render an INJURY card on the VICTIM's side AND a DERIVED ACTION card on the CAUSER's side; a self-inflicted (`dodge|crowd`) casualty MUST render ONLY the injury card. A casualty with `bothDown: true` (the fallen blocker's record) MUST render its derived action card WITH ★2 — DEC-1 keeps the award symmetric — and the defender record of the same both-down (a plain `block`) MUST keep ★2 on its action card too. The two symmetric both-down records MUST render as separate events (four cards total), never merged. ✓/✗ ack controls MUST render per LM-26 (only to the fallen player's coach, never the recorder). The `live-event-row` testid and existing feed labels MUST be preserved where the design keeps them; deliberate label/testid changes MUST ship with the behavior change, never silently.
+The event feed MUST render display events (LM-16) as compact cards in a single full-width column at EVERY viewport width, following the mini-card layout of the compact study (`bloodbowl_designs/timeline-action-entry-designs.html`). The 68%-width rulebook grid, its internal side-to-side navy/red gradients, the corner turn-tag/minute placement, and the ≤430px mobile override MUST be removed: one layout for all resolutions, no width media split. Team events (`td|completion|casualty|foul|mvp` and the other team-row variants, e.g. `expensive_mistake` and journeyman rows) MUST render as compact team rows carrying the SAME information as before — minute, turn tag, token/dorsal, name and position, icon, label, ★ stars — with side identity via the existing navy/red token accents only (no gradient). Generic events (`start|endHalf|endMatch`), `fan_factor`, and `concede` MUST render centered rows without a side accent. Per-kind detail lines MUST be preserved byte-for-byte: a TD card MUST show the partial score "(H - A)" derived by accumulating TD events per side across the display feed up to that event; a casualty event (side = the VICTIM's side, payload `{victimRosterId, causerRosterId?, cause, roll16, band, bothDown?}`) MUST render an INJURY card on the VICTIM's side AND a DERIVED ACTION card on the CAUSER's side; a self-inflicted (`dodge|crowd`) casualty MUST render ONLY the injury card. The injury card MUST keep the victim line, the band sub-line, the cause line "por {causer} (#{dorsal}) · {cause}", and the roll line "Tirada 1D16: {roll16}"; the action card MUST keep the cause label, the causer token/dorsal/name, and its roll sub-line "Tirada 1D16: {n} · {band}". A casualty with `bothDown: true` MUST render its derived action card WITH ★2 — DEC-1 keeps the award symmetric — and the defender record of the same both-down (a plain `block`) MUST keep ★2 on its action card too; the two symmetric both-down records MUST render as separate events (four cards total), never merged. ✓/✗ ack controls MUST render per LM-26 (only to the fallen player's coach, never the recorder). The `live-event-row` testid and all existing visible copy, star counts, score strings and treasury strings MUST be preserved byte-identically; layout/CSS and lock tests (designLock A/B) are rewritten INTENTIONALLY with the behavior, never silently. Card styles MUST stay in the plain CSS module — arbitrary Tailwind grid/area/gradient utilities MUST NOT be introduced.
 
 #### Scenario: Team card layout
 
 - GIVEN a home TD event at minute 54 in turn T4
-- WHEN the feed renders
-- THEN the card is 68% width with the navy gradient, "T4" on the home side, "54'" on the opposite side, and the full row data
+- WHEN the feed renders at any viewport width
+- THEN the card is a compact full-width row with navy token accents showing the turn tag, "54'", token/dorsal, name/position, icon, label and stars — no 68% split and no gradient
 
 #### Scenario: Generic event centered
 
 - GIVEN an `endMatch` event
 - WHEN the feed renders
-- THEN the card spans 100% width and is centered
+- THEN the row spans the feed column, is centered, and has no side accent
 
 #### Scenario: Per-TD partial score
 
@@ -167,20 +166,20 @@ The event feed MUST render display events (LM-16) as cards inside a gray box wit
 
 - GIVEN an accepted concession `concede` event (side = the surrendering team, payload `winnerSide` = the acceptor)
 - WHEN the feed renders
-- THEN the card spans 100% width centered with the white-flag glyph, the "Concesión" label and the "{surrendering team} se rinde · Victoria de {acceptor team}" sub-line; a payload without the winner renders the bare label without throwing
+- THEN the card is a compact centered row with the white-flag glyph, the "Concesión" label and the "{surrendering team} se rinde · Victoria de {acceptor team}" sub-line; a payload without the winner renders the bare label without throwing
 
 #### Scenario: Casualty injury card + derived action card (direct event)
 
-- GIVEN a recorded casualty event (side = the VICTIM's side, payload carrying `victimRosterId`, `causerRosterId`, `cause`, `roll16` and the server-derived `band` — with NO marker)
+- GIVEN a recorded casualty event (side = the VICTIM's side, payload carrying `victimRosterId`, `causerRosterId`, `cause`, `roll16` and the server-derived `band`, with NO marker)
 - WHEN the feed renders
-- THEN the INJURY card renders on the victim's side (68% team card with the band sub-line, the cause line "por {causer} · {cause}" and the roll line "Tirada 1D16: {roll16}") AND a DERIVED ACTION card renders on the CAUSER's side (68% team card with the cause label — e.g. "Blitz" —, the causer token/dorsal/name and the roll sub-line "Tirada 1D16: 13 · Permanente (−PS)")
+- THEN the INJURY card renders on the victim's side as a compact team row with the band sub-line, the cause line "por {causer} · {cause}" and the roll line "Tirada 1D16: {roll16}" AND a DERIVED ACTION card renders on the CAUSER's side as a compact team row with the cause label (e.g. "Blitz"), the causer token/dorsal/name and the roll sub-line "Tirada 1D16: 13 · Permanente (−PS)"
 - AND a self-inflicted (dodge/crowd) casualty renders ONLY the injury card, never an action card
 
 #### Scenario: Both-down pair renders four cards with ★2 on both causer action cards (DEC-1)
 
 - GIVEN a both-down block: defender casualty (plain `block`, victim the defender) and blocker casualty (`bothDown: true`, victim the blocker)
 - WHEN the feed renders
-- THEN four separate cards appear, never merged — defender record: injury card on the defender's side + action card on the blocker's side WITH ★2; blocker record: injury card on the blocker's side + action card on the defender's side WITH ★2 (DEC-1: the award is symmetric, no suppression)
+- THEN four separate compact cards appear, never merged — defender record: injury card on the defender's side + action card on the blocker's side WITH ★2; blocker record: injury card on the blocker's side + action card on the defender's side WITH ★2
 - AND the both-down recorder's card shows the "(Ambos derribados)" marker copy once on the both-down injury card
 
 #### Scenario: Acknowledgement row renders per LM-26
@@ -207,13 +206,14 @@ The sticky header MUST render a horizontal timeline bar: a full-bleed light trac
 
 ### Requirement: MVT-3 · rulebook Sticky Header
 
-The sticky header MUST render: an integrated back arrow (to the jornada), the league·round label, two turn tracks flanking the "Dar el turno" CTA (each covering the active half's turns — T1–T8 in half 1, T9–T16 in half 2 — with the current turn highlighted), per-coach clocks (home and away accumulated turn time), and a half indicator ("2ª Parte" badge with "Mitad N · Turno M"). This MUST be UI-only: the header MUST derive every value from the existing live DTO and MUST NOT add fields or change the turn/clock model.
+The sticky header MUST render: an integrated back arrow (to the jornada), the league·round label, two turn tracks (each covering the active half's turns — T1–T8 in half 1, T9–T16 in half 2 — with the current turn highlighted), per-coach clocks (home and away accumulated turn time), and a half indicator ("2ª Parte" badge with "Mitad N · Turno M"). The header MUST NOT render any pass-turn control: the "Dar el turno" action lives ONLY in the bottom control area beside the action dock (MVT-7), gated to the active coach while live. The header MUST derive every value from the existing live DTO, MUST NOT add fields, and MUST NOT depend on `lastTurnReason`; the turn/clock model does not change.
 
 #### Scenario: Header anatomy
 
-- GIVEN a live match in half 2, turn 16
+- GIVEN a live match in half 2, turn 16, with the home coach active
 - WHEN the header renders
-- THEN the back arrow, league·round label, T9–T16 tracks flanking "Dar el turno", both coach clocks, and the "2ª Parte · Mitad 2 · Turno 16" indicator appear
+- THEN the back arrow, league·round label, T9–T16 tracks, both coach clocks, and the "2ª Parte · Mitad 2 · Turno 16" indicator appear
+- AND no "Dar el turno" button appears anywhere in the header (the pass-turn control is at the bottom, MVT-7)
 
 #### Scenario: UI-only constraint
 
@@ -245,25 +245,53 @@ The finished live feed MUST render snapshot-derived summary rows above the event
 
 ### Requirement: MVT-6 · Kickoff Event Rows
 
-The feed MUST render `expensive_mistake` as a team card at 68% width with the side gradient (navy home / red away) and the money-bag glyph, showing the outcome label and the treasury before → after line per LM-24; `fan_factor` MUST render centered at 100% width with the dice glyph and the per-team totals. Both kinds MUST appear at 0' before any turn events and MUST preserve the `live-event-row` testid (MVT-1 continuity).
+The feed MUST render `expensive_mistake` as a compact team row (MVT-1) with the money-bag glyph, showing the outcome label and the treasury before → after line per LM-24; `fan_factor` MUST render as a compact centered row (MVT-1) with the dice glyph and the per-team totals. Both kinds MUST appear at 0' before any turn events and MUST preserve the `live-event-row` testid (MVT-1 continuity).
 
 #### Scenario: Expensive mistake team card
 
 - GIVEN a home `expensive_mistake` event
 - WHEN the feed renders
-- THEN the card is 68% width with the navy gradient and shows "Error costoso" and "234.000 → 214.000 M.O." (liveEventCards.test.tsx)
+- THEN the card is a compact team row with navy accent showing "Error costoso" and "234.000 → 214.000 M.O." (liveEventCards.test.tsx)
 
 #### Scenario: Fan factor centered card
 
 - GIVEN a `fan_factor` event
 - WHEN the feed renders
-- THEN the card spans 100% width centered with "Factor de aficionados" and both team totals (MatchView.test.tsx)
+- THEN the card is a compact centered row showing "Factor de aficionados" and both team totals (MatchView.test.tsx)
 
 #### Scenario: Kickoff rows at minute zero
 
 - GIVEN a match just begun
 - WHEN the live feed renders
 - THEN the two "Error costoso" rows and the "Factor de aficionados" row are visible at 0' before any turn events (e2e live-match.spec.ts)
+
+### Requirement: MVT-7 · Footer Pass-Turn Control and Reason Sheet
+
+Passing the turn MUST be offered ONLY in the bottom control area, as a "Dar el turno" button beside the action dock — never in the sticky header (MVT-3). The button MUST render only while the match is `live` and the viewer is the ACTIVE coach (`viewerSide === activeSide`). It MUST NOT render for a finished match, a spectator member, a side-less admin, or the NON-active coach (who keeps the existing "Pedir turno" request row). Activating the button MUST open a reason sheet listing Voluntario / Tirada fallida / Baja (`match.turnReason.*`) with Voluntario PRESELECTED; confirming MUST fire the `endTurn` command with the selected reason, and dismissing MUST cancel with no command. Confirming the preselection requires no extra interaction, preserving the current single-flip pass path; a pass already in flight MUST ignore further activation (no double flip). New sheet copy MUST be added to BOTH es/en dictionaries in the same change; the button keeps the existing "Dar el turno" label.
+
+#### Scenario: Bottom control for the active coach
+
+- GIVEN a live match with home active and the home coach viewing
+- WHEN the view renders
+- THEN "Dar el turno" appears only in the bottom control area beside the dock, and nowhere in the header
+
+#### Scenario: Preselected voluntary confirm
+
+- GIVEN the reason sheet open
+- WHEN the coach confirms without changing the preselection
+- THEN an endTurn with `voluntary` fires and the turn flips exactly once
+
+#### Scenario: Reason picked and shown
+
+- GIVEN the reason sheet open
+- WHEN the coach picks "Tirada fallida" and confirms
+- THEN the endTurn carries `turnover` and the next turn-start row renders the reason tag
+
+#### Scenario: Gated for every other viewer
+
+- GIVEN a finished match, a NON-active coach, a spectator member, or a side-less admin
+- WHEN the view renders
+- THEN no "Dar el turno" button appears anywhere
 
 ## Acceptance Criteria
 
