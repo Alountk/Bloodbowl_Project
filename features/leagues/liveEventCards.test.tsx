@@ -325,6 +325,39 @@ describe("LiveEventCards — turn transition (RAU-36/37)", () => {
     expect(row.querySelector(".token")?.className).toContain("token--away");
     expect(row.textContent).toContain("Empieza el turno");
   });
+
+  it("renders the LM-28 reason tag on a live turnStart card when the pass carried one (Baja)", () => {
+    const { container } = renderCards([ev(7, "turnStart", "home", { reason: "injury" }, null, 4, 4600)]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row).toBeTruthy();
+    // sub-line reads "Empieza el turno · Baja" — the reason came from the manual pass.
+    expect(row.querySelector(".name")?.textContent).toBe("Turno Reavers");
+    expect((row.querySelector(".pos") as HTMLElement).textContent).toContain("Empieza el turno · Baja");
+    // LM-29: it stays a NON-ackable state row — no ✓/✗ and no auto-verify badge.
+    expect(row.querySelector("[class*='ack-row']")).toBeNull();
+    expect(row.textContent).not.toContain("Cotejado");
+    expect(row.textContent).not.toContain("Revisar");
+  });
+
+  it("renders a turnover reason as 'Tirada fallida' and a voluntary pass as 'Voluntario'", () => {
+    const { container } = renderCards([
+      ev(8, "turnStart", "away", { reason: "turnover" }, null, 5, 4700),
+      ev(9, "turnStart", "home", { reason: "voluntary" }, null, 5, 4800),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    // newest first → [voluntary home, turnover away]
+    expect((rows[0] as HTMLElement).textContent).toContain("Empieza el turno · Voluntario");
+    expect((rows[1] as HTMLElement).textContent).toContain("Empieza el turno · Tirada fallida");
+  });
+
+  it("renders NO reason tag on a turnStart without a stored reason (auto-started turn, LM-28)", () => {
+    const { container } = renderCards([ev(10, "turnStart", "home", {}, null, 4, 4900)]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.textContent).toContain("Empieza el turno");
+    expect(row.textContent).not.toContain("· ");
+    expect(row.textContent).not.toContain("Voluntario");
+  });
 });
 
 describe("LiveEventCards — kickoff expensive_mistake team card (MVT-6/LM-24)", () => {

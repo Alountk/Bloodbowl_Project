@@ -495,13 +495,19 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       header.getByRole("link", { name: "Volver a la jornada" }),
     ).toHaveAttribute("href", `/leagues/${leagueId}`);
     await expect(header.getByTestId("match-timeline")).toBeVisible();
+    // MVT-3: the sticky header NEVER hosts the pass-turn action — it lives in the
+    // bottom dock (MVT-7). Lock that the header has no "Dar el turno" nor the
+    // "Turno {team}" status small.
+    await expect(header.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
+    await expect(header.getByRole("status")).toHaveCount(0);
 
-    // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
-    // home). Only the ACTIVE coach sees the "Turno {team}" STATUS + "Dar el
-    // turno"; the non-active coach sees "Pedir turno" and never "Dar el turno".
+    // LM-12/D19/MVT-7: the first ACTIVE side after begin is home (LM-3: half 1
+    // turn 1 home). The pass-turn control lives ONLY in the bottom dock: its red
+    // "Dar el turno" chip carries the "Turno {team}" role=status; the NON-active
+    // coach sees "Pedir turno" and never "Dar el turno". The header NEVER hosts
+    // the pass control (MVT-3), so the role=status small is the dock chip's.
     // The timeline turn-start card ALSO reads "Turno {homeTeamName}" (RAU-36/37),
-    // so target the role=status element (Chromium does not expose a name for
-    // live-region roles, hence no `name:` filter).
+    // so the status checks target the role=status small specifically.
     await expect(homeCoach.getByRole("status")).toHaveText(`Turno ${homeTeamName}`);
     await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
@@ -509,16 +515,24 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
     await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
-    // The ACTIVE (home) coach DOUBLE-CLICKS "Dar el turno" → the in-flight lock
-    // drops the second invocation, so the turn flips by EXACTLY ONE. A raw
-    // pointer dblclick lands the second click while the first endTurn is still
-    // in flight (no actionability waits) — the pre-lock bug sent a second
-    // endTurn and jumped the turn by two. The hub then fans the new state out
-    // over SSE: the OTHER coach's page converges WITHOUT any reload — the live
-    // `event` frame (turn + turnStart deltas) applies the flipped state.
-    const passButton = homeCoach.getByRole("button", { name: "Dar el turno" });
-    await expect(passButton).toBeVisible();
-    const box = (await passButton.boundingBox())!;
+    // The ACTIVE (home) coach opens the dock chip's reason sheet, then
+    // DOUBLE-CLICKS its Confirmar → the in-flight lock drops the second
+    // invocation (Confirmar defaults to voluntary, MVT-7), so the turn flips by
+    // EXACTLY ONE. A raw pointer dblclick lands the second click while the first
+    // endTurn is still in flight (no actionability waits) — the pre-lock bug sent
+    // a second endTurn and jumped the turn by two. The hub then fans the new
+    // state out over SSE: the OTHER coach's page converges WITHOUT any reload —
+    // the live `event` frame (turn + turnStart deltas) applies the flipped state.
+    const passChip = homeCoach.getByRole("button", { name: "Dar el turno" });
+    await expect(passChip).toBeVisible();
+    await passChip.click();
+    const sheet = homeCoach.getByTestId("live-action-sheet");
+    await expect(sheet).toBeVisible();
+    // Three reason chips render; Voluntario is preselected → confirming needs no
+    // further choice (the default voluntary path == today's plain pass).
+    await expect(sheet.getByRole("button", { name: "Voluntario" })).toHaveAttribute("aria-pressed", "true");
+    const confirmBtn = sheet.getByRole("button", { name: "Confirmar" });
+    const box = (await confirmBtn.boundingBox())!;
     await homeCoach.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
     // Correct BB2025 turn semantics (recurring regression): the turn number
     // names the ROUND shared by both sides — home T1 → away T1 → home T2. The
