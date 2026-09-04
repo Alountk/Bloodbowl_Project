@@ -7,6 +7,7 @@ const config: StorybookConfig = {
     // their source (the repo convention for `*.test.tsx`).
     "../stories/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../features/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../components/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],
   addons: [
     "@storybook/addon-a11y",
