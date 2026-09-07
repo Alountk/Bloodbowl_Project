@@ -108,7 +108,7 @@ export function JourneymenHireStep({
     <section
       aria-label={t("match.journeymen.aria")}
       data-testid="journeymen-hire"
-      className="border border-[#e2e8f0] bg-white p-3"
+      className="border border-border bg-panel p-3"
     >
       <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500">
         {t("match.journeymen.title")}
@@ -123,7 +123,7 @@ export function JourneymenHireStep({
         {journeymen.map((j) => (
           <li
             key={j.id}
-            className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e2e8f0] pt-2"
+            className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2"
           >
             <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-700">
               <input
@@ -136,7 +136,7 @@ export function JourneymenHireStep({
                     prev.includes(j.id) ? prev.filter((id) => id !== j.id) : [...prev, j.id],
                   )
                 }
-                className="accent-[#12225a]"
+                className="accent-navy"
               />
               <span className="truncate">
                 {t("match.journeymen.checkHire", { name: j.name, cost: formattedCost })}
@@ -161,7 +161,7 @@ export function JourneymenHireStep({
           type="button"
           onClick={() => void hireChecked()}
           disabled={selected.length === 0}
-          className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-sm bg-navy px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("match.journeymen.hireChecked")}
         </button>

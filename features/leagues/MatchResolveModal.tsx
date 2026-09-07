@@ -291,10 +291,10 @@ export function MatchResolveModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-[#e2e8f0] bg-white shadow-xl"
+        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-border bg-panel shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
+        <header className="flex items-center justify-between bg-navy px-4 py-3 text-white">
           <h3 className="text-sm font-bold">
             {t("match.resolve.title", { home: homeName, away: awayName })}
           </h3>
@@ -444,7 +444,7 @@ export function MatchResolveModal({
                 name={awayName}
                 status={t("match.resolve.stepLabel", { step: t(stepKey(resolution.away.step)) })}
               />
-              <div className="flex justify-end border-t border-[#e2e8f0] pt-3">
+              <div className="flex justify-end border-t border-border pt-3">
                 <button
                   type="button"
                   onClick={onClose}
@@ -497,7 +497,7 @@ function WinningsStep({
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   return (
-    <section aria-label={t("match.resolve.stepWinnings")} className="border border-[#e2e8f0] p-3">
+    <section aria-label={t("match.resolve.stepWinnings")} className="border border-border p-3">
       <ul className="space-y-1 text-sm text-slate-700">
         <li className="flex justify-between gap-3">
           <span className="font-semibold text-slate-500">{t("match.resolve.winnings")}</span>
@@ -509,12 +509,12 @@ function WinningsStep({
         </li>
       </ul>
       <p className="mt-2 text-[11px] text-slate-500">{t("match.resolve.upkeepNote")}</p>
-      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+      <div className="mt-2 flex justify-end border-t border-border pt-2">
         <button
           type="button"
           onClick={onContinue}
           disabled={busy}
-          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("match.resolve.continue")}
         </button>
@@ -543,14 +543,14 @@ function FansStep({
 }) {
   if (!fansDone || !fans) {
     return (
-      <section aria-label={t("match.resolve.stepFans")} className="border border-[#e2e8f0] p-3">
+      <section aria-label={t("match.resolve.stepFans")} className="border border-border p-3">
         <p className="text-sm text-slate-700">{t("match.resolve.fansHint")}</p>
-        <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+        <div className="mt-2 flex justify-end border-t border-border pt-2">
           <button
             type="button"
             onClick={onRoll}
             disabled={busy}
-            className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? t("match.resolve.rolling") : t("match.resolve.fansRollAction")}
           </button>
@@ -560,16 +560,16 @@ function FansStep({
   }
   const glyph = fans.direction === "up" ? "↑" : fans.direction === "down" ? "↓" : "=";
   return (
-    <section aria-label={t("match.resolve.stepFans")} className="border border-[#e2e8f0] p-3">
+    <section aria-label={t("match.resolve.stepFans")} className="border border-border p-3">
       <p className="text-sm text-slate-700">
         {t("match.resolve.fansResult", { before: fans.before, roll: fans.roll, after: fans.after, glyph })}
       </p>
-      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+      <div className="mt-2 flex justify-end border-t border-border pt-2">
         <button
           type="button"
           onClick={onContinue}
           disabled={busy}
-          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("match.resolve.continue")}
         </button>
@@ -618,8 +618,8 @@ function MvpStep({
   const journeymanLabel = t("match.journeyman");
   const atMax = selected.length >= MVP_NOMINATION_MAX;
   return (
-    <section aria-label={t("match.resolve.ownNomination")} className="border border-[#e2e8f0] p-3">
-      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
+    <section aria-label={t("match.resolve.ownNomination")} className="border border-border p-3">
+      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-navy">{name}</h5>
       <p className="mb-2 text-xs font-semibold text-slate-500">
         {t("match.resolve.counter", { count: selected.length, max: MVP_NOMINATION_MAX })}
       </p>
@@ -637,8 +637,8 @@ function MvpStep({
           return (
             <label
               key={player.id}
-              className={`flex items-center gap-2 rounded-sm border border-[#e2e8f0] px-2 py-1 text-xs text-slate-700 ${
-                checked ? "bg-[#12225a]/[0.06]" : ""
+              className={`flex items-center gap-2 rounded-sm border border-border px-2 py-1 text-xs text-slate-700 ${
+                checked ? "bg-navy/[0.06]" : ""
               }`}
             >
               <input
@@ -647,7 +647,7 @@ function MvpStep({
                 checked={checked}
                 disabled={disabled}
                 onChange={() => onToggle(player.id)}
-                className="accent-[#12225a]"
+                className="accent-navy"
               />
               <span className="truncate">{label}</span>
             </label>
@@ -662,13 +662,13 @@ function MvpStep({
           type="button"
           onClick={onSave}
           disabled={!ready || busy}
-          className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-sm bg-navy px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? t("match.resolve.nominating") : t("match.resolve.nominate")}
         </button>
       </div>
 
-      <div className="mt-2 border-t border-[#e2e8f0] pt-2">
+      <div className="mt-2 border-t border-border pt-2">
         <p className="text-xs font-semibold text-slate-500">
           {rivalConfirmed
             ? t("match.resolve.rivalConfirmed")
@@ -682,7 +682,7 @@ function MvpStep({
               type="button"
               onClick={onConfirm}
               disabled={busy}
-              className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-sm bg-navy px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t("match.resolve.confirm")}
             </button>
@@ -691,12 +691,12 @@ function MvpStep({
         {saved && confirming ? (
           // The FINAL confirm — after "Sí, confirmar" there is NO going back.
           <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
-            <span className="text-xs font-bold text-[#d11938]">{t("match.resolve.confirmTitle")}</span>
+            <span className="text-xs font-bold text-red">{t("match.resolve.confirmTitle")}</span>
             <button
               type="button"
               onClick={onConfirmYes}
               disabled={busy}
-              className="rounded-sm bg-[#d11938] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#b0142f] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-sm bg-red px-3 py-1.5 text-xs font-bold text-white hover:bg-red-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {t("match.resolve.confirmYes")}
             </button>
@@ -727,7 +727,7 @@ function MvpDoneStep({
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   return (
-    <section aria-label={t("match.resolve.stepMvpDone")} className="border border-[#e2e8f0] p-3">
+    <section aria-label={t("match.resolve.stepMvpDone")} className="border border-border p-3">
       <p className="text-sm text-slate-700">
         {confirmed ? t("match.resolve.ownConfirmed") : t("match.resolve.ownConfirmPending")}
       </p>
@@ -769,19 +769,19 @@ function CasualtiesStep({
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   return (
-    <section aria-label={t("match.resolve.stepCasualties")} className="border border-[#e2e8f0] p-3">
-      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{t("match.resolve.mvpTitle")}</h5>
+    <section aria-label={t("match.resolve.stepCasualties")} className="border border-border p-3">
+      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-navy">{t("match.resolve.mvpTitle")}</h5>
       <ul className="space-y-1 text-sm text-slate-700">
         <li className="flex justify-between gap-3">
           <span className="font-semibold text-slate-500">{name}</span>
-          <span className="text-[#12225a]">{t("match.resolve.mvpLine", { player: nameOf(roster, mvp), pe: PE_MVP })}</span>
+          <span className="text-navy">{t("match.resolve.mvpLine", { player: nameOf(roster, mvp), pe: PE_MVP })}</span>
         </li>
         <li className="flex justify-between gap-3">
           <span className="font-semibold text-slate-500">{rivalName}</span>
-          <span className="text-[#12225a]">{t("match.resolve.mvpLine", { player: nameOf(rivalRoster, rivalMvp), pe: PE_MVP })}</span>
+          <span className="text-navy">{t("match.resolve.mvpLine", { player: nameOf(rivalRoster, rivalMvp), pe: PE_MVP })}</span>
         </li>
       </ul>
-      <h5 className="mt-3 mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{t("match.resolve.casualtiesTitle")}</h5>
+      <h5 className="mt-3 mb-2 text-sm font-bold uppercase tracking-wide text-navy">{t("match.resolve.casualtiesTitle")}</h5>
       {casualties.length === 0 ? (
         <p className="text-sm text-slate-600">{t("match.resolve.noCasualties")}</p>
       ) : (
@@ -794,12 +794,12 @@ function CasualtiesStep({
           ))}
         </ul>
       )}
-      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+      <div className="mt-2 flex justify-end border-t border-border pt-2">
         <button
           type="button"
           onClick={onContinue}
           disabled={busy}
-          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("match.resolve.continue")}
         </button>
@@ -839,8 +839,8 @@ function JourneymenStep({
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   return (
-    <section aria-label={t("match.resolve.stepJourneymen")} className="border border-[#e2e8f0] p-3">
-      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
+    <section aria-label={t("match.resolve.stepJourneymen")} className="border border-border p-3">
+      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-navy">{name}</h5>
       <p className="mb-2 text-xs font-semibold text-slate-500">
         {t("match.resolve.healthyCount", { count: healthyCount })}
       </p>
@@ -857,12 +857,12 @@ function JourneymenStep({
         journeymen={journeymen}
         onUpdated={onUpdated}
       />
-      <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+      <div className="mt-2 flex justify-end border-t border-border pt-2">
         <button
           type="button"
           onClick={onContinue}
           disabled={busy || remaining > 0}
-          className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("match.resolve.continue")}
         </button>
@@ -891,18 +891,18 @@ function DoneStep({
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
   return (
-    <section aria-label={t("match.resolve.stepDone")} className="border border-[#e2e8f0] p-3">
+    <section aria-label={t("match.resolve.stepDone")} className="border border-border p-3">
       {matchResolved ? (
         <p className="text-sm font-bold text-green-700">{t("match.resolve.reported")}</p>
       ) : rivalDone ? (
         <>
           <p className="text-sm text-slate-700">{t("match.resolve.bothDone")}</p>
-          <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+          <div className="mt-2 flex justify-end border-t border-border pt-2">
             <button
               type="button"
               onClick={onFinalize}
               disabled={busy}
-              className="rounded-sm bg-[#d11938] px-4 py-2 text-sm font-bold text-white hover:bg-[#b0142f] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-sm bg-red px-4 py-2 text-sm font-bold text-white hover:bg-red-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? t("match.resolve.saving") : t("match.resolve.finalize")}
             </button>
@@ -913,7 +913,7 @@ function DoneStep({
           <p className="text-sm text-slate-700">
             {t("match.resolve.waitingRival", { step: t(stepKey(rivalStep)) })}
           </p>
-          <div className="mt-2 flex justify-end border-t border-[#e2e8f0] pt-2">
+          <div className="mt-2 flex justify-end border-t border-border pt-2">
             <button
               type="button"
               onClick={onClose}
@@ -931,8 +931,8 @@ function DoneStep({
 /** A READ-ONLY per-side status (the no-side viewer's read-out). */
 function SideStatusSection({ name, status }: { name: string; status: string }) {
   return (
-    <section aria-label={name} className="border border-[#e2e8f0] p-3">
-      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h5>
+    <section aria-label={name} className="border border-border p-3">
+      <h5 className="mb-2 text-sm font-bold uppercase tracking-wide text-navy">{name}</h5>
       <p className="text-sm text-slate-600">{status}</p>
     </section>
   );

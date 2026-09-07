@@ -285,7 +285,7 @@ describe("MatchView — uniform sticky rulebook header across states", () => {
     expect(header.className).toContain("sticky");
     expect(header.className).toContain("top-0");
     expect(header.className).toContain("z-40");
-    expect(header.className).toContain("bg-[#12225a]");
+    expect(header.className).toContain("bg-navy");
 
     // Top bar: label + half badge + the always-visible Mitad · Turno line.
     expect(screen.getByText(/Jornada 1/)).toBeTruthy();
@@ -791,8 +791,8 @@ describe("MatchView — mockup layout + client ticking clock", () => {
     expect(screen.queryByLabelText(/Turnos de/)).toBeNull();
     // Design-10 navy bar on the single track: the ACTIVE turn is the red
     // highlight; the rest are the muted navy cells (mockup `.tn`).
-    expect(screen.getByLabelText("Turno 3").className).toContain("bg-[#d11938]");
-    expect(screen.getByLabelText("Turno 2").className).toContain("bg-[#1f3a7a]");
+    expect(screen.getByLabelText("Turno 3").className).toContain("bg-red");
+    expect(screen.getByLabelText("Turno 2").className).toContain("bg-navy-tint");
 
     // Concept B header: NO full-name/subtitle visible text — only the per-side
     // acronym emblem + the header center coach accent (home coach active).
@@ -1481,10 +1481,11 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
     const { container } = renderPlayed();
     await screen.findAllByText("Reavers"); // header/winner/teams all render
 
-    // Rulebook-light tokens only: navy #12225a, red #d11938, bg #f8fafc, white.
+    // Rulebook-light tokens only: navy/red token utilities (the hex values live
+    // in app/globals.css @theme now, not inline in the markup).
     const html = container.outerHTML;
-    expect(html).toContain("#12225a");
-    expect(html).toContain("#d11938");
+    expect(html).toContain("navy");
+    expect(html).toContain("red");
     expect(html).not.toMatch(/dark|bg-black|text-black/i);
   });
 

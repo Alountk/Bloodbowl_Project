@@ -108,10 +108,12 @@ describe("MatchCard", () => {
     expect(screen.getByText(/Partido 1 · Pendiente/)).toBeTruthy();
   });
 
-  it("centers the pending dash between the two teams with their emblems + race lines", () => {
+  it("centers the negotiation action between the two teams with their emblems + race lines", () => {
     renderCard();
-    // The center scorebox replaces the old "VS": pending shows "- : -".
-    expect(screen.getByTestId("match-card-score").textContent).toMatch(/- : -/);
+    // Design B: a PENDING fixture centers the "Acordar fecha" action (the
+    // old "- : -" dash is only for an already-scheduled fixture).
+    expect(screen.getAllByTestId("match-card-score").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Acordar fecha" })).toBeTruthy();
     // Each team shows its deterministic emblem (initial), name and race line.
     expect(screen.getByTestId("emblem-th").textContent).toBe("R");
     expect(screen.getByTestId("emblem-ta").textContent).toBe("O");
@@ -179,9 +181,10 @@ describe("MatchCard", () => {
     renderCard({ fixture: fixture({ status: "pending", winnerId: "th" }) });
     expect(screen.getByText(/Pendiente/)).toBeTruthy();
     expect(screen.queryByText(/Jugado/)).toBeNull();
-    // No result recorded → no winner chip and a pending dash.
+    // No result recorded → no winner chip and a pending state (Design B: the
+    // body shows the "Acordar fecha" negotiation action, not a dash).
     expect(screen.queryByText("VICTORIA")).toBeNull();
-    expect(screen.getByTestId("match-card-score").textContent).toMatch(/- : -/);
+    expect(screen.getByRole("button", { name: "Acordar fecha" })).toBeTruthy();
   });
 
   it("shows the pulsing EN VIVO badge and the live score for a running match", () => {
@@ -230,9 +233,9 @@ describe("MatchCard", () => {
     expect(awayLink.getAttribute("href")).toBe("/teams/ta");
   });
 
-  it("fires onNegotiate when the card's center score is clicked", () => {
+  it("fires onNegotiate when the 'Acordar fecha' button is clicked", () => {
     const { onNegotiate } = renderCard();
-    fireEvent.click(screen.getByTestId("match-card-score"));
+    fireEvent.click(screen.getByRole("button", { name: "Acordar fecha" }));
     expect(onNegotiate).toHaveBeenCalledTimes(1);
   });
 });

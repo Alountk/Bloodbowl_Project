@@ -64,7 +64,7 @@ export function AppNav({
 
   return (
     <>
-      <header className="bg-[#12225a] text-white">
+      <header className="bg-navy text-white">
         <div className="flex items-center gap-2 px-4 py-3 sm:gap-3 sm:px-5">
           <button
             type="button"
@@ -86,7 +86,7 @@ export function AppNav({
               <Link
                 key={`${link.href}:${link.label}`}
                 href={link.href}
-                className="rounded-none px-2 py-1 text-[13px] text-[#cbd5e1] hover:bg-white/10 hover:text-white"
+                className="rounded-none px-2 py-1 text-[13px] text-border-subtle hover:bg-white/10 hover:text-white"
               >
                 {link.label}
               </Link>
@@ -107,7 +107,7 @@ export function AppNav({
             <button
               type="button"
               onClick={() => setAuthOpen(true)}
-              className="rounded-none bg-[#d11938] px-3.5 py-1.5 text-[13px] font-extrabold text-white hover:bg-[#e51b40]"
+              className="rounded-none bg-red px-3.5 py-1.5 text-[13px] font-extrabold text-white hover:bg-red-hover-bright"
             >
               Sign in
             </button>
@@ -127,13 +127,13 @@ export function AppNav({
           />
           <aside
             aria-label="Mobile navigation"
-            className="fixed left-0 top-0 bottom-0 z-50 flex w-60 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-xl"
+            className="fixed left-0 top-0 bottom-0 z-50 flex w-60 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-panel p-4 shadow-xl"
           >
             <p className="mb-6 flex items-center gap-2">
-              <span className="text-[18px] font-black tracking-tight text-[#12225a]">
+              <span className="text-[18px] font-black tracking-tight text-navy">
                 BLOODBOWL
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[#d11938]">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-red">
                 Teams
               </span>
             </p>
@@ -143,7 +143,7 @@ export function AppNav({
                   key={`${link.href}:${link.label}`}
                   href={link.href}
                   onClick={() => setDrawerOpen(false)}
-                  className="rounded-none px-3 py-2 text-sm font-bold text-[#12225a] hover:bg-slate-100"
+                  className="rounded-none px-3 py-2 text-sm font-bold text-navy hover:bg-slate-100"
                 >
                   {link.label}
                 </Link>
@@ -155,7 +155,7 @@ export function AppNav({
                   <Link
                     href="/profile"
                     onClick={() => setDrawerOpen(false)}
-                    className="rounded-none px-3 py-2 text-sm font-bold text-[#12225a] hover:bg-slate-100"
+                    className="rounded-none px-3 py-2 text-sm font-bold text-navy hover:bg-slate-100"
                   >
                     {t("nav.profile")}
                   </Link>
@@ -165,7 +165,7 @@ export function AppNav({
                       setDrawerOpen(false);
                       onLogout?.();
                     }}
-                    className="rounded-none px-3 py-2 text-left text-sm font-bold text-[#d11938] hover:bg-slate-100"
+                    className="rounded-none px-3 py-2 text-left text-sm font-bold text-red hover:bg-slate-100"
                   >
                     {t("topbar.logout")}
                   </button>
@@ -174,7 +174,7 @@ export function AppNav({
                 <button
                   type="button"
                   onClick={openAuth}
-                  className="rounded-none bg-[#d11938] px-3 py-2 text-[13px] font-extrabold text-white hover:bg-[#e51b40]"
+                  className="rounded-none bg-red px-3 py-2 text-[13px] font-extrabold text-white hover:bg-red-hover-bright"
                 >
                   Sign in
                 </button>
@@ -223,17 +223,17 @@ function UserMenu({ displayName, onLogout }: { displayName: string; onLogout?: (
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-none bg-white/10 px-2 py-1.5 hover:bg-white/20"
       >
-        <span className="grid h-7 w-7 place-items-center rounded-full bg-[#d11938] text-[12px] font-black text-white">
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-red text-[12px] font-black text-white">
           {initial}
         </span>
         <span className="hidden text-[13px] font-bold sm:inline">{displayName}</span>
       </button>
       {open ? (
-        <div className="absolute right-0 top-full z-50 mt-2 w-44 border border-slate-200 bg-white text-slate-900 shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-2 w-44 border border-slate-200 bg-panel text-slate-900 shadow-lg">
           <Link
             href="/profile"
             onClick={() => setOpen(false)}
-            className="block px-3 py-2 text-sm font-semibold text-[#12225a] hover:bg-slate-100"
+            className="block px-3 py-2 text-sm font-semibold text-navy hover:bg-slate-100"
           >
             {t("nav.profile")}
           </Link>
@@ -243,7 +243,7 @@ function UserMenu({ displayName, onLogout }: { displayName: string; onLogout?: (
               setOpen(false);
               onLogout?.();
             }}
-            className="block w-full px-3 py-2 text-left text-sm font-semibold text-[#d11938] hover:bg-slate-100"
+            className="block w-full px-3 py-2 text-left text-sm font-semibold text-red hover:bg-slate-100"
           >
             {t("topbar.logout")}
           </button>

@@ -33,10 +33,10 @@ export function HowItWorks() {
   return (
     <section
       aria-labelledby="how-heading"
-      className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white"
+      className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-panel"
     >
       <div className="flex flex-wrap items-center gap-2 bg-slate-100 px-4 py-3.5">
-        <h2 id="how-heading" className="flex-1 text-[16px] font-black text-[#12225a]">
+        <h2 id="how-heading" className="flex-1 text-[16px] font-black text-navy">
           {t("landing.howHeading")}
         </h2>
         <span className="hidden text-[11.5px] text-slate-500 sm:inline">
@@ -46,7 +46,7 @@ export function HowItWorks() {
           type="button"
           onClick={() => setHidden((value) => !value)}
           aria-expanded={!hidden}
-          className="rounded-none border-2 border-[#12225a] bg-white px-3.5 py-1.5 text-[13px] font-bold text-[#12225a] hover:bg-[#eef2ff]"
+          className="rounded-none border-2 border-navy bg-panel px-3.5 py-1.5 text-[13px] font-bold text-navy hover:bg-info-fill"
         >
           {hidden ? t("landing.howShow") : t("landing.howHide")}
         </button>
@@ -56,12 +56,12 @@ export function HowItWorks() {
           {steps.map((step, index) => (
             <article
               key={step.title}
-              className="relative rounded-xl border border-slate-200 bg-white p-4 pt-6"
+              className="relative rounded-xl border border-slate-200 bg-panel p-4 pt-6"
             >
-              <span className="absolute -top-3 left-4 grid h-7 w-7 place-items-center rounded-full bg-[#d11938] text-[13px] font-black text-white">
+              <span className="absolute -top-3 left-4 grid h-7 w-7 place-items-center rounded-full bg-red text-[13px] font-black text-white">
                 {index + 1}
               </span>
-              <h3 className="text-[15px] font-bold text-[#12225a]">{step.title}</h3>
+              <h3 className="text-[15px] font-bold text-navy">{step.title}</h3>
               <p className="mt-1 text-[12.5px] text-slate-500">{step.copy}</p>
             </article>
           ))}

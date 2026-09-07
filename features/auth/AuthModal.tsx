@@ -91,7 +91,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
   }
 
   const fieldClass =
-    "w-full rounded-none border-[1.5px] border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-[#12225a]";
+    "w-full rounded-none border-[1.5px] border-slate-200 bg-panel px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-navy";
   const labelClass =
     "mb-1 block text-[11px] font-extrabold uppercase tracking-[0.04em] text-slate-500";
 
@@ -109,8 +109,8 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
         pointerDownOnBackdrop.current = false;
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-[400px] flex-col overflow-y-auto bg-white max-md:max-w-none">
-        <header className="flex items-center bg-[#12225a] px-4 py-3.5 text-white">
+      <div className="flex max-h-[90vh] w-full max-w-[400px] flex-col overflow-y-auto bg-panel max-md:max-w-none">
+        <header className="flex items-center bg-navy px-4 py-3.5 text-white">
           <p className="text-[15px] font-extrabold">
             {isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
           </p>
@@ -131,8 +131,8 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
             onClick={() => switchMode("login")}
             className={`flex-1 px-4 py-2.5 text-sm font-extrabold transition-colors ${
               isLogin
-                ? "border-b-[3px] border-[#d11938] text-[#12225a]"
-                : "text-slate-500 hover:text-[#12225a]"
+                ? "border-b-[3px] border-red text-navy"
+                : "text-slate-500 hover:text-navy"
             }`}
           >
             {t("auth.loginTitle")}
@@ -143,8 +143,8 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
             onClick={() => switchMode("signup")}
             className={`flex-1 px-4 py-2.5 text-sm font-extrabold transition-colors ${
               !isLogin
-                ? "border-b-[3px] border-[#d11938] text-[#12225a]"
-                : "text-slate-500 hover:text-[#12225a]"
+                ? "border-b-[3px] border-red text-navy"
+                : "text-slate-500 hover:text-navy"
             }`}
           >
             {t("auth.signupTitle")}
@@ -195,7 +195,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
           </div>
 
           {error ? (
-            <p role="alert" className="text-sm text-[#d11938]">
+            <p role="alert" className="text-sm text-red">
               {error}
             </p>
           ) : null}
@@ -209,7 +209,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-none bg-[#d11938] px-4 py-3 text-sm font-extrabold text-white hover:bg-[#e51b40] disabled:opacity-60"
+            className="w-full rounded-none bg-red px-4 py-3 text-sm font-extrabold text-white hover:bg-red-hover-bright disabled:opacity-60"
           >
             {isLogin ? t("auth.loginTitle") : t("auth.signupTitle")}
           </button>
@@ -220,7 +220,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
                 <button
                   type="button"
                   onClick={() => setForgotNote(true)}
-                  className="mx-auto mb-1 block font-semibold text-slate-500 hover:text-[#12225a]"
+                  className="mx-auto mb-1 block font-semibold text-slate-500 hover:text-navy"
                 >
                   {t("auth.forgotPassword")}
                 </button>
@@ -228,7 +228,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
                 <button
                   type="button"
                   onClick={() => switchMode("signup")}
-                  className="font-extrabold text-[#12225a] hover:underline"
+                  className="font-extrabold text-navy hover:underline"
                 >
                   {t("auth.signupTitle")}
                 </button>
@@ -239,7 +239,7 @@ function AuthModalDialog({ onClose, initialMode }: { onClose: () => void; initia
                 <button
                   type="button"
                   onClick={() => switchMode("login")}
-                  className="font-extrabold text-[#12225a] hover:underline"
+                  className="font-extrabold text-navy hover:underline"
                 >
                   {t("auth.loginTitle")}
                 </button>

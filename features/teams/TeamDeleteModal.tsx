@@ -28,11 +28,11 @@ export function TeamDeleteModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-team-dialog-title"
-        className="w-full max-w-sm border border-slate-200 bg-white p-6 shadow-xl"
+        className="w-full max-w-sm border border-slate-200 bg-panel p-6 shadow-xl"
       >
         <h2
           id="delete-team-dialog-title"
-          className="text-[15px] font-extrabold text-[#12225a]"
+          className="text-[15px] font-extrabold text-navy"
         >
           {team.name}
         </h2>
@@ -45,7 +45,7 @@ export function TeamDeleteModal({
               <button
                 type="button"
                 onClick={onCancel}
-                className="rounded-md bg-[#12225a] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0f1d4d]"
+                className="rounded-md bg-navy px-3 py-1.5 text-sm font-semibold text-white hover:bg-navy-hover"
               >
                 Entendido
               </button>
@@ -68,7 +68,7 @@ export function TeamDeleteModal({
               <button
                 type="button"
                 onClick={() => onConfirm(team.id)}
-                className="rounded-md bg-[#d11938] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#a9132e]"
+                className="rounded-md bg-red px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-hover"
               >
                 Eliminar
               </button>

@@ -75,27 +75,27 @@ export function TeamCard({
       : t("teams.readyToImproveMany", { count: readyCount });
 
   return (
-    <li className="flex flex-col overflow-hidden border border-slate-200 bg-white">
-      <div className="h-[6px] border-b-2 border-[#d11938] bg-[#12225a]" />
+    <li className="flex flex-col overflow-hidden border border-slate-200 bg-panel">
+      <div className="h-[6px] border-b-2 border-red bg-navy" />
       <Link href={`/teams/${team.id}`} className="flex flex-col gap-2 p-4">
         <div className="flex items-center gap-3">
           <span aria-hidden="false">
             <TeamEmblem teamId={team.id} name={team.name} size="md" />
           </span>
           <div className="flex-1">
-            <h3 className="text-[15px] font-extrabold text-[#12225a]">{team.name}</h3>
+            <h3 className="text-[15px] font-extrabold text-navy">{team.name}</h3>
             <p className="text-xs text-slate-500">{race?.name ?? team.raceId}</p>
           </div>
         </div>
 
         {leagueName ? (
-          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[#1f3a7a] px-2.5 py-0.5 text-[11px] font-bold text-white">
+          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-navy-tint px-2.5 py-0.5 text-[11px] font-bold text-white">
             {leagueName}
           </span>
         ) : null}
 
         {readyCount > 0 ? (
-          <span className="inline-flex w-fit items-center rounded-full border border-[#d11938] bg-[#d11938]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#d11938]">
+          <span className="inline-flex w-fit items-center rounded-full border border-red bg-red/10 px-2.5 py-0.5 text-[11px] font-bold text-red">
             {hint}
           </span>
         ) : null}
@@ -103,13 +103,13 @@ export function TeamCard({
         <div className="flex items-center gap-3 text-[12px] text-slate-700">
           <span>
             Valor{" "}
-            <b data-testid="team-ctv" className="text-[#12225a]">
+            <b data-testid="team-ctv" className="text-navy">
               {formatRulebookCost(ctv)}
             </b>
           </span>
           <span>
             {t("teams.treasury")}:{" "}
-            <b data-testid="team-treasury" className="text-[#12225a]">
+            <b data-testid="team-treasury" className="text-navy">
               {formatRulebookCost(treasury)}
             </b>
           </span>
@@ -124,7 +124,7 @@ export function TeamCard({
           type="button"
           aria-label={`Eliminar ${team.name}`}
           onClick={onDeleteRequest}
-          className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-[#d11938] hover:text-[#d11938]"
+          className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:border-red hover:text-red"
         >
           Eliminar
         </button>

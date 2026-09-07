@@ -133,6 +133,16 @@ export function MatchCard({
     (isParticipant || isLeagueOwner);
 
   const played = fixture.status === "played";
+
+  // The negotiation affordance (Design B) lives in the card body center while a
+  // participant can still agree a date: pending or scheduled-but-unplayed
+  // (re-negotiation, "rejornar"). Mirrors NegotiationPanel's `negotiationOpen`.
+  // Only a PLAYED fixture centers the result instead. The live match owns its
+  // scoreboard (no negotiation while running).
+  const canNegotiate =
+    !leagueFinished &&
+    !liveActive &&
+    (fixture.status === "pending" || fixture.status === "scheduled");
   const winnerIsHome = played && fixture.winnerId === fixture.homeTeamId;
   const winnerIsAway = played && fixture.winnerId === fixture.awayTeamId;
   const draw = played && !winnerIsHome && !winnerIsAway;
@@ -143,23 +153,23 @@ export function MatchCard({
   return (
     <article
       aria-label={t("match.aria", { round: fixture.round, home: homeName, away: awayName })}
-      className="border border-[#e2e8f0] bg-white transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
+      className="border border-border bg-panel transition-shadow hover:shadow-card-hover"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 bg-[#12225a] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
-        <span className="flex items-center gap-2">
+      <header className="flex flex-wrap items-center justify-between gap-2 bg-navy px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
+        <h3 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide">
           <span>{t("match.header", { round: fixture.round, status: liveActive ? t("match.liveStatus") : status })}</span>
           {liveActive ? (
-            <span className="animate-pulse rounded-sm bg-[#d11938] px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
+            <span className="animate-pulse rounded-sm bg-red px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
               {t("match.liveBadge")}
             </span>
           ) : null}
-        </span>
+        </h3>
         <span className="flex flex-wrap gap-2">
           {canLoadResult ? (
             <button
               type="button"
               onClick={openLoadResult}
-              className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
+              className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
             >
               {t("result.loadAction")}
             </button>
@@ -168,7 +178,7 @@ export function MatchCard({
             <button
               type="button"
               onClick={openCorrectResult}
-              className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
+              className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
             >
               {t("result.correctAction")}
             </button>
@@ -177,25 +187,14 @@ export function MatchCard({
             <button
               type="button"
               onClick={openForfeit}
-              className="rounded-sm border border-white/40 px-2 py-0.5 text-[10px] font-semibold normal-case text-white hover:border-white"
+              className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
             >
               {t("forfeit.title")}
             </button>
           ) : null}
         </span>
       </header>
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={openNegotiation}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            openNegotiation();
-          }
-        }}
-        className="grid cursor-pointer grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-4"
-      >
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-4">
         <TeamSide
           name={homeName}
           race={homeRace}
@@ -204,25 +203,35 @@ export function MatchCard({
             <TeamEmblem
               teamId={fixture.homeTeamId}
               name={homeName}
-              className={winnerIsHome ? "ring-2 ring-[#12225a] ring-offset-2" : ""}
+              className={winnerIsHome ? "ring-2 ring-navy ring-offset-2" : ""}
             />
           }
           outcome={played ? (winnerIsHome ? "win" : draw ? "draw" : "lose") : "none"}
         />
         <div data-testid="match-card-score" className="flex min-w-[52px] flex-col items-center px-1">
-          <span
-            className={`text-2xl font-black tracking-[0.15em] tabular-nums ${
-              liveActive
-                ? "text-[#d11938]"
-                : played || score
-                  ? "text-[#12225a]"
-                  : "text-[#cbd5e1]"
-            }`}
-          >
-            {centerScore}
-          </span>
+          {canNegotiate ? (
+            <button
+              type="button"
+              onClick={openNegotiation}
+              className="min-h-6 rounded-sm px-2 py-1 text-center text-[11px] font-bold text-navy underline decoration-navy/40 underline-offset-2 hover:text-navy-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+            >
+              {fixture.status === "scheduled" ? t("negotiation.reschedule") : t("match.negotiate")}
+            </button>
+          ) : (
+            <span
+              className={`text-2xl font-black tracking-[0.15em] tabular-nums ${
+                liveActive
+                  ? "text-red"
+                  : played || score
+                    ? "text-navy"
+                    : "text-slate"
+              }`}
+            >
+              {centerScore}
+            </span>
+          )}
           {liveActive ? (
-            <span className="text-[9px] font-extrabold tracking-[0.2em] text-[#d11938]">{t("match.liveBadge")}</span>
+            <span className="text-[9px] font-extrabold tracking-[0.2em] text-red">{t("match.liveBadge")}</span>
           ) : null}
         </div>
         <TeamSide
@@ -233,13 +242,13 @@ export function MatchCard({
             <TeamEmblem
               teamId={fixture.awayTeamId}
               name={awayName}
-              className={winnerIsAway ? "ring-2 ring-[#12225a] ring-offset-2" : ""}
+              className={winnerIsAway ? "ring-2 ring-navy ring-offset-2" : ""}
             />
           }
           outcome={played ? (winnerIsAway ? "win" : draw ? "draw" : "lose") : "none"}
         />
       </div>
-      <footer className="flex items-center justify-between gap-2 border-t border-[#e2e8f0] px-3 py-1.5 text-[11px] text-slate-500">
+      <footer className="flex items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-[11px] text-slate">
         {fixture.status === "scheduled" ? (
           <span>{t("match.scheduledFooter", { date: formatMatchDate(fixture.scheduledAt) })}</span>
         ) : (
@@ -247,7 +256,7 @@ export function MatchCard({
         )}
         <Link
           href={`/leagues/${fixture.leagueId}/fixtures/${fixture.id}`}
-          className="ml-2 inline-block font-semibold text-[#d11938] no-underline hover:opacity-70"
+          className="ml-2 inline-block min-h-6 px-1 py-1 font-semibold text-red no-underline hover:opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red"
         >
           {t("match.viewMatch")}
         </Link>
@@ -277,23 +286,23 @@ function TeamSide({
   return (
     <div
       data-winner={win ? "true" : undefined}
-      className={`flex min-w-0 flex-col items-center gap-1 text-center ${lose ? "opacity-60" : ""}`}
+      className="flex min-w-0 flex-col items-center gap-1 text-center"
     >
       {emblem}
       <Link
         href={href}
         onClick={(e) => e.stopPropagation()}
-        className={`max-w-full truncate font-extrabold no-underline hover:opacity-65 ${
-          win ? "text-[#12225a]" : lose ? "text-[#94a3b8]" : "text-[#12225a]"
+        className={`max-w-full truncate font-extrabold no-underline hover:opacity-65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy ${
+          win ? "text-navy" : lose ? "text-slate" : "text-navy"
         }`}
       >
         {name}
       </Link>
-      <span className={`max-w-full truncate text-[10px] ${lose ? "text-[#94a3b8]" : "text-slate-500"}`}>
+      <span className="max-w-full truncate text-[10px] text-slate">
         {race}
       </span>
       {win ? (
-        <span className="rounded-sm bg-[#e0e7ff] px-1.5 py-px text-[9px] font-black tracking-[0.15em] text-[#12225a]">
+        <span className="rounded-sm bg-accent-home px-1.5 py-px text-[9px] font-black tracking-[0.15em] text-navy">
           {t("match.victoryChip")}
         </span>
       ) : null}

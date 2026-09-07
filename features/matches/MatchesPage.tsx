@@ -27,12 +27,12 @@ export function MatchesPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="border-b-[3px] border-[#d11938] pb-1.5 text-2xl font-black tracking-[0.02em] text-[#12225a]">
+      <h1 className="border-b-[3px] border-red pb-1.5 text-2xl font-black tracking-[0.02em] text-navy">
         {t("matches.heading")}
       </h1>
 
       {showEmpty ? (
-        <div className="border border-slate-200 bg-white p-8 text-center">
+        <div className="border border-slate-200 bg-panel p-8 text-center">
           <p className="text-sm text-slate-600">{t("matches.empty")}</p>
         </div>
       ) : (
@@ -47,7 +47,7 @@ export function MatchesPage() {
             <section key={index} aria-labelledby={`matches-section-${index}`}>
               <h2
                 id={`matches-section-${index}`}
-                className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-lg font-bold text-[#12225a]"
+                className="mb-3 border-b-[3px] border-red pb-1.5 text-lg font-bold text-navy"
               >
                 {heading}
               </h2>

@@ -83,18 +83,18 @@ export function MatchTimelineBar({
         : "top-1/2 -translate-x-1/2 -translate-y-1/2";
 
   const chip = (side: "home" | "away" | "mid") =>
-    `flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] bg-white cursor-help ${
+    `flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] bg-panel cursor-help ${
       side === "home"
-        ? "border-[#12225a] text-[#12225a]"
+        ? "border-navy text-navy"
         : side === "away"
-          ? "border-[#d11938] text-[#d11938]"
+          ? "border-red text-red"
           : "border-[#94a3b8] text-slate-500"
     }`;
 
   return (
     <div
       data-testid="match-timeline"
-      className="bg-[#f8fafc] pb-1.5"
+      className="bg-background pb-1.5"
       role="img"
       aria-label={t("match.timelineAria")}
     >

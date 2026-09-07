@@ -54,7 +54,7 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc]">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <p className="text-sm text-slate-500" role="status">
           Loading…
         </p>

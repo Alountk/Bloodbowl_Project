@@ -50,21 +50,21 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
   return (
     <div className="space-y-8">
       <header>
-        <h1 className="border-b-[3px] border-[#d11938] pb-1.5 text-2xl font-black tracking-[0.02em] text-[#12225a]">
+        <h1 className="border-b-[3px] border-red pb-1.5 text-2xl font-black tracking-[0.02em] text-navy">
           {userName ? `Welcome back, ${userName}` : "Welcome back"}
         </h1>
         <p className="mt-1 text-[13px] text-slate-500">Your league at a glance.</p>
       </header>
 
       <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="border border-slate-200 bg-white p-4">
-          <p className="text-3xl font-black text-[#12225a]">{teams.length}</p>
+        <div className="border border-slate-200 bg-panel p-4">
+          <p className="text-3xl font-black text-navy">{teams.length}</p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Teams
           </p>
         </div>
-        <div className="border border-slate-200 bg-white p-4">
-          <p className="text-3xl font-black text-[#12225a]">{myLeagues.length}</p>
+        <div className="border border-slate-200 bg-panel p-4">
+          <p className="text-3xl font-black text-navy">{myLeagues.length}</p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Leagues
           </p>
@@ -74,13 +74,13 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
       <section aria-label="Quick actions" className="flex flex-wrap gap-3">
         <Link
           href="/teams/create"
-          className="rounded-none bg-[#12225a] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+          className="rounded-none bg-navy px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-hover"
         >
           Create team
         </Link>
         <Link
           href="/leagues"
-          className="rounded-none border-2 border-[#12225a] px-4 py-2.5 text-sm font-bold text-[#12225a] hover:bg-[#eef2ff]"
+          className="rounded-none border-2 border-navy px-4 py-2.5 text-sm font-bold text-navy hover:bg-info-fill"
         >
           Create league
         </Link>
@@ -93,16 +93,16 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
       <section aria-labelledby="dashboard-leagues-heading">
         <h2
           id="dashboard-leagues-heading"
-          className="mb-4 border-b-[3px] border-[#d11938] pb-1.5 text-lg font-bold text-[#12225a]"
+          className="mb-4 border-b-[3px] border-red pb-1.5 text-lg font-bold text-navy"
         >
           {t("leagues.myLeagues")}
         </h2>
         {leaguesLoading ? null : showLeaguesEmpty ? (
-          <div className="border border-slate-200 bg-white p-8 text-center">
+          <div className="border border-slate-200 bg-panel p-8 text-center">
             <p className="text-sm text-slate-600">{t("leagues.myEmpty")}</p>
             <Link
               href="/leagues"
-              className="mt-4 inline-block rounded-none bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+              className="mt-4 inline-block rounded-none bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover"
             >
               {t("leagues.newLeague")}
             </Link>

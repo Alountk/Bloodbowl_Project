@@ -68,7 +68,7 @@ export function PlayerAvailabilityTable({
   return isDesktop ? (
     <div className="max-h-[55vh] overflow-auto">
       <div className="overflow-x-auto">
-        <div className="min-w-[640px] bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
+        <div className="min-w-[640px] bg-panel shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
           <table className="w-full text-sm">
             <thead>
               <tr>
@@ -76,7 +76,7 @@ export function PlayerAvailabilityTable({
                   <th
                     key={header}
                     scope="col"
-                    className={`sticky top-0 z-10 bg-[#d11938] px-[5px] py-2 text-white ${
+                    className={`sticky top-0 z-10 bg-red px-[5px] py-2 text-white ${
                       header === "POSICIÓN" || header === "HABILIDADES Y RASGOS"
                         ? "text-left"
                         : "text-center"
@@ -89,7 +89,7 @@ export function PlayerAvailabilityTable({
             </thead>
             <tbody>
               {rows.map(({ positional, count, disabled }) => (
-                <tr key={positional.key} className="odd:bg-white even:bg-[#e6eef5]">
+                <tr key={positional.key} className="odd:bg-panel even:bg-[#e6eef5]">
                   <td className="px-[5px] py-2 text-left align-top text-[#1a1a1a]">
                     <span>
                       {positional.name} · ({race.name}, {translateRole(positional.role)})
@@ -128,7 +128,7 @@ export function PlayerAvailabilityTable({
                   </td>
                   <td className="px-[5px] py-2 text-center align-top">
                     <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-xs text-[#64748b]">
+                      <span className="text-xs text-slate">
                         {count}/{positional.max}
                       </span>
                       <button
@@ -136,7 +136,7 @@ export function PlayerAvailabilityTable({
                         aria-label={t("create.addAction", { name: positional.name })}
                         onClick={() => onAdd(positional.key)}
                         disabled={disabled}
-                        className="rounded-md border border-slate-300 px-2 py-0.5 text-sm text-[#334155] hover:border-[#12225a] hover:text-[#12225a] disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-md border border-slate-300 px-2 py-0.5 text-sm text-slate-strong hover:border-navy hover:text-navy disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         {t("create.add")}
                       </button>
@@ -163,7 +163,7 @@ export function PlayerAvailabilityTable({
             return (
               <div
                 key={positional.key}
-                className="rounded-md border border-[#e2e8f0] bg-white p-3 shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
+                className="rounded-md border border-border bg-panel p-3 shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -171,11 +171,11 @@ export function PlayerAvailabilityTable({
                     <span className="block text-[11px] text-[#333]">
                       <span>{"("}{race.name}, {translateRole(positional.role)}{")"}</span>
                       {" · "}
-                      <span className="font-medium text-[#64748b]">{formatRulebookCost(positional.cost)}</span>
+                      <span className="font-medium text-slate">{formatRulebookCost(positional.cost)}</span>
                     </span>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-xs text-[#64748b]">
+                    <span className="text-xs text-slate">
                       {count}/{positional.max}
                     </span>
                     <button
@@ -183,7 +183,7 @@ export function PlayerAvailabilityTable({
                       aria-label={t("create.addAction", { name: positional.name })}
                       onClick={() => onAdd(positional.key)}
                       disabled={disabled}
-                      className="rounded-md border border-slate-300 px-2 py-0.5 text-sm text-[#334155] hover:border-[#12225a] hover:text-[#12225a] disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-md border border-slate-300 px-2 py-0.5 text-sm text-slate-strong hover:border-navy hover:text-navy disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {t("create.add")}
                     </button>
@@ -196,15 +196,15 @@ export function PlayerAvailabilityTable({
                       key={label}
                       className="inline-flex items-center gap-1 rounded bg-[#eaf0f6] px-1.5 py-0.5 text-xs text-[#1a1a1a]"
                     >
-                      <span className="font-bold text-[#12225a]">{label}</span>
+                      <span className="font-bold text-navy">{label}</span>
                       <span>{value}</span>
                     </span>
                   ))}
                 </div>
 
-                <div className="mt-2 border-t border-[#e2e8f0] pt-2 space-y-1 text-xs text-[#1a1a1a]">
+                <div className="mt-2 border-t border-border pt-2 space-y-1 text-xs text-[#1a1a1a]">
                   <div>
-                    <span className="font-bold text-[#12225a]">{t("roster.skillsLabel")}</span>:{" "}
+                    <span className="font-bold text-navy">{t("roster.skillsLabel")}</span>:{" "}
                     <span>
                       {positional.skills.length > 0
                         ? positional.skills
@@ -218,11 +218,11 @@ export function PlayerAvailabilityTable({
                     </span>
                   </div>
                   <div>
-                    <span className="font-bold text-[#12225a]">{t("roster.header.primary")}</span>:{" "}
+                    <span className="font-bold text-navy">{t("roster.header.primary")}</span>:{" "}
                     <span>{positional.accessPrimary.length > 0 ? positional.accessPrimary.join(" ") : "—"}</span>
                   </div>
                   <div>
-                    <span className="font-bold text-[#12225a]">{t("roster.header.secondary")}</span>:{" "}
+                    <span className="font-bold text-navy">{t("roster.header.secondary")}</span>:{" "}
                     <span>{positional.accessSecondary.length > 0 ? positional.accessSecondary.join(" ") : "—"}</span>
                   </div>
                 </div>

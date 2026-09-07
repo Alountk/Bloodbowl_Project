@@ -15,14 +15,14 @@ interface DevDeniedPanelProps {
  */
 export default function DevDeniedPanel({ locale }: DevDeniedPanelProps) {
   return (
-    <section className="border border-slate-200 bg-white p-8 text-center">
-      <h1 className="text-2xl font-black tracking-[0.02em] text-[#12225a]">
+    <section className="border border-slate-200 bg-panel p-8 text-center">
+      <h1 className="text-2xl font-black tracking-[0.02em] text-navy">
         {t(locale, "dev.deniedTitle")}
       </h1>
       <p className="mt-2 text-sm text-slate-600">{t(locale, "dev.deniedBody")}</p>
       <Link
         href="/"
-        className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+        className="mt-4 inline-block bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover"
       >
         {t(locale, "dev.backHome")}
       </Link>

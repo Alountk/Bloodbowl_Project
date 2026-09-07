@@ -58,11 +58,11 @@ export function StandingsTable({ teams, fixtures, championTeamId }: StandingsTab
     return (
       <section
         aria-labelledby="standings-heading"
-        className="rounded-md border border-[#e2e8f0] bg-white p-6 text-center"
+        className="rounded-md border border-border bg-panel p-6 text-center"
       >
         <h2
           id="standings-heading"
-          className="text-sm font-black uppercase tracking-wide text-[#12225a]"
+          className="text-sm font-black uppercase tracking-wide text-navy"
         >
           {t("leagues.standings.heading")}
         </h2>
@@ -75,11 +75,11 @@ export function StandingsTable({ teams, fixtures, championTeamId }: StandingsTab
     <section
       aria-labelledby="standings-heading"
       data-testid="standings-table"
-      className="rounded-md border border-[#e2e8f0] bg-white"
+      className="rounded-md border border-border bg-panel"
     >
       <h2
         id="standings-heading"
-        className="border-b border-[#e2e8f0] px-4 py-3 text-sm font-black uppercase tracking-wide text-[#12225a]"
+        className="border-b border-border px-4 py-3 text-sm font-black uppercase tracking-wide text-navy"
       >
         {t("leagues.standings.heading")}
       </h2>
@@ -87,7 +87,7 @@ export function StandingsTable({ teams, fixtures, championTeamId }: StandingsTab
         <table className="w-full min-w-[560px] text-left text-[13px]">
           <caption className="sr-only">{t("leagues.standings.heading")}</caption>
           <thead>
-            <tr className="border-b border-[#e2e8f0] bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-border bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
               <th scope="col" className="px-3 py-2 font-bold">{t("leagues.standings.pos")}</th>
               <th scope="col" className="px-3 py-2 font-bold">{t("leagues.standings.team")}</th>
               <th scope="col" className="px-3 py-2 text-center font-bold">{t("leagues.standings.played")}</th>
@@ -107,19 +107,19 @@ export function StandingsTable({ teams, fixtures, championTeamId }: StandingsTab
                 <tr
                   key={row.teamId}
                   data-testid={champion ? "standings-champion-row" : undefined}
-                  className={`border-b border-[#f1f5f9] last:border-b-0 ${
+                  className={`border-b border-fill-hover last:border-b-0 ${
                     champion
                       ? "bg-[#fef9c3]"
                       : index === 0
-                        ? "bg-white"
+                        ? "bg-panel"
                         : index % 2 === 1
-                          ? "bg-[#f8fafc]"
-                          : "bg-white"
+                          ? "bg-background"
+                          : "bg-panel"
                   }`}
                 >
-                  <td className="px-3 py-2 font-black text-[#12225a]">{index + 1}</td>
+                  <td className="px-3 py-2 font-black text-navy">{index + 1}</td>
                   <td className="px-3 py-2">
-                    <p className={`font-semibold ${champion ? "text-[#12225a]" : "text-slate-800"}`}>
+                    <p className={`font-semibold ${champion ? "text-navy" : "text-slate-800"}`}>
                       {nameById.get(row.teamId) ?? row.teamId}
                     </p>
                     {raceById.get(row.teamId) ? (
@@ -130,7 +130,7 @@ export function StandingsTable({ teams, fixtures, championTeamId }: StandingsTab
                   <td className="px-3 py-2 text-center tabular-nums">{row.wins}</td>
                   <td className="px-3 py-2 text-center tabular-nums">{row.draws}</td>
                   <td className="px-3 py-2 text-center tabular-nums">{row.losses}</td>
-                  <td className="px-3 py-2 text-center text-[15px] font-black tabular-nums text-[#12225a]">
+                  <td className="px-3 py-2 text-center text-[15px] font-black tabular-nums text-navy">
                     {row.points}
                   </td>
                   <td className="px-3 py-2 text-center tabular-nums">{row.tdFor}</td>

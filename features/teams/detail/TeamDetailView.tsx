@@ -72,18 +72,18 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
   const leagueLabel = team.leagueId ? (leagueName ?? t("detail.sinLiga")) : t("detail.sinLiga");
 
   return (
-    <div className="mx-auto max-w-[860px] bg-white text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
+    <div className="mx-auto max-w-[860px] bg-panel text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
       {/* Hero */}
-      <header className="bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
+      <header className="bg-navy px-4 py-[22px] text-white sm:px-6">
         <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{team.name}</h1>
-        <p className="mt-2 text-[13px] text-[#cbd5e1]">
+        <p className="mt-2 text-[13px] text-border-subtle">
           <b className="text-white">{race.name}</b> · {leagueLabel}
         </p>
         <div className="mt-3">
           <span className="mr-[6px] inline-block rounded-full border border-white/25 bg-white/10 px-[10px] py-[3px] text-[12px] font-bold text-white">
             {t("detail.equipoListo")}
           </span>
-          <span className="inline-block rounded-full border-[#d11938] bg-[#d11938] px-[10px] py-[3px] text-[12px] font-bold text-white">
+          <span className="inline-block rounded-full border-red bg-red px-[10px] py-[3px] text-[12px] font-bold text-white">
             {t("detail.treasuryTag", { amount: formatRulebookCost(treasury) })}
           </span>
         </div>
@@ -92,8 +92,8 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
       <div className="px-6 py-[18px]">
         {/* Plantilla (rulebook-style roster with progression in the table) */}
         <section aria-labelledby="plantilla-heading">
-          <div className="mb-3 flex items-center justify-between gap-3 border-b-[3px] border-[#d11938] pb-1.5">
-            <h2 id="plantilla-heading" className="text-[16px] text-[#12225a]">
+          <div className="mb-3 flex items-center justify-between gap-3 border-b-[3px] border-red pb-1.5">
+            <h2 id="plantilla-heading" className="text-[16px] text-navy">
               {t("detail.plantilla")}
             </h2>
             {onHire ? (
@@ -101,7 +101,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
                 type="button"
                 data-testid="open-hire-dialog"
                 onClick={() => setHiring(true)}
-                className="rounded bg-[#12225a] px-3 py-1 text-[12.5px] font-bold text-white"
+                className="rounded bg-navy px-3 py-1 text-[12.5px] font-bold text-white"
               >
                 {t("detail.hire")}
               </button>
@@ -125,7 +125,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
         <section className="mt-5" aria-labelledby="coaching-heading">
           <h2
             id="coaching-heading"
-            className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
+            className="mb-3 border-b-[3px] border-red pb-1.5 text-[16px] text-navy"
           >
             {t("detail.cuerpoTecnico")}
           </h2>
@@ -134,7 +134,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
               <div className="min-w-[640px]">
               <table className="w-full text-[13px]">
             <thead>
-              <tr className="bg-[#12225a] text-white">
+              <tr className="bg-navy text-white">
                 <th scope="col" className="px-[10px] py-[7px] text-left text-[12px] font-bold uppercase">
                   {t("detail.coachingConcept")}
                 </th>
@@ -153,7 +153,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
               {coachingItems.map((item) => (
                 <tr
                   key={item.key}
-                  className="border-b border-[#e2e8f0] odd:bg-white even:bg-[#f1f5f9]"
+                  className="border-b border-border odd:bg-panel even:bg-fill-hover"
                 >
                   <td className="px-[10px] py-[7px]">{t(COACHING_LABELS[item.key])}</td>
                   <td className="px-[10px] py-[7px]">{item.quantity}</td>
@@ -165,7 +165,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
                   </td>
                 </tr>
               ))}
-              <tr className="border-b border-[#e2e8f0] odd:bg-white even:bg-[#f1f5f9]">
+              <tr className="border-b border-border odd:bg-panel even:bg-fill-hover">
                 <td className="px-[10px] py-[7px]">{t("coaching.apothecary")}</td>
                 <td className={`px-[10px] py-[7px] font-bold ${team.coaching.apothecary ? "text-green-600" : ""}`}>
                   {team.coaching.apothecary ? t("common.yes") : t("common.no")}
@@ -177,7 +177,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
                   {formatRulebookCost(team.coaching.apothecary ? APOTHECARY_COST : 0)}
                 </td>
               </tr>
-              <tr className="bg-[#e2e8f0] font-bold">
+              <tr className="bg-border font-bold">
                 <td colSpan={3} className="px-[10px] py-[7px]">{t("detail.coachingTotalRow")}</td>
                 <td className="px-[10px] py-[7px] text-right tabular-nums">
                   {formatRulebookCost(coachingCost)}
@@ -188,18 +188,18 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
               </div>
             </div>
           ) : (
-            <div className="divide-y divide-[#e2e8f0] rounded border border-[#e2e8f0] bg-white">
+            <div className="divide-y divide-border rounded border border-border bg-panel">
               {coachingItems.map((item) => (
                 <div key={item.key} className="flex items-center justify-between gap-3 px-3 py-2">
                   <div className="min-w-0">
                     <p className="text-[13px] font-medium text-[#1a1a1a]">
                       {t(COACHING_LABELS[item.key])}
                     </p>
-                    <p className="text-[11px] text-[#64748b]">
+                    <p className="text-[11px] text-slate">
                       {item.quantity} × {formatRulebookCost(item.unitCost)}
                     </p>
                   </div>
-                  <p className="text-[13px] font-bold tabular-nums text-[#12225a]">
+                  <p className="text-[13px] font-bold tabular-nums text-navy">
                     {formatRulebookCost(item.total)}
                   </p>
                 </div>
@@ -207,7 +207,7 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
               <div className="flex items-center justify-between gap-3 px-3 py-2">
                 <div className="min-w-0">
                   <p className="text-[13px] font-medium text-[#1a1a1a]">{t("coaching.apothecary")}</p>
-                  <p className="text-[11px] text-[#64748b]">50 000</p>
+                  <p className="text-[11px] text-slate">50 000</p>
                 </div>
                 <p
                   className={`text-[13px] font-bold tabular-nums ${
@@ -217,9 +217,9 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
                   {team.coaching.apothecary ? t("common.yes") : t("common.no")}
                 </p>
               </div>
-              <div className="flex items-center justify-between gap-3 bg-[#e2e8f0] px-3 py-2">
+              <div className="flex items-center justify-between gap-3 bg-border px-3 py-2">
                 <p className="text-[13px] font-bold text-[#1a1a1a]">{t("detail.coachingTotalRow")}</p>
-                <p className="text-[13px] font-bold tabular-nums text-[#12225a]">
+                <p className="text-[13px] font-bold tabular-nums text-navy">
                   {formatRulebookCost(coachingCost)}
                 </p>
               </div>
@@ -231,26 +231,26 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
         <section className="mt-5" aria-labelledby="treasury-heading">
           <h2
             id="treasury-heading"
-            className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]"
+            className="mb-3 border-b-[3px] border-red pb-1.5 text-[16px] text-navy"
           >
             {t("detail.treasury")}
           </h2>
           <div className="flex flex-wrap gap-2.5">
-            <div className="flex-1 rounded border border-[#e2e8f0] bg-[#f1f5f9] p-2.5 text-center">
-              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">{t("detail.treasuryRoster")}</p>
-              <p className="mt-0.5 text-[18px] font-extrabold text-[#12225a]">
+            <div className="flex-1 rounded border border-border bg-fill-hover p-2.5 text-center">
+              <p className="text-[11px] uppercase tracking-[0.05em] text-slate">{t("detail.treasuryRoster")}</p>
+              <p className="mt-0.5 text-[18px] font-extrabold text-navy">
                 {formatRulebookCost(rosterCost)}
               </p>
             </div>
-            <div className="flex-1 rounded border border-[#e2e8f0] bg-[#f1f5f9] p-2.5 text-center">
-              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">{t("detail.cuerpoTecnico")}</p>
-              <p className="mt-0.5 text-[18px] font-extrabold text-[#12225a]">
+            <div className="flex-1 rounded border border-border bg-fill-hover p-2.5 text-center">
+              <p className="text-[11px] uppercase tracking-[0.05em] text-slate">{t("detail.cuerpoTecnico")}</p>
+              <p className="mt-0.5 text-[18px] font-extrabold text-navy">
                 {formatRulebookCost(coachingCost)}
               </p>
             </div>
-            <div className="flex-1 rounded border border-[#e2e8f0] bg-[#f1f5f9] p-2.5 text-center">
-              <p className="text-[11px] uppercase tracking-[0.05em] text-[#64748b]">{t("detail.treasuryRemaining")}</p>
-              <p className="mt-0.5 text-[18px] font-extrabold text-[#d11938]">
+            <div className="flex-1 rounded border border-border bg-fill-hover p-2.5 text-center">
+              <p className="text-[11px] uppercase tracking-[0.05em] text-slate">{t("detail.treasuryRemaining")}</p>
+              <p className="mt-0.5 text-[18px] font-extrabold text-red">
                 {formatRulebookCost(treasury)}
               </p>
             </div>

@@ -67,21 +67,21 @@ export function UserManager() {
 
   if (loading) {
     return (
-      <p className="bg-white p-8 text-center text-sm text-slate-500" role="status">
+      <p className="bg-panel p-8 text-center text-sm text-slate-500" role="status">
         {t("dev.users.loading")}
       </p>
     );
   }
 
   if (error) {
-    return <p className="bg-white p-8 text-center text-sm text-red-600">{error}</p>;
+    return <p className="bg-panel p-8 text-center text-sm text-red-600">{error}</p>;
   }
 
   return (
     <section aria-labelledby="dev-users-heading" className="space-y-4">
       <h1
         id="dev-users-heading"
-        className="border-b-[3px] border-[#d11938] pb-1.5 text-[22px] font-black text-[#12225a]"
+        className="border-b-[3px] border-red pb-1.5 text-[22px] font-black text-navy"
       >
         {t("dev.users.heading")}
       </h1>
@@ -92,10 +92,10 @@ export function UserManager() {
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-md border border-[#e2e8f0] bg-white">
+      <div className="overflow-x-auto rounded-md border border-border bg-panel">
         <table className="w-full min-w-[560px] text-left text-[13px]">
           <thead>
-            <tr className="border-b border-[#e2e8f0] bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+            <tr className="border-b border-border bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
               <th scope="col" className="px-3 py-2 font-bold">{t("dev.users.account")}</th>
               <th scope="col" className="px-3 py-2 font-bold">{t("dev.users.role")}</th>
               <th scope="col" className="px-3 py-2 font-bold">{t("dev.users.plan")}</th>
@@ -112,7 +112,7 @@ export function UserManager() {
               users.map((user) => {
                 const isSelf = user.id === currentUserId;
                 return (
-                  <tr key={user.id} className="border-b border-[#f1f5f9] last:border-b-0">
+                  <tr key={user.id} className="border-b border-fill-hover last:border-b-0">
                     <td className="px-3 py-2">
                       <p className="font-semibold text-slate-800">{user.name ?? "—"}</p>
                       <p className="text-[11px] text-slate-500">{user.email}</p>
@@ -123,7 +123,7 @@ export function UserManager() {
                         value={user.role}
                         disabled={isSelf || savingId === user.id}
                         onChange={(event) => applyPatch(user, { role: event.target.value })}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-md border border-slate-300 bg-panel px-2 py-1 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {ROLES.map((role) => (
                           <option key={role} value={role}>
@@ -143,7 +143,7 @@ export function UserManager() {
                         value={user.plan}
                         disabled={savingId === user.id}
                         onChange={(event) => applyPatch(user, { plan: event.target.value })}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-md border border-slate-300 bg-panel px-2 py-1 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {PLANS.map((plan) => (
                           <option key={plan} value={plan}>

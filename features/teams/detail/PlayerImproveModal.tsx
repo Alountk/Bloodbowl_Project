@@ -248,7 +248,7 @@ export function PlayerImproveModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/55 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/55 p-4"
       onMouseDown={(e) => {
         pointerDownOnBackdrop.current = e.target === e.currentTarget;
       }}
@@ -262,21 +262,21 @@ export function PlayerImproveModal({
         aria-modal="true"
         aria-label={t("detail.modal.aria", { name: player.name })}
         data-testid="improve-modal"
-        className="w-full max-w-[640px] overflow-hidden bg-white text-[#1a1a1a] shadow-[0_20px_40px_rgba(0,0,0,0.3)]"
+        className="w-full max-w-[640px] overflow-hidden bg-panel text-[#1a1a1a] shadow-[0_20px_40px_rgba(0,0,0,0.3)]"
       >
-        <header className="relative flex items-center gap-3 bg-[#12225a] py-3.5 pr-14 pl-4 text-white">
+        <header className="relative flex items-center gap-3 bg-navy py-3.5 pr-14 pl-4 text-white">
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/10 text-[15px]">
             {player.icon}
           </span>
           <div className="min-w-0">
             <h3 className="truncate text-[17px] font-bold leading-tight">{player.name}</h3>
-            <p className="text-[12px] text-[#cbd5e1]">
+            <p className="text-[12px] text-border-subtle">
               {player.positionalName} · ({player.role}, {player.raceName})
             </p>
           </div>
           <div className="ml-auto shrink-0 text-right">
             <p className="text-[17px] font-black tabular-nums">{formatRulebookCost(player.value)}</p>
-            <p className="text-[12px] text-[#fde68a]" data-testid="modal-pe-label">
+            <p className="text-[12px] text-warning-fill" data-testid="modal-pe-label">
               {t("detail.modal.peAvailable", { count: player.pe })}
             </p>
           </div>
@@ -293,19 +293,19 @@ export function PlayerImproveModal({
         <div className="p-4">
           <div className="flex flex-wrap gap-2.5">
             <div className="min-w-[90px] flex-1">
-              <label className="mb-1 block text-[11px] font-bold tracking-[0.04em] text-[#64748b] uppercase">
+              <label className="mb-1 block text-[11px] font-bold tracking-[0.04em] text-slate uppercase">
                 {t("detail.modal.number")}
               </label>
               <span
                 title={t("detail.modal.numberTitle")}
                 data-testid="modal-number"
-                className="block w-full rounded border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-2 text-[13.5px] font-bold text-[#94a3b8]"
+                className="block w-full rounded border border-border bg-fill-hover px-3 py-2 text-[13.5px] font-bold text-[#94a3b8]"
               >
                 {player.number}
               </span>
             </div>
             <div className="min-w-[180px] flex-[2]">
-              <label className="mb-1 block text-[11px] font-bold tracking-[0.04em] text-[#64748b] uppercase">
+              <label className="mb-1 block text-[11px] font-bold tracking-[0.04em] text-slate uppercase">
                 {t("detail.modal.name")}
               </label>
               <div className="flex gap-1.5">
@@ -316,7 +316,7 @@ export function PlayerImproveModal({
                   maxLength={50}
                   onChange={(e) => setName(e.target.value)}
                   aria-label={t("detail.modal.name")}
-                  className="min-w-0 flex-1 rounded border border-[#e2e8f0] px-3 py-2 text-[13.5px] outline-none focus:border-[#12225a] disabled:opacity-60"
+                  className="min-w-0 flex-1 rounded border border-border px-3 py-2 text-[13.5px] outline-none focus:border-navy disabled:opacity-60"
                 />
                 {onRename ? (
                   <button
@@ -324,7 +324,7 @@ export function PlayerImproveModal({
                     title={t("create.rollName")}
                     aria-label={t("create.rollName")}
                     onClick={rollName}
-                    className="shrink-0 rounded bg-[#12225a] px-3 text-white"
+                    className="shrink-0 rounded bg-navy px-3 text-white"
                   >
                     🎲
                   </button>
@@ -333,12 +333,12 @@ export function PlayerImproveModal({
             </div>
           </div>
 
-          <div className="mt-3 border-t border-[#e2e8f0] pt-3">
+          <div className="mt-3 border-t border-border pt-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-[12.5px] font-bold text-[#12225a]">{t("detail.modal.experienced")}</h4>
+              <h4 className="text-[12.5px] font-bold text-navy">{t("detail.modal.experienced")}</h4>
               {canUpgrade ? (
                 <span
-                  className="rounded-full bg-[#dcfce7] px-2.5 py-0.5 text-[11.5px] font-black text-[#166534]"
+                  className="rounded-full bg-success-fill px-2.5 py-0.5 text-[11.5px] font-black text-success-strong"
                   data-testid="modal-pe-badge"
                 >
                   {t("detail.modal.peAvailable", { count: player.pe })}
@@ -346,13 +346,13 @@ export function PlayerImproveModal({
               ) : null}
             </div>
             <div className="mt-2" data-testid="modal-progress">
-              <div className="relative h-[8px] w-full overflow-hidden rounded-full bg-[#e2e8f0]">
+              <div className="relative h-[8px] w-full overflow-hidden rounded-full bg-border">
                 <div
-                  className="absolute inset-y-0 left-0 bg-[#16a34a]"
+                  className="absolute inset-y-0 left-0 bg-success"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
-              <div className="mt-1 flex justify-between text-[10px] font-bold text-[#64748b]">
+              <div className="mt-1 flex justify-between text-[10px] font-bold text-slate">
                 {[1, 2, 3, 4].map((n) => (
                   <span key={n}>★{n * PE_MVP}</span>
                 ))}
@@ -362,14 +362,14 @@ export function PlayerImproveModal({
 
           {canUpgrade ? (
             <>
-              <div className="mt-3 border-t border-[#e2e8f0] pt-3">
-                <h4 className="mb-1.5 text-[12.5px] font-bold text-[#12225a]">{t("detail.modal.newUpgrade")}</h4>
+              <div className="mt-3 border-t border-border pt-3">
+                <h4 className="mb-1.5 text-[12.5px] font-bold text-navy">{t("detail.modal.newUpgrade")}</h4>
                 <select
                   value={selection}
                   aria-label={t("detail.modal.newUpgrade")}
                   data-testid="upgrade-select"
                   onChange={(e) => setSelection(e.target.value as UpgradeSelection)}
-                  className="w-full rounded border border-[#e2e8f0] px-2 py-2 text-[13px]"
+                  className="w-full rounded border border-border px-2 py-2 text-[13px]"
                 >
                   <option value="">{t("detail.modal.choose")}</option>
                   {primarySkills.length > 0 ? (
@@ -408,7 +408,7 @@ export function PlayerImproveModal({
 
                 {selection === "random" ? (
                   <div className="mt-2">
-                    <label className="mb-1 block text-[11px] font-bold tracking-[0.04em] text-[#64748b] uppercase">
+                    <label className="mb-1 block text-[11px] font-bold tracking-[0.04em] text-slate uppercase">
                       {t("detail.modal.randomCategory", { cost: randomCost })}
                     </label>
                     <select
@@ -416,7 +416,7 @@ export function PlayerImproveModal({
                       aria-label={t("detail.modal.randomCategory", { cost: randomCost })}
                       data-testid="random-category-select"
                       onChange={(e) => setRandomCategory(e.target.value as SkillColumn)}
-                      className="w-full rounded border border-[#e2e8f0] px-2 py-2 text-[13px]"
+                      className="w-full rounded border border-border px-2 py-2 text-[13px]"
                     >
                       {(accessibleLetters.length ? accessibleLetters : DEFAULT_ACCESS).map((letter) => (
                         <option key={letter} value={letter}>
@@ -429,7 +429,7 @@ export function PlayerImproveModal({
 
                 {candidates.length > 0 ? (
                   <div className="mt-2">
-                    <p className="text-[12px] text-[#64748b]">
+                    <p className="text-[12px] text-slate">
                       {t("prog.pickOne", {
                         category: t(RANDOM_CATEGORY_KEYS[randomCategory ?? (accessibleLetters[0] ?? "G")]),
                       })}
@@ -441,7 +441,7 @@ export function PlayerImproveModal({
                           type="button"
                           disabled={busy}
                           onClick={() => void pickCandidate(candidate)}
-                          className="rounded bg-[#d11938] px-2 py-1 text-[12px] font-bold text-white disabled:opacity-50"
+                          className="rounded bg-red px-2 py-1 text-[12px] font-bold text-white disabled:opacity-50"
                         >
                           {candidate}
                         </button>
@@ -451,16 +451,16 @@ export function PlayerImproveModal({
                 ) : null}
               </div>
 
-              <div className="mt-3 border-t border-[#e2e8f0] pt-3">
-                <h4 className="mb-1.5 text-[12.5px] font-bold text-[#12225a]">{t("detail.modal.attributes")}</h4>
+              <div className="mt-3 border-t border-border pt-3">
+                <h4 className="mb-1.5 text-[12.5px] font-bold text-navy">{t("detail.modal.attributes")}</h4>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {PLAYER_ATTRIBUTES.map((attr) => {
                     const increases = player.attributeIncreases[attr] ?? 0;
                     const current = applyAttributeIncreases(attr, player.baseAttributes[attr], increases);
                     const next = applyAttributeIncreases(attr, player.baseAttributes[attr], increases + 1);
                     return (
-                      <div key={attr} className="rounded border border-[#e2e8f0] p-1.5 text-center">
-                        <label className="block text-[11px] font-bold text-[#64748b]">
+                      <div key={attr} className="rounded border border-border p-1.5 text-center">
+                        <label className="block text-[11px] font-bold text-slate">
                           {t(ATTRIBUTE_KEYS[attr])}
                         </label>
                         <select
@@ -472,7 +472,7 @@ export function PlayerImproveModal({
                             setAttrPlus((prev) => ({ ...prev, [attr]: plus }));
                             if (plus) setSelection("attribute");
                           }}
-                          className="mt-1 w-full rounded border border-[#e2e8f0] px-1 py-1.5 text-center text-[13px] font-bold"
+                          className="mt-1 w-full rounded border border-border px-1 py-1.5 text-center text-[13px] font-bold"
                         >
                           <option value="current">{current}</option>
                           {player.pe >= attributeCost ? (
@@ -489,7 +489,7 @@ export function PlayerImproveModal({
             </>
           ) : (
             <p
-              className="mt-3 border-t border-[#e2e8f0] pt-3 text-[12.5px] text-[#64748b]"
+              className="mt-3 border-t border-border pt-3 text-[12.5px] text-slate"
               data-testid="modal-no-pe"
             >
               {t("detail.modal.noPe")}
@@ -497,23 +497,23 @@ export function PlayerImproveModal({
           )}
 
           {error ? (
-            <p role="alert" className="mt-2 text-[12px] font-medium text-[#d11938]">
+            <p role="alert" className="mt-2 text-[12px] font-medium text-red">
               {error}
             </p>
           ) : null}
 
           {confirmingFire ? (
-            <div className="mt-4 border-t border-[#e2e8f0] pt-3.5">
+            <div className="mt-4 border-t border-border pt-3.5">
               <p className="text-[13px] font-semibold text-[#1a1a1a]">
                 {t("detail.modal.fireConfirmTitle", { name: player.name })}
               </p>
-              <p className="mt-0.5 text-[12px] text-[#64748b]">{t("detail.modal.fireConfirmBody")}</p>
+              <p className="mt-0.5 text-[12px] text-slate">{t("detail.modal.fireConfirmBody")}</p>
               <div className="mt-3 flex justify-end gap-2.5">
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => setConfirmingFire(false)}
-                  className="rounded bg-[#f1f5f9] px-4 py-2 text-[13px] font-bold text-[#334155]"
+                  className="rounded bg-fill-hover px-4 py-2 text-[13px] font-bold text-slate-strong"
                 >
                   {t("common.cancel")}
                 </button>
@@ -522,21 +522,21 @@ export function PlayerImproveModal({
                   disabled={busy}
                   data-testid="modal-fire-confirm"
                   onClick={() => void handleFire()}
-                  className="rounded bg-[#d11938] px-5 py-2 text-[13px] font-bold text-white disabled:opacity-50"
+                  className="rounded bg-red px-5 py-2 text-[13px] font-bold text-white disabled:opacity-50"
                 >
                   {t("detail.modal.fireConfirm")}
                 </button>
               </div>
             </div>
           ) : (
-            <div className="mt-4 flex justify-end gap-2.5 border-t border-[#e2e8f0] pt-3.5">
+            <div className="mt-4 flex justify-end gap-2.5 border-t border-border pt-3.5">
               {onFire ? (
                 <button
                   type="button"
                   disabled={busy}
                   data-testid="modal-fire"
                   onClick={() => setConfirmingFire(true)}
-                  className="mr-auto rounded bg-[#fef2f2] px-4 py-2 text-[13px] font-bold text-[#d11938]"
+                  className="mr-auto rounded bg-ack-review-fill px-4 py-2 text-[13px] font-bold text-red"
                 >
                   {t("detail.modal.fire")}
                 </button>
@@ -544,7 +544,7 @@ export function PlayerImproveModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded bg-[#f1f5f9] px-4 py-2 text-[13px] font-bold text-[#334155]"
+                className="rounded bg-fill-hover px-4 py-2 text-[13px] font-bold text-slate-strong"
               >
                 {t("common.cancel")}
               </button>
@@ -553,7 +553,7 @@ export function PlayerImproveModal({
                 disabled={busy}
                 onClick={() => void handleAccept()}
                 data-testid="modal-accept"
-                className="rounded bg-[#d11938] px-5 py-2 text-[13px] font-bold text-white disabled:opacity-50"
+                className="rounded bg-red px-5 py-2 text-[13px] font-bold text-white disabled:opacity-50"
               >
                 {t("detail.modal.accept")}
               </button>

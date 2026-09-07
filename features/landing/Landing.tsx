@@ -44,7 +44,7 @@ export function Landing() {
   ] as const;
 
   return (
-    <div className="min-h-screen scroll-smooth bg-[#f8fafc] text-slate-900">
+    <div className="min-h-screen scroll-smooth bg-background text-slate-900">
       <AppNav showSignIn />
 
       {/* Navy compact hero + CTA + art panel mock. */}
@@ -57,13 +57,13 @@ export function Landing() {
       >
         <div className="min-w-[280px] flex-1">
           <h1 className="text-[30px] font-black leading-tight">{t("landing.heroTitle")}</h1>
-          <p className="mt-2.5 max-w-[480px] text-[14px] text-[#cbd5e1]">
+          <p className="mt-2.5 max-w-[480px] text-[14px] text-border-subtle">
             {t("landing.heroSubtitle")}
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
               href="/signup"
-              className="rounded-none bg-[#d11938] px-5 py-2.5 text-sm font-extrabold text-white hover:bg-[#e51b40]"
+              className="rounded-none bg-red px-5 py-2.5 text-sm font-extrabold text-white hover:bg-red-hover-bright"
             >
               {t("landing.ctaSignup")}
             </Link>
@@ -89,7 +89,7 @@ export function Landing() {
             <span>{t("landing.mockPlayers")}</span>
           </div>
           <div className="flex justify-between py-[7px]">
-            <span className="text-[#fde68a]">● {t("landing.mockLive")}</span>
+            <span className="text-warning-fill">● {t("landing.mockLive")}</span>
             <span>0 – 0</span>
           </div>
         </div>
@@ -97,7 +97,7 @@ export function Landing() {
 
       <main className="mx-auto max-w-[960px] px-5 py-7">
         <section id="what-you-get" aria-labelledby="features-heading" className="scroll-mt-4">
-          <h2 id="features-heading" className="text-[17px] font-black text-[#12225a]">
+          <h2 id="features-heading" className="text-[17px] font-black text-navy">
             {t("landing.featuresHeading")}
           </h2>
           <p className="mt-1 text-[12.5px] text-slate-500">
@@ -107,12 +107,12 @@ export function Landing() {
             {features.map((feature) => (
               <article
                 key={feature.tag}
-                className="rounded-xl border border-slate-200 bg-white p-4"
+                className="rounded-xl border border-slate-200 bg-panel p-4"
               >
-                <p className="text-[10px] font-black uppercase tracking-[0.06em] text-[#d11938]">
+                <p className="text-[10px] font-black uppercase tracking-[0.06em] text-red">
                   {feature.tag}
                 </p>
-                <h3 className="mt-1.5 text-[14px] font-bold text-[#12225a]">{feature.title}</h3>
+                <h3 className="mt-1.5 text-[14px] font-bold text-navy">{feature.title}</h3>
                 <p className="mt-1 text-[12px] text-slate-500">{feature.copy}</p>
               </article>
             ))}
