@@ -1,22 +1,29 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isTheme } from "@/lib/theme/theme";
 
 /**
  * Pure PATCH allowlist for `/api/me`.
  *
- * Accepts ONLY `name` (free text, trimmed), `avatar`, and `locale`. `avatar` is
- * allowed only when it is exactly `null` (clear) or equals the current stored
- * value (a no-op echo from the client). A `data:` URI, an external/`http(s)://`
- * URL, or any value that is not the current stored value must be rejected so a
- * client-supplied avatar can never persist (XSS via stored URL). `locale`
- * (RAU-58) is accepted only as `"es"` or `"en"`. Unknown fields are also
- * rejected. Returns `{ ok: true, data }` for the update or
+ * Accepts ONLY `name` (free text, trimmed), `avatar`, `locale`, and `theme`.
+ * `avatar` is allowed only when it is exactly `null` (clear) or equals the
+ * current stored value (a no-op echo from the client). A `data:` URI, an
+ * external/`http(s)://` URL, or any value that is not the current stored value
+ * must be rejected so a client-supplied avatar can never persist (XSS via
+ * stored URL). `locale` (RAU-58) is accepted only as `"es"` or `"en"`. `theme`
+ * (theme-selector) is accepted only as `"vintage"` or `"scoreboard"`. Unknown
+ * fields are also rejected. Returns `{ ok: true, data }` for the update or
  * `{ ok: false, error }` for a rejected payload.
  */
 export function patchUserData(
   body: Record<string, unknown>,
-  current: { name?: string | null; avatar?: string | null; locale?: string | null },
+  current: {
+    name?: string | null;
+    avatar?: string | null;
+    locale?: string | null;
+    theme?: string | null;
+  },
 ): { ok: true; data: Record<string, string | null> } | { ok: false; error: string } {
   const data: Record<string, string | null> = {};
 
@@ -51,7 +58,15 @@ export function patchUserData(
     }
   }
 
-  const allowedKeys = ["name", "avatar", "locale"];
+  if (body.theme !== undefined) {
+    if (isTheme(body.theme)) {
+      data.theme = body.theme;
+    } else {
+      return { ok: false, error: "theme must be \"vintage\" or \"scoreboard\"" };
+    }
+  }
+
+  const allowedKeys = ["name", "avatar", "locale", "theme"];
   for (const key of Object.keys(body)) {
     if (!allowedKeys.includes(key)) {
       return { ok: false, error: `Unknown field: ${key}` };
@@ -63,8 +78,8 @@ export function patchUserData(
 
 /**
  * GET /api/me
- * Returns the session user's `id`, `name`, `email`, `avatar`, and `locale`
- * (RAU-58: the account UI language). 401 unauthenticated.
+ * Returns the session user's `id`, `name`, `email`, `avatar`, `locale`, and
+ * `theme` (theme-selector: the account visual theme). 401 unauthenticated.
  */
 export async function GET() {
   const session = await auth();
@@ -75,7 +90,16 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, avatar: true, locale: true, role: true, plan: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      avatar: true,
+      locale: true,
+      theme: true,
+      role: true,
+      plan: true,
+    },
   });
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -86,9 +110,10 @@ export async function GET() {
 /**
  * PATCH /api/me
  * Updates only `name` (free text), `avatar` (`null` to clear; otherwise the
- * current stored adapter-issued value), or `locale` (`"es"` | `"en"`). Any
- * other field, an invalid locale, or a `data:`/external `avatar` returns 400
- * and the stored value is left unchanged. 401 without a session.
+ * current stored adapter-issued value), `locale` (`"es"` | `"en"`), or `theme`
+ * (`"vintage"` | `"scoreboard"`). Any other field, an invalid locale/theme, or
+ * a `data:`/external `avatar` returns 400 and the stored value is left
+ * unchanged. 401 without a session.
  */
 export async function PATCH(req: Request) {
   const session = await auth();
@@ -113,6 +138,7 @@ export async function PATCH(req: Request) {
     name: user.name,
     avatar: user.avatar,
     locale: user.locale,
+    theme: user.theme,
   });
   if (!patch.ok) {
     return NextResponse.json({ error: patch.error }, { status: 400 });
@@ -128,5 +154,6 @@ export async function PATCH(req: Request) {
     email: updated.email,
     avatar: updated.avatar,
     locale: updated.locale,
+    theme: updated.theme,
   });
 }
