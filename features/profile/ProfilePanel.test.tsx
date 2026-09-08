@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ProfilePanel } from "./ProfilePanel";
 import { I18nProvider } from "@/lib/i18n";
+import { ThemeProvider } from "@/lib/theme";
 
 /**
  * ProfilePanel renders the Spanish profile copy, the current avatar (from
@@ -30,8 +31,17 @@ afterEach(() => {
   patchMeMock.mockReset();
 });
 
-function profile(overrides: Partial<{ avatar: string | null; locale: "es" | "en" }> = {}) {
-  return { id: "u1", name: "Coach", email: "c@x.com", avatar: null, locale: "es", ...overrides };
+function profile(
+  overrides: Partial<{ avatar: string | null; locale: "es" | "en"; theme: "vintage" | "scoreboard" }> = {},
+) {
+  return {
+    id: "u1",
+    name: "Coach",
+    email: "c@x.com",
+    avatar: null,
+    locale: "es",
+    ...overrides,
+  };
 }
 
 function zeroStats() {
@@ -308,5 +318,101 @@ describe("ProfilePanel — language selector (RAU-58)", () => {
     hasText(await screen.findByRole("alert"), "No se pudo guardar el idioma.");
     const still = screen.getByRole("group", { name: "Idioma" });
     expect(still.querySelector('button[aria-pressed="true"]')?.textContent).toBe("ES");
+  });
+});
+
+describe("ProfilePanel — theme selector (theme-selector)", () => {
+  it("renders the theme selector bound to the account theme", async () => {
+    getMeMock.mockResolvedValue(profile({ theme: "scoreboard" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+
+    render(<ProfilePanel />);
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Tema" });
+    expect(group.querySelector('button[aria-pressed="true"]')?.textContent).toBe(
+      "Tablón americano",
+    );
+    expect(
+      screen.getByText("Cambia el aspecto: Reglamento vintage o Tablón americano."),
+    ).toBeTruthy();
+  });
+
+  it("falls back to the provider theme while the profile loads", async () => {
+    getMeMock.mockReturnValue(new Promise(() => {}));
+    getStatsMock.mockResolvedValue(zeroStats());
+
+    render(
+      <ThemeProvider initialTheme="vintage">
+        <ProfilePanel />
+      </ThemeProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Tema" });
+    expect(group.querySelector('button[aria-pressed="true"]')?.textContent).toBe(
+      "Reglamento vintage",
+    );
+  });
+
+  it("PATCHes the new theme and reflects the account change in the selector", async () => {
+    getMeMock.mockResolvedValue(profile({ theme: "vintage" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+    patchMeMock.mockResolvedValue(profile({ theme: "scoreboard" }));
+
+    render(<ProfilePanel />);
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Tema" });
+    fireEvent.click(within(group).getByRole("button", { name: "Tablón americano" }));
+
+    await waitFor(() => {
+      expect(patchMeMock).toHaveBeenCalledWith({ theme: "scoreboard" });
+    });
+    await waitFor(() => {
+      const updated = screen.getByRole("group", { name: "Tema" });
+      expect(updated.querySelector('button[aria-pressed="true"]')?.textContent).toBe(
+        "Tablón americano",
+      );
+    });
+  });
+
+  it("applies the selected theme through the ThemeProvider (cookie + data-theme)", async () => {
+    getMeMock.mockResolvedValue(profile({ theme: "vintage" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+    patchMeMock.mockResolvedValue(profile({ theme: "scoreboard" }));
+
+    render(
+      <ThemeProvider initialTheme="vintage">
+        <ProfilePanel />
+      </ThemeProvider>,
+    );
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Tema" });
+    fireEvent.click(within(group).getByRole("button", { name: "Tablón americano" }));
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute("data-theme")).toBe("scoreboard");
+    });
+    expect(document.cookie).toContain("bb-theme=scoreboard");
+  });
+
+  it("shows a Spanish error when the PATCH fails and keeps the current theme", async () => {
+    getMeMock.mockResolvedValue(profile({ theme: "vintage" }));
+    getStatsMock.mockResolvedValue(zeroStats());
+    patchMeMock.mockRejectedValue(new Error("network"));
+
+    render(<ProfilePanel />);
+
+    await screen.findByRole("heading", { name: "Mi Perfil" });
+    const group = screen.getByRole("group", { name: "Tema" });
+    fireEvent.click(within(group).getByRole("button", { name: "Tablón americano" }));
+
+    hasText(await screen.findByRole("alert"), "No se pudo guardar el tema.");
+    const still = screen.getByRole("group", { name: "Tema" });
+    expect(still.querySelector('button[aria-pressed="true"]')?.textContent).toBe(
+      "Reglamento vintage",
+    );
   });
 });

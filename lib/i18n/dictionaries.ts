@@ -287,6 +287,9 @@ const es: Dict = {
   "profile.locale.title": "Idioma",
   "profile.locale.hint": "Se aplicará a tu cuenta en todos tus dispositivos.",
   "profile.locale.error": "No se pudo guardar el idioma.",
+  "profile.theme.title": "Tema",
+  "profile.theme.hint": "Cambia el aspecto: Reglamento vintage o Tablón americano.",
+  "profile.theme.error": "No se pudo guardar el tema.",
 
   // RAU-57 — My Profile: career stats + self-service password change
   "profile.stats.title": "Estadísticas de carrera",
@@ -1064,6 +1067,9 @@ const en: Dict = {
   "profile.locale.title": "Language",
   "profile.locale.hint": "Applies to your account on all your devices.",
   "profile.locale.error": "Could not save the language.",
+  "profile.theme.title": "Theme",
+  "profile.theme.hint": "Choose the app look: Vintage rulebook or Scoreboard.",
+  "profile.theme.error": "Could not save the theme.",
 
   // RAU-57 — My Profile: career stats + self-service password change
   "profile.stats.title": "Career stats",

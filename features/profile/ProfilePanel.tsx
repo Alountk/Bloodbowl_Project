@@ -15,6 +15,8 @@ import { CropDialog } from "./CropDialog";
 import { UserAvatar } from "@/components/UserAvatar";
 import { useI18n } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n/dictionaries";
+import { useTheme } from "@/lib/theme";
+import { THEME_OPTIONS, type Theme } from "@/lib/theme/theme";
 import {
   MIN_PASSWORD_LENGTH,
   WRONG_CURRENT_PASSWORD_CODE,
@@ -37,6 +39,7 @@ const LOCALE_OPTIONS: { value: Locale; label: string }[] = [
  */
 export function ProfilePanel() {
   const { t, locale, setLocale } = useI18n();
+  const { theme, setTheme } = useTheme();
   const loadError = t("profile.loadError");
   const uploadError = t("profile.uploadError");
   const statsLoadError = t("profile.stats.loadError");
@@ -51,6 +54,9 @@ export function ProfilePanel() {
 
   const [localePending, setLocalePending] = useState(false);
   const [localeError, setLocaleError] = useState<string | null>(null);
+
+  const [themePending, setThemePending] = useState(false);
+  const [themeError, setThemeError] = useState<string | null>(null);
 
   const [stats, setStats] = useState<CareerStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -151,6 +157,28 @@ export function ProfilePanel() {
     }
   }
 
+  // Same contract as the locale selector: while the profile loads the selector
+  // reflects the ACTIVE provider theme (the per-browser/SSR-resolved value) and
+  // only switches to the ACCOUNT theme once GET /api/me resolves. On change we
+  // PATCH the account and flip the provider so the whole page (and the cookie)
+  // reflects the new theme immediately.
+  const activeTheme: Theme = profile?.theme ?? theme;
+
+  async function handleThemeChange(next: Theme) {
+    if (!profile || themePending || next === activeTheme) return;
+    setThemePending(true);
+    setThemeError(null);
+    try {
+      const updated = await patchMe({ theme: next });
+      setProfile((prev) => (prev ? { ...prev, theme: updated.theme ?? next } : prev));
+      setTheme(updated.theme ?? next);
+    } catch {
+      setThemeError(t("profile.theme.error"));
+    } finally {
+      setThemePending(false);
+    }
+  }
+
   return (
     <section className="mx-auto max-w-md">
       <h1 className="mb-1 text-2xl font-black text-navy">{t("nav.profile")}</h1>
@@ -221,6 +249,42 @@ export function ProfilePanel() {
         {localeError ? (
           <p role="alert" className="mt-2 text-sm text-red">
             {localeError}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-6 border border-border bg-panel p-4">
+        <h2 className="text-lg font-black text-navy">{t("profile.theme.title")}</h2>
+        <p className="mb-3 text-sm text-slate-500">{t("profile.theme.hint")}</p>
+        <div
+          role="group"
+          aria-label={t("profile.theme.title")}
+          data-testid="profile-theme"
+          className="flex items-center gap-1 rounded border border-slate-300 bg-background p-0.5"
+        >
+          {THEME_OPTIONS.map((option) => {
+            const active = activeTheme === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={active}
+                disabled={!profile || themePending}
+                onClick={() => handleThemeChange(option.value)}
+                className={`rounded px-3 py-1.5 text-sm font-bold transition-colors disabled:opacity-50 ${
+                  active
+                    ? "bg-navy text-white"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-navy"
+                }`}
+              >
+                {t(option.labelKey)}
+              </button>
+            );
+          })}
+        </div>
+        {themeError ? (
+          <p role="alert" className="mt-2 text-sm text-red">
+            {themeError}
           </p>
         ) : null}
       </div>
