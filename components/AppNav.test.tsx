@@ -148,3 +148,41 @@ describe("AppNav mobile drawer", () => {
     expect(logoutMock).toHaveBeenCalled();
   });
 });
+
+describe("AppNav theme switcher (AS-8)", () => {
+  it("mounts the theme toggle in the desktop right slot beside the locale switcher", () => {
+    renderLogged();
+
+    expect(screen.getByRole("group", { name: "Tema" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Idioma" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Reglamento vintage" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "Tablón americano" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("keeps the desktop <nav> link counts unchanged when the theme toggle is mounted", () => {
+    renderPublic();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(nav).getAllByRole("link")).toHaveLength(3);
+
+    sessionMock.mockReturnValue({
+      data: { user: { id: "dev-1", name: "Dev", role: "developer" } },
+      status: "authenticated",
+    });
+    render(<AppNav authenticated onLogout={logoutMock} />);
+    const devNav = screen.getAllByRole("navigation", { name: "Main navigation" })[1];
+    expect(within(devNav).getAllByRole("link")).toHaveLength(5);
+  });
+
+  it("mounts the theme toggle in the mobile drawer alongside the locale switcher", () => {
+    renderPublic();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menú de navegación" }));
+    const drawer = screen.getByRole("complementary", { name: "Mobile navigation" });
+
+    expect(within(drawer).getByRole("group", { name: "Tema" })).toBeTruthy();
+    expect(within(drawer).getByRole("group", { name: "Idioma" })).toBeTruthy();
+  });
+});
