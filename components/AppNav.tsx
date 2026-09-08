@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
 import { can } from "@/lib/permissions";
 import { LocaleSwitcher } from "@/lib/i18n/LocaleSwitcher";
+import { ThemeSwitcher } from "@/lib/theme/ThemeSwitcher";
 import { AuthModal } from "@/features/auth/AuthModal";
 
 /** 
@@ -32,8 +33,8 @@ interface AppNavProps {
  * Unified landing-style navigation, shared by the landing (public variant) and
  * the app shell. Navy bar with logo + links + a right slot (Sign in → AuthModal,
  * or avatar + name with a Perfil / Cerrar sesión menu). Mobile uses a hamburger
- * that opens the same drawer, which also hosts the auth action and the locale
- * switcher. Owns the drawer + auth modal state.
+ * that opens the same drawer, which also hosts the auth action, the theme
+ * switcher and the locale switcher. Owns the drawer + auth modal state.
  */
 export function AppNav({
   authenticated = false,
@@ -95,7 +96,8 @@ export function AppNav({
 
           <div className="flex-1" />
 
-          <div className="hidden md:block">
+          <div className="hidden items-center gap-2 md:flex">
+            <ThemeSwitcher />
             <LocaleSwitcher />
           </div>
 
@@ -179,6 +181,7 @@ export function AppNav({
                   Sign in
                 </button>
               ) : null}
+              <ThemeSwitcher />
               <LocaleSwitcher />
             </div>
           </aside>
