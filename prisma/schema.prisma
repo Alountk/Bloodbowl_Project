@@ -24,6 +24,11 @@ model User {
   /// The per-browser `bb-locale` cookie still applies to anonymous visitors,
   /// but the account locale wins whenever the user is signed in.
   locale            String             @default("es")
+  /// theme-selector: the account-level visual theme ("vintage" | "scoreboard").
+  /// Defaults to "vintage" (the Reglamento look); "scoreboard" is the opt-in
+  /// Tablón theme. The per-browser `bb-theme` cookie still applies to anonymous
+  /// visitors, but the account theme wins whenever the user is signed in.
+  theme             String             @default("vintage")
   createdAt         DateTime           @default(now())
   /// RBAC role (RAU-52): "user" (default) · "developer" (dev sections) ·
   /// "admin" (future platform management). Gates are server-side from the DB
