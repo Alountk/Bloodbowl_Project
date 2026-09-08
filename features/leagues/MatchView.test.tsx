@@ -45,6 +45,23 @@ function stubLiveEventSource() {
 }
 
 /**
+ * Dispatches a live `state` frame once the SSE EventSource actually exists.
+ * The hook opens the stream in an effect AFTER the first commit, so content
+ * rendered from the static detail (`detail.live`) can be visible before the
+ * stream connects; dispatching synchronously in that window made the old
+ * `liveInstances[0]?.dispatch(...)` a silent no-op (flake under full-suite
+ * load). Awaiting the instance makes every dispatch deterministic.
+ */
+async function dispatchState(data: string) {
+  await waitFor(() => {
+    expect(liveInstances.length).toBeGreaterThan(0);
+  });
+  act(() => {
+    liveInstances[0]?.dispatch("state", data);
+  });
+}
+
+/**
  * MatchView behavioral tests (MV-2/MV-3/MV-5/MV-6/MV-7). The client fetch is
  * exercised through the real getMatchDetail → readJson wiring by stubbing
  * global fetch (repo convention: LeagueDetail/MatchCard stub global fetch).
@@ -1082,9 +1099,7 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
 
     // The hub's fan-out `state` frame carries NO viewerSide (D19) and overwrites
     // hookLive → viewerSide must survive via the session-derived prop.
-    act(() => {
-      liveInstances[0]?.dispatch("state", hubFrame());
-    });
+    await dispatchState(hubFrame());
 
     // Regression: the frame previously blanked the side → "Esperando a los
     // entrenadores..." with no button.
@@ -1136,9 +1151,7 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
     expect(await screen.findByText(/Listo, esperando al rival/)).toBeTruthy();
 
     // The hub's fan-out frame (viewerSide null) arrives right after the POST.
-    act(() => {
-      liveInstances[0]?.dispatch("state", hubFrame({ homeConsented: true, awayConsented: false }));
-    });
+    await dispatchState(hubFrame({ homeConsented: true, awayConsented: false }));
 
     // The viewer still knows their side → the waiting state (and retract) persists.
     expect(screen.getByText(/Listo, esperando al rival/)).toBeTruthy();
@@ -1184,12 +1197,7 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
 
     expect(await screen.findByText(/Partido programado/)).toBeTruthy();
     // Both coaches consented → the ready state arrives via the hub frame (no viewerSide).
-    act(() => {
-      liveInstances[0]?.dispatch(
-        "state",
-        hubFrame({ seq: 2, status: "ready", homeConsented: true, awayConsented: true }),
-      );
-    });
+    await dispatchState(hubFrame({ seq: 2, status: "ready", homeConsented: true, awayConsented: true }));
 
     expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
     act(() => {
@@ -1218,26 +1226,23 @@ describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
 
     // Live-phase hub frame (viewerSide null) — the away coach keeps the control.
-    act(() => {
-      liveInstances[0]?.dispatch(
-        "state",
-        hubFrame({
-          seq: 7,
-          status: "live",
-          half: 1,
-          turnNumber: 3,
-          activeSide: "home",
-          homeConsented: true,
-          awayConsented: true,
-          startedAt: 8000,
-          elapsed: 2400,
-          homeTurnMs: 2100,
-          awayTurnMs: 300,
-          homeScore: 1,
-          awayScore: 0,
-        }),
-      );
-    });
+    await dispatchState(
+      hubFrame({
+        seq: 7,
+        status: "live",
+        half: 1,
+        turnNumber: 3,
+        activeSide: "home",
+        homeConsented: true,
+        awayConsented: true,
+        startedAt: 8000,
+        elapsed: 2400,
+        homeTurnMs: 2100,
+        awayTurnMs: 300,
+        homeScore: 1,
+        awayScore: 0,
+      }),
+    );
 
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Dar el turno/i })).toBeNull();
@@ -1268,9 +1273,7 @@ describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () 
     expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
 
     // The away (opponent) coach nudges → a requestTurn event frame arrives.
-    act(() => {
-      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
-    });
+    await dispatchState(liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
     expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
   });
 
@@ -1294,21 +1297,16 @@ describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () 
     renderPlayed();
 
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    act(() => {
-      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
-    });
+    await dispatchState(liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
     expect(screen.getByText(/Tu rival pide el turno/)).toBeTruthy();
 
     // The active coach passes the turn → the opponent's turnStart lands.
-    act(() => {
-      liveInstances[0]?.dispatch(
-        "state",
-        liveFrameWithEvents(8, { activeSide: "away", turnNumber: 4 }, [
-          { seq: 8, kind: "turn", side: null, playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
-          { seq: 9, kind: "turnStart", side: "away", playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
-        ]),
-      );
-    });
+    await dispatchState(
+      liveFrameWithEvents(8, { activeSide: "away", turnNumber: 4 }, [
+        { seq: 8, kind: "turn", side: null, playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
+        { seq: 9, kind: "turnStart", side: "away", playerRosterId: null, half: 1, turnNumber: 4, payload: {}, at: 6000 },
+      ]),
+    );
     expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
   });
 
@@ -1322,9 +1320,7 @@ describe("MatchView — 'Tu rival pide el turno' nudge banner (LM-13, D17)", () 
     renderPlayed();
 
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    act(() => {
-      liveInstances[0]?.dispatch("state", liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
-    });
+    await dispatchState(liveFrameWithEvents(7, {}, [requestTurn(7, "away")]));
     expect(screen.queryByText(/Tu rival pide el turno/)).toBeNull();
     expect(screen.getByRole("button", { name: /Pedir turno/i })).toBeTruthy();
   });
@@ -2012,12 +2008,7 @@ describe("MatchView — RAU-49 finished-live resolution flow", () => {
     expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
 
     // The hub fans a finished frame out → the page refreshes and auto-opens.
-    act(() => {
-      liveInstances[0]?.dispatch(
-        "state",
-        liveFrameWithEvents(8, { status: "finished", finishedAt: 5000 }, []),
-      );
-    });
+    await dispatchState(liveFrameWithEvents(8, { status: "finished", finishedAt: 5000 }, []));
 
     await waitFor(() => expect(screen.getByRole("dialog", { name: "Resolver partido" })).toBeTruthy());
   });
