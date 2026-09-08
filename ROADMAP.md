@@ -37,6 +37,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Auth en modal** (bottom/top-sheet mobile; /login y /signup pasan a ser fallbacks), coach name obligatorio | #118 |
 | **My Profile ampliado**: cambio de contraseña y **estadísticas de carrera** (campeonatos, V/E/D) derivadas de los equipos del usuario | #119 |
 | **Idioma por cuenta** (ES/EN): selector en My Profile, herencia en el signup, precedencia SSR (cuenta > cookie `bb-locale` > navegador) | #120 |
+| **Selector de tema por cuenta y navegador**: columna `User.theme` (default `vintage`), resolución SSR `data-theme` (cuenta > cookie `bb-theme` > vintage), `ThemeProvider` cliente, toggle en la nav (desktop + drawer) y selector en My Profile; PATCH `/api/me` allowlist | #183, #184, PR 2 (`feat/theme-selector-slice-b`) |
 | **Storage**: localStorage deprecado para equipos (modo local en memoria compartida) y para el locale (cookie); la migración legacy a cuenta se conserva | #118, #120 |
 
 ### Ligas y campeonatos
@@ -115,7 +116,6 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 ### Features planificadas
 | Feature | Notas |
 |---|---|
-| **Selector de tema (UI)** | Reglamento vintage ya es el default; el Tablón americano (Anton display + acento end-zone) existe como opt-in `[data-theme=scoreboard]` pero falta una UI para alternarlo (hoy solo vía atributo `data-theme`). |
 | **Histórico completo con replay / taxonomía amplia** | El modo en vivo (SSE, turnos, relojes, timeline), kickoff (#100–#102), la resolución por lado (#133/#134) y el registro player-first (#161–#163) ya están en Completado; lo que queda es replay de partidos, taxonomía completa de eventos (intercepciones, skills, clima, resto de la tabla de kickoff), filtros y visualización pública. |
 | **Escudo de equipo personalizado** (RAU-78) | Poder poner un escudo propio al equipo desde el detalle (subir/elegir), visible en cards, detalle, MatchCard y standings — reemplaza el emblema determinista de `TeamEmblem`; reutiliza el pipeline de avatares (WebP 256, storage local/S3). |
 | **Historial en My Profile** | El perfil muestra estadísticas de carrera (RAU-57); falta el historial de temporadas y equipos pasados. |
