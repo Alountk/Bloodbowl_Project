@@ -510,7 +510,7 @@ function LiveTopBar({
       <span
         data-testid={`score-${side}`}
         aria-label={t("match.sideScore", { team, score: scoreOf(side) })}
-        className="font-display text-2xl font-normal leading-none text-white tabular-nums"
+        className="font-display text-2xl font-semibold leading-none text-white tabular-nums"
       >
         {scoreOf(side)}
       </span>
@@ -1265,7 +1265,7 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
       {/* Scoreboard */}
       {score ? (
         <div className="px-4 py-4 text-center">
-          <p className="font-display text-3xl font-normal leading-none text-navy">
+          <p className="font-display text-3xl font-semibold leading-none text-navy">
             {score.home} <span className="text-endzone">–</span> {score.away}
           </p>
           <p className="mt-1 text-sm font-semibold text-red">{score.winnerName}</p>
@@ -1480,7 +1480,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     // was never played live; the e2e asserts zero turn/clock chrome here).
     body = (
       <div className="border border-border bg-panel px-4 py-4 text-center">
-        <p className="font-display text-3xl font-normal leading-none text-navy">
+        <p className="font-display text-3xl font-semibold leading-none text-navy">
           {detail.fixture.homeScore} <span className="text-endzone">–</span> {detail.fixture.awayScore}
         </p>
         <p className="mt-2 text-sm font-semibold text-red">{t("match.walkover")}</p>

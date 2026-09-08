@@ -67,7 +67,7 @@ export default async function RootLayout({
 
   return (
     <html lang={initialLocale}>
-      <body className="min-h-screen bg-background text-slate-900 antialiased">
+      <body className="min-h-screen bg-background text-ink antialiased">
         <SessionProvider>
           <I18nProvider initialLocale={initialLocale}>
             <SessionAppProvider>{children}</SessionAppProvider>

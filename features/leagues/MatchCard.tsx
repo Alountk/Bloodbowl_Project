@@ -157,7 +157,7 @@ export function MatchCard({
     >
       <header className="flex flex-wrap items-center justify-between gap-2 bg-navy px-3 py-2 text-[11px] uppercase tracking-wide text-white">
         <h3 className="flex items-center gap-2 text-[11px] uppercase tracking-wide">
-          <span className="font-display font-normal">{t("match.header", { round: fixture.round, status: liveActive ? t("match.liveStatus") : status })}</span>
+          <span className="font-display font-semibold">{t("match.header", { round: fixture.round, status: liveActive ? t("match.liveStatus") : status })}</span>
           {liveActive ? (
             <span className="animate-pulse rounded-sm bg-red px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
               {t("match.liveBadge")}
@@ -219,7 +219,7 @@ export function MatchCard({
             </button>
           ) : (
             <span
-              className={`font-display text-2xl font-normal tabular-nums md:text-4xl ${
+              className={`font-display text-2xl font-semibold tabular-nums md:text-4xl ${
                 liveActive
                   ? "text-red"
                   : played || score

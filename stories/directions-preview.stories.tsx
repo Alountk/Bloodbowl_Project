@@ -83,31 +83,31 @@ function Card({ f, admin = false }: { f: FixtureDraft; admin?: boolean }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Dirección base — "Tablón americano" (implementada). La paleta rulebook-light
- * se mantiene (navy/red semánticos) y solo se añade el acento end-zone #e86a17
- * para scores/jornadas. Este preview monta el tema base tal cual está en
- * app/globals.css (sin override de marca).
+ * Dirección base — "Reglamento vintage" (default). El @theme ya trae el papel
+ * crema + tinta editorial, así que este preview monta el tema base tal cual:
+ * sin override (se cae a :root).
  */
-const DIRECTION_1: React.CSSProperties = {} as React.CSSProperties;
+const DIRECTION_BASE: React.CSSProperties = {} as React.CSSProperties;
 
-/** Dirección opcional — "Reglamento vintage" ([data-theme="vintage"]). Las
- * mismas vars que app/globals.css define para el modo vintage a posteriori. */
-const DIRECTION_3: React.CSSProperties = {
-  "--color-navy": "#1d2a4d",
-  "--color-navy-hover": "#2a3a63",
-  "--color-navy-tint": "#3a4c78",
-  "--color-navy-grad": "#475998",
-  "--color-red": "#b3282d",
-  "--color-red-hover": "#8f2024",
-  "--color-red-tint": "#7d2a2e",
-  "--color-background": "#f6f1e6",
-  "--color-panel": "#fdfaf2",
-  "--color-ink": "#2b2618",
-  "--color-slate": "#6b6254",
-  "--color-slate-strong": "#4a443a",
-  "--color-border": "#ddd3bf",
-  "--color-border-subtle": "#c9bda6",
-  "--color-fill-hover": "#efe8d8",
+/** Modo opcional — "Tablón americano" ([data-theme="scoreboard"]). Las mismas
+ * vars que app/globals.css define para el modo scoreboard opt-in. */
+const DIRECTION_SCOREBOARD: React.CSSProperties = {
+  "--color-navy": "#12225a",
+  "--color-navy-hover": "#0f1d48",
+  "--color-navy-tint": "#1f3a7a",
+  "--color-navy-grad": "#1e3a8a",
+  "--color-red": "#d11938",
+  "--color-red-hover": "#b0142f",
+  "--color-red-hover-bright": "#e51b40",
+  "--color-red-tint": "#a61b34",
+  "--color-background": "#f8fafc",
+  "--color-panel": "#ffffff",
+  "--color-ink": "#0f172a",
+  "--color-slate": "#64748b",
+  "--color-slate-strong": "#334155",
+  "--color-border": "#e2e8f0",
+  "--color-border-subtle": "#cbd5e1",
+  "--color-fill-hover": "#f1f5f9",
 } as React.CSSProperties;
 
 // ---------------------------------------------------------------------------
@@ -186,32 +186,32 @@ export default {
     docs: {
       description: {
         component:
-          "Previsualización del tema base 'Tablón americano' (implementado) y el modo " +
-          "opcional 'Reglamento vintage' ([data-theme=\"vintage\"], a posteriori). " +
+          "Previsualización del tema base 'Reglamento vintage' (default) y el modo " +
+          "opcional 'Tablón americano' ([data-theme=\"scoreboard\"]). " +
           "Monta los componentes reales (MatchCard, StandingsTable) a 360 / 768 / 1200px.",
       },
     },
   },
 };
 
-export const BaseTablónAmericano = {
-  name: "Base · Tablón americano",
+export const BaseReglamentoVintage = {
+  name: "Base · Reglamento vintage",
   render: () => (
     <Direction
-      title="Base — Tablón americano (navy/rojo + acento end-zone #e86a17 en scores)"
-      vars={DIRECTION_1}
-      note="Tema por defecto: paleta rulebook-light intacta, tipo display Anton en scores/jornadas, naranja end-zone solo en el marcador."
+      title="Base — Reglamento vintage (papel crema + tinta editorial, Fraunces + Space Grotesk)"
+      vars={DIRECTION_BASE}
+      note="Tema por defecto: paleta tinta de imprenta, serif Fraunces en titles/scores, Space Grotesk en datos/UI."
     />
   ),
 };
 
-export const VintageOpcional = {
-  name: "Opcional · Reglamento vintage",
+export const ScoreboardOpcional = {
+  name: "Opcional · Tablón americano",
   render: () => (
     <Direction
-      title='Opcional — Reglamento vintage ([data-theme="vintage"])'
-      vars={DIRECTION_3}
-      note="Las mismas vars de app/globals.css para el modo vintage. Implementación del selector a posteriori."
+      title='Opcional — Tablón americano ([data-theme="scoreboard"])'
+      vars={DIRECTION_SCOREBOARD}
+      note="Las mismas vars de app/globals.css para el modo scoreboard opt-in (navy/naranja + Anton)."
     />
   ),
 };
@@ -221,8 +221,8 @@ export const ComparativaLadoALado = {
   render: () => (
     <div className="grid grid-cols-1 gap-6 p-4 xl:grid-cols-2">
       {([
-        ["Base · Tablón americano", DIRECTION_1],
-        ["Opcional · Reglamento vintage", DIRECTION_3],
+        ["Base · Reglamento vintage", DIRECTION_BASE],
+        ["Opcional · Tablón americano", DIRECTION_SCOREBOARD],
       ] as const).map(([title, vars]) => (
         <div key={title} className="flex flex-col gap-2">
           <span className="text-xs font-black uppercase tracking-wide text-[#0f172a]">{title}</span>

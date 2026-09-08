@@ -62,7 +62,7 @@ export function StandingsTable({ teams, fixtures, championTeamId }: StandingsTab
       >
         <h2
           id="standings-heading"
-          className="font-display text-sm font-normal uppercase tracking-wide text-navy"
+          className="font-display text-sm font-semibold uppercase tracking-wide text-navy"
         >
           {t("leagues.standings.heading")}
         </h2>
@@ -79,7 +79,7 @@ export function StandingsTable({ teams, fixtures, championTeamId }: StandingsTab
     >
       <h2
         id="standings-heading"
-        className="border-b border-border px-4 py-3 font-display text-sm font-normal uppercase tracking-wide text-navy"
+        className="border-b border-border px-4 py-3 font-display text-sm font-semibold uppercase tracking-wide text-navy"
       >
         {t("leagues.standings.heading")}
       </h2>

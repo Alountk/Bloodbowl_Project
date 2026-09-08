@@ -1,9 +1,10 @@
 @import "tailwindcss";
 
 /*
- * Display typeface: Anton (condensed black) — the "scoreboard" voice of the
- * Tablón americano direction. Self-hosted so the build never depends on
- * Google Fonts at compile time (Next/Docker standalone safe).
+ * Typefaces (self-hosted — the build never depends on Google Fonts at compile
+ * time; Docker standalone safe).
+ *   Fraunces      → serif editorial (títulos, scores, nombres de equipo).
+ *   Space Grotesk → grotesk para datos/UI (rosters, tablas, botones).
  */
 @font-face {
   font-family: "Anton";
@@ -11,6 +12,34 @@
   font-weight: 400;
   font-display: swap;
   src: url("/fonts/anton.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Fraunces";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/fraunces.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-500.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-700.ttf") format("truetype");
 }
 
 /*
@@ -22,35 +51,35 @@
  */
 @theme {
   /* Tipografía */
-  --font-display: "Anton", "Arial Narrow", sans-serif;
+  --font-display: "Fraunces", "Georgia", serif;
+  --font-sans: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
 
-  /* Marca */
-  --color-navy: #12225a;
-  --color-navy-hover: #0f1d48;
-  --color-navy-tint: #1f3a7a;
-  --color-navy-grad: #1e3a8a; /* extremo del gradiente de la landing */
-  --color-red: #d11938;
-  --color-red-hover: #b0142f;
-  --color-red-hover-bright: #e51b40; /* hover de botones rojos RELLENOS */
-  --color-red-tint: #a61b34;
+  /* Marca (Reglamento vintage — tinta de imprenta) */
+  --color-navy: #1d2a4d;
+  --color-navy-hover: #2a3a63;
+  --color-navy-tint: #3a4c78;
+  --color-navy-grad: #475998;
+  --color-red: #b3282d;
+  --color-red-hover: #8f2024;
+  --color-red-hover-bright: #d23f44;
+  --color-red-tint: #7d2a2e;
 
-  /* Acento "end-zone" (Tablón americano): SOLO scores y jornadas. El rojo
-     sigue siendo la semántica de visitante/riesgo/error — nunca mezclar. */
+  /* Acento "end-zone" (solo scores/marcador en el modo Tablón). */
   --color-endzone: #e86a17;
 
-  /* Superficies */
-  --color-background: #f8fafc;
-  --color-panel: #ffffff;
-  --color-fill-hover: #f1f5f9;
+  /* Superficies (papel crema) */
+  --color-background: #f6f1e6;
+  --color-panel: #fdfaf2;
+  --color-fill-hover: #efe8d8;
 
   /* Texto */
-  --color-ink: #0f172a;
-  --color-slate-strong: #334155;
-  --color-slate: #64748b;
+  --color-ink: #2b2618;
+  --color-slate-strong: #4a443a;
+  --color-slate: #6b6254;
 
   /* Bordes */
-  --color-border: #e2e8f0;
-  --color-border-subtle: #cbd5e1;
+  --color-border: #ddd3bf;
+  --color-border-subtle: #c9bda6;
 
   /* Acentos (3px side accents de las event cards) */
   --color-accent-home: rgba(18, 34, 90, 0.18);
@@ -116,27 +145,27 @@
 }
 
 /*
- * Dirección 3 — "Reglamento vintage" (modo opcional, implementación a posteriori).
- * Al añadir `data-theme="vintage"` al <html>, cada token de marca/superficie se
- * sobreescribe con la paleta tinta-editorial. Los colores SEMÁNTICOS (severidad,
+ * Modo opcional — "Tablón americano" (scoreboard). El default es el Reglamento
+ * vintage; al añadir `data-theme="scoreboard"` al <html> se restauran la paleta
+ * navy/naranja y la tipografía condensada. Los colores SEMÁNTICOS (severidad,
  * ack, danger) NO se tocan aquí: la semántica trasciende el tema.
- * Nota: el selector con data-theme debe ser más específico que :root, por eso
- * va después y usa [data-theme] (atributo) que gana por especificidad natural.
  */
-[data-theme="vintage"] {
-  --color-navy: #1d2a4d;
-  --color-navy-hover: #2a3a63;
-  --color-navy-tint: #3a4c78;
-  --color-navy-grad: #475998;
-  --color-red: #b3282d;
-  --color-red-hover: #8f2024;
-  --color-red-tint: #7d2a2e;
-  --color-background: #f6f1e6;
-  --color-panel: #fdfaf2;
-  --color-ink: #2b2618;
-  --color-slate: #6b6254;
-  --color-slate-strong: #4a443a;
-  --color-border: #ddd3bf;
-  --color-border-subtle: #c9bda6;
-  --color-fill-hover: #efe8d8;
+[data-theme="scoreboard"] {
+  --color-navy: #12225a;
+  --color-navy-hover: #0f1d48;
+  --color-navy-tint: #1f3a7a;
+  --color-navy-grad: #1e3a8a;
+  --color-red: #d11938;
+  --color-red-hover: #b0142f;
+  --color-red-hover-bright: #e51b40;
+  --color-red-tint: #a61b34;
+  --color-background: #f8fafc;
+  --color-panel: #ffffff;
+  --color-ink: #0f172a;
+  --color-slate: #64748b;
+  --color-slate-strong: #334155;
+  --color-border: #e2e8f0;
+  --color-border-subtle: #cbd5e1;
+  --color-fill-hover: #f1f5f9;
+  --font-display: "Anton", "Arial Narrow", sans-serif;
 }
