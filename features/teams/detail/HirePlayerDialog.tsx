@@ -74,7 +74,7 @@ export function HirePlayerDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#0f172a]/55 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/55 p-4"
       onMouseDown={(e) => {
         pointerDownOnBackdrop.current = e.target === e.currentTarget;
       }}
@@ -88,12 +88,12 @@ export function HirePlayerDialog({
         aria-modal="true"
         aria-label={t("detail.hireDialogAria")}
         data-testid="hire-dialog"
-        className="w-full max-w-[520px] overflow-hidden bg-white text-[#1a1a1a] shadow-[0_20px_40px_rgba(0,0,0,0.3)]"
+        className="w-full max-w-[520px] overflow-hidden bg-panel text-[#1a1a1a] shadow-[0_20px_40px_rgba(0,0,0,0.3)]"
       >
-        <header className="flex items-center justify-between bg-[#12225a] py-3.5 pr-4 pl-4 text-white">
+        <header className="flex items-center justify-between bg-navy py-3.5 pr-4 pl-4 text-white">
           <div>
             <h3 className="text-[17px] font-bold">{t("detail.hireTitle")}</h3>
-            <p className="text-[12px] text-[#cbd5e1]">
+            <p className="text-[12px] text-border-subtle">
               {t("detail.hireBalance", { amount: formatRulebookCost(balance) })}
             </p>
           </div>
@@ -109,21 +109,21 @@ export function HirePlayerDialog({
 
         <div className="max-h-[55vh] overflow-auto p-3">
           {rosterFull ? (
-            <p className="px-2 py-3 text-[13px] font-medium text-[#d11938]" data-testid="hire-full-note">
+            <p className="px-2 py-3 text-[13px] font-medium text-red" data-testid="hire-full-note">
               {t("detail.hireFull", { max: MAX_PLAYERS })}
             </p>
           ) : null}
-          <div className="divide-y divide-[#e2e8f0]">
+          <div className="divide-y divide-border">
             {rows.map(({ positional, count, disabled, overBudget }) => (
               <div key={positional.key} className="flex items-center justify-between gap-3 px-2 py-2.5">
                 <div className="min-w-0">
                   <p className="text-[13.5px] font-semibold text-[#1a1a1a]">{positional.name}</p>
-                  <p className="text-[11px] text-[#64748b]">
+                  <p className="text-[11px] text-slate">
                     ({translateRole(positional.role)}, {race.name}) · {formatRulebookCost(positional.cost)}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-[11.5px] font-bold text-[#64748b] tabular-nums">
+                  <span className="text-[11.5px] font-bold text-slate tabular-nums">
                     {count}/{positional.max}
                   </span>
                   <button
@@ -132,7 +132,7 @@ export function HirePlayerDialog({
                     aria-label={t("detail.hireAction", { name: positional.name })}
                     disabled={disabled || busy}
                     onClick={() => void hire(positional.key)}
-                    className="rounded bg-[#12225a] px-3 py-1 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded bg-navy px-3 py-1 text-[12.5px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {overBudget ? t("detail.hireNoFunds") : t("detail.hire")}
                   </button>
@@ -143,16 +143,16 @@ export function HirePlayerDialog({
         </div>
 
         {error ? (
-          <p role="alert" data-testid="hire-error" className="px-4 pt-1 text-[12px] font-medium text-[#d11938]">
+          <p role="alert" data-testid="hire-error" className="px-4 pt-1 text-[12px] font-medium text-red">
             {error}
           </p>
         ) : null}
 
-        <div className="flex justify-end border-t border-[#e2e8f0] px-4 py-3">
+        <div className="flex justify-end border-t border-border px-4 py-3">
           <button
             type="button"
             onClick={onClose}
-            className="rounded bg-[#f1f5f9] px-4 py-2 text-[13px] font-bold text-[#334155]"
+            className="rounded bg-fill-hover px-4 py-2 text-[13px] font-bold text-slate-strong"
           >
             {t("common.cancel")}
           </button>

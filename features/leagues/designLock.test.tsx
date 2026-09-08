@@ -200,7 +200,7 @@ describe("B. LiveEventCards — validated COMPACT rendered structure", () => {
     const cls = ol?.getAttribute("class") ?? "";
     expect(ol).toBeTruthy();
     expect(ol?.getAttribute("aria-label")).toBe("Cronología del partido");
-    expect(cls).toContain("bg-[#f8fafc]");
+    expect(cls).toContain("bg-background");
     expect(cls).toContain("flex flex-col");
     expect(cls).toContain("gap-1.5");
     expect(cls).not.toContain("bg-[#eef1f6]");
@@ -549,7 +549,7 @@ describe("C. rulebook sticky header (MatchView)", () => {
     expect(header.className).toContain("sticky");
     expect(header.className).toContain("top-0");
     expect(header.className).toContain("z-40");
-    expect(header.className).toContain("bg-[#12225a]");
+    expect(header.className).toContain("bg-navy");
     // The v7 back navigation lives ONLY in the sticky header (one Volver link).
     const back = within(header).getByRole("link", { name: "Volver a la jornada" });
     expect(back.getAttribute("href")).toBe("/leagues/l1");
@@ -627,7 +627,7 @@ describe("D. MatchTimelineBar — light track, always-on markers, chips, no endH
     );
     const bar = container.querySelector("[data-testid='match-timeline']") as HTMLElement;
     expect(bar).toBeTruthy();
-    expect(bar.className).toContain("bg-[#f8fafc]");
+    expect(bar.className).toContain("bg-background");
     expect(bar.getAttribute("role")).toBe("img");
     expect(bar.getAttribute("aria-label")).toBe("Línea de tiempo del partido");
     const start = container.querySelector("[data-testid='timeline-start-icon']") as HTMLElement;
@@ -659,11 +659,11 @@ describe("D. MatchTimelineBar — light track, always-on markers, chips, no endH
     const midChip = chip(start!);
     for (const c of [homeChip, awayChip, midChip]) {
       expect(c.className).toContain("rounded-full");
-      expect(c.className).toContain("bg-white");
+      expect(c.className).toContain("bg-panel");
       expect(c.className).toContain("h-5 w-5");
     }
-    expect(homeChip.className).toContain("border-[#12225a]");
-    expect(awayChip.className).toContain("border-[#d11938]");
+    expect(homeChip.className).toContain("border-navy");
+    expect(awayChip.className).toContain("border-red");
     expect(midChip.className).toContain("border-[#94a3b8]");
   });
 

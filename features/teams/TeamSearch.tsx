@@ -18,7 +18,7 @@ export function TeamSearch() {
         placeholder={t("topbar.searchPlaceholder")}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full max-w-sm rounded-none border-[1.5px] border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#12225a]"
+        className="w-full max-w-sm rounded-none border-[1.5px] border-slate-200 bg-panel px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-navy"
       />
     </form>
   );

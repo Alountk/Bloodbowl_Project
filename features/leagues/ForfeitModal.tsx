@@ -43,10 +43,10 @@ export function ForfeitModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md border border-[#e2e8f0] bg-white shadow-xl"
+        className="w-full max-w-md border border-border bg-panel shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
+        <header className="flex items-center justify-between bg-navy px-4 py-3 text-white">
           <h3 className="text-sm font-bold">{t("forfeit.title")}</h3>
           <button
             type="button"
@@ -85,7 +85,7 @@ export function ForfeitModal({
               type="button"
               disabled={!selected}
               onClick={confirm}
-              className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
               {selected ? t("forfeit.award", { team: teamNameById.get(selected) ?? "" }) : t("forfeit.pickTeam")}
             </button>
@@ -112,8 +112,8 @@ function OptionButton({
       aria-pressed={selected}
       className={`rounded-md border px-3 py-2 text-sm font-bold ${
         selected
-          ? "border-[#d11938] bg-[#d11938] text-white"
-          : "border-slate-300 text-[#12225a] hover:border-slate-400"
+          ? "border-red bg-red text-white"
+          : "border-slate-300 text-navy hover:border-slate-400"
       }`}
     >
       {name}

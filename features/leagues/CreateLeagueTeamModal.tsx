@@ -44,9 +44,9 @@ export function CreateLeagueTeamModal({
         role="dialog"
         aria-modal="true"
         aria-label={t("leagues.joinCreateTitle")}
-        className="relative max-h-[92vh] w-full max-w-[900px] overflow-y-auto rounded-md border border-[#e2e8f0] bg-white"
+        className="relative max-h-[92vh] w-full max-w-[900px] overflow-y-auto rounded-md border border-border bg-panel"
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e2e8f0] bg-[#12225a] px-4 py-3 text-white">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-navy px-4 py-3 text-white">
           <h2 className="text-sm font-black uppercase tracking-wide">
             {t("leagues.joinCreateTitle")}
           </h2>

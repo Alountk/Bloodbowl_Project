@@ -80,7 +80,7 @@ export function TeamsPage() {
       <section aria-labelledby={`teams-${ariaLabel}-heading`}>
         <h2
           id={`teams-${ariaLabel}-heading`}
-          className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-lg font-bold text-[#12225a]"
+          className="mb-3 border-b-[3px] border-red pb-1.5 text-lg font-bold text-navy"
         >
           {title}
         </h2>
@@ -104,17 +104,17 @@ export function TeamsPage() {
 
       {!isHydrated ? null : visible.length === 0 ? (
         teams.length === 0 ? (
-          <div className="border border-slate-200 bg-white p-8 text-center">
+          <div className="border border-slate-200 bg-panel p-8 text-center">
             <p className="text-sm text-slate-600">{t("teams.empty")}</p>
             <Link
               href="/teams/create"
-              className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+              className="mt-4 inline-block bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover"
             >
               {t("teams.createNew")}
             </Link>
           </div>
         ) : (
-          <div className="border border-slate-200 bg-white p-8 text-center">
+          <div className="border border-slate-200 bg-panel p-8 text-center">
             <p className="text-sm text-slate-600">{t("teams.noMatch")}</p>
           </div>
         )

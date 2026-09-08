@@ -365,7 +365,7 @@ export function RulesetEditor({
   };
 
   const inputClass =
-    "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#12225a]";
+    "w-full rounded-md border border-slate-300 bg-panel px-3 py-2 text-sm text-slate-900 outline-none focus:border-navy";
   const labelClass = "mb-1 block text-[11px] font-extrabold uppercase tracking-wide text-slate-500";
 
   const onLastStep = tabIndex(activeTab) === TABS.length - 1;
@@ -373,7 +373,7 @@ export function RulesetEditor({
 
   return (
     <div className="mt-8">
-      <div className="border border-slate-200 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.06)]">
+      <div className="border border-slate-200 bg-panel shadow-[0_4px_8px_rgba(0,0,0,0.06)]">
         {/* Tab bar */}
         <div role="tablist" aria-label={t("rulesets.editor.tablist")} className="flex border-b border-slate-200 bg-slate-100">
           {TABS.map(({ key, n }) => {
@@ -390,10 +390,10 @@ export function RulesetEditor({
                 onClick={() => requestTab(key)}
                 className={`flex-1 border-b-[3px] px-2 py-3 text-center text-xs font-extrabold transition-colors ${
                   active
-                    ? "border-[#d11938] bg-white text-[#12225a]"
+                    ? "border-red bg-panel text-navy"
                     : createMode
                       ? "cursor-not-allowed border-transparent bg-slate-100 text-slate-400"
-                      : "border-transparent text-slate-500 hover:bg-white hover:text-[#12225a]"
+                      : "border-transparent text-slate-500 hover:bg-panel hover:text-navy"
                 }`}
               >
                 {t(`rulesets.wizard.steps.${key}`, { n: String(n) })}
@@ -446,7 +446,7 @@ export function RulesetEditor({
                     key={preset.key}
                     type="button"
                     onClick={() => setField("races", preset.apply())}
-                    className="rounded-md border border-[#c7d2fe] bg-[#eef2ff] px-2.5 py-1 text-xs font-extrabold text-[#12225a] hover:bg-[#e0e7ff]"
+                    className="rounded-md border border-info-border bg-info-fill px-2.5 py-1 text-xs font-extrabold text-navy hover:bg-info-muted"
                   >
                     {t(`rulesets.wizard.presets.${preset.key}`)}
                   </button>
@@ -463,7 +463,7 @@ export function RulesetEditor({
                       key={race.id}
                       className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-[13px] ${
                         checked
-                          ? "border-[#12225a]/30 bg-white text-slate-900"
+                          ? "border-navy/30 bg-panel text-slate-900"
                           : "border-slate-200 bg-slate-50 text-slate-400"
                       }`}
                     >
@@ -478,7 +478,7 @@ export function RulesetEditor({
                               : draft.races.filter((raceId) => raceId !== race.id),
                           )
                         }
-                        className="h-3.5 w-3.5 accent-[#12225a]"
+                        className="h-3.5 w-3.5 accent-navy"
                       />
                       {race.name}
                     </label>
@@ -579,7 +579,7 @@ export function RulesetEditor({
                       type="checkbox"
                       checked={draft[field]}
                       onChange={(event) => setField(field, event.target.checked)}
-                      className="h-4 w-4 accent-[#12225a]"
+                      className="h-4 w-4 accent-navy"
                     />
                     {label}
                   </label>
@@ -600,7 +600,7 @@ export function RulesetEditor({
           <button
             type="button"
             onClick={createMode && stepNumber > 1 ? back : requestClose}
-            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-[#12225a] hover:text-[#12225a]"
+            className="rounded-md border border-slate-300 bg-panel px-4 py-2 text-sm font-semibold text-slate-700 hover:border-navy hover:text-navy"
           >
             {createMode
               ? stepNumber === 1
@@ -613,7 +613,7 @@ export function RulesetEditor({
               <button
                 type="button"
                 onClick={next}
-                className="rounded-md bg-[#12225a] px-5 py-2 text-sm font-bold text-white hover:bg-[#0f1d48]"
+                className="rounded-md bg-navy px-5 py-2 text-sm font-bold text-white hover:bg-navy-hover"
               >
                 {t("rulesets.wizard.next")}
               </button>
@@ -622,7 +622,7 @@ export function RulesetEditor({
                 type="button"
                 onClick={() => void create()}
                 disabled={submitting}
-                className="rounded-md bg-[#d11938] px-5 py-2 text-sm font-bold text-white hover:bg-[#b3122f] disabled:opacity-60"
+                className="rounded-md bg-red px-5 py-2 text-sm font-bold text-white hover:bg-red-hover disabled:opacity-60"
               >
                 {submitting ? t("rulesets.editor.creating") : t("rulesets.editor.createAction")}
               </button>
@@ -632,7 +632,7 @@ export function RulesetEditor({
               type="button"
               onClick={() => void save()}
               disabled={submitting}
-              className="rounded-md bg-[#12225a] px-5 py-2 text-sm font-bold text-white hover:bg-[#0f1d48] disabled:opacity-60"
+              className="rounded-md bg-navy px-5 py-2 text-sm font-bold text-white hover:bg-navy-hover disabled:opacity-60"
             >
               {submitting ? t("rulesets.wizard.saving") : t("rulesets.editor.save")}
             </button>
@@ -656,9 +656,9 @@ export function RulesetEditor({
             role="alertdialog"
             aria-modal="true"
             aria-label={t("rulesets.editor.unsaved")}
-            className="relative z-10 w-full max-w-sm border border-slate-200 bg-white p-5 shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
+            className="relative z-10 w-full max-w-sm border border-slate-200 bg-panel p-5 shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
           >
-            <p className="text-sm font-bold text-[#12225a]">{t("rulesets.editor.unsaved")}</p>
+            <p className="text-sm font-bold text-navy">{t("rulesets.editor.unsaved")}</p>
             <p className="mt-1 text-xs text-slate-500">
               {t("rulesets.editor.keepEditing")} · {t("rulesets.editor.discard")} · {t("rulesets.editor.save")}
             </p>
@@ -669,14 +669,14 @@ export function RulesetEditor({
                   if (effectiveGuard.kind === "card") onCancelPending();
                   else setGuard(null);
                 }}
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-[#12225a] hover:text-[#12225a]"
+                className="rounded-md border border-slate-300 bg-panel px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-navy hover:text-navy"
               >
                 {t("rulesets.editor.keepEditing")}
               </button>
               <button
                 type="button"
                 onClick={guardDiscard}
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-[#d11938] hover:text-[#d11938]"
+                className="rounded-md border border-slate-300 bg-panel px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-red hover:text-red"
               >
                 {t("rulesets.editor.discard")}
               </button>
@@ -684,7 +684,7 @@ export function RulesetEditor({
                 type="button"
                 onClick={() => void guardSave()}
                 disabled={submitting}
-                className="rounded-md bg-[#12225a] px-3 py-1.5 text-sm font-bold text-white hover:bg-[#0f1d48] disabled:opacity-60"
+                className="rounded-md bg-navy px-3 py-1.5 text-sm font-bold text-white hover:bg-navy-hover disabled:opacity-60"
               >
                 {submitting ? t("rulesets.wizard.saving") : t("rulesets.editor.save")}
               </button>

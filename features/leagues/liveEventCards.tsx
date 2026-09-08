@@ -256,10 +256,10 @@ function EventAckRow({
 
   const badgeClass =
     status === "ok" || status === "auto"
-      ? "border-[#c6e9d0] bg-[#e6f6ea] text-[#1a7f37]"
+      ? "border-ack-ok-border bg-ack-ok-fill text-ack-ok-text"
       : status === "nok"
-        ? "border-[#f3c6cd] bg-[#fef2f2] text-[#c0392b]"
-        : "border-[#e2e8f0] bg-[#f1f5f9] text-[#64748b]";
+        ? "border-ack-review-border bg-ack-review-fill text-ack-review-text"
+        : "border-border bg-fill-hover text-slate";
   const badgeText =
     status === "ok"
       ? t("match.ack.ok")
@@ -281,20 +281,20 @@ function EventAckRow({
 
   return (
     <div className={`${styles["ack-row"]} mt-1 flex items-center justify-end gap-1.5`}>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-[#64748b]">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate">
         {t("match.ack.pending")}
       </span>
       <button
         type="button"
         onClick={() => onAck(event.seq, "ok")}
-        className="rounded border border-[#c6e9d0] bg-white px-2 py-0.5 text-[10px] font-bold text-[#1a7f37] hover:bg-[#e6f6ea]"
+        className="rounded border border-ack-ok-border bg-panel px-2 py-0.5 text-[10px] font-bold text-ack-ok-text hover:bg-ack-ok-fill"
       >
         {t("match.ack.okAction")}
       </button>
       <button
         type="button"
         onClick={() => onAck(event.seq, "nok")}
-        className="rounded border border-[#f3c6cd] bg-white px-2 py-0.5 text-[10px] font-bold text-[#c0392b] hover:bg-[#fef2f2]"
+        className="rounded border border-ack-review-border bg-panel px-2 py-0.5 text-[10px] font-bold text-ack-review-text hover:bg-ack-review-fill"
       >
         {t("match.ack.nokAction")}
       </button>
@@ -408,7 +408,7 @@ export function LiveEventCards({
   return (
     <ol
       aria-label={t("match.chronologyAria")}
-      className="flex flex-col gap-1.5 bg-[#f8fafc]"
+      className="flex flex-col gap-1.5 bg-background"
     >
       {ordered.map((event) => {
         // RAU-36/37: the generic "Fin de turno" row is noise — the turn change
@@ -646,10 +646,10 @@ export function LiveEventCards({
                 /* Defensive fallback for a player-less team card (unresolvable
                    roster): the label only, never throws. */
                 <div className={c.cardBody}>
-                  <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-[#f1f5f9] text-[#12225a]">
+                  <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-fill-hover text-navy">
                     <Icon name={iconName} className="h-[15px] w-[15px]" />
                   </span>
-                  <p className="min-w-0 flex-1 truncate font-extrabold text-[#0f172a]">{label}</p>
+                  <p className="min-w-0 flex-1 truncate font-extrabold text-ink">{label}</p>
                 </div>
               )}
               {/* Design B: the non-blocking ack row on the event card. */}

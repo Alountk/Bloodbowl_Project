@@ -27,24 +27,24 @@ export function UpcomingMatchCard({ fixture }: UpcomingMatchCardProps) {
   return (
     <Link
       href={`/leagues/${fixture.leagueId}/fixtures/${fixture.id}`}
-      className="flex h-full flex-col overflow-hidden border border-[#e2e8f0] bg-white transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
+      className="flex h-full flex-col overflow-hidden border border-border bg-panel transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.12)]"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 bg-[#12225a] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
+      <header className="flex flex-wrap items-center justify-between gap-2 bg-navy px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
         <span className="truncate">{fixture.leagueName}</span>
         <span className="flex items-center gap-2">
           <span>{t("leagues.jornada", { round: fixture.round })}</span>
           {liveActive ? (
-            <span className="rounded-sm bg-[#d11938] px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
+            <span className="rounded-sm bg-red px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
               {t("match.liveBadge")}
             </span>
           ) : null}
         </span>
       </header>
       <div className="grid flex-1 grid-cols-2 items-center gap-2 px-3 py-3 text-center">
-        <span className="truncate font-extrabold text-[#12225a]">{homeName}</span>
-        <span className="truncate font-extrabold text-[#12225a]">{awayName}</span>
+        <span className="truncate font-extrabold text-navy">{homeName}</span>
+        <span className="truncate font-extrabold text-navy">{awayName}</span>
       </div>
-      <footer className="border-t border-[#e2e8f0] px-3 py-2 text-[11px] font-semibold text-slate-500">
+      <footer className="border-t border-border px-3 py-2 text-[11px] font-semibold text-slate-500">
         {dateLabel}
       </footer>
     </Link>

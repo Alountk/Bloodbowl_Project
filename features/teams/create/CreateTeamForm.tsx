@@ -34,7 +34,7 @@ function parseCount(value: string): number {
 }
 
 const fieldClassName =
-  "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500";
+  "w-full rounded-md border border-slate-300 bg-panel px-3 py-2 text-slate-900 outline-none focus:border-blue-500";
 
 /** Native select styling: keeps the browser chevron (appearance-auto) and a 16px font so iOS does not auto-zoom. */
 const selectClassName = `${fieldClassName} appearance-auto text-[16px]`;
@@ -117,14 +117,14 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
     <form
       onSubmit={form.handleSubmit}
       noValidate
-      className="mx-auto max-w-[900px] space-y-6 bg-white px-4 py-6 text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)] sm:px-6"
+      className="mx-auto max-w-[900px] space-y-6 bg-panel px-4 py-6 text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)] sm:px-6"
     >
       {race && form.step === 2 ? (
         // Step 2 — rulebook hero + builder + availability + coaching.
         <>
-          <header className="bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
+          <header className="bg-navy px-4 py-[22px] text-white sm:px-6">
             <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{form.name}</h1>
-            <p className="mt-2 text-[13px] text-[#cbd5e1]">
+            <p className="mt-2 text-[13px] text-border-subtle">
               {t("create.step2Subline", { race: race.name })}
             </p>
             <button
@@ -138,7 +138,7 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
 
           {/* Plantilla */}
           <section aria-label={t("create.plantilla")}>
-            <h2 className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
+            <h2 className="mb-3 border-b-[3px] border-red pb-1.5 text-[16px] text-navy">
               {t("create.plantilla")}
             </h2>
             <RosterTable
@@ -152,14 +152,14 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
             />
             {/* Budget bar */}
             <div className="mb-3 mt-3 flex items-center justify-between text-sm">
-              <span className="text-[#334155]">
+              <span className="text-slate-strong">
                 {t(form.playerCount === 1 ? "create.playerOne" : "create.playerMany", {
                   count: form.playerCount,
                   spent: formatGold(form.totalCost),
                   treasury: formatGold(treasury),
                 })}
               </span>
-              <span className={isOverBudget ? "font-semibold text-[#d11938]" : "text-[#64748b]"}>
+              <span className={isOverBudget ? "font-semibold text-red" : "text-slate"}>
                 {isOverBudget
                   ? t("create.overBudget", {
                       amount: formatGold(form.totalCost - treasury),
@@ -167,16 +167,16 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
                   : t("create.remaining", { amount: formatGold(form.remainingBudget) })}
               </span>
             </div>
-            <div className="mb-4 h-2 overflow-hidden rounded-full bg-[#e2e8f0]">
+            <div className="mb-4 h-2 overflow-hidden rounded-full bg-border">
               <div
                 className={`h-full rounded-full transition-all ${
-                  isOverBudget ? "bg-[#d11938]" : "bg-[#12225a]"
+                  isOverBudget ? "bg-red" : "bg-navy"
                 }`}
                 style={{ width: `${budgetPercent}%` }}
               />
             </div>
             {form.tvCap !== null ? (
-              <p className="mb-2 text-[11px] text-[#64748b]">
+              <p className="mb-2 text-[11px] text-slate">
                 {t("create.tvCapLine", {
                   cap: formatGold(form.tvCap),
                   value: formatGold(form.totalCost),
@@ -187,7 +187,7 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
 
           {/* Jugadores disponibles */}
           <section aria-label={t("create.availablePlayers")}>
-            <h2 className="mb-3 border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
+            <h2 className="mb-3 border-b-[3px] border-red pb-1.5 text-[16px] text-navy">
               {t("create.availablePlayers")}
             </h2>
             <PlayerAvailabilityTable
@@ -204,12 +204,12 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
       ) : form.step === 1 ? (
         // Step 1 — light book panel "Paso 1 · Datos del equipo".
         <section aria-label={t("create.step1Title")}>
-          <h1 className="mb-4 border-b-[3px] border-[#d11938] pb-1.5 text-[26px] font-black text-[#12225a]">
+          <h1 className="mb-4 border-b-[3px] border-red pb-1.5 text-[26px] font-black text-navy">
             {t("create.step1Title")}
           </h1>
 
           {ruleset ? (
-            <p className="mb-4 rounded-md border border-[#e2e8f0] bg-[#f1f5f9] px-3 py-2 text-[12px] text-[#334155]">
+            <p className="mb-4 rounded-md border border-border bg-fill-hover px-3 py-2 text-[12px] text-slate-strong">
               {t("create.rulesetApplied", { name: ruleset.name })}
             </p>
           ) : null}
@@ -232,7 +232,7 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
                   title={t("create.rollTeamName")}
                   aria-label={t("create.rollTeamName")}
                   onClick={() => form.setName(randomTeamName(form.raceId))}
-                  className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 text-sm hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-300"
+                  className="shrink-0 rounded-md border border-slate-300 bg-panel px-2.5 text-sm hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-300"
                 >
                   🎲
                 </button>
@@ -273,7 +273,7 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
             <button
               type="button"
               onClick={form.nextStep}
-              className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48]"
+              className="w-full rounded-md bg-navy px-4 py-2 font-semibold text-white transition-colors hover:bg-navy-hover"
             >
               {t("create.next")}
             </button>
@@ -295,7 +295,7 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
             <button
               type="button"
               onClick={form.confirmRaceChange}
-              className="rounded-md bg-[#12225a] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+              className="rounded-md bg-navy px-3 py-1.5 text-sm font-semibold text-white hover:bg-navy-hover"
             >
               {t("create.confirm")}
             </button>
@@ -335,7 +335,7 @@ export function CreateTeamForm({ ruleset = null, leagueId, onCreated }: CreateTe
 
           <button
             type="submit"
-            className="w-full rounded-md bg-[#12225a] px-4 py-2 font-semibold text-white transition-colors hover:bg-[#0f1d48]"
+            className="w-full rounded-md bg-navy px-4 py-2 font-semibold text-white transition-colors hover:bg-navy-hover"
           >
             {t("create.createTeam")}
           </button>
@@ -365,13 +365,13 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
   return (
     <section
       aria-label={t("create.coachingStaff")}
-      className="rounded-md border border-[#e2e8f0] bg-[#f1f5f9] p-4"
+      className="rounded-md border border-border bg-fill-hover p-4"
     >
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="border-b-[3px] border-[#d11938] pb-1.5 text-[16px] text-[#12225a]">
+        <h2 className="border-b-[3px] border-red pb-1.5 text-[16px] text-navy">
           {t("create.coachingStaff")}
         </h2>
-        <span className="text-sm text-[#64748b]">{formatGold(coachingTotal)} gc</span>
+        <span className="text-sm text-slate">{formatGold(coachingTotal)} gc</span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         {items.map((item) => {
@@ -391,7 +391,7 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
                 className="mb-1 flex items-baseline justify-between text-sm font-medium text-slate-700"
               >
                 <span>{t(COACHING_LABELS[item.key])}</span>
-                <span className="text-xs text-[#64748b]">
+                <span className="text-xs text-slate">
                   {item.key === "dedicatedFans"
                     ? t("coaching.startsWith", {
                         min: DEDICATED_FANS_START,
@@ -418,18 +418,18 @@ function CoachingStaffSection({ raceId, form }: CoachingStaffSectionProps) {
           );
         })}
 
-        <label className="flex items-center gap-3 self-end rounded-md border border-[#e2e8f0] bg-white px-3 py-2 text-sm text-slate-700">
+        <label className="flex items-center gap-3 self-end rounded-md border border-border bg-panel px-3 py-2 text-sm text-slate-700">
           <input
             id="coaching-apothecary"
             aria-label={t("coaching.apothecary")}
             type="checkbox"
             checked={form.coaching.apothecary}
             onChange={(event) => form.setCoaching({ apothecary: event.target.checked })}
-            className="h-4 w-4 accent-[#12225a]"
+            className="h-4 w-4 accent-navy"
           />
           <span className="flex items-baseline gap-1">
             {t("coaching.apothecary")}
-            <span className="text-xs text-[#64748b]">
+            <span className="text-xs text-slate">
               {formatGold(APOTHECARY_COST)} gc{apothecaryTotal > 0 ? ` · ${formatGold(apothecaryTotal)}` : ""}
             </span>
           </span>

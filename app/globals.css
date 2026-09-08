@@ -1,5 +1,90 @@
 @import "tailwindcss";
 
+/*
+ * Rulebook-light design tokens (Tailwind v4 `@theme`).
+ * Source of truth: stories/design-tokens.stories.tsx.
+ * The token names map 1:1 to the documented swatches. Components must consume
+ * these tokens (e.g. `bg-navy`, `text-slate`, `border-border`, `shadow-sheet`)
+ * instead of raw hex — new values outside this set are not allowed.
+ */
+@theme {
+  /* Marca */
+  --color-navy: #12225a;
+  --color-navy-hover: #0f1d48;
+  --color-navy-tint: #1f3a7a;
+  --color-navy-grad: #1e3a8a; /* extremo del gradiente de la landing */
+  --color-red: #d11938;
+  --color-red-hover: #b0142f;
+  --color-red-hover-bright: #e51b40; /* hover de botones rojos RELLENOS */
+  --color-red-tint: #a61b34;
+
+  /* Superficies */
+  --color-background: #f8fafc;
+  --color-panel: #ffffff;
+  --color-fill-hover: #f1f5f9;
+
+  /* Texto */
+  --color-ink: #0f172a;
+  --color-slate-strong: #334155;
+  --color-slate: #64748b;
+
+  /* Bordes */
+  --color-border: #e2e8f0;
+  --color-border-subtle: #cbd5e1;
+
+  /* Acentos (3px side accents de las event cards) */
+  --color-accent-home: rgba(18, 34, 90, 0.18);
+  --color-accent-away: rgba(209, 25, 56, 0.18);
+
+  /* Sombras */
+  --shadow-dock: 0 -2px 10px rgba(18, 34, 90, 0.08);
+  --shadow-sheet: 0 -6px 18px rgba(18, 34, 90, 0.12);
+  --shadow-card-hover: 0 4px 12px rgba(18, 34, 90, 0.12);
+
+  /* ---- Bandas de severidad 1D16 (MV-7) — fill / border / text ---- */
+  --color-bruise-fill: #f1f5f9;
+  --color-bruise-border: #cbd5e1;
+  --color-bruise-text: #334155;
+  --color-apaleado-fill: #fef9c3;
+  --color-apaleado-border: #fde047;
+  --color-apaleado-text: #854d0e;
+  --color-grave-fill: #fef3c7;
+  --color-grave-border: #fcd34d;
+  --color-grave-text: #92400e;
+  --color-permanent-fill: #ffedd5;
+  --color-permanent-border: #fdba74;
+  --color-permanent-text: #9a3412;
+  --color-dead-fill: #fee2e2;
+  --color-dead-border: #fca5a5;
+  --color-dead-text: #991b1b;
+
+  /* ---- Badges de cotejo (ack) ---- */
+  --color-ack-ok-fill: #e6f6ea;
+  --color-ack-ok-border: #c6e9d0;
+  --color-ack-ok-text: #1a7f37;
+  --color-ack-review-fill: #fef2f2;
+  --color-ack-review-border: #f3c6cd;
+  --color-ack-review-text: #c0392b;
+
+  /* ---- Chips de evento (TD dorado / baja roja) ---- */
+  --color-chip-td-border: #e6d9a8;
+  --color-chip-td-text: #8a6d1a;
+  --color-star: #b8860b; /* estrellas SPP */
+
+  /* ---- Estado funcional (success / warning / error / info) ---- */
+  --color-success-fill: #dcfce7;
+  --color-success-strong: #166534;
+  --color-success: #16a34a;
+  --color-info-fill: #eef2ff;
+  --color-info-border: #c7d2fe;
+  --color-info-muted: #e0e7ff;
+  --color-warning-fill: #fde68a;
+  --color-warning: #fbbf24;
+  --color-warning-deep: #f59e0b;
+  --color-error-fill: #fdeef0;
+  --color-error-border: #fecaca;
+}
+
 @layer utilities {
   .no-scrollbar {
     -ms-overflow-style: none;

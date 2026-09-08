@@ -92,10 +92,10 @@ export function NegotiationPanel({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md border border-[#e2e8f0] bg-white shadow-xl"
+        className="w-full max-w-md border border-border bg-panel shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
+        <header className="flex items-center justify-between bg-navy px-4 py-3 text-white">
           <h3 className="text-sm font-bold">{title}</h3>
           <button
             type="button"
@@ -116,7 +116,7 @@ export function NegotiationPanel({
               {submitError}
             </p>
           ) : null}
-          <ul className="divide-y divide-[#f1f5f9]">
+          <ul className="divide-y divide-fill-hover">
             {fixture.proposals.length === 0 ? (
               <li className="py-2 text-sm text-slate-500">
                 {t("negotiation.noProposals")}
@@ -129,10 +129,10 @@ export function NegotiationPanel({
                     proposal.acceptedAt ? "bg-green-50 px-2" : ""
                   }`}
                 >
-                  <span className="min-w-[70px] font-bold text-[#12225a]">
+                  <span className="min-w-[70px] font-bold text-navy">
                     {ownerNameByUserId.get(proposal.userId) ?? proposal.userId}
                   </span>
-                  <span className="text-[#475569]">
+                  <span className="text-slate-strong">
                     {formatProposalDateTime(proposal.date)} · {authorDisplay(proposal, t)}
                   </span>
                   {proposal.acceptedAt ? (
@@ -151,7 +151,7 @@ export function NegotiationPanel({
                     <button
                       type="button"
                       onClick={() => onAccept(proposal.id)}
-                      className="rounded-sm bg-[#12225a] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#0f1d4d]"
+                      className="rounded-sm bg-navy px-2.5 py-1 text-xs font-semibold text-white hover:bg-navy-hover"
                     >
                       {t("negotiation.accept")}
                     </button>
@@ -166,7 +166,7 @@ export function NegotiationPanel({
           </ul>
 
           {fixture.status === "scheduled" && canNegotiate ? (
-            <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
+            <p className="mt-3 text-xs font-bold uppercase tracking-wide text-navy">
               {t("negotiation.reschedule")}
             </p>
           ) : null}
@@ -205,7 +205,7 @@ function ProposeForm({ onPropose }: { onPropose: (date: string) => void }) {
   const { t } = useI18n();
   return (
     <form
-      className="mt-3 border-t border-[#e2e8f0] pt-3"
+      className="mt-3 border-t border-border pt-3"
       onSubmit={(e) => {
         e.preventDefault();
         const form = new FormData(e.currentTarget);
@@ -239,7 +239,7 @@ function ProposeForm({ onPropose }: { onPropose: (date: string) => void }) {
         </label>
         <button
           type="submit"
-          className="self-end rounded-sm bg-[#12225a] px-4 py-1.5 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+          className="self-end rounded-sm bg-navy px-4 py-1.5 text-sm font-bold text-white hover:bg-navy-hover"
         >
           {t("negotiation.propose")}
         </button>

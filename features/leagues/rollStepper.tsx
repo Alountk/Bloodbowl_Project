@@ -39,15 +39,15 @@ export const ROLL6_VALUES = Array.from({ length: 6 }, (_, i) => i + 1);
  * choice) so the severity band stays visible AND the selection is unambiguous.
  */
 export const SEVERITY_CLASS: Record<InjuryOutcomeKind, { chip: string; text: string }> = {
-  bruise: { chip: "border-[#cbd5e1] bg-[#f1f5f9]", text: "text-[#334155]" },
-  apaleado: { chip: "border-[#fde047] bg-[#fef9c3]", text: "text-[#854d0e]" },
-  grave: { chip: "border-[#fcd34d] bg-[#fef3c7]", text: "text-[#92400e]" },
-  permanent: { chip: "border-[#fdba74] bg-[#ffedd5]", text: "text-[#9a3412]" },
-  dead: { chip: "border-[#fca5a5] bg-[#fee2e2]", text: "text-[#991b1b]" },
+  bruise: { chip: "border-bruise-border bg-bruise-fill", text: "text-bruise-text" },
+  apaleado: { chip: "border-apaleado-border bg-apaleado-fill", text: "text-apaleado-text" },
+  grave: { chip: "border-grave-border bg-grave-fill", text: "text-grave-text" },
+  permanent: { chip: "border-permanent-border bg-permanent-fill", text: "text-permanent-text" },
+  dead: { chip: "border-dead-border bg-dead-fill", text: "text-dead-text" },
 };
 
 /** The navy ring marking the selected 1D16 chip on top of its band fill. */
-const SELECTED_RING = "ring-2 ring-[#12225a]";
+const SELECTED_RING = "ring-2 ring-navy";
 
 /**
  * RAU-42: the 1D16 option label — "{roll} → {band}" ("8 → Magullado"), with the
@@ -131,8 +131,8 @@ export function RollStepper({ roll16, roll6, onRoll16, onRoll6, fn }: RollSteppe
                 onClick={() => onRoll6(n)}
                 className={`rounded border px-2 py-1 text-xs font-bold ${
                   selected
-                    ? "border-[#d11938] bg-[#d11938] text-white"
-                    : "border-[#e2e8f0] bg-white text-[#12225a] hover:bg-[#f8fafc]"
+                    ? "border-red bg-red text-white"
+                    : "border-border bg-panel text-navy hover:bg-background"
                 }`}
               >
                 {label}

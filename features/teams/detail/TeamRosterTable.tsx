@@ -157,37 +157,37 @@ export function TeamRosterTable({
 
   return (
     <>
-      <div className="overflow-x-auto border border-[#e2e8f0]">
+      <div className="overflow-x-auto border border-border">
         <table className="w-full min-w-[900px] border-collapse text-[12.5px]" data-testid="team-roster-table">
           <thead>
-            <tr className="bg-[#12225a] text-white">
-              {canReorder ? <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-1 py-2" /> : null}
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+            <tr className="bg-navy text-white">
+              {canReorder ? <th scope="col" className="sticky top-0 z-10 bg-navy px-1 py-2" /> : null}
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.number")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase" />
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-left text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase" />
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-left text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.player")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-left text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-left text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.chars")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-left text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-left text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.skills")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.ni")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.spp")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.cas")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.mvp")}
               </th>
-              <th scope="col" className="sticky top-0 z-10 bg-[#12225a] px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
+              <th scope="col" className="sticky top-0 z-10 bg-navy px-2 py-2 text-center text-[10.5px] font-black tracking-[0.04em] uppercase whitespace-nowrap">
                 {t("detail.tbl.value")}
               </th>
             </tr>
@@ -217,8 +217,8 @@ export function TeamRosterTable({
                   key={entry.id}
                   data-testid={`roster-row-${entry.id}`}
                   onClick={() => openPlayer(entry, index)}
-                  className={`border-b border-[#e2e8f0] ${dead || injured ? "opacity-60" : ""} ${
-                    clickable ? "cursor-pointer hover:bg-[#eef2ff]" : ""
+                  className={`border-b border-border ${dead || injured ? "opacity-60" : ""} ${
+                    clickable ? "cursor-pointer hover:bg-info-fill" : ""
                   }`}
                 >
                   {canReorder ? (
@@ -233,7 +233,7 @@ export function TeamRosterTable({
                               e.stopPropagation();
                               movePlayer(index, -1);
                             }}
-                            className="grid h-5 w-6 place-items-center rounded-sm text-[11px] leading-none text-[#12225a] hover:bg-[#eef2ff]"
+                            className="grid h-5 w-6 place-items-center rounded-sm text-[11px] leading-none text-navy hover:bg-info-fill"
                           >
                             ▲
                           </button>
@@ -247,7 +247,7 @@ export function TeamRosterTable({
                               e.stopPropagation();
                               movePlayer(index, 1);
                             }}
-                            className="grid h-5 w-6 place-items-center rounded-sm text-[11px] leading-none text-[#12225a] hover:bg-[#eef2ff]"
+                            className="grid h-5 w-6 place-items-center rounded-sm text-[11px] leading-none text-navy hover:bg-info-fill"
                           >
                             ▼
                           </button>
@@ -257,7 +257,7 @@ export function TeamRosterTable({
                   ) : null}
                   <td className="px-2 py-1.5 text-center">
                     <span
-                      className="inline-grid h-[30px] w-[30px] place-items-center rounded-lg bg-[#12225a] text-[12px] font-black text-white"
+                      className="inline-grid h-[30px] w-[30px] place-items-center rounded-lg bg-navy text-[12px] font-black text-white"
                       data-testid={`roster-number-${entry.id}`}
                     >
                       {index + 1}
@@ -278,7 +278,7 @@ export function TeamRosterTable({
                           experience from the served roster entry; the owner's
                           rows already show the SPP bar via progression. */}
                       {core == null && (entry.pe ?? 0) > 0 ? (
-                        <span className="ml-1 align-middle text-[10px] font-black tracking-wide text-[#d11938]">
+                        <span className="ml-1 align-middle text-[10px] font-black tracking-wide text-red">
                           ★{entry.pe}
                         </span>
                       ) : null}
@@ -286,14 +286,14 @@ export function TeamRosterTable({
                       {injured ? <span className="ml-1">🏥</span> : null}
                       {missNext ? (
                         <span
-                          className="ml-1 rounded bg-[#fef2f2] px-1 py-0.5 align-middle text-[9.5px] font-black tracking-wide text-[#d11938] uppercase"
+                          className="ml-1 rounded bg-ack-review-fill px-1 py-0.5 align-middle text-[9.5px] font-black tracking-wide text-red uppercase"
                           title={t("detail.tbl.missNextMatchTitle")}
                         >
                           {t("detail.tbl.missNextMatch")}
                         </span>
                       ) : null}
                     </p>
-                    <p className="text-[11px] text-[#64748b]">{positional?.name ?? t("roster.playerFallback")}</p>
+                    <p className="text-[11px] text-slate">{positional?.name ?? t("roster.playerFallback")}</p>
                     <p className="text-[10px] italic text-[#94a3b8]">
                       ({translateRole(positional?.role)}, {race.name})
                     </p>
@@ -308,8 +308,8 @@ export function TeamRosterTable({
                       const worse = display !== String(base) && !better;
                       return (
                         <span key={attr} className="mr-1.5 inline-grid grid-cols-[16px_26px] items-center gap-1 text-[11.5px]">
-                          <b className="font-semibold text-[#64748b]">{attr.toUpperCase()}</b>
-                          <span className={`font-bold ${better ? "text-green-600" : worse ? "text-[#d11938]" : "text-[#1a1a1a]"}`}>
+                          <b className="font-semibold text-slate">{attr.toUpperCase()}</b>
+                          <span className={`font-bold ${better ? "text-green-600" : worse ? "text-red" : "text-[#1a1a1a]"}`}>
                             {better ? "↑" : worse ? "↓" : ""}{display}
                           </span>
                         </span>
@@ -346,7 +346,7 @@ export function TeamRosterTable({
                   </td>
                   <td className="px-2 py-1.5 text-center" data-testid={`ni-${entry.id}`}>
                     {(core?.injuries?.length ?? 0) > 0 ? (
-                      <span className="font-extrabold text-[#f59e0b]" title={t("detail.tbl.injured")}>
+                      <span className="font-extrabold text-warning-deep" title={t("detail.tbl.injured")}>
                         🩹x{core?.injuries?.length ?? 0}
                       </span>
                     ) : (
@@ -359,9 +359,9 @@ export function TeamRosterTable({
                         <span className="font-extrabold" data-testid={`spp-pe-${entry.id}`}>
                           ★{pe}
                         </span>{" "}
-                        <span className="text-[10px] text-[#64748b]">/ {nextCost}</span>
+                        <span className="text-[10px] text-slate">/ {nextCost}</span>
                         <div
-                          className="relative mt-0.5 h-[6px] w-full overflow-hidden rounded-full bg-[#e2e8f0]"
+                          className="relative mt-0.5 h-[6px] w-full overflow-hidden rounded-full bg-border"
                           data-testid={`spp-bar-${entry.id}`}
                           data-ready={sppReady}
                         >
@@ -397,7 +397,7 @@ export function TeamRosterTable({
                       {formatRulebookCost(baseCost + bonus)}
                     </p>
                     {bonus > 0 ? (
-                      <p className="text-[10px] text-[#64748b]" data-testid={`value-breakdown-${entry.id}`}>
+                      <p className="text-[10px] text-slate" data-testid={`value-breakdown-${entry.id}`}>
                         {t("detail.tbl.valueBreakdown", {
                           base: baseCost / 1000,
                           bonus: bonus / 1000,
@@ -413,7 +413,7 @@ export function TeamRosterTable({
       </div>
 
       {reorderError ? (
-        <p className="mt-2 text-sm text-[#d11938]" data-testid="roster-reorder-error">
+        <p className="mt-2 text-sm text-red" data-testid="roster-reorder-error">
           {reorderError}
         </p>
       ) : null}

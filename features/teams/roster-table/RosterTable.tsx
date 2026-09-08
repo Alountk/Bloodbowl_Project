@@ -115,7 +115,7 @@ function StatsChips({ data }: { data: PlayerCellData }) {
           key={label}
           className="inline-flex items-center gap-1 rounded bg-[#eaf0f6] px-1.5 py-0.5 text-xs text-[#1a1a1a]"
         >
-          <span className="font-bold text-[#12225a]">{label}</span>
+          <span className="font-bold text-navy">{label}</span>
           <span>{value}</span>
         </span>
       ))}
@@ -130,15 +130,15 @@ function SkillAccessRows({ data }: { data: PlayerCellData }) {
   return (
     <div className="space-y-1 text-xs text-[#1a1a1a]">
       <div>
-        <span className="font-bold text-[#12225a]">{t("roster.skillsLabel")}</span>:{" "}
+        <span className="font-bold text-navy">{t("roster.skillsLabel")}</span>:{" "}
         <span>{skillNames.length > 0 ? skillNames.join(", ") : t("roster.none")}</span>
       </div>
       <div>
-        <span className="font-bold text-[#12225a]">{t("roster.header.primary")}</span>:{" "}
+        <span className="font-bold text-navy">{t("roster.header.primary")}</span>:{" "}
         <span>{primary.length > 0 ? primary.join(" ") : "—"}</span>
       </div>
       <div>
-        <span className="font-bold text-[#12225a]">{t("roster.header.secondary")}</span>:{" "}
+        <span className="font-bold text-navy">{t("roster.header.secondary")}</span>:{" "}
         <span>{secondary.length > 0 ? secondary.join(" ") : "—"}</span>
       </div>
     </div>
@@ -172,7 +172,7 @@ function RollNameButton({
           ),
         )
       }
-      className="shrink-0 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-xs hover:border-slate-400"
+      className="shrink-0 rounded border border-slate-300 bg-panel px-1.5 py-0.5 text-xs hover:border-slate-400"
     >
       🎲
     </button>
@@ -210,9 +210,9 @@ export function RosterTable({
   return isDesktop ? (
     <div className="max-h-[55vh] overflow-auto">
       <div className="overflow-x-auto">
-        <div className="min-w-[640px] bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
+        <div className="min-w-[640px] bg-panel shadow-[0_4px_8px_rgba(0,0,0,0.1)]">
           {showBanner ? (
-            <div className="border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[28px] text-[#12225a]">
+            <div className="border-y-[5px] border-navy bg-panel py-[5px] text-center text-[28px] text-navy">
               {bannerText}
             </div>
           ) : null}
@@ -223,7 +223,7 @@ export function RosterTable({
                   <th
                     key={headerKey}
                     scope="col"
-                    className={`sticky top-0 z-10 bg-[#d11938] px-[5px] py-2 text-white ${
+                    className={`sticky top-0 z-10 bg-red px-[5px] py-2 text-white ${
                       headerKey === "position" || headerKey === "skills"
                         ? "text-left"
                         : "text-center"
@@ -232,14 +232,14 @@ export function RosterTable({
                     {t(RULEBOOK_HEADER_T_KEY[headerKey])}
                   </th>
                 ))}
-                {!readOnly ? <th scope="col" className="sticky top-0 z-10 bg-[#d11938] px-[5px] py-2"></th> : null}
+                {!readOnly ? <th scope="col" className="sticky top-0 z-10 bg-red px-[5px] py-2"></th> : null}
               </tr>
             </thead>
             <tbody>
               {playersData.map(({ player, positional, primary, secondary, skillNames }) => (
                 <tr
                   key={player.id}
-                  className="odd:bg-white even:bg-[#e6eef5]"
+                  className="odd:bg-panel even:bg-[#e6eef5]"
                 >
                   <td className="px-[5px] py-2 text-left align-top text-[#1a1a1a]">
                     {readOnly ? (
@@ -250,7 +250,7 @@ export function RosterTable({
                           value={player.name}
                           onChange={(e) => onRename?.(player.id, e.target.value)}
                           aria-label={t("roster.playerNameAria", { name: player.name })}
-                          className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-slate-900 outline-none focus:border-blue-500"
+                          className="min-w-0 flex-1 rounded border border-slate-300 bg-panel px-2 py-0.5 text-slate-900 outline-none focus:border-blue-500"
                         />
                         {onRename ? (
                           <RollNameButton
@@ -317,7 +317,7 @@ export function RosterTable({
             {showTotals ? (
               <tfoot>
                 {readOnly ? (
-                  <tr className="bg-[#12225a] font-bold text-white">
+                  <tr className="bg-navy font-bold text-white">
                     <td colSpan={7} className="px-[5px] py-2 text-left">
                       {t("roster.readOnlyTotal", { count: players.length })}
                     </td>
@@ -340,7 +340,7 @@ export function RosterTable({
                   </tr>
                 )}
                 {apothecary !== undefined ? (
-                  <tr className="bg-[#12225a] text-[13px] font-bold text-white">
+                  <tr className="bg-navy text-[13px] font-bold text-white">
                     <td colSpan={4} className="px-[5px] py-2 text-left">
                       {t("roster.rerollFooter", {
                         max: MAX_REROLLS,
@@ -365,7 +365,7 @@ export function RosterTable({
     <div className="mx-auto max-w-[900px]">
       <div className="space-y-3">
           {showBanner ? (
-            <div className="border-y-[5px] border-[#12225a] bg-white py-[5px] text-center text-[20px] text-[#12225a]">
+            <div className="border-y-[5px] border-navy bg-panel py-[5px] text-center text-[20px] text-navy">
               {bannerText}
             </div>
           ) : null}
@@ -374,7 +374,7 @@ export function RosterTable({
             return (
               <div
                 key={player.id}
-                className="rounded-md border border-[#e2e8f0] bg-white p-3 shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
+                className="rounded-md border border-border bg-panel p-3 shadow-[0_2px_6px_rgba(0,0,0,0.06)]"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
@@ -386,7 +386,7 @@ export function RosterTable({
                           value={player.name}
                           onChange={(e) => onRename?.(player.id, e.target.value)}
                           aria-label={t("roster.playerNameAria", { name: player.name })}
-                          className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-sm text-slate-900 outline-none focus:border-blue-500"
+                          className="min-w-0 flex-1 rounded border border-slate-300 bg-panel px-2 py-0.5 text-sm text-slate-900 outline-none focus:border-blue-500"
                         />
                         {onRename ? (
                           <RollNameButton
@@ -418,19 +418,19 @@ export function RosterTable({
                   <StatsChips data={data} />
                 </div>
 
-                <div className="mt-2 flex items-baseline gap-1 text-xs text-[#334155]">
-                  <span className="font-bold text-[#12225a]">{t("roster.costLabel")}</span>
+                <div className="mt-2 flex items-baseline gap-1 text-xs text-slate-strong">
+                  <span className="font-bold text-navy">{t("roster.costLabel")}</span>
                   <span>{positional ? formatRulebookCost(positional.cost) : "—"}</span>
                 </div>
 
-                <div className="mt-2 border-t border-[#e2e8f0] pt-2">
+                <div className="mt-2 border-t border-border pt-2">
                   <SkillAccessRows data={data} />
                 </div>
               </div>
             );
           })}
           {showTotals ? (
-            <div className="rounded-md border border-[#12225a] bg-[#12225a] px-3 py-2 text-[13px] font-bold text-white">
+            <div className="rounded-md border border-navy bg-navy px-3 py-2 text-[13px] font-bold text-white">
               {readOnly ? (
                 <span>
                   {t("roster.mobileTotal", {
@@ -445,7 +445,7 @@ export function RosterTable({
                     cost: formatRulebookCost(totalCost),
                   })}
                   {remainingBudget !== undefined ? (
-                    <span className="ml-1 font-medium text-[#cbd5e1]">
+                    <span className="ml-1 font-medium text-border-subtle">
                       {t("roster.remainingLeft", { amount: formatGold(remainingBudget) })}
                     </span>
                   ) : null}
@@ -454,7 +454,7 @@ export function RosterTable({
             </div>
           ) : null}
           {apothecary !== undefined ? (
-            <div className="rounded-md border border-[#e2e8f0] bg-white px-3 py-2 text-[13px] font-bold text-[#1a1a1a]">
+            <div className="rounded-md border border-border bg-panel px-3 py-2 text-[13px] font-bold text-[#1a1a1a]">
               <span>
                 {t("roster.rerollFooter", {
                   max: MAX_REROLLS,

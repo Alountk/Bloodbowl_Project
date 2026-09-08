@@ -66,9 +66,9 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
         role="dialog"
         aria-modal="true"
         aria-label={t("leagues.start.title")}
-        className="relative z-10 w-full max-w-[480px] border border-slate-200 bg-white shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
+        className="relative z-10 w-full max-w-[480px] border border-slate-200 bg-panel shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
       >
-        <header className="border-b-[3px] border-[#d11938] bg-[#12225a] px-5 py-4 text-white">
+        <header className="border-b-[3px] border-red bg-navy px-5 py-4 text-white">
           <h2 className="text-lg font-black tracking-[0.02em]">{t("leagues.start.title")}</h2>
         </header>
         <form onSubmit={submit} noValidate className="space-y-4 p-5">
@@ -83,7 +83,7 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
               max={max}
               value={seasonLength}
               onChange={(event) => setSeasonLength(event.target.value)}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
+              className="w-full rounded-md border border-slate-300 bg-panel px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
             />
             <p className="mt-1 text-xs text-slate-500">
               {t(max === 1 ? "leagues.start.maxHintOne" : "leagues.start.maxHintMany", { max })}
@@ -105,7 +105,7 @@ export function StartLeagueModal({ open, leagueId, teamCount, onClose, onStarted
             <button
               type="submit"
               disabled={submitting}
-              className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+              className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-hover"
             >
               {t("leagues.start.title")}
             </button>

@@ -151,9 +151,11 @@ describe("rollStepper 1D16 severity bands (LM-27)", () => {
       const entry = SEVERITY_CLASS[kind];
       expect(entry.chip).toBeTypeOf("string");
       expect(entry.text).toBeTypeOf("string");
-      // text/fill contrast: text class is present and distinct (dark text on a
-      // light band fill). A band never relies on the navy selected fill.
-      expect(entry.chip).toContain("bg-[#");
+      // text/fill contrast: the chip carries a band FILL token (light fill) and
+      // a distinct text token (dark on light). A band never relies on the navy
+      // selected fill.
+      expect(entry.chip).toContain("-fill");
+      expect(entry.text).toContain("text-");
       expect(entry.text).not.toBe("");
     }
   });

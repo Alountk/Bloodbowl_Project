@@ -41,8 +41,9 @@ export default {
       description: {
         component:
           "Reglas de diseño “rulebook light”: paleta, bandas de severidad, badges de cotejo, " +
-          "tipografía, radios/sombras y espaciado. Los componentes del partido en vivo consumen " +
-          "estos valores vía utilidades arbitrarias de Tailwind (no hay variables CSS centralizadas).",
+          "tipografía, radios/sombras y espaciado. La paleta base y las sombras están definidas " +
+          "como tokens `@theme` en app/globals.css (`bg-navy`, `text-slate`, `border-border`, " +
+          "`shadow-sheet`…) — los componentes deben consumirlas en lugar de hex crudos.",
       },
     },
   },
@@ -133,7 +134,10 @@ export const Swatches = {
   parameters: {
     docs: {
       description: {
-        story: "Swatches por grupo. Sin variables CSS centrales: los valores viven en utilidades arbitrarias de Tailwind y se referencian aquí.",
+        story:
+          "Swatches por grupo. La paleta base y las sombras viven como tokens `@theme` en app/globals.css " +
+          "(nombres 1:1 con estos swatches); las bandas de severidad y badges de cotejo siguen como " +
+          "utilidades arbitrarias hasta que se migren sus componentes.",
       },
     },
   },

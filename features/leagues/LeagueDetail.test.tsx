@@ -464,7 +464,11 @@ describe("LeagueDetail — STARTED league", () => {
     // me owns the away team of f2 (round 2) → propose a date; the panel STAYS
     // open and the pending proposal appears with the waiting-for-rival state
     // (edge-case fix: the proposer must see their own pending card).
-    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 2" })).getByTestId("match-card-score"));
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Jornada 2" })).getByRole("button", {
+        name: /Acordar fecha|Re-programar/,
+      }),
+    );
     fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
     fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
@@ -498,7 +502,11 @@ describe("LeagueDetail — STARTED league", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByTestId("match-card-score"));
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Jornada 1" })).getByRole("button", {
+        name: /Acordar fecha|Re-programar/,
+      }),
+    );
     fireEvent.change(screen.getByLabelText(/Fecha propuesta/), { target: { value: "2026-03-05" } });
     fireEvent.change(screen.getByLabelText(/Hora propuesta/), { target: { value: "19:00" } });
     fireEvent.click(screen.getByRole("button", { name: "Proponer" }));
@@ -525,7 +533,11 @@ describe("LeagueDetail — STARTED league", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByTestId("match-card-score"));
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Jornada 1" })).getByRole("button", {
+        name: /Acordar fecha|Re-programar/,
+      }),
+    );
 
     // The participant (me owns t1, home of f1) gets propose controls.
     expect(screen.getByRole("dialog", { name: /Acordar fecha/ })).toBeTruthy();

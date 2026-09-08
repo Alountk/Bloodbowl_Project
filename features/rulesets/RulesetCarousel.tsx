@@ -52,7 +52,7 @@ export function RulesetCarousel({ count, children }: { count: number; children: 
   };
 
   const chevronClass =
-    "shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-2 text-sm font-bold text-[#12225a] transition-colors hover:border-[#12225a] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-300";
+    "shrink-0 rounded-md border border-slate-300 bg-panel px-2.5 py-2 text-sm font-bold text-navy transition-colors hover:border-navy disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-300";
 
   return (
     <div className="flex items-center gap-2">

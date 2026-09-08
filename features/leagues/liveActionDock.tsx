@@ -122,8 +122,8 @@ function playerChip(
       onClick={onPick}
       className={`rounded border px-2 py-1 text-xs font-bold ${
         selected
-          ? "border-[#12225a] bg-[#12225a] text-white"
-          : "border-[#e2e8f0] bg-white text-[#12225a] hover:bg-[#f8fafc]"
+          ? "border-navy bg-navy text-white"
+          : "border-border bg-panel text-navy hover:bg-background"
       }`}
     >
       #{dorsal} {shortName(p)}
@@ -292,7 +292,7 @@ export function LiveActionDock({
     return (
       <div
         data-testid="live-action-sheet"
-        className="rounded-t-xl border border-b-0 border-[#e2e8f0] bg-white px-3 pb-2 pt-3 shadow-[0_-6px_18px_rgba(18,34,90,0.12)]"
+        className="rounded-t-xl border border-b-0 border-border bg-panel px-3 pb-2 pt-3 shadow-[0_-6px_18px_rgba(18,34,90,0.12)]"
       >
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -301,7 +301,7 @@ export function LiveActionDock({
                 {heading}
               </p>
             ) : null}
-            <p className="truncate text-sm font-bold text-[#12225a]">
+            <p className="truncate text-sm font-bold text-navy">
               {flow === "passTurn"
                 ? t("match.turnReason.heading")
                 : t("match.dock.sheetTitle")}
@@ -311,7 +311,7 @@ export function LiveActionDock({
             type="button"
             onClick={close}
             aria-label={t("match.dock.closeSheet")}
-            className="rounded border border-[#e2e8f0] px-2 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-[#f8fafc]"
+            className="rounded border border-border px-2 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-background"
           >
             {t("match.dock.closeSheet")}
           </button>
@@ -334,8 +334,8 @@ export function LiveActionDock({
                 }}
                 className={`rounded border px-2 py-1 text-xs font-bold ${
                   selections.cause === c
-                    ? "border-[#d11938] bg-[#d11938] text-white"
-                    : "border-[#e2e8f0] bg-white text-[#12225a] hover:bg-[#f8fafc]"
+                    ? "border-red bg-red text-white"
+                    : "border-border bg-panel text-navy hover:bg-background"
                 }`}
               >
                 {causeLabel(c, t)}
@@ -426,8 +426,8 @@ export function LiveActionDock({
                   onClick={() => setReason(value)}
                   className={`rounded border px-3 py-1 text-xs font-bold ${
                     reason === value
-                      ? "border-[#d11938] bg-[#d11938] text-white"
-                      : "border-[#e2e8f0] bg-white text-[#12225a] hover:bg-[#f8fafc]"
+                      ? "border-red bg-red text-white"
+                      : "border-border bg-panel text-navy hover:bg-background"
                   }`}
                 >
                   {label}
@@ -439,7 +439,7 @@ export function LiveActionDock({
                 type="button"
                 data-testid="dock-confirm-passturn"
                 onClick={confirmPassTurn}
-                className="rounded bg-[#d11938] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#b0142f]"
+                className="rounded bg-red px-4 py-1.5 text-xs font-bold text-white hover:bg-red-hover"
               >
                 {t("match.turnReason.confirm")}
               </button>
@@ -458,7 +458,7 @@ export function LiveActionDock({
               data-testid="live-action-submit"
               onClick={register}
               disabled={!canRegister}
-              className="rounded bg-[#12225a] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#0f1d48] disabled:opacity-40"
+              className="rounded bg-navy px-4 py-1.5 text-xs font-semibold text-white hover:bg-navy-hover disabled:opacity-40"
             >
               {t("match.controls.record")}
             </button>
@@ -484,7 +484,7 @@ export function LiveActionDock({
             role="button"
             aria-label={t("match.endTurn")}
             title={t("match.endTurn")}
-            className="flex flex-col items-center gap-0 rounded border border-[#d11938] bg-[#d11938] px-3 py-1 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f]"
+            className="flex flex-col items-center gap-0 rounded border border-red bg-red px-3 py-1 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-red-hover"
           >
             {activeTeamName ? (
               <small
@@ -499,8 +499,8 @@ export function LiveActionDock({
           <button
             type="button"
             onClick={() => begin("td")}
-            className="rounded border border-[#e6d9a8] bg-white px-3 py-1.5 text-xs font-bold text-[#8a6d1a]
-               hover:bg-[#f8fafc]"
+            className="rounded border border-chip-td-border bg-panel px-3 py-1.5 text-xs font-bold text-chip-td-text
+               hover:bg-background"
             role="button"
             aria-label={`${t("match.menu.td")}`}
             title={t("match.menu.td")}
@@ -510,8 +510,8 @@ export function LiveActionDock({
           <button
             type="button"
             onClick={() => begin("completion")}
-            className="rounded border border-[#e2e8f0] bg-white px-3 py-1.5 text-xs font-bold text-[#12225a]
-               hover:bg-[#f8fafc]"
+            className="rounded border border-border bg-panel px-3 py-1.5 text-xs font-bold text-navy
+               hover:bg-background"
             role="button"
             aria-label={t("match.menu.completion")}
             title={t("match.menu.completion")}
@@ -521,8 +521,8 @@ export function LiveActionDock({
           <button
             type="button"
             onClick={() => begin("casualtyCaused")}
-            className="rounded border border-[#f3c1c8] bg-white px-3 py-1.5 text-xs font-bold text-[#d11938]
-               hover:bg-[#f8fafc]"
+            className="rounded border border-[#f3c1c8] bg-panel px-3 py-1.5 text-xs font-bold text-red
+               hover:bg-background"
             role="button"
             aria-label={t("match.strip.casualty")}
             title={t("match.strip.casualty")}
@@ -532,8 +532,8 @@ export function LiveActionDock({
           <button
             type="button"
             onClick={() => begin("foul")}
-            className="rounded border border-[#e2e8f0] bg-white px-3 py-1.5 text-xs font-bold text-[#12225a]
-               hover:bg-[#f8fafc]"
+            className="rounded border border-border bg-panel px-3 py-1.5 text-xs font-bold text-navy
+               hover:bg-background"
             role="button"
             aria-label={t("match.menu.foul")}
             title={t("match.menu.foul")}
@@ -548,8 +548,8 @@ export function LiveActionDock({
         <button
           type="button"
           onClick={() => begin("selfInflicted")}
-          className="rounded border border-[#e2e8f0] bg-white px-3 py-1.5 text-xs font-bold text-[#12225a]
-             hover:bg-[#f8fafc]"
+          className="rounded border border-border bg-panel px-3 py-1.5 text-xs font-bold text-navy
+             hover:bg-background"
           role="button"
           aria-label={t("match.strip.selfInflicted")}
           title={t("match.strip.selfInflicted")}
@@ -559,8 +559,8 @@ export function LiveActionDock({
         <button
           type="button"
           onClick={() => begin("bothDown")}
-          className="rounded border border-[#f3c1c8] bg-white px-3 py-1.5 text-xs font-bold text-[#d11938]
-             hover:bg-[#f8fafc]"
+          className="rounded border border-[#f3c1c8] bg-panel px-3 py-1.5 text-xs font-bold text-red
+             hover:bg-background"
           role="button"
           aria-label={t("match.strip.bothDown")}
           title={t("match.strip.bothDown")}
@@ -575,7 +575,7 @@ export function LiveActionDock({
     <section
       data-testid="live-action-dock"
       aria-label={t("match.dock.actions")}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-[#e2e8f0] bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur"
     >
       {/* The fixed dock grows upward: the sheet renders ABOVE the chips row. */}
       <div className="mx-auto w-full max-w-3xl px-3 pt-1">

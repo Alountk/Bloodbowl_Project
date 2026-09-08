@@ -67,11 +67,11 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
 
   if (!loading && notFound) {
     return (
-      <div className="border border-slate-200 bg-white p-8 text-center">
+      <div className="border border-slate-200 bg-panel p-8 text-center">
         <p className="text-sm text-slate-600">{t("leagues.notFound")}</p>
         <Link
           href="/leagues"
-          className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+          className="mt-4 inline-block bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover"
         >
           {t("leagues.backToLeagues")}
         </Link>
@@ -81,7 +81,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
 
   if (!loading && !league) {
     return (
-      <div className="border border-slate-200 bg-white p-8 text-center">
+      <div className="border border-slate-200 bg-panel p-8 text-center">
         <p className="text-sm text-slate-600">{error ?? t("leagues.loadError")}</p>
       </div>
     );
@@ -89,7 +89,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
 
   if (!league) {
     return (
-      <div className="flex min-h-[200px] items-center justify-center bg-white p-8">
+      <div className="flex min-h-[200px] items-center justify-center bg-panel p-8">
         <p className="text-sm text-slate-500" role="status">
           {t("leagues.loading")}
         </p>
@@ -148,13 +148,13 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
   return (
     <section aria-labelledby="league-detail-heading">
       {/* Hero */}
-      <header className="mb-5 bg-[#12225a] px-4 py-[22px] text-white sm:px-6">
+      <header className="mb-5 bg-navy px-4 py-[22px] text-white sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
               <div className="flex items-center gap-3">
                 <h1
                   id="league-detail-heading"
-                  className="border-b-[3px] border-[#d11938] pb-1 text-2xl font-black tracking-[0.02em] md:text-[24px]"
+                  className="border-b-[3px] border-red pb-1 text-2xl font-black tracking-[0.02em] md:text-[24px]"
                 >
                   {league?.name}
                 </h1>
@@ -166,9 +166,9 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                 <span
                 className={
                   finished
-                    ? "rounded-full bg-[#fbbf24] px-2.5 py-0.5 text-[11px] font-bold text-[#12225a]"
+                    ? "rounded-full bg-warning px-2.5 py-0.5 text-[11px] font-bold text-navy"
                     : started
-                      ? "rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-[#12225a]"
+                      ? "rounded-full bg-panel px-2.5 py-0.5 text-[11px] font-bold text-navy"
                       : "rounded-full bg-green-600 px-2.5 py-0.5 text-[11px] font-bold text-white"
                 }
               >
@@ -179,10 +179,10 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                     : t("leagues.status.open")}
               </span>
             </div>
-            <p className="mt-1 text-[13px] text-[#cbd5e1]">
+            <p className="mt-1 text-[13px] text-border-subtle">
               {league?.description ?? t("leagues.noDescription")}
             </p>
-            <p className="mt-1 text-[12px] text-[#cbd5e1]">
+            <p className="mt-1 text-[12px] text-border-subtle">
               {league?.ownerName ?? t("leagues.noOwner")} ·{" "}
               {t(memberCount === 1 ? "leagues.membersOne" : "leagues.membersMany", {
                 count: memberCount,
@@ -209,20 +209,20 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
       {finished && championTeam ? (
         <div
           data-testid="champion-panel"
-          className="mb-5 flex flex-wrap items-center justify-between gap-3 border-2 border-[#fbbf24] bg-[#12225a] px-4 py-4 text-white"
+          className="mb-5 flex flex-wrap items-center justify-between gap-3 border-2 border-warning bg-navy px-4 py-4 text-white"
         >
           <div className="flex min-w-0 items-center gap-3">
             <span aria-hidden="true" className="text-3xl">
               🏆
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#fbbf24]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-warning">
                 {t("leagues.championLabel")}
               </p>
               <p className="truncate text-lg font-black">{championTeam.name}</p>
             </div>
           </div>
-          <span className="rounded-full bg-[#fbbf24] px-3 py-1 text-[11px] font-bold text-[#12225a]">
+          <span className="rounded-full bg-warning px-3 py-1 text-[11px] font-bold text-navy">
             {t("leagues.finishedBadge")}
           </span>
         </div>
@@ -258,7 +258,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
               team (with others) to reach the ≥2 members a season needs. */}
           {!isMember ? (
             <>
-              <form onSubmit={onJoin} className="rounded-md border border-[#e2e8f0] bg-white p-4">
+              <form onSubmit={onJoin} className="rounded-md border border-border bg-panel p-4">
                 <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">
                   {t("leagues.join")}
                 </h3>
@@ -274,7 +274,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                         id="league-team-select"
                         value={selectedTeamId}
                         onChange={(event) => setSelectedTeamId(event.target.value)}
-                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
+                        className="w-full rounded-md border border-slate-300 bg-panel px-3 py-2 text-slate-900 outline-none focus:border-blue-500"
                       >
                         <option value="">{t("leagues.selectTeam")}</option>
                         {unassigned.map((team) => (
@@ -286,7 +286,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                     </div>
                     <button
                       type="submit"
-                      className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+                      className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-hover"
                     >
                       {t("leagues.joinAction")}
                     </button>
@@ -296,12 +296,12 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
 
               {/* RAU-56: create a team for THIS league — the wizard applies the
                   league ruleset (allowed races, treasury, min/max, TV cap). */}
-              <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-[#cbd5e1] bg-white p-4 text-center">
+              <div className="flex flex-col items-center gap-1.5 rounded-md border border-dashed border-border-subtle bg-panel p-4 text-center">
                 <p className="text-[12px] text-slate-500">{t("leagues.joinCreateHint")}</p>
                 <button
                   type="button"
                   onClick={() => setCreateTeamOpen(true)}
-                  className="rounded-md bg-[#d11938] px-4 py-2 text-sm font-semibold text-white hover:bg-[#e51b40]"
+                  className="rounded-md bg-red px-4 py-2 text-sm font-semibold text-white hover:bg-red-hover-bright"
                 >
                   {t("leagues.joinCreateTeam")}
                 </button>
@@ -328,7 +328,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
               <button
                 type="button"
                 onClick={onLeave}
-                className="rounded-md border border-[#d11938] px-4 py-2 text-sm font-semibold text-[#d11938] hover:bg-[#d11938] hover:text-white"
+                className="rounded-md border border-red px-4 py-2 text-sm font-semibold text-red hover:bg-red hover:text-white"
               >
                 {t("leagues.leave")}
               </button>
@@ -340,7 +340,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                   type="button"
                   disabled={memberCount < 2}
                   onClick={() => setStartOpen(true)}
-                  className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {t("leagues.start")}
                 </button>
@@ -372,7 +372,7 @@ function MemberList({
 }) {
   const { t } = useI18n();
   return (
-    <ul className="divide-y divide-[#e2e8f0] rounded-md border border-[#e2e8f0] bg-white">
+    <ul className="divide-y divide-border rounded-md border border-border bg-panel">
       {teams.length === 0 ? (
         <li className="p-6 text-center text-sm text-slate-600">{t("leagues.noMembers")}</li>
       ) : (
@@ -387,7 +387,7 @@ function MemberList({
               className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="font-semibold text-[#12225a]">{team.name}</p>
+                <p className="font-semibold text-navy">{team.name}</p>
                 <p className="text-xs text-slate-500">
                   {race?.name ?? team.raceId} ·{" "}
                   {t(playerCount === 1 ? "leagues.playersOne" : "leagues.playersMany", {
@@ -397,7 +397,7 @@ function MemberList({
               </div>
               {/* RAU-14: the team's total experience at a glance. */}
               {totalPe > 0 ? (
-                <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[11px] font-bold text-[#d11938]">
+                <span className="rounded-full bg-fill-hover px-2 py-0.5 text-[11px] font-bold text-red">
                   {t("leagues.sppTotal", { total: totalPe })}
                 </span>
               ) : null}
@@ -405,7 +405,7 @@ function MemberList({
                 <button
                   type="button"
                   onClick={() => onExpel(team.id)}
-                  className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-[#d11938] hover:border-[#d11938] hover:bg-[#d11938] hover:text-white"
+                  className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-red hover:border-red hover:bg-red hover:text-white"
                 >
                   {t("leagues.expel")}
                 </button>
@@ -508,7 +508,7 @@ function Jornadas({
 
   if (roundNumbers.length === 0) {
     return (
-      <div className="border border-slate-200 bg-white p-8 text-center">
+      <div className="border border-slate-200 bg-panel p-8 text-center">
         <p className="text-sm text-slate-600">{t("leagues.noRounds")}</p>
       </div>
     );
@@ -521,7 +521,7 @@ function Jornadas({
   return (
     <div>
       {/* Round tabs — defaults to the current (first incomplete) round. */}
-      <div role="tablist" aria-label={t("leagues.rounds")} className="flex gap-1 overflow-x-auto border-b border-[#e2e8f0]">
+      <div role="tablist" aria-label={t("leagues.rounds")} className="flex gap-1 overflow-x-auto border-b border-border">
         {roundNumbers.map((round) => (
           <button
             key={round}
@@ -532,7 +532,7 @@ function Jornadas({
             onClick={() => setSelectedRound(round)}
             className={`whitespace-nowrap px-4 py-2 text-[13px] font-bold ${
               round === activeRound
-                ? "border-b-[3px] border-[#d11938] text-[#12225a]"
+                ? "border-b-[3px] border-red text-navy"
                 : "text-slate-400 hover:text-slate-600"
             }`}
           >

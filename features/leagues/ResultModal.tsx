@@ -204,10 +204,10 @@ export function ResultModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-[#e2e8f0] bg-white shadow-xl"
+        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-border bg-panel shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
+        <header className="flex items-center justify-between bg-navy px-4 py-3 text-white">
           <h3 className="text-sm font-bold">
             {t("result.header", { title, home: homeName, away: awayName })}
           </h3>
@@ -243,7 +243,7 @@ export function ResultModal({
             victimSourceRosters={homeRostersByTeam}
           />
 
-          <div className="flex justify-end gap-2 border-t border-[#e2e8f0] pt-3">
+          <div className="flex justify-end gap-2 border-t border-border pt-3">
             <button
               type="button"
               onClick={onClose}
@@ -254,7 +254,7 @@ export function ResultModal({
             <button
               type="button"
               onClick={submit}
-              className="rounded-sm bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+              className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover"
             >
               {confirmLabel}
             </button>
@@ -324,9 +324,9 @@ function TeamResultSection({
   };
 
   return (
-    <section aria-label={t("result.section", { name })} className="border border-[#e2e8f0] p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e2e8f0] pb-2">
-        <h4 className="text-sm font-bold uppercase tracking-wide text-[#12225a]">{name}</h4>
+    <section aria-label={t("result.section", { name })} className="border border-border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+        <h4 className="text-sm font-bold uppercase tracking-wide text-navy">{name}</h4>
         <div className="flex items-center gap-3">
           <label className="text-xs font-medium text-slate-600">
             {t("result.goals", { name })}
@@ -386,7 +386,7 @@ function TeamResultSection({
       </div>
 
       {totalCasualties > 0 ? (
-        <div className="mt-3 border-t border-[#e2e8f0] pt-2">
+        <div className="mt-3 border-t border-border pt-2">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("result.victims")}</p>
           {victimSlots.map((i) => (
             <label key={i} className="mt-1 block text-xs font-medium text-slate-600">
@@ -440,7 +440,7 @@ function PlayerActionsRow({
   ];
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
-      <span className="w-32 font-semibold text-[#12225a]">{player.name}</span>
+      <span className="w-32 font-semibold text-navy">{player.name}</span>
       {fields.map(([key, label]) => (
         <label key={key} className="flex items-center gap-1 text-slate-500">
           {label}

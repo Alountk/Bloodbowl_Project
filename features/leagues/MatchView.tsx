@@ -194,8 +194,8 @@ function IncomingEventModal({
       aria-label={ariaLabel}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
     >
-      <div className="w-full max-w-md border border-[#e2e8f0] bg-white shadow-xl">
-        <header className="flex items-center justify-between bg-[#12225a] px-4 py-3 text-white">
+      <div className="w-full max-w-md border border-border bg-panel shadow-xl">
+        <header className="flex items-center justify-between bg-navy px-4 py-3 text-white">
           <h3 className="text-sm font-bold">{title}</h3>
         </header>
         <div className="px-4 py-3">
@@ -247,7 +247,7 @@ function ConcedeControls({
               type="button"
               onClick={() => onRespond(false)}
               disabled={submitting}
-              className="rounded-[4px] border border-[#d11938] bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
+              className="rounded-[4px] border border-red bg-panel px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-red hover:bg-error-fill disabled:opacity-50"
             >
               {t("match.concede.reject")}
             </button>
@@ -255,7 +255,7 @@ function ConcedeControls({
               type="button"
               onClick={() => onRespond(true)}
               disabled={submitting}
-              className="rounded-[4px] bg-[#d11938] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+              className="rounded-[4px] bg-red px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-red-hover disabled:opacity-50"
             >
               {t("match.concede.accept")}
             </button>
@@ -286,7 +286,7 @@ function ConcedeControls({
             onPropose();
           }}
           disabled={submitting}
-          className="rounded-[4px] bg-[#d11938] px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-[#b0142f] disabled:opacity-50"
+          className="rounded-[4px] bg-red px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-red-hover disabled:opacity-50"
         >
           {t("match.concede.yes")}
         </button>
@@ -294,7 +294,7 @@ function ConcedeControls({
           type="button"
           onClick={() => setConfirming(false)}
           disabled={submitting}
-          className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
+          className="rounded-[4px] border border-red bg-panel px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-red hover:bg-error-fill disabled:opacity-50"
         >
           {t("common.cancel")}
         </button>
@@ -307,7 +307,7 @@ function ConcedeControls({
       type="button"
       onClick={() => setConfirming(true)}
       disabled={submitting}
-      className="rounded-[4px] border border-[#d11938] bg-white px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-[#d11938] hover:bg-[#fdeef0] disabled:opacity-50"
+      className="rounded-[4px] border border-red bg-panel px-2.5 py-1.5 text-[11px] font-black uppercase tracking-[0.05em] text-red hover:bg-error-fill disabled:opacity-50"
     >
       {t("match.concede.action")}
     </button>
@@ -316,8 +316,8 @@ function ConcedeControls({
 
 /** The two-team matchup header shown in the centered consent panel. */function MatchupLine({ names }: { names: { home: string; away: string } }) {
   return (
-    <p className="text-sm font-black uppercase tracking-wide text-[#12225a]">
-      {names.home} <span className="text-[#d11938]">·</span> {names.away}
+    <p className="text-sm font-black uppercase tracking-wide text-navy">
+      {names.home} <span className="text-red">·</span> {names.away}
     </p>
   );
 }
@@ -355,7 +355,7 @@ function LiveConsentPanel({
 
   if (pending && side === null) {
     return (
-      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+      <div className="border border-border bg-panel px-4 py-6 text-center">
         <MatchupLine names={names} />
         <p className="mt-3 text-sm font-semibold text-slate-600">
           {t("match.consent.waiting")}
@@ -367,9 +367,9 @@ function LiveConsentPanel({
   if (pending && side !== null) {
     const meConsented = side === "home" ? state?.homeConsented : state?.awayConsented;
     return (
-      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+      <div className="border border-border bg-panel px-4 py-6 text-center">
         <MatchupLine names={names} />
-        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">
+        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-navy">
           {scheduled ? t("match.consent.scheduled") : t("match.consent.unscheduled")}
         </p>
         <p className="mt-2 text-sm text-slate-700">
@@ -381,7 +381,7 @@ function LiveConsentPanel({
               type="button"
               onClick={() => onRetract(side)}
               disabled={submitting}
-              className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+              className="rounded-md border border-navy px-4 py-2 text-sm font-semibold text-navy hover:bg-background"
             >
               {t("match.consent.retract")}
             </button>
@@ -390,7 +390,7 @@ function LiveConsentPanel({
               type="button"
               onClick={() => onConsent(side)}
               disabled={submitting}
-              className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+              className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-hover"
             >
               {t("match.consent.start")}
             </button>
@@ -405,16 +405,16 @@ function LiveConsentPanel({
 
   if (ready && side !== null) {
     return (
-      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+      <div className="border border-border bg-panel px-4 py-6 text-center">
         <MatchupLine names={names} />
-        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#12225a]">{t("match.consent.readyToStart")}</p>
+        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-navy">{t("match.consent.readyToStart")}</p>
         <p className="mt-2 text-sm text-slate-700">{t("match.consent.bothConfirmed")}</p>
         <div className="mt-4 flex flex-wrap justify-center gap-3">
           <button
             type="button"
             onClick={onBegin}
             disabled={submitting}
-            className="rounded-md bg-[#12225a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f1d48]"
+            className="rounded-md bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy-hover"
           >
             {t("match.consent.begin")}
           </button>
@@ -422,7 +422,7 @@ function LiveConsentPanel({
             type="button"
             onClick={() => onRetract(side)}
             disabled={submitting}
-            className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+            className="rounded-md border border-navy px-4 py-2 text-sm font-semibold text-navy hover:bg-background"
           >
             {t("match.consent.retract")}
           </button>
@@ -433,9 +433,9 @@ function LiveConsentPanel({
 
   if (ready && side === null) {
     return (
-      <div className="border border-[#e2e8f0] bg-white px-4 py-6 text-center">
+      <div className="border border-border bg-panel px-4 py-6 text-center">
         <MatchupLine names={names} />
-        <p className="mt-3 text-sm font-bold text-[#12225a]">{t("match.consent.readyToStartBoth")}</p>
+        <p className="mt-3 text-sm font-bold text-navy">{t("match.consent.readyToStartBoth")}</p>
         <p className="mt-2 text-xs text-slate-500">{t("match.consent.bothConfirmed")}</p>
       </div>
     );
@@ -526,7 +526,7 @@ function LiveTopBar({
         aria-label={t("match.turnOfNumber", { n })}
         aria-current={active ? "true" : undefined}
         className={`flex h-[21px] w-[21px] items-center justify-center rounded-[3px] text-[10px] font-bold ${
-          active ? "bg-[#d11938] text-white" : "bg-[#1f3a7a] text-[#9fb3d8]"
+          active ? "bg-red text-white" : "bg-navy-tint text-[#9fb3d8]"
         }`}
       >
         {n}
@@ -545,11 +545,11 @@ function LiveTopBar({
         >
           <Icon name="back" className="h-[18px] w-[18px]" />
         </Link>
-        <p className="min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.04em] text-[#cbd5e1]">
+        <p className="min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.04em] text-border-subtle">
           {label}
         </p>
         <span className="ml-auto flex items-center gap-1 text-xs font-extrabold tabular-nums text-white">
-          <Icon name="timer" className="h-3.5 w-3.5 text-[#cbd5e1]" />
+          <Icon name="timer" className="h-3.5 w-3.5 text-border-subtle" />
           {clockValue(clock.elapsed)}
         </span>
       </div>
@@ -561,7 +561,7 @@ function LiveTopBar({
         {scoreCol(names.home, homeTeamId, "home")}
         <div className="flex flex-col items-center gap-1.5">
           {/* The chip's ONLY text is the byte "Mitad H · Turno N" line. */}
-          <span className="text-[11px] font-semibold tracking-[0.02em] text-[#cbd5e1]">
+          <span className="text-[11px] font-semibold tracking-[0.02em] text-border-subtle">
             {t("match.halfTurn", { half: state.half, turn: state.turnNumber })}
           </span>
           <span className="flex items-center gap-1">{turnCells}</span>
@@ -581,7 +581,7 @@ function LiveTopBar({
           own line instead of overflowing the viewport (design polish, open Q2). */}
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-t border-white/10 px-3 py-2 text-[11px] font-bold tabular-nums">
         <span className="flex min-w-0 flex-1 items-center gap-1 text-white">
-          <Icon name="timer" className="h-[13px] w-[13px] shrink-0 text-[#cbd5e1]" />
+          <Icon name="timer" className="h-[13px] w-[13px] shrink-0 text-border-subtle" />
           {clockValue(clock.homeTurnMs)}
         </span>
         <span className="flex max-w-full flex-wrap items-center justify-center gap-2">
@@ -591,7 +591,7 @@ function LiveTopBar({
           {concedeControls}
         </span>
         <span className="flex min-w-0 flex-1 items-center justify-end gap-1 text-white">
-          <Icon name="timer" className="h-[13px] w-[13px] shrink-0 text-[#cbd5e1]" />
+          <Icon name="timer" className="h-[13px] w-[13px] shrink-0 text-border-subtle" />
           {clockValue(clock.awayTurnMs)}
         </span>
       </div>
@@ -625,7 +625,7 @@ function MiniStats({
         <span
           key={pill.key}
           data-testid={`mini-${pill.key}-${side}`}
-          className="flex items-center gap-[3px] rounded-[3px] border border-[#e2e8f0] bg-white px-1.5 py-[1px] text-[10px] text-slate-600"
+          className="flex items-center gap-[3px] rounded-[3px] border border-border bg-panel px-1.5 py-[1px] text-[10px] text-slate-600"
         >
           <span aria-hidden="true">{pill.icon}</span>
           <b className="tabular-nums">{pill.value}</b>
@@ -666,7 +666,7 @@ function MiniStatsFeedStrip({
   return (
     <div
       data-testid="mini-strip"
-      className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-[#e2e8f0] bg-[#f8fafc] px-3 py-1.5"
+      className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-border bg-background px-3 py-1.5"
     >
       <MiniStats stats={sideStats("home")} side="home" visible={visible} />
       <MiniStats stats={sideStats("away")} side="away" visible={visible} />
@@ -680,14 +680,14 @@ function MiniStatsFeedStrip({
 function LiveMetaRow() {
   const { t } = useI18n();
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-[#e2e8f0] bg-[#f8fafc] px-3.5 py-1.5 text-[11px] text-slate-500">
+    <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border bg-background px-3.5 py-1.5 text-[11px] text-slate-500">
       <span className="flex items-center gap-1.5">
-        <Icon name="weather" className="h-[15px] w-[15px] text-[#12225a]" />
+        <Icon name="weather" className="h-[15px] w-[15px] text-navy" />
         {t("match.clima")}
       </span>
       <span className="flex items-center gap-1.5">
         {t("match.estadio")}
-        <Icon name="helmet" className="h-[15px] w-[15px] text-[#12225a]" />
+        <Icon name="helmet" className="h-[15px] w-[15px] text-navy" />
       </span>
     </div>
   );
@@ -733,7 +733,7 @@ function RulebookHeader({
   return (
     <div
       data-testid="rulebook-header"
-      className="sticky top-0 z-40 border-b border-[#1f3a7a] bg-[#12225a] shadow-[0_6px_16px_rgba(15,23,42,0.18)]"
+      className="sticky top-0 z-40 border-b border-navy-tint bg-navy shadow-[0_6px_16px_rgba(15,23,42,0.18)]"
     >
       <LiveTopBar
         state={state}
@@ -774,7 +774,7 @@ function JourneymenNotice({
   return (
     <div
       data-testid="journeymen-notice"
-      className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
+      className="border-b border-red bg-background px-4 py-2 text-center text-sm font-bold text-red"
     >
       {homeCount > 0 ? <p>{t("match.journeymenNotice", { count: homeCount })}</p> : null}
       {awayCount > 0 ? <p>{t("match.journeymenNotice", { count: awayCount })}</p> : null}
@@ -929,7 +929,7 @@ function LiveActiveMatch({
     ) : null;
 
   return (
-    <div className="bg-white border border-[#e2e8f0]">
+    <div className="bg-panel border border-border">
       {/* Uniform sticky match header: renders in EVERY fixture state. */}
       <RulebookHeader
         state={state}
@@ -971,7 +971,7 @@ function LiveActiveMatch({
           {showNudgeBanner ? (
             <p
               role="status"
-              className="border-b border-[#d11938] bg-[#f8fafc] px-4 py-2 text-center text-sm font-bold text-[#d11938]"
+              className="border-b border-red bg-background px-4 py-2 text-center text-sm font-bold text-red"
             >
               {t("match.rivalRequestsTurn")}
             </p>
@@ -984,7 +984,7 @@ function LiveActiveMatch({
             <p
               data-testid="turn-reason-chip"
               data-reason={state.lastTurnReason}
-              className="border-b border-[#e2e8f0] bg-[#f8fafc] px-4 py-1.5 text-center text-xs font-semibold text-[#12225a]"
+              className="border-b border-border bg-background px-4 py-1.5 text-center text-xs font-semibold text-navy"
             >
               {state.lastTurnReason != null ? turnReasonLabel(state.lastTurnReason) : ""}
             </p>
@@ -1018,7 +1018,7 @@ function LiveActiveMatch({
                   type="button"
                   onClick={() => void act({ type: "requestTurn" })}
                   disabled={state.status !== "live" || submitting}
-                  className="rounded-md border border-[#12225a] px-4 py-2 text-sm font-semibold text-[#12225a] hover:bg-[#f8fafc]"
+                  className="rounded-md border border-navy px-4 py-2 text-sm font-semibold text-navy hover:bg-background"
                 >
                   {t("match.requestTurn")}
                 </button>
@@ -1065,7 +1065,7 @@ function FinishedLiveTimeline({
   awayTeam: MatchTeamDetail;
 }) {
   return (
-    <div className="bg-white border border-[#e2e8f0]">
+    <div className="bg-panel border border-border">
       {/* MVT-10: the finished feed's per-team mini-strip sits above the rows. */}
       <MiniStatsFeedStrip events={live.events} />
       <LiveEventCards
@@ -1110,7 +1110,7 @@ function SummaryFeedRowView({ row, names }: { row: SummaryFeedRow; names: { home
       return (
         <li
           data-testid="summary-row"
-          className="flex items-center gap-3 bg-white px-3 py-1.5 text-[12px]"
+          className="flex items-center gap-3 bg-panel px-3 py-1.5 text-[12px]"
         >
           <span aria-hidden="true" className="shrink-0 text-center">
             {row.type === "winnings" ? "💰" : "👥"}
@@ -1132,7 +1132,7 @@ function SummaryFeedRowView({ row, names }: { row: SummaryFeedRow; names: { home
       return (
         <li
           data-testid="summary-row"
-          className="flex items-center gap-3 bg-gradient-to-r from-[#12225a]/[0.12] via-[#12225a]/[0.06] to-white px-3 py-1.5 text-[12px]"
+          className="flex items-center gap-3 bg-gradient-to-r from-navy/[0.12] via-navy/[0.06] to-white px-3 py-1.5 text-[12px]"
         >
           <span aria-hidden="true" className="shrink-0 text-center">💰</span>
           <span className="flex-1">
@@ -1198,7 +1198,7 @@ function FinishedLiveView({
     : (live.resolutionState?.home?.step ?? "winnings");
   const stepLabel = t(resolutionStepKey(ownStep));
   return (
-    <div className="bg-white border border-[#e2e8f0]">
+    <div className="bg-panel border border-border">
       <RulebookHeader
         state={live}
         clock={clock}
@@ -1212,9 +1212,9 @@ function FinishedLiveView({
         awayTeam={awayTeam}
       />
       {onResolve ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d11938] bg-[#f8fafc] px-3.5 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red bg-background px-3.5 py-2">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-[#12225a]">{t("match.resolve.resumeTitle")}</p>
+            <p className="text-sm font-bold text-navy">{t("match.resolve.resumeTitle")}</p>
             <p className="text-xs text-slate-600">{t("match.resolve.resumeHint")}</p>
             <p className="mt-0.5 text-xs font-semibold text-slate-500">
               {t("match.resolve.resumeStep", { step: stepLabel })}
@@ -1223,7 +1223,7 @@ function FinishedLiveView({
           <button
             type="button"
             onClick={onResolve}
-            className="rounded-sm bg-[#12225a] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f1d4d]"
+            className="rounded-sm bg-navy px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-hover"
           >
             {t("match.resolve.resumeAction")}
           </button>
@@ -1242,7 +1242,7 @@ function Coins({ value }: { value: number | null | undefined }) {
 
 function SectionRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <li className="flex items-baseline justify-between gap-3 border-b border-[#e2e8f0] py-2 px-3 last:border-b-0">
+    <li className="flex items-baseline justify-between gap-3 border-b border-border py-2 px-3 last:border-b-0">
       <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
       <span className="text-right text-sm text-slate-800">{children}</span>
     </li>
@@ -1261,28 +1261,28 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
   const mvp = sections.find((s): s is Extract<MatchSummarySection, { type: "mvp" }> => s.type === "mvp");
 
   return (
-    <div className="bg-white border border-[#e2e8f0]">
+    <div className="bg-panel border border-border">
       {/* Scoreboard */}
       {score ? (
         <div className="px-4 py-4 text-center">
-          <p className="text-3xl font-black text-[#12225a]">
-            {score.home} <span className="text-[#d11938]">–</span> {score.away}
+          <p className="text-3xl font-black text-navy">
+            {score.home} <span className="text-red">–</span> {score.away}
           </p>
-          <p className="mt-1 text-sm font-semibold text-[#d11938]">{score.winnerName}</p>
+          <p className="mt-1 text-sm font-semibold text-red">{score.winnerName}</p>
         </div>
       ) : null}
 
       <div className="flex flex-wrap gap-3 px-4 pb-4 sm:flex-nowrap">
         {teams ? (
           <>
-            <div className="flex-1 border border-[#e2e8f0] bg-[#f8fafc] p-3">
-              <p className="text-sm font-bold text-[#12225a]">{teams.home.name}</p>
+            <div className="flex-1 border border-border bg-background p-3">
+              <p className="text-sm font-bold text-navy">{teams.home.name}</p>
               <p className="text-xs text-slate-500">
                 {teams.home.raceName ?? "—"} · {teams.home.coachName ?? "—"}
               </p>
             </div>
-            <div className="flex-1 border border-[#e2e8f0] bg-[#f8fafc] p-3">
-              <p className="text-sm font-bold text-[#12225a]">{teams.away.name}</p>
+            <div className="flex-1 border border-border bg-background p-3">
+              <p className="text-sm font-bold text-navy">{teams.away.name}</p>
               <p className="text-xs text-slate-500">
                 {teams.away.raceName ?? "—"} · {teams.away.coachName ?? "—"}
               </p>
@@ -1315,7 +1315,7 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
       </ul>
 
       {pe && pe.home.concat(pe.away).length > 0 ? (
-        <div className="border-t border-[#e2e8f0] px-4 py-3">
+        <div className="border-t border-border px-4 py-3">
           <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">{t("match.peSection")}</h3>
           <ul className="grid grid-cols-2 gap-x-6 gap-y-1">
             {pe.home.map((row, i) => (
@@ -1335,8 +1335,8 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
       ) : null}
 
       {mvp ? (
-        <div className="border-t-2 border-[#d11938] bg-[#12225a] px-4 py-3 text-white">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-[#cbd5e1]">{t("match.playerOfMatch")}</p>
+        <div className="border-t-2 border-red bg-navy px-4 py-3 text-white">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-border-subtle">{t("match.playerOfMatch")}</p>
           <div className="mt-1 flex flex-wrap justify-between gap-2">
             <p className="text-sm font-bold">
               {mvp.home ? `${mvp.home.playerName} · +${PE_MVP} PE` : "—"}
@@ -1388,11 +1388,11 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
 
   if (notFound) {
     return (
-      <div className="border border-[#e2e8f0] bg-white p-8 text-center">
+      <div className="border border-border bg-panel p-8 text-center">
         <p className="text-sm text-slate-600">{t("match.notFound")}</p>
         <Link
           href="/leagues"
-          className="mt-4 inline-block bg-[#12225a] px-4 py-2 text-sm font-bold text-white hover:bg-[#0f1d4d]"
+          className="mt-4 inline-block bg-navy px-4 py-2 text-sm font-bold text-white hover:bg-navy-hover"
         >
           {t("leagues.backToLeagues")}
         </Link>
@@ -1402,7 +1402,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
 
   if (!loading && !detail) {
     return (
-      <div className="border border-[#e2e8f0] bg-white p-8 text-center">
+      <div className="border border-border bg-panel p-8 text-center">
         <p className="text-sm text-slate-600">{error ?? t("match.loadError")}</p>
       </div>
     );
@@ -1410,7 +1410,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
 
   if (!detail) {
     return (
-      <div className="flex min-h-[200px] items-center justify-center bg-white p-8">
+      <div className="flex min-h-[200px] items-center justify-center bg-panel p-8">
         <p className="text-sm text-slate-500" role="status">
           {t("match.loading")}
         </p>
@@ -1479,11 +1479,11 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     // A walkover keeps its own panel (no uniform rulebook header — the fixture
     // was never played live; the e2e asserts zero turn/clock chrome here).
     body = (
-      <div className="border border-[#e2e8f0] bg-white px-4 py-4 text-center">
-        <p className="text-3xl font-black text-[#12225a]">
-          {detail.fixture.homeScore} <span className="text-[#d11938]">–</span> {detail.fixture.awayScore}
+      <div className="border border-border bg-panel px-4 py-4 text-center">
+        <p className="text-3xl font-black text-navy">
+          {detail.fixture.homeScore} <span className="text-red">–</span> {detail.fixture.awayScore}
         </p>
-        <p className="mt-2 text-sm font-semibold text-[#d11938]">{t("match.walkover")}</p>
+        <p className="mt-2 text-sm font-semibold text-red">{t("match.walkover")}</p>
       </div>
     );
   } else if (detail.fixture.status === "scheduled") {
