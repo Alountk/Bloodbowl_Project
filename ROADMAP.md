@@ -21,6 +21,8 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Bajas que se pierden el próximo partido** ("Baja la próxima", suspensión RAU-12; el hematoma nunca bloquea) | #108 |
 | **Página `/teams`**: secciones "Sin liga" / "En liga", cards con CTV, tesorería y hint "listos para mejorar" (cuenta PE disponibles), guard 409 al archivar | #121, #125–#127 |
 | **Página `/matches`**: próximos partidos agrupados por fecha con badge **EN VIVO** (card link al partido) | #128–#132 |
+| **Tokens de color centralizados en `@theme`** (Tailwind v4): 56 tokens (paleta marca, superficies/texto, bandas de severidad, badges de cotejo, estados funcionales, sombras), 44 archivos migrados de hex arbitrarios a utilidades; MatchCard robustecida (contraste AA, `<button>` nativo, target 24px, focus-visible, heading) | #180 |
+| **Dirección visual = Reglamento vintage default**: papel crema + tinta editorial con tipografía dual self-hosted Fraunces (títulos/scores) + Space Grotesk (datos/UI); **Tablón americano queda como opt-in** `[data-theme=scoreboard]` (Anton display + acento end-zone) | `98318c0`, `21e2d9c` |
 
 ### Cuenta y datos
 | Feature | PR / Cambio |
@@ -80,6 +82,8 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Limpieza de referencias al servicio externo (38 archivos: docs, código, tests, i18n, archive; terminología neutral/rulebook) | #137 |
 | Suite e2e auth paralelizada: bcrypt cost 4 en tests + 2 proyectos Playwright (chromium paralelo + sse-heavy serial) — 9:18 → 5:06 | #138 |
 | Seed de playground (campo de pruebas dev) en `prisma/seed.mjs` | #158 |
+| Storybook como design system versionado: galería de tokens + componentes live-match (PR #177) y expansión de stories (MatchCard, StandingsTable, MatchTimelineBar, UserAvatar + glob `components/**`) | #177, #178 |
+| Skills de UI/UX versionados en `.opencode/skills` (frontend-design, accessibility, design-system) | #176 |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -111,6 +115,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 ### Features planificadas
 | Feature | Notas |
 |---|---|
+| **Selector de tema (UI)** | Reglamento vintage ya es el default; el Tablón americano (Anton display + acento end-zone) existe como opt-in `[data-theme=scoreboard]` pero falta una UI para alternarlo (hoy solo vía atributo `data-theme`). |
 | **Histórico completo con replay / taxonomía amplia** | El modo en vivo (SSE, turnos, relojes, timeline), kickoff (#100–#102), la resolución por lado (#133/#134) y el registro player-first (#161–#163) ya están en Completado; lo que queda es replay de partidos, taxonomía completa de eventos (intercepciones, skills, clima, resto de la tabla de kickoff), filtros y visualización pública. |
 | **Escudo de equipo personalizado** (RAU-78) | Poder poner un escudo propio al equipo desde el detalle (subir/elegir), visible en cards, detalle, MatchCard y standings — reemplaza el emblema determinista de `TeamEmblem`; reutiliza el pipeline de avatares (WebP 256, storage local/S3). |
 | **Historial en My Profile** | El perfil muestra estadísticas de carrera (RAU-57); falta el historial de temporadas y equipos pasados. |
