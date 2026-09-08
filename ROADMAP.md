@@ -37,7 +37,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Auth en modal** (bottom/top-sheet mobile; /login y /signup pasan a ser fallbacks), coach name obligatorio | #118 |
 | **My Profile ampliado**: cambio de contraseña y **estadísticas de carrera** (campeonatos, V/E/D) derivadas de los equipos del usuario | #119 |
 | **Idioma por cuenta** (ES/EN): selector en My Profile, herencia en el signup, precedencia SSR (cuenta > cookie `bb-locale` > navegador) | #120 |
-| **Selector de tema por cuenta y navegador**: columna `User.theme` (default `vintage`), resolución SSR `data-theme` (cuenta > cookie `bb-theme` > vintage), `ThemeProvider` cliente, toggle en la nav (desktop + drawer) y selector en My Profile; PATCH `/api/me` allowlist | #183, #184, PR 2 (`feat/theme-selector-slice-b`) |
+| **Selector de tema por cuenta y navegador**: columna `User.theme` (default `vintage`), resolución SSR `data-theme` (cuenta > cookie `bb-theme` > vintage), `ThemeProvider` cliente, toggle en la nav (desktop + drawer) y selector en My Profile; PATCH `/api/me` allowlist | #183, #184, #185, #186 |
 | **Storage**: localStorage deprecado para equipos (modo local en memoria compartida) y para el locale (cookie); la migración legacy a cuenta se conserva | #118, #120 |
 
 ### Ligas y campeonatos

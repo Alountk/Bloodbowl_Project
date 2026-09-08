@@ -74,13 +74,14 @@ POST `/api/me/avatar` MUST require a session (401). A payload over 2MB, or one w
 
 ### Requirement: Current User API
 
-GET `/api/me` MUST return the session user's `id`, `name`, `email`, and `avatar` (401 unauthenticated). PATCH `/api/me` MUST accept only `name` (free text) and `avatar`, where `avatar` MUST be exactly `null` (clear) or the adapter-issued value previously returned by the server. Any other field, or a `data:`/external `avatar`, MUST return 400.
+Req ID: UP-4. GET `/api/me` MUST return the session user's `id`, `name`, `email`, `avatar`, `locale`, and `theme` (401 unauthenticated). PATCH `/api/me` MUST accept only `name` (free text), `avatar`, `locale` (`"es"`|`"en"`), and `theme` (`"vintage"`|`"scoreboard"`), where `avatar` MUST be exactly `null` (clear) or the adapter-issued value previously returned. Any other field, an invalid `locale`/`theme`, or a `data:`/external `avatar` MUST return 400.
+(Previously: GET returned only id/name/email/avatar and PATCH accepted only name/avatar; the shipped `locale` field was omitted from the spec.)
 
 #### Scenario: Read own profile
 
 - GIVEN an authenticated session
 - WHEN GET `/api/me` is called
-- THEN the response contains id, name, email, and avatar
+- THEN the response contains id, name, email, avatar, locale, and theme
 
 #### Scenario: Update display name
 
@@ -96,9 +97,27 @@ GET `/api/me` MUST return the session user's `id`, `name`, `email`, and `avatar`
 
 #### Scenario: External avatar URL rejected
 
-- GIVEN a PATCH submitting a `data:` URI or an external URL as `avatar`
+- GIVEN a PATCH submitting a `data:` URI or external URL as `avatar`
 - WHEN it is submitted
 - THEN it returns 400 and the stored avatar is unchanged
+
+#### Scenario: Update locale
+
+- GIVEN an authenticated user
+- WHEN they PATCH `{ "locale": "en" }`
+- THEN 200 returns `locale: "en"`
+
+#### Scenario: Update theme
+
+- GIVEN an authenticated user
+- WHEN they PATCH `{ "theme": "scoreboard" }`
+- THEN 200 returns `theme: "scoreboard"`
+
+#### Scenario: Invalid theme rejected
+
+- GIVEN a PATCH submitting `{ "theme": "grimdark" }`
+- WHEN it is submitted
+- THEN it returns 400 and the stored theme is unchanged
 
 ### Requirement: My Profile Nav Entry
 
@@ -125,3 +144,20 @@ The league detail GET MUST carry each fixture owner's `avatar` (enrichFixture â†
 - GIVEN a fixture owner with `avatar: null` or an unresolvable nested user
 - WHEN the league detail renders MatchCard
 - THEN no image renders for that side and the existing name fallback is unchanged
+
+### Requirement: Theme Field on User (UP-7)
+
+The system MUST persist `User.theme String @default("vintage")` via an additive Prisma migration. The value MUST be restricted to `vintage`/`scoreboard` at the API boundary; a fresh user MUST default to `vintage`.
+
+#### Scenario: Fresh user defaults to vintage
+
+- GIVEN a newly registered user
+- WHEN their profile is read
+- THEN `theme` is `vintage`
+
+#### Scenario: Additive migration
+
+- GIVEN the existing `User` table
+- WHEN the migration runs
+- THEN a `theme` column is added with `NOT NULL DEFAULT 'vintage'` and no data is destroyed
+
