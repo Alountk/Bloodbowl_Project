@@ -155,9 +155,9 @@ export function MatchCard({
       aria-label={t("match.aria", { round: fixture.round, home: homeName, away: awayName })}
       className="border border-border bg-panel transition-shadow hover:shadow-card-hover"
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 bg-navy px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
-        <h3 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide">
-          <span>{t("match.header", { round: fixture.round, status: liveActive ? t("match.liveStatus") : status })}</span>
+      <header className="flex flex-wrap items-center justify-between gap-2 bg-navy px-3 py-2 text-[11px] uppercase tracking-wide text-white">
+        <h3 className="flex items-center gap-2 text-[11px] uppercase tracking-wide">
+          <span className="font-display font-normal">{t("match.header", { round: fixture.round, status: liveActive ? t("match.liveStatus") : status })}</span>
           {liveActive ? (
             <span className="animate-pulse rounded-sm bg-red px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em]">
               {t("match.liveBadge")}
@@ -194,7 +194,7 @@ export function MatchCard({
           ) : null}
         </span>
       </header>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-4">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-4 md:gap-4 md:px-6 md:py-6">
         <TeamSide
           name={homeName}
           race={homeRace}
@@ -219,7 +219,7 @@ export function MatchCard({
             </button>
           ) : (
             <span
-              className={`text-2xl font-black tracking-[0.15em] tabular-nums ${
+              className={`font-display text-2xl font-normal tabular-nums md:text-4xl ${
                 liveActive
                   ? "text-red"
                   : played || score
