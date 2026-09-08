@@ -7,6 +7,7 @@
  */
 
 import type { Locale } from "@/lib/i18n/dictionaries";
+import type { Theme } from "@/lib/theme/theme";
 
 /** The session user profile as returned by GET/PATCH /api/me. */
 export interface Profile {
@@ -16,6 +17,9 @@ export interface Profile {
   avatar: string | null;
   /** RAU-58: the account-level UI language (es|en). */
   locale: Locale;
+  /** theme-selector: the account-level visual theme (vintage|scoreboard).
+   *  Optional so pre-existing factories/fixtures stay green without a value. */
+  theme?: Theme;
   /** RAU-52: RBAC role (user/developer/admin) — DB snapshot. */
   role?: string;
   /** RAU-52: billing tier (free/club/premium) — ready for future flags. */
@@ -55,13 +59,15 @@ export async function getMe(): Promise<Profile> {
 
 /**
  * PATCH /api/me — updates only `name` (free text), `avatar` (null to clear, or
- * the current adapter-issued value), or `locale` (`"es"` | `"en"`). Any other
- * field, an invalid locale, or a `data:`/external avatar returns 400.
+ * the current adapter-issued value), `locale` (`"es"` | `"en"`), or `theme`
+ * (`"vintage"` | `"scoreboard"`). Any other field, an invalid locale/theme, or
+ * a `data:`/external avatar returns 400.
  */
 export async function patchMe(patch: {
   name?: string;
   avatar?: string | null;
   locale?: Locale;
+  theme?: Theme;
 }): Promise<Profile> {
   const res = await fetch("/api/me", {
     method: "PATCH",

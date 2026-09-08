@@ -13,7 +13,14 @@ function okJson(data: unknown) {
 
 describe("getMe", () => {
   it("GETs /api/me and returns the profile", async () => {
-    const me = { id: "u1", name: "Coach", email: "c@x.com", avatar: null, locale: "es" };
+    const me = {
+      id: "u1",
+      name: "Coach",
+      email: "c@x.com",
+      avatar: null,
+      locale: "es",
+      theme: "vintage",
+    };
     const fetchMock = vi.fn().mockResolvedValue(okJson(me));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -24,6 +31,7 @@ describe("getMe", () => {
     expect(result.name).toBe("Coach");
     expect(result.avatar).toBeNull();
     expect(result.locale).toBe("es");
+    expect(result.theme).toBe("vintage");
   });
 
   it("propagates an HTTP error status when GET fails", async () => {
@@ -69,6 +77,28 @@ describe("patchMe", () => {
       body: JSON.stringify({ locale: "en" }),
     });
     expect(result.locale).toBe("en");
+  });
+
+  it("PATCHes {theme} as JSON to /api/me and returns the updated profile", async () => {
+    const updated = {
+      id: "u1",
+      name: "Coach",
+      email: "c@x.com",
+      avatar: null,
+      locale: "es",
+      theme: "scoreboard",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(okJson(updated));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await patchMe({ theme: "scoreboard" });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ theme: "scoreboard" }),
+    });
+    expect(result.theme).toBe("scoreboard");
   });
 
   it("propagates a 400 error for an invalid patch payload", async () => {

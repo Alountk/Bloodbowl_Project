@@ -72,6 +72,25 @@ describe("patchUserData (pure allowlist)", () => {
     }
   });
 
+  it("keeps a valid account theme vintage|scoreboard", () => {
+    expect(patchUserData({ theme: "vintage" }, { theme: "scoreboard" })).toEqual({
+      ok: true,
+      data: { theme: "vintage" },
+    });
+    expect(patchUserData({ theme: "scoreboard" }, { theme: "vintage" })).toEqual({
+      ok: true,
+      data: { theme: "scoreboard" },
+    });
+  });
+
+  it("rejects an invalid theme (grimdark, uppercase, non-string)", () => {
+    for (const bad of ["grimdark", "SCOREBOARD", "score board", 42, null, ["scoreboard"]]) {
+      const res = patchUserData({ theme: bad }, { theme: "vintage" });
+      if (res.ok) throw new Error(`expected rejection for ${JSON.stringify(bad)}`);
+      expect(res.error).toContain("theme");
+    }
+  });
+
   it("rejects an unknown field", () => {
     const res = patchUserData({ email: "h@x.co" }, {});
     if (res.ok) throw new Error("expected rejection");
@@ -144,6 +163,27 @@ describe("GET /api/me", () => {
     const body = await res.json();
     expect(body.avatar).toBeNull();
     expect(body.locale).toBe("es");
+  });
+
+  it("selects and returns the account theme for an authenticated user", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+      avatar: null,
+      locale: "es",
+      theme: "scoreboard",
+    });
+
+    const res = await getRequest();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.theme).toBe("scoreboard");
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      select: expect.objectContaining({ theme: true }),
+    });
   });
 });
 
@@ -272,6 +312,51 @@ describe("PATCH /api/me", () => {
     });
 
     const res = await patchRequest({ locale: "fr" });
+    expect(res.status).toBe(400);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("updates the account theme", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+      avatar: null,
+      locale: "es",
+      theme: "vintage",
+    });
+    prismaMock.user.update.mockResolvedValue({
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+      avatar: null,
+      locale: "es",
+      theme: "scoreboard",
+    });
+
+    const res = await patchRequest({ theme: "scoreboard" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.theme).toBe("scoreboard");
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { theme: "scoreboard" },
+    });
+  });
+
+  it("rejects an invalid theme with 400 and leaves the stored value unchanged", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: "user-1",
+      name: "Ada",
+      email: "ada@example.com",
+      avatar: null,
+      locale: "es",
+      theme: "vintage",
+    });
+
+    const res = await patchRequest({ theme: "grimdark" });
     expect(res.status).toBe(400);
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
