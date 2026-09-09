@@ -1655,8 +1655,12 @@ describe("MatchView — finished-live snapshot summary rows (MVT-4)", () => {
     const texts = rows.map((r) => r.textContent ?? "");
     expect(texts.some((t) => t.includes("Ganancias") && t.includes("45.000") && t.includes("35.000"))).toBe(true);
     expect(texts.some((t) => t.includes("Fanáticos dedicados") && t.includes("4") && t.includes("2"))).toBe(true);
-    // Incentivos: the single pettyCash value (chips deferred).
-    expect(texts.some((t) => t.includes("Incentivos") && t.includes("150.000"))).toBe(true);
+    // Incentivos: LEGACY snapshot (top-level pettyCash, no per-side inducements)
+    // → the single home-assigned row shows the pettyCash budget and NO chips.
+    const incentives = texts.filter((t) => t.includes("Incentivos"));
+    expect(incentives).toHaveLength(1);
+    expect(incentives[0]).toContain("150.000");
+    expect(incentives[0]).not.toContain("×");
 
     // The summary rows sit ABOVE the event cards in the DOM.
     const summary = container.querySelector("[data-testid='summary-row']");
@@ -1697,6 +1701,69 @@ describe("MatchView — finished-live snapshot summary rows (MVT-4)", () => {
     expect(rows[0].textContent).toMatch(/55\.000/);
     expect(rows[0].textContent).toMatch(/45\.000/);
     expect(container.querySelector("[data-testid='summary-row-reported']")).toBeNull();
+  });
+
+  it("renders per-team Incentivos rows with budget + chip pills from the per-side snapshot (MVT-4)", async () => {
+    const detail = finishedLiveDetail();
+    // Post-S3 snapshot: the away (lower-TV) side bought 2× Sobornos; the home
+    // side has NO per-side entry → its row shows the zero budget and no chips.
+    if (detail.result) {
+      detail.result.scores.away.inducements = {
+        budget: 150_000,
+        cards: [{ name: "Sobornos", count: 2 }],
+      };
+    }
+    stubMatch(detail);
+    const { container } = renderPlayed();
+    await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+    const rows = Array.from(container.querySelectorAll("[data-testid='summary-row']"));
+    const incentives = rows.filter((r) => r.textContent?.includes("Incentivos"));
+    expect(incentives).toHaveLength(2);
+
+    // Home row: zero budget, no chips (its label shows the home team name).
+    const home = incentives.find((r) => r.textContent?.includes("Reavers"));
+    expect(home).toBeDefined();
+    expect(home!.textContent).toContain("Incentivos");
+    expect(home!.textContent).toContain("0");
+    expect(home!.textContent).not.toContain("×");
+
+    // Away row: budget + the "2× Sobornos" chip pill, labeled with the away name.
+    const away = incentives.find((r) => r.textContent?.includes("Dwarves"));
+    expect(away).toBeDefined();
+    expect(away!.textContent).toContain("150.000");
+    expect(away!.textContent).toContain("2× Sobornos");
+  });
+
+  it("keys the two per-team Incentivos rows uniquely (type + side) without a duplicate-key warning", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const detail = finishedLiveDetail();
+      if (detail.result) {
+        // Both sides carried a snapshot entry → two distinct incentives rows.
+        detail.result.scores.home.inducements = { budget: 0, cards: [{ name: "Mago", count: 1 }] };
+        detail.result.scores.away.inducements = {
+          budget: 150_000,
+          cards: [{ name: "Sobornos", count: 2 }],
+        };
+      }
+      stubMatch(detail);
+      const { container } = renderPlayed();
+      await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
+
+      const rows = Array.from(container.querySelectorAll("[data-testid='summary-row']"));
+      const incentives = rows.filter((r) => r.textContent?.includes("Incentivos"));
+      expect(incentives).toHaveLength(2);
+      expect(incentives[0]!.textContent).toContain("Mago");
+      expect(incentives[1]!.textContent).toContain("Sobornos");
+
+      const duplicateKey = errorSpy.mock.calls.some((args) =>
+        String(args[0] ?? "").includes("same key"),
+      );
+      expect(duplicateKey).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
 
