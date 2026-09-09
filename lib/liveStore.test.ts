@@ -10,6 +10,7 @@ import {
   proposeConcedeLiveMatch,
   declineConcedeLiveMatch,
   acceptConcedeLiveMatch,
+  purchaseInducements,
   liveMatchRowToState,
   type StoreDeps,
 } from "./liveStore";
@@ -1590,5 +1591,203 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
         data: expect.not.objectContaining({ winnings: expect.anything() }),
       }),
     );
+  });
+});
+
+/**
+ * purchaseInducements (LM-30): a ready-phase cart write for the LOWER-TV side.
+ * The server derives each side's TV from the persisted team rows
+ * (`raceTvParts` + `computeTeamTv`), gives the |ΔTV| budget to the lower side,
+ * validates the cart (IND-3) and REPLACES that side's persisted cart under the
+ * optimistic `seq` guard, then publishes the new view to the hub.
+ *
+ * TV fixtures: home = 8 orc linemen @50k = 400k; away = 5 goblin linemen @40k
+ * (=200k) + a 50k player valueBonus = 250k → |ΔTV| = 150k → AWAY is the
+ * lower-TV side with a 150k budget (goblin also carries bribery-and-corruption,
+ * so bribes cost 50k each).
+ */
+describe("purchaseInducements — ready-phase cart write (LM-30)", () => {
+  const zeroCoaching = { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false };
+  const orcTeam = {
+    id: "home-t",
+    raceId: "orc",
+    roster: Array.from({ length: 8 }, (_, i) => ({ id: `h${i}`, name: `Orc ${i}`, positionalKey: "lineman" })),
+    coaching: zeroCoaching,
+    treasury: 1_000_000,
+    players: [],
+  };
+  const goblinTeam = {
+    id: "away-t",
+    raceId: "goblin",
+    roster: Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, name: `Goblin ${i}`, positionalKey: "goblin-lineman" })),
+    coaching: zeroCoaching,
+    treasury: 1_000_000,
+    players: [{ rosterPlayerId: "g1", valueBonus: 50_000, alive: true, missNextMatch: false }],
+  };
+  /** home = away TV (both 400k) → equal TVs, zero budget, no eligible side. */
+  const equalTeams = [orcTeam, { ...orcTeam, id: "away-t" }];
+
+  function readyRow(seq: number, inducements: unknown = null): Record<string, unknown> {
+    return {
+      id: "lm-1",
+      fixtureId: "f-1",
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: null,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 0,
+      awayScore: 0,
+      seq,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+      concedeProposedBy: null,
+      mvpNominations: null,
+      resolutionState: null,
+      lastTurnReason: null,
+      inducements,
+    };
+  }
+
+  function rowOf(overrides: Record<string, unknown>): Record<string, unknown> {
+    return { ...readyRow(5), ...overrides };
+  }
+
+  const baseInput = {
+    fixtureId: "f-1",
+    homeTeamId: "home-t",
+    awayTeamId: "away-t",
+    side: "away" as const,
+    items: [{ id: "bribes", count: 3 }],
+    now: 2000,
+  };
+
+  it("404s when no LiveMatch row exists (no cart write)", async () => {
+    const { deps, updateMany, publish } = makeDeps(1);
+    await expect(purchaseInducements(baseInput, deps)).rejects.toMatchObject({ status: 404 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("409s unless the match is ready (pending/live rows are rejected)", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(rowOf({ status: "pending" }));
+    await expect(purchaseInducements(baseInput, deps)).rejects.toMatchObject({ status: 409 });
+    liveMatchFindFirst.mockResolvedValue(rowOf({ status: "live" }));
+    await expect(purchaseInducements(baseInput, deps)).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("persists the lower-TV side's cart (replace semantics) and publishes the new view", async () => {
+    const { deps, liveMatchFindFirst, teamFindMany, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(readyRow(5));
+    teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+
+    const result = await purchaseInducements(baseInput, deps);
+
+    expect(result.seq).toBe(6);
+    expect(result.view.inducements).toEqual({ home: [], away: [{ id: "bribes", count: 3 }] });
+    // The dedicated row-scoped write touches ONLY the cart column + the seq bump.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 5 },
+      data: { inducements: { home: [], away: [{ id: "bribes", count: 3 }] }, seq: 6 },
+    });
+    // Hub publish after commit: the view carries the cart + no events.
+    expect(publish).toHaveBeenCalledTimes(1);
+    const payload = publish.mock.calls[0];
+    expect(payload[0]).toBe("f-1");
+    expect(payload[1]).toMatchObject({ seq: 6, inducements: { home: [], away: [{ id: "bribes", count: 3 }] }, events: [] });
+  });
+
+  it("gives the |ΔTV| budget to the lower side (away 150k here — bribes @ 50k fit)", async () => {
+    const { deps, liveMatchFindFirst, teamFindMany, updateMany } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(readyRow(5));
+    teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+    // 3 bribes @ 50k = exactly the 150k |ΔTV| budget → accepted.
+    await expect(purchaseInducements(baseInput, deps)).resolves.toMatchObject({ seq: 6 });
+    expect(updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("409s the higher-TV or equal-TV side (only the lower-TV coach may buy)", async () => {
+    const { deps, liveMatchFindFirst, teamFindMany, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(readyRow(5));
+    // Higher-TV side (home, 400k) tries to buy on its own team.
+    teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+    await expect(
+      purchaseInducements({ ...baseInput, side: "home" }, deps),
+    ).rejects.toMatchObject({ status: 409 });
+    // Equal TVs (both 400k) → no eligible side, even for a would-be away buyer.
+    teamFindMany.mockResolvedValue(equalTeams);
+    await expect(purchaseInducements(baseInput, deps)).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("rejects an over-budget / invalid cart with 400 and no mutation", async () => {
+    const { deps, liveMatchFindFirst, teamFindMany, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(readyRow(5));
+    teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+    // 2× extra-training @ 100k = 200k > 150k budget.
+    await expect(
+      purchaseInducements({ ...baseInput, items: [{ id: "extra-training", count: 2 }] }, deps),
+    ).rejects.toMatchObject({ status: 400 });
+    // Unknown id.
+    await expect(
+      purchaseInducements({ ...baseInput, items: [{ id: "star-player-griff", count: 1 }] }, deps),
+    ).rejects.toMatchObject({ status: 400 });
+    // Rule-gated entry for an ineligible race (plague-doctor for goblin).
+    await expect(
+      purchaseInducements({ ...baseInput, items: [{ id: "plague-doctor", count: 1 }] }, deps),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("REPLACES the side's cart while preserving the rival side's persisted cart", async () => {
+    const { deps, liveMatchFindFirst, teamFindMany, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(
+      readyRow(5, { home: [{ id: "bribes", count: 1 }], away: [] }),
+    );
+    teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+
+    await purchaseInducements(
+      { ...baseInput, items: [{ id: "biased-referee", count: 1 }] },
+      deps,
+    );
+
+    // away REPLACED; the rival's home cart survives untouched.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 5 },
+      data: {
+        inducements: { home: [{ id: "bribes", count: 1 }], away: [{ id: "biased-referee", count: 1 }] },
+        seq: 6,
+      },
+    });
+    expect(publish).toHaveBeenCalledTimes(1);
+
+    // An EMPTY list clears the side's cart (replace-cart), again keeping home.
+    liveMatchFindFirst.mockResolvedValue(
+      readyRow(5, { home: [{ id: "bribes", count: 1 }], away: [{ id: "biased-referee", count: 1 }] }),
+    );
+    updateMany.mockClear();
+    await purchaseInducements({ ...baseInput, items: [] }, deps);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 5 },
+      data: { inducements: { home: [{ id: "bribes", count: 1 }], away: [] }, seq: 6 },
+    });
+  });
+
+  it("409s on a stale seq (0 rows → concurrent purchase/begin won the race)", async () => {
+    const { deps, liveMatchFindFirst, teamFindMany, publish } = makeDeps(0);
+    liveMatchFindFirst.mockResolvedValue(readyRow(5));
+    teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+    await expect(purchaseInducements(baseInput, deps)).rejects.toMatchObject({ status: 409 });
+    expect(publish).not.toHaveBeenCalled();
   });
 });

@@ -618,6 +618,28 @@ describe("toLiveViewState — unified-clock DTO (LM-5, D19)", () => {
   });
 });
 
+describe("toLiveViewState — LM-30 inducement-cart exposure", () => {
+  it("omits the inducements field unless the caller supplies the cart", () => {
+    const view = toLiveViewState(state({ status: "ready" }), 1000);
+    expect("inducements" in view).toBe(false);
+  });
+
+  it("propagates the per-side cart when supplied (purchase POST view + SSE snapshot)", () => {
+    const cart = { home: [{ id: "bribes", count: 2 }], away: [] };
+    const view = toLiveViewState(state({ status: "ready" }), 1000, {
+      viewerSide: "home",
+      inducements: cart,
+    });
+    expect(view.inducements).toEqual(cart);
+    expect(view.viewerSide).toBe("home");
+  });
+
+  it("propagates an explicit null cart (row has none) without dropping the key", () => {
+    const view = toLiveViewState(state({ status: "ready" }), 1000, { inducements: null });
+    expect(view.inducements).toBeNull();
+  });
+});
+
 describe("parseResolutionState — the per-side resolution wizard cursor (additive)", () => {
   it("collapses null / malformed values to the EMPTY per-side state (never crashes)", () => {
     expect(parseResolutionState(null)).toEqual(EMPTY_RESOLUTION_STATE);

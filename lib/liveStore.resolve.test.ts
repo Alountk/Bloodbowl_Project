@@ -113,6 +113,8 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
     lastTurnReason: null,
     // RAU-14: the default finished row fields no journeymen.
     journeymen: null,
+    // LM-30: the default finished row carries no persisted inducement cart.
+    inducements: null,
     // The legacy pending-casualty column is unused since design B (RAU-82)
     // made casualties single-phase; it stays nullable on the row.
     pendingCasualty: null,
