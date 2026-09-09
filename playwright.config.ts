@@ -31,6 +31,7 @@ export default defineConfig({
         "**/match-view.spec.ts",
         "**/live-match.spec.ts",
         "**/live-resolution.spec.ts",
+        "**/inducement-purchase.spec.ts",
         "**/rulesets.spec.ts",
         "**/profile.spec.ts",
         "**/locale.spec.ts",

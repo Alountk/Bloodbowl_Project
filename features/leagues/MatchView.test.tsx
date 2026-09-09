@@ -1062,6 +1062,235 @@ describe("MatchView — two-phase consent / begin (LM-11, D16)", () => {
   });
 });
 
+describe("MatchView — ready-phase inducement purchase step (IND-2/3, LM-30/S2)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A `ready` fixture whose HOME team (human) is the LOWER-TV side — eligible
+   * with a 300.000 budget. Away (dwarf) is richer. */
+  function readyWithBudget(
+    overrides: {
+      inducementBudget?: { side: "home" | "away" | null; budget: number };
+      inducements?: { home: { id: string; count: number }[]; away: { id: string; count: number }[] } | null;
+    } = {},
+  ): MatchDetail {
+    const raw = scheduledDetail();
+    return {
+      ...raw,
+      homeTeam: { ...raw.homeTeam, user: { id: "u1", name: "Coach A", email: "a@x", avatar: null } },
+      awayTeam: { ...raw.awayTeam, user: { id: "u2", name: "Coach B", email: "b@x", avatar: null } },
+      live: {
+        seq: 2,
+        status: "ready",
+        half: 1,
+        turnNumber: 1,
+        activeSide: "home",
+        homeConsented: true,
+        awayConsented: true,
+        viewerSide: "home",
+        startedAt: null,
+        elapsed: 0,
+        homeTurnMs: 0,
+        awayTurnMs: 0,
+        paused: false,
+        homeScore: 0,
+        awayScore: 0,
+        finishedAt: null,
+        concedeProposedBy: null,
+        mvpNominations: { home: null, away: null },
+        resolutionState: {
+          home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+          away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+        },
+        inducements: overrides.inducements ?? { home: [], away: [] },
+        inducementBudget: overrides.inducementBudget ?? { side: "home", budget: 300_000 },
+        events: [],
+      } as LiveMatchView,
+    };
+  }
+
+  it("renders the purchase step for the ELIGIBLE coach only while ready and the budget is positive", async () => {
+    stubLiveEventSource();
+    stubMatch(readyWithBudget()); // session default u1 = home owner → viewerSide home.
+    renderPlayed();
+
+    // The ready consent panel shows AND the purchase step appears below it.
+    expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
+    expect(screen.getByTestId("inducement-purchase")).toBeTruthy();
+    // The server-derived budget renders (300.000 M.O.).
+    expect(screen.getByText(/Presupuesto disponible: 300\.000/)).toBeTruthy();
+    // The step lists the race-filtered catalog with the effective cost…
+    expect(screen.getAllByText(/Sobornos/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Añadir Mago" })).toBeTruthy();
+    // …but EXCLUDES race-gated entries the human team cannot buy (plague-doctor
+    // is nurgle-only) — listInducements filters via isEligible.
+    expect(screen.queryByText(/Médico de la Peste/)).toBeNull();
+    expect(screen.queryByText(/Asistente de Morgue/)).toBeNull();
+  });
+
+  it("does NOT render the purchase step for the rival coach", async () => {
+    stubLiveEventSource();
+    // u2 = away coach (the RICHER team) → session-derived viewerSide "away",
+    // but the budget belongs to home → no step.
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
+    stubMatch(readyWithBudget());
+    renderPlayed();
+    expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
+    expect(screen.queryByTestId("inducement-purchase")).toBeNull();
+  });
+
+  it("does NOT render the purchase step for a spectator (no side)", async () => {
+    stubLiveEventSource();
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "user-spectator" } } } as never);
+    stubMatch(readyWithBudget());
+    renderPlayed();
+    expect(await screen.findByText(/Listos para empezar/)).toBeTruthy();
+    expect(screen.queryByTestId("inducement-purchase")).toBeNull();
+  });
+
+  it("hides the step outside ready (live) and for an equal-TV zero budget", async () => {
+    stubLiveEventSource();
+    // Live status → no ready phase → no step even for the eligible coach.
+    const liveDetail = readyWithBudget();
+    liveDetail.live = { ...liveDetail.live!, status: "live", startedAt: 1000, events: [] } as LiveMatchView;
+    stubMatch(liveDetail);
+    renderPlayed();
+    expect(await screen.findAllByText(/Mitad 1 · Turno 1/)).toBeTruthy();
+    expect(screen.queryByTestId("inducement-purchase")).toBeNull();
+    vi.unstubAllGlobals();
+
+    // Equal TVs → { side: null, budget: 0 } → nobody may buy.
+    stubLiveEventSource();
+    stubMatch(readyWithBudget({ inducementBudget: { side: null, budget: 0 } }));
+    renderPlayed();
+    expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
+    expect(screen.queryByTestId("inducement-purchase")).toBeNull();
+  });
+
+  it("adds/removes cart lines with maxPerMatch and blocks an over-budget confirm", async () => {
+    stubLiveEventSource();
+    stubMatch(readyWithBudget()); // budget 300.000.
+    renderPlayed();
+
+    expect(await screen.findByTestId("inducement-purchase")).toBeTruthy();
+    const addSobornos = screen.getByRole("button", { name: /Añadir Sobornos/ });
+    // Confirm is disabled while the cart is empty.
+    expect(
+      (screen.getByRole("button", { name: /Confirmar incentivos/i }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    // Add 3× Sobornos (human base cost 100k → 300k = exactly the budget).
+    fireEvent.click(addSobornos);
+    fireEvent.click(addSobornos);
+    fireEvent.click(addSobornos);
+    expect(screen.getByText(/3× Sobornos/)).toBeTruthy();
+    // The max for Sobornos is 3 → the 4th add is a no-op (button disables).
+    expect((screen.getByRole("button", { name: /Añadir Sobornos/ }) as HTMLButtonElement).disabled).toBe(true);
+
+    // A 4th Sobornos would exceed the budget → confirm stays disabled at 3×
+    // (300k spent = exactly the budget, so it IS enabled at the boundary).
+    const confirmBtn = screen.getByRole("button", { name: /Confirmar incentivos/i }) as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(false);
+
+    // Now push over the budget: add Mago (150k) → 450k spent > 300k.
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Mago" }));
+    expect(screen.getByRole("alert")).toBeTruthy(); // over-budget warning
+    expect(
+      (screen.getByRole("button", { name: /Confirmar incentivos/i }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    // Remove the Mago → back within budget and confirm re-enables.
+    fireEvent.click(screen.getByRole("button", { name: "Quitar Mago" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: /Confirmar incentivos/i }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("fires the purchaseInducements command with the drafted items on confirm", async () => {
+    stubLiveEventSource();
+    stubMatch(readyWithBudget());
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? {
+              ok: true,
+              status: 200,
+              json: () =>
+                Promise.resolve({
+                  view: {
+                    seq: 3, status: "ready", half: 1, turnNumber: 1, activeSide: "home",
+                    homeConsented: true, awayConsented: true, viewerSide: "home",
+                    startedAt: null, elapsed: 0, homeTurnMs: 0, awayTurnMs: 0, paused: false,
+                    homeScore: 0, awayScore: 0, finishedAt: null, concedeProposedBy: null,
+                    mvpNominations: { home: null, away: null },
+                    resolutionState: {
+                      home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+                      away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+                    },
+                    inducements: { home: [{ id: "wizard", count: 1 }], away: [] },
+                  },
+                }),
+            }
+          : { ok: true, status: 200, json: () => Promise.resolve(readyWithBudget()) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderPlayed();
+
+    expect(await screen.findByTestId("inducement-purchase")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Mago" }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar incentivos/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const livePost = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/live"));
+    expect(livePost).toBeDefined();
+    const init = (livePost as unknown[])[1] as { body: string };
+    const body = JSON.parse(init.body) as { type: string; side: string; items: { id: string; count: number }[] };
+    expect(body.type).toBe("purchaseInducements");
+    expect(body.side).toBe("home");
+    expect(body.items).toEqual([{ id: "wizard", count: 1 }]);
+  });
+
+  it("shows the persisted cart with the replace action when one exists", async () => {
+    stubLiveEventSource();
+    stubMatch(
+      readyWithBudget({
+        inducements: { home: [{ id: "bribes", count: 2 }], away: [] },
+      }),
+    );
+    renderPlayed();
+
+    expect(await screen.findByTestId("inducement-purchase")).toBeTruthy();
+    // The current cart renders with the replace semantics label.
+    expect(screen.getByText(/2× Sobornos/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Reemplazar incentivos/i })).toBeTruthy();
+  });
+
+  it("surfaces a server rejection as an a11y alert", async () => {
+    stubLiveEventSource();
+    stubMatch(readyWithBudget());
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? { ok: false, status: 409, json: () => Promise.resolve({ error: "purchase only when ready" }) }
+          : { ok: true, status: 200, json: () => Promise.resolve(readyWithBudget()) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderPlayed();
+
+    expect(await screen.findByTestId("inducement-purchase")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Añadir Mago" }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar incentivos/i }));
+
+    // The rejection surfaces as an a11y alert (the step's own error line).
+    const panel = screen.getByTestId("inducement-purchase");
+    await waitFor(() =>
+      expect(within(panel).getByRole("alert").textContent).toMatch(/purchase only when ready/),
+    );
+  });
+});
+
 describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide)", () => {
   afterEach(() => vi.unstubAllGlobals());
 
