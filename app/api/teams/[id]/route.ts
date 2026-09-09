@@ -81,6 +81,8 @@ export async function GET(
 
   // Return strictly read-only fields; the relations must never leak. RAU-14:
   // the roster entries carry their Player `pe` so scouting shows experience.
+  // RAU-78: the nullable `emblem` travels with the row so authorized viewers
+  // render the custom shield (null → deterministic placeholder).
   const [attached] = await attachPeToTeams([{ id: team.id, roster: team.roster }]);
   return NextResponse.json({
     id: team.id,
@@ -89,6 +91,7 @@ export async function GET(
     roster: attached.roster,
     coaching: team.coaching,
     leagueId: team.leagueId,
+    emblem: team.emblem,
     treasury: team.treasury,
   });
 }
