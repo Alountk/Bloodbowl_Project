@@ -639,4 +639,54 @@ describe("resolveLiveMatch — the both-sides close (wizard path)", () => {
     const treasuryUpdates = teamUpdateMany.mock.calls.map((c) => c[0]);
     expect(treasuryUpdates.some((call) => call.data.coaching)).toBe(true);
   });
+
+  it("LM-30/S3: runWizardClose persists the SAME per-side inducement snapshot as the legacy resolve (parity)", async () => {
+    // Identical scenario to the legacy-path parity test: home +150k value bonus
+    // → away is the lower side (150k budget) with a 1× wizard cart.
+    const row = bothDoneRow();
+    (row as LiveMatch & { events: LiveEvent[] }).inducements = {
+      home: [],
+      away: [{ id: "wizard", count: 1 }],
+    };
+    const homeRow = teamRow("home");
+    homeRow.players = homeRow.players.map((p, i) => ({ ...p, valueBonus: i === 0 ? 150_000 : 0 }));
+    const awayRow = teamRow("away");
+    awayRow.coaching = coaching; // equal dedicatedFans (2) → pure +150k Δ
+    const { deps, teamFindMany, matchResultCreate } = makeDeps({ row });
+    teamFindMany.mockImplementation((args: { where: { id: { in: string[] } } }) =>
+      Promise.resolve(
+        [homeRow, awayRow].filter((t) => args.where.id.in.includes(t.id)),
+      ),
+    );
+
+    const resolved = await resolveLiveMatch(resolveInput, deps);
+    expect(resolved.status).toBe("played");
+
+    const scores = matchResultCreate.mock.calls[0][0].data.scores as {
+      home: { postFf: number };
+      away: { postFf: number; inducements?: { budget: number; cards: { name: string; count: number }[] } };
+    };
+    expect(scores.home).not.toHaveProperty("inducements");
+    // The wizard close writes the same `{budget, cards}` as the legacy resolve
+    // and the result POST for the same input (shared helper → parity).
+    expect(scores.away.inducements).toEqual({
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    });
+  });
+
+  it("LM-30/S3: wizard close with NO cart persists no inducements key", async () => {
+    const row = bothDoneRow();
+    (row as LiveMatch & { events: LiveEvent[] }).inducements = null;
+    const { deps, matchResultCreate } = makeDeps({ row });
+
+    await resolveLiveMatch(resolveInput, deps);
+
+    const scores = matchResultCreate.mock.calls[0][0].data.scores as {
+      home: Record<string, unknown>;
+      away: Record<string, unknown>;
+    };
+    expect(scores.home).not.toHaveProperty("inducements");
+    expect(scores.away).not.toHaveProperty("inducements");
+  });
 });
