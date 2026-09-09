@@ -66,6 +66,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Header del partido turn-first (Concepto B)** (SDD `match-header-turn-first`): la torre sticky navy se compacta — score por columna junto al emblema-ACRÓNIMO (fallback sin imagen: siglas del nombre, tope 3, nombre completo en tooltip hover desktop), panel central con pista única de turnos + 'Tu turno · reloj', mini-stats al feed | #172, #173, #174 |
 | **Cotejo solo en acciones de coach + fix cards móvil**: ack ✓/✗ únicamente en TD/Pase/Baja/Falta (ACKABLE_KINDS); card de turno sin label duplicado; layout móvil 430px | #165 |
 | **Ganancias al terminar el partido en vivo** (RAU-44): winnings deterministas por equipo persistidos en el cierre y expuestos en el resumen (sin refresco) | directos a main |
+| **Compra de incentivos pre-partido + chips en el feed** (RAU-5/#98): catálogo de 16 incentivos comunes BB2025 con costes reales (Sobornos 100k / 50k B&C, Chef 300k / 100k Halfling, Árbitro 120k / 80k B&C...), límites por partido y descuentos por regla especial de raza; el coach del equipo de menor TV compra en la fase `ready` (presupuesto = ΔTV) y el feed terminado muestra los incentivos POR EQUIPO con chips de cartas ("2× Sobornos") | #198, #199, #200, #201, #202, #203, #204, #205 |
 | **Resolución del partido para partidos en vivo finalizados** (RAU-48/49): modal guiado con MVP y FF con previsualización confirmada | directos a main |
 | **i18n ES/EN** (cero dependencias): núcleo con diccionarios, migración de shell, auth, wizard, detalle, ligas y match view; idioma por cuenta | directos a main + #120 |
 | **i18n SSR + default inglés**: el layout resuelve el locale con precedencia cuenta > sesión > cookie > `Accept-Language` > **inglés** (mata el hydration mismatch del landing anónimo); **landing localizado** (hero, features, how-it-works, footer — ya no hardcodeado) | #141, #142 |
@@ -153,7 +154,6 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 - Play-offs / bracket tras la liga regular.
 - Estadísticas por temporada (TDs, bajas, SPP acumulado) además de la carrera del perfil.
 - Sanciones de liga (suspensión por N partidos).
-- Incentivos por equipo (chips) — RAU-5.
 - Historial de equipos por usuario (temporadas anteriores) en My Profile.
 
 **Contenido y rejugabilidad**
