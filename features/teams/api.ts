@@ -133,3 +133,36 @@ export async function firePlayer(
   );
   return readJson<RosterTreasuryResult>(res);
 }
+
+/**
+ * Uploads a new team shield (`POST /api/teams/[teamId]/shield`, RAU-78). Sends
+ * the raw image blob as the `shield` multipart field — never crop coordinates:
+ * the server cover-crops it to a 512 WebP and persists the adapter-issued value
+ * on `Team.emblem`. Resolves with that value; a foreign/archived team resolves
+ * 404, an oversize or non-JPEG/PNG/WebP image 400, a missing session 401 —
+ * failures are thrown with the server's `error` verbatim.
+ */
+export async function uploadTeamShield(teamId: string, blob: Blob): Promise<{ emblem: string }> {
+  const form = new FormData();
+  form.append("shield", blob, "shield.webp");
+  const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}/shield`, {
+    method: "POST",
+    body: form,
+  });
+  return readJson<{ emblem: string }>(res);
+}
+
+/**
+ * Removes the team shield (`DELETE /api/teams/[teamId]/shield`, RAU-78). A
+ * removal with a stored shield resolves 200 `{ emblem: null }`; removing when no
+ * shield exists is a 204 no-op (no JSON body), which this client folds into the
+ * same `{ emblem: null }` result. A foreign/archived team resolves 404, a
+ * missing session 401.
+ */
+export async function removeTeamShield(teamId: string): Promise<{ emblem: null }> {
+  const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}/shield`, {
+    method: "DELETE",
+  });
+  if (res.status === 204) return { emblem: null };
+  return readJson<{ emblem: null }>(res);
+}
