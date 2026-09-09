@@ -54,6 +54,24 @@ describe("ApiTeamStore", () => {
     expect(result[0].treasury).toBe(0);
   });
 
+  it("maps the API emblem into the client team (team-shield RAU-78)", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          { ...makeApiTeam("t1", "A"), emblem: "/uploads/shields/t1-abc.webp" },
+        ]),
+      ),
+    );
+    const result = await store.list();
+    expect(result[0].emblem).toBe("/uploads/shields/t1-abc.webp");
+  });
+
+  it("defaults a missing API emblem to null (legacy responses render the placeholder)", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify([makeApiTeam("t1", "A")])));
+    const result = await store.list();
+    expect(result[0].emblem).toBeNull();
+  });
+
   it("save POSTs the team and returns the API-returned team", async () => {
     const team: Team = {
       id: "team-1",
