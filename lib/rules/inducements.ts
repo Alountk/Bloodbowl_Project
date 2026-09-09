@@ -15,6 +15,14 @@
  * `no-apothecary` race set (IND-5 verification debt — see NO_APOTHECARY_RACES).
  */
 
+import { getRaceById } from "@/features/teams/data/races";
+import { computeCoachingCost, computeRosterCostFromPlayers } from "@/features/teams/roster";
+import {
+  DEFAULT_COACHING,
+  isCoachingStaff,
+  type PlayerEntry,
+} from "@/features/teams/types";
+
 /** A special rule id from the BB2025 inducement vocabulary (IND-5).
  * `apothecary-eligible` is implicit ("eligible unless the race carries
  * no-apothecary" — see NO_APOTHECARY_RACES); `wizard-type` is the reserved
@@ -316,4 +324,65 @@ export function parsePersistedInducements(value: unknown): PersistedInducements 
 /** The default (empty) persisted shape — no cart on either side. */
 export function emptyPersistedInducements(): PersistedInducements {
   return { home: [], away: [] };
+}
+
+/** The Σ effective cost of a cart for a race (IND-3): every line's effective
+ * cost × count. Unknown/reserved (dynamic-cost) ids are skipped defensively —
+ * the catalog never offers them and the purchase command rejects them; this is
+ * a display-side total over purchasable entries only. */
+export function cartCost(items: readonly InducementCartItem[], raceId: string): number {
+  return items.reduce((total, item) => {
+    const entry = getInducement(item.id);
+    return total + (entry && !entry.dynamicCost ? effectiveCost(entry, raceId) * item.count : 0);
+  }, 0);
+}
+
+/**
+ * The raw team-row surface the server TV derivation reads (IND-2): the race,
+ * the roster JSON, the coaching JSON and the players' value bonuses. Shared by
+ * the purchase command (`lib/liveStore.ts`) and the fixture-GET budget
+ * derivation (`inducementBudgetOf`) so both derive the SAME team values.
+ */
+export interface InducementTeamRow {
+  raceId: string;
+  roster: unknown;
+  coaching: unknown;
+  players: readonly { valueBonus: number }[];
+}
+
+/**
+ * The |ΔTV| purchase-budget split for a pair of teams (IND-2): which side is
+ * the LOWER-TV side (the only one that may buy) and what budget it receives.
+ * Exposed on the ready-phase view so the purchase UI can gate/show the step
+ * without trusting client-supplied TV (the command re-derives and enforces it).
+ */
+export type InducementBudget =
+  | { side: "home"; budget: number }
+  | { side: "away"; budget: number }
+  | { side: null; budget: 0 };
+
+/**
+ * Server-derived eligible-side + budget for the ready-phase purchase step.
+ * Mirrors the store's `raceTvParts` + `computeTeamTv` + `budgetForSide`
+ * derivation over the PERSISTED team rows (never client input, IND-2): roster
+ * base cost via the race positionals, coaching-staff cost, and the tracked
+ * skill value bonuses. Unknown/missing race data yields zero parts.
+ */
+export function inducementBudgetOf(
+  home: InducementTeamRow,
+  away: InducementTeamRow,
+): InducementBudget {
+  const tvOf = (team: InducementTeamRow): number => {
+    const race = getRaceById(team.raceId);
+    const roster = Array.isArray(team.roster) ? (team.roster as unknown as PlayerEntry[]) : [];
+    const valueBonus = (team.players ?? []).reduce((total, p) => total + (p.valueBonus ?? 0), 0);
+    if (!race) return valueBonus;
+    const coaching = isCoachingStaff(team.coaching) ? team.coaching : DEFAULT_COACHING;
+    return (
+      computeRosterCostFromPlayers(race, roster) +
+      computeCoachingCost(race, coaching) +
+      valueBonus
+    );
+  };
+  return budgetForSide(tvOf(home), tvOf(away));
 }
