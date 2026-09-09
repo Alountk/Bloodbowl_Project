@@ -68,6 +68,21 @@ describe("TeamCard", () => {
     );
   });
 
+  it("renders the shield image instead of the placeholder when the team has an emblem (RAU-78)", async () => {
+    render(
+      <TeamCard
+        team={{ ...team, emblem: "/uploads/shields/team-1.webp" }}
+        leagueName={undefined}
+        onDeleteRequest={() => {}}
+      />,
+    );
+
+    const shield = screen.getByRole("img", { name: "Emblema de Reikland Reavers" }) as HTMLImageElement;
+    expect(shield.getAttribute("src")).toBe("/uploads/shields/team-1.webp");
+    expect(shield.getAttribute("data-testid")).toBe("shield-team-1");
+    expect(screen.queryByTestId("emblem-team-1")).toBeNull();
+  });
+
   it("wraps the card in a link to /teams/[id]", async () => {
     render(<TeamCard team={team} leagueName={undefined} onDeleteRequest={() => {}} />);
 
