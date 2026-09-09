@@ -85,6 +85,7 @@ import {
 import {
   budgetForSide,
   emptyPersistedInducements,
+  getInducement,
   parsePersistedInducements,
   validateCart,
   type InducementCartItem,
@@ -1208,6 +1209,84 @@ function raceTvParts(team: {
 
 /** A loaded LiveMatch row with its persisted events (resolve derivation input). */
 
+/**
+ * One side of the close-time inducement snapshot (`scores.*.inducements`,
+ * LM-30/S3): the side's |ΔTV| inducement budget (IND-2) plus the cart lines
+ * with their ES display NAMES resolved from the catalog at close time (IND-4 —
+ * the snapshot renders standalone, without the LiveMatch row or catalog id).
+ */
+export interface InducementSnapshotSide {
+  budget: number;
+  cards: { name: string; count: number }[];
+}
+
+/**
+ * The per-side snapshot produced by `buildInducementSnapshot`: a side is
+ * `null` when it carries NO cart (nothing purchased) or the persisted value is
+ * absent/malformed — the close builders then omit that side's `inducements`
+ * key entirely (legacy rows stay untouched).
+ */
+export interface InducementSnapshot {
+  home: InducementSnapshotSide | null;
+  away: InducementSnapshotSide | null;
+}
+
+/** The team-row surface the snapshot budget split needs (the loaders' select
+ * shape: raceId + roster + coaching + the players' value bonuses). */
+export interface InducementSnapshotTeam {
+  raceId: string;
+  roster: Prisma.JsonValue | null;
+  coaching: Prisma.JsonValue | null;
+  players: readonly { valueBonus: number }[];
+}
+
+/**
+ * The shared close-time inducement snapshot (LM-30/S3) — the ONE helper the
+ * three close builders (result POST, `resolveLiveMatch`, `runWizardClose`)
+ * call so they persist the IDENTICAL `scores.home|away.inducements` shape
+ * (parity by construction, IND-4/IND-2). Given the LiveMatch row's persisted
+ * per-side cart (id+count) and the two team rows it produces, for each side
+ * that actually carries a non-empty cart: `{ budget, cards: [{name, count}] }`
+ * where `budget` is that side's |ΔTV| entitlement (0 when the TVs are equal —
+ * defensive: a non-empty cart on a zero-budget side can only be foreign data,
+ * the purchase command rejects it) and `cards` resolve each line's ES
+ * `displayName` from the catalog at close time (unknown id → raw id fallback).
+ * A side with no cart — or an absent/empty/malformed persisted value — yields
+ * `null`, so the builders omit the key (legacy rows untouched).
+ */
+export function buildInducementSnapshot(
+  row: { inducements: Prisma.JsonValue | null },
+  homeTeam: InducementSnapshotTeam,
+  awayTeam: InducementSnapshotTeam,
+): InducementSnapshot {
+  const persisted = parsePersistedInducements(row.inducements);
+  if (!persisted) return { home: null, away: null };
+
+  // IND-2: the |ΔTV| budget belongs to the lower-TV side ONLY (equal → null
+  // side / 0). Mirrors the purchase command's derivation over the SAME team
+  // rows, so the snapshot budget equals the budget the purchase validated.
+  const homeParts = raceTvParts(homeTeam);
+  const awayParts = raceTvParts(awayTeam);
+  const split = budgetForSide(
+    computeTeamTv(homeParts.rosterCost, homeParts.coachingCost, homeParts.valueBonus),
+    computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus),
+  );
+
+  const sideOf = (side: "home" | "away"): InducementSnapshotSide | null => {
+    const items = persisted[side];
+    if (items.length === 0) return null; // no cart on this side → omit
+    return {
+      budget: split.side === side ? split.budget : 0,
+      cards: items.map((item) => ({
+        name: getInducement(item.id)?.displayName ?? item.id,
+        count: item.count,
+      })),
+    };
+  };
+
+  return { home: sideOf("home"), away: sideOf("away") };
+}
+
 /** The persisted event rows as the pure derivation's minimum surface. */
 function resolveEventsOf(rows: readonly unknown[]): ResolveEventLike[] {
   return rows
@@ -1704,6 +1783,11 @@ export async function resolveLiveMatch(
       computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus),
     );
 
+    // LM-30/S3: the close-time per-side inducement snapshot — resolved from the
+    // persisted cart at close so the report renders standalone (shared helper =
+    // parity with runWizardClose + the result POST).
+    const inducements = buildInducementSnapshot(row, homeTeam, awayTeam);
+
     // D4: the snapshot carries scores, post-FF, winnings, casualties and PE —
     // the same shape the result route persists (MV-2 renders it).
     const scoreboard = {
@@ -1715,6 +1799,7 @@ export async function resolveLiveMatch(
           .filter((c) => c.team === "home")
           .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
         pe: homeAwards,
+        ...(inducements.home ? { inducements: inducements.home } : {}),
       },
       away: {
         score: awayScore,
@@ -1724,6 +1809,7 @@ export async function resolveLiveMatch(
           .filter((c) => c.team === "away")
           .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
         pe: awayAwards,
+        ...(inducements.away ? { inducements: inducements.away } : {}),
       },
       winnerId,
       mvp: { home: homeMvp, away: awayMvp },
@@ -1974,6 +2060,10 @@ async function runWizardClose(
     computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus),
   );
 
+  // LM-30/S3: same close-time per-side snapshot as the legacy resolve + the
+  // result POST (shared helper → identical shape on every close path).
+  const inducements = buildInducementSnapshot(row, homeTeam, awayTeam);
+
   const scoreboard = {
     home: {
       score: homeScore,
@@ -1983,6 +2073,7 @@ async function runWizardClose(
         .filter((c) => c.team === "home")
         .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
       pe: homeAwards,
+      ...(inducements.home ? { inducements: inducements.home } : {}),
     },
     away: {
       score: awayScore,
@@ -1992,6 +2083,7 @@ async function runWizardClose(
         .filter((c) => c.team === "away")
         .map((c) => ({ team: c.team, rosterPlayerId: c.rosterPlayerId, outcome: { kind: c.band } })),
       pe: awayAwards,
+      ...(inducements.away ? { inducements: inducements.away } : {}),
     },
     winnerId,
     mvp: { home: homeMvp, away: awayMvp },

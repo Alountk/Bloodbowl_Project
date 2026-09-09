@@ -631,6 +631,46 @@ describe("resolveLiveMatch", () => {
     await resolveLiveMatch(resolveInput, deps);
     expect(leagueUpdate).not.toHaveBeenCalled();
   });
+
+  it("LM-30/S3: persists the per-side inducement snapshot into scores on the LEGACY resolve close (cart → {budget, cards})", async () => {
+    // Home carries a +150k value bonus → home is the HIGHER-TV side; away is
+    // the lower side with a 150k budget and has purchased 1× wizard (150k —
+    // exactly at the boundary, IND-3). Away gets the SAME coaching (incl.
+    // dedicatedFans) so the ONLY TV difference is home's +150k value bonus.
+    const homeRow = teamRow("home");
+    homeRow.players = homeRow.players.map((p, i) => ({ ...p, valueBonus: i === 0 ? 150_000 : 0 }));
+    const awayRow = teamRow("away");
+    awayRow.coaching = coaching; // equal dedicatedFans (2) → pure +150k Δ
+    const { deps, teamFindMany, matchResultCreate } = makeResolveDeps({
+      rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
+      row: finishedRow({
+        inducements: { home: [], away: [{ id: "wizard", count: 1 }] },
+      }),
+    });
+    teamFindMany.mockResolvedValue([homeRow, awayRow]);
+
+    await resolveLiveMatch(resolveInput, deps);
+
+    const scores = matchResultCreate.mock.calls[0][0].data.scores;
+    expect(scores.home).not.toHaveProperty("inducements");
+    expect(scores.away.inducements).toEqual({
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    });
+  });
+
+  it("LM-30/S3: a live row with NO cart persists no inducements key (legacy rows untouched)", async () => {
+    const { deps, matchResultCreate } = makeResolveDeps({
+      rolls: { d3: [1, 2], d6: [3, 4, 5, 6] },
+      row: finishedRow({ inducements: null }),
+    });
+
+    await resolveLiveMatch(resolveInput, deps);
+
+    const scores = matchResultCreate.mock.calls[0][0].data.scores;
+    expect(scores.home).not.toHaveProperty("inducements");
+    expect(scores.away).not.toHaveProperty("inducements");
+  });
 });
 
 describe("rollLiveMvp", () => {
