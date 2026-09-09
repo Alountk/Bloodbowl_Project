@@ -123,6 +123,27 @@ describe("MatchCard", () => {
     expect(screen.getByText("Orc")).toBeTruthy();
   });
 
+  it("renders team shield images when emblemById resolves them, placeholder otherwise (RAU-78)", () => {
+    renderCard({
+      emblemById: new Map<string, string | null>([
+        ["th", "/uploads/shields/th.webp"],
+        ["ta", null],
+      ]),
+    });
+    const home = screen.getByRole("img", { name: "Emblema de Reavers" }) as HTMLImageElement;
+    expect(home.getAttribute("src")).toBe("/uploads/shields/th.webp");
+    expect(home.getAttribute("data-testid")).toBe("shield-th");
+    // The side without a shield keeps the deterministic placeholder.
+    expect(screen.getByTestId("emblem-ta").textContent).toBe("O");
+  });
+
+  it("keeps both placeholder emblems when emblemById is absent", () => {
+    renderCard();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByTestId("emblem-th").textContent).toBe("R");
+    expect(screen.getByTestId("emblem-ta").textContent).toBe("O");
+  });
+
   it("shows a Programado badge with the scheduled date", () => {
     renderCard({
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),

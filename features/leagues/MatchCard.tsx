@@ -56,6 +56,14 @@ export interface MatchCardProps {
   teamNameById: Map<string, string>;
   /** Maps a member team id → resolved race display name (rulebook card line). */
   raceNameById?: Map<string, string>;
+  /**
+   * RAU-78: maps a member team id → its shield storage value (a `/uploads/
+   * shields/` URL, or null when the team has no shield). When present the card
+   * renders each side's shield image; when absent (or a side has no entry) the
+   * deterministic placeholder shows (TS-6). The live match header is NOT fed by
+   * this map — its MVT-8 acronym glyphs stay shield-free.
+   */
+  emblemById?: Map<string, string | null>;
   /** Session user id, used to decide whether the viewer is a match participant. */
   currentUserId: string;
   /** True when the session user owns the league (admin → forfeit/correct control). */
@@ -87,6 +95,7 @@ export function MatchCard({
   fixture,
   teamNameById,
   raceNameById,
+  emblemById,
   currentUserId,
   isLeagueOwner,
   leagueFinished = false,
@@ -103,6 +112,8 @@ export function MatchCard({
   const awayName = teamNameById.get(fixture.awayTeamId) ?? t("match.teamFallback");
   const homeRace = raceNameById?.get(fixture.homeTeamId) ?? "";
   const awayRace = raceNameById?.get(fixture.awayTeamId) ?? "";
+  const homeEmblem = emblemById?.get(fixture.homeTeamId) ?? null;
+  const awayEmblem = emblemById?.get(fixture.awayTeamId) ?? null;
   const score = formatMatchScore(fixture.homeScore, fixture.awayScore);
   const liveActive = fixture.live?.status === "live";
 
@@ -203,6 +214,7 @@ export function MatchCard({
             <TeamEmblem
               teamId={fixture.homeTeamId}
               name={homeName}
+              emblem={homeEmblem}
               className={winnerIsHome ? "ring-2 ring-navy ring-offset-2" : ""}
             />
           }
@@ -242,6 +254,7 @@ export function MatchCard({
             <TeamEmblem
               teamId={fixture.awayTeamId}
               name={awayName}
+              emblem={awayEmblem}
               className={winnerIsAway ? "ring-2 ring-navy ring-offset-2" : ""}
             />
           }
