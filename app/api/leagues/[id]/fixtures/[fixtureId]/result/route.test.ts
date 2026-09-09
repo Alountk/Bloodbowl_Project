@@ -725,6 +725,50 @@ describe("POST /api/.../[fixtureId]/result — MVP live-event write (LM-mvp, D20
     expect(res.status).toBe(409);
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
+
+  it("LM-30/S3: carries the lower-TV cart into scores.*.inducements when the fixture's liveMatch has one", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    // Home team carries a +150k value-bonus player (hmvp) → home is the
+    // HIGHER-TV side; away is the lower side (150k budget) and has purchased
+    // 1× wizard (at the boundary).
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      fixtureWithLiveMatch({
+        inducements: { home: [], away: [{ id: "wizard", count: 1 }] },
+      }),
+    );
+    stubFixedRolls();
+    prismaMock.liveEvent.aggregate.mockResolvedValue({ _max: { seq: 0 } });
+    // Reset the P2002 rejection the earlier double-submit test leaked.
+    prismaMock.liveEvent.createMany.mockResolvedValue({ count: 2 });
+
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    expect(scores.home).not.toHaveProperty("inducements");
+    expect(scores.away.inducements).toEqual({
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    });
+  });
+
+  it("LM-30/S3: a fixture whose liveMatch has NO cart persists no inducements key (legacy untouched)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      fixtureWithLiveMatch({ inducements: null }),
+    );
+    stubFixedRolls();
+    prismaMock.liveEvent.aggregate.mockResolvedValue({ _max: { seq: 0 } });
+    // Reset the P2002 rejection the earlier double-submit test leaked.
+    prismaMock.liveEvent.createMany.mockResolvedValue({ count: 2 });
+
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    expect(scores.home).not.toHaveProperty("inducements");
+    expect(scores.away).not.toHaveProperty("inducements");
+  });
 });
 
 describe("PUT /api/.../[fixtureId]/result (correction)", () => {
@@ -748,8 +792,8 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
           home: { score: 2, postFf: 4, casualties: 0, pe: [{ rosterPlayerId: "p1", pe: 3 + PE_MVP }] },
           away: { score: 1, postFf: 2, casualties: 0, pe: [{ rosterPlayerId: "p3", pe: 3 }] },
         } as {
-          home: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[] };
-          away: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[] };
+          home: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
+          away: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
           mvp?: { home: string; away: string };
         },
         pettyCash: 150_000,
@@ -971,6 +1015,55 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
     expect(updateArg.data.scores.home).not.toHaveProperty("winnings");
     expect(updateArg.data.scores.away).not.toHaveProperty("winnings");
+  });
+
+  it("LM-30/S3: PUT copies the prior per-side inducements forward — a correction never drops the chips", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    // The played report already carries the away side's inducement snapshot
+    // (persisted by the S3 close). The correction must copy it forward exactly
+    // as it does winnings (forward-only, omit-if-absent).
+    const played = playedFixture();
+    played.result.scores.away.inducements = {
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    };
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", validBody);
+    expect(res.status).toBe(200);
+
+    expect(prismaMock.matchResult.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          scores: expect.objectContaining({
+            away: expect.objectContaining({
+              inducements: { budget: 150_000, cards: [{ name: "Mago", count: 1 }] },
+            }),
+          }),
+        }),
+      }),
+    );
+    // The correction never invents inducements for a side that had none.
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    expect(updateArg.data.scores.home).not.toHaveProperty("inducements");
+  });
+
+  it("LM-30/S3: PUT leaves legacy rows WITHOUT per-side inducements unaffected (omit-if-absent)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    // A pre-S3 snapshot has no inducements keys at all; the correction must
+    // not invent them (single-row pettyCash fallback stays).
+    prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", validBody);
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    expect(updateArg.data.scores.home).not.toHaveProperty("inducements");
+    expect(updateArg.data.scores.away).not.toHaveProperty("inducements");
   });
 
   it("returns 409 when the league is finished — the champion is definitive (RAU-40)", async () => {

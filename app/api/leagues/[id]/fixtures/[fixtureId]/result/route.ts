@@ -24,6 +24,7 @@ import { rollD3, rollD6, rollD16 } from "@/lib/random";
 import { clearSuspensionUpdate, injurySuspensionUpdate } from "@/lib/playerInjuries";
 import { ensurePlayersForTeam } from "@/lib/players";
 import { isJourneymanId } from "@/lib/journeymen";
+import { buildInducementSnapshot } from "@/lib/liveStore";
 import { getRaceById } from "@/features/teams/data/races";
 import {
   computeRosterCostFromPlayers,
@@ -233,7 +234,17 @@ export async function POST(
       },
       // D20: when a live match exists, the result transaction appends the
       // home+away mvp events to its LiveEvent list and bumps the row seq.
-      liveMatch: { select: { id: true, half: true, turnNumber: true, finishedAt: true } },
+      // LM-30/S3: the select also carries the live row's persisted inducement
+      // cart so the close snapshot can resolve the per-side inducements.
+      liveMatch: {
+        select: {
+          id: true,
+          half: true,
+          turnNumber: true,
+          finishedAt: true,
+          inducements: true,
+        },
+      },
     },
   });
   if (!fixture || fixture.leagueId !== id) {
@@ -319,12 +330,35 @@ export async function POST(
   const awayTv = computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus);
   const pettyCash = computePettyCash(homeTv, awayTv);
 
+  // LM-30/S3: when the fixture has a LiveMatch whose coach purchased a cart,
+  // the close snapshot carries the per-side inducements — the SAME shared
+  // helper `resolveLiveMatch`/`runWizardClose` use, so all three close paths
+  // persist the identical `scores.*.inducements` shape (parity). A fixture
+  // without a live row (classic/legacy result) has no cart → no key.
+  const inducements = fixture.liveMatch
+    ? buildInducementSnapshot(fixture.liveMatch, fixture.homeTeam, fixture.awayTeam)
+    : { home: null, away: null };
+
   // D4: the snapshot carries each side's winnings (per the MatchScoreboard
   // contract) and the server-rolled MVP grantee ids so the match view renders
   // them from persisted data (MV-2).
   const scoreboard = {
-    home: { score: home.score, postFf: postHomeFf, winnings: homeWinnings, casualties: homeTeamVictims, pe: homeAwards },
-    away: { score: away.score, postFf: postAwayFf, winnings: awayWinnings, casualties: awayTeamVictims, pe: awayAwards },
+    home: {
+      score: home.score,
+      postFf: postHomeFf,
+      winnings: homeWinnings,
+      casualties: homeTeamVictims,
+      pe: homeAwards,
+      ...(inducements.home ? { inducements: inducements.home } : {}),
+    },
+    away: {
+      score: away.score,
+      postFf: postAwayFf,
+      winnings: awayWinnings,
+      casualties: awayTeamVictims,
+      pe: awayAwards,
+      ...(inducements.away ? { inducements: inducements.away } : {}),
+    },
     winnerId,
     mvp: { home: homeMvp, away: awayMvp },
   };
@@ -569,8 +603,8 @@ export async function PUT(
 
   // Correction re-runs the PE rules; the previous awards live in the snapshot.
   const prevScores = (fixture.result.scores ?? {}) as unknown as {
-    home: { score: number; postFf?: number; winnings?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
-    away: { score: number; postFf?: number; winnings?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[] };
+    home: { score: number; postFf?: number; winnings?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
+    away: { score: number; postFf?: number; winnings?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
     mvp?: { home: string; away: string };
   };
   const homeMvp = computeMvpGrantee(home.nominations, rollD6());
@@ -595,11 +629,15 @@ export async function PUT(
   // preserves the prior per-side winnings — a correction never clears what the
   // original report earned. Legacy rows without winnings stay untouched
   // (forward-only: the `winnings` key is omitted, not set to undefined).
+  // LM-30/S3: the per-side inducements copy forward EXACTLY like winnings — a
+  // correction must never drop the chips a prior report persisted; rows
+  // without them stay untouched (omit-if-absent).
   const scoreboard = {
     home: {
       score: home.score,
       postFf: prevScores?.home?.postFf ?? 0,
       ...(prevScores?.home?.winnings != null ? { winnings: prevScores.home.winnings } : {}),
+      ...(prevScores?.home?.inducements != null ? { inducements: prevScores.home.inducements } : {}),
       casualties: homeTeamVictims,
       pe: homeAwards,
     },
@@ -607,6 +645,7 @@ export async function PUT(
       score: away.score,
       postFf: prevScores?.away?.postFf ?? 0,
       ...(prevScores?.away?.winnings != null ? { winnings: prevScores.away.winnings } : {}),
+      ...(prevScores?.away?.inducements != null ? { inducements: prevScores.away.inducements } : {}),
       casualties: awayTeamVictims,
       pe: awayAwards,
     },
