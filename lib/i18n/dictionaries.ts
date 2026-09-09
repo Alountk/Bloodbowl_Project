@@ -223,6 +223,13 @@ const es: Dict = {
   "detail.tbl.reorderDown": "Bajar a {name}",
   "detail.tbl.reorderError": "No se pudo reordenar la plantilla",
 
+  // RAU-78 — owner shield control (team detail hero)
+  "detail.shield.upload": "Subir escudo",
+  "detail.shield.remove": "Quitar escudo",
+  "detail.shield.pending": "Actualizando…",
+  "detail.shield.success": "Escudo actualizado.",
+  "detail.shield.error": "No se pudo actualizar el escudo.",
+
   // Hire/fire roster management (RAU-11/RAU-10)
   "detail.hire": "Contratar",
   "detail.hireDialogAria": "Contratar jugadores",
@@ -1004,6 +1011,13 @@ const en: Dict = {
   "detail.tbl.reorderUp": "Move {name} up",
   "detail.tbl.reorderDown": "Move {name} down",
   "detail.tbl.reorderError": "Could not reorder the roster",
+
+  // RAU-78 — owner shield control (team detail hero)
+  "detail.shield.upload": "Upload shield",
+  "detail.shield.remove": "Remove shield",
+  "detail.shield.pending": "Updating…",
+  "detail.shield.success": "Shield updated.",
+  "detail.shield.error": "Could not update the shield.",
 
   // Hire/fire roster management (RAU-11/RAU-10)
   "detail.hire": "Hire",

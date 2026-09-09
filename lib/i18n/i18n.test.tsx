@@ -97,6 +97,20 @@ describe("t (dictionaries)", () => {
     expect(t("en", "teams.readyToImproveOne", { count: 1 })).toBe("1 player ready to improve");
     expect(t("en", "teams.readyToImproveMany", { count: 3 })).toBe("3 players ready to improve");
   });
+
+  it("resolves the team-shield owner control keys in es and en (RAU-78)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["detail.shield.upload", "Subir escudo", "Upload shield"],
+      ["detail.shield.remove", "Quitar escudo", "Remove shield"],
+      ["detail.shield.pending", "Actualizando…", "Updating…"],
+      ["detail.shield.success", "Escudo actualizado.", "Shield updated."],
+      ["detail.shield.error", "No se pudo actualizar el escudo.", "Could not update the shield."],
+    ];
+    for (const [key, esValue, enValue] of cases) {
+      expect(t("es", key), `es "${key}"`).toBe(esValue);
+      expect(t("en", key), `en "${key}"`).toBe(enValue);
+    }
+  });
 });
 
 describe("useI18n without a provider", () => {

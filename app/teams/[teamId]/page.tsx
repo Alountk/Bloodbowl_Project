@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { getRaceById } from "@/features/teams/data/races";
 import { TeamDetailView } from "@/features/teams/detail/TeamDetailView";
+import { ShieldControl } from "@/features/teams/detail/ShieldControl";
 import { useLeagueName } from "@/features/leagues/useLeagueName";
 import { getScoutedTeam, type ScoutedTeamDetail } from "@/features/leagues/api";
 import {
@@ -164,6 +165,20 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   // applies the new name to the local roster. A failed fetch or a rival team
   // renders the roster read-only (no controls).
   const isOwner = localTeam != null;
+
+  // RAU-78: the OWNER gets the shield control mounted below the hero emblem —
+  // "Subir escudo" posts the picked file straight to the shield route (the
+  // server cover-crops to a 512 WebP) and "Quitar escudo" appears once the team
+  // has an emblem. After either mutation the team is re-listed so the fresh
+  // `emblem` reaches the hero AND TeamCard. A rival view (scouted, not in the
+  // store) keeps the read-only shield — no control is ever built (TS-4).
+  const shieldControl = isOwner ? (
+    <ShieldControl
+      teamId={teamId}
+      hasEmblem={Boolean(teamForView.emblem)}
+      onShieldChanged={refreshTeams}
+    />
+  ) : undefined;
   const onImprove = isOwner
     ? async (rosterPlayerId: string, body: ImproveBody): Promise<Record<string, unknown>> => {
         const result = await improvePlayer(teamId, rosterPlayerId, body).catch(
@@ -251,6 +266,7 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
       onHire={onHire}
       onFire={onFire}
       reorderError={reorderError}
+      shieldControl={shieldControl}
     />
   );
 }

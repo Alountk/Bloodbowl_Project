@@ -6,6 +6,8 @@ import {
   renamePlayer,
   hirePlayer,
   firePlayer,
+  uploadTeamShield,
+  removeTeamShield,
 } from "./api";
 
 afterEach(() => {
@@ -192,5 +194,86 @@ describe("firePlayer", () => {
     await expect(firePlayer("t1", "pl1")).rejects.toThrow(
       "A team cannot drop below 11 players",
     );
+  });
+});
+
+describe("uploadTeamShield", () => {
+  it("POSTs the image blob as the `shield` multipart field and resolves the issued emblem", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ emblem: "/uploads/shields/t1-a.webp" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const blob = new File(["fake-webp"], "shield.png", { type: "image/png" });
+    const result = await uploadTeamShield("t1", blob);
+
+    expect(result).toEqual({ emblem: "/uploads/shields/t1-a.webp" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/teams/t1/shield");
+    expect(init.method).toBe("POST");
+    // Multipart bodies never set an explicit content-type: the browser derives
+    // the boundary. The blob must ride the `shield` field (TS-1) with a webp
+    // filename mirroring the avatar client.
+    expect(init.headers).toBeUndefined();
+    const body = init.body as FormData;
+    const file = body.get("shield") as File;
+    expect(file.name).toBe("shield.webp");
+    expect(file.type).toBe("image/png");
+  });
+
+  it("throws the server error when the upload is rejected (oversize/wrong-kind/foreign)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: () => Promise.resolve({ error: "Invalid image" }),
+      }),
+    );
+    await expect(uploadTeamShield("t1", new Blob(["x"]))).rejects.toThrow("Invalid image");
+  });
+});
+
+describe("removeTeamShield", () => {
+  it("DELETEs the shield route and resolves emblem null when the server returns 200", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ emblem: null }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await removeTeamShield("t1");
+
+    expect(result).toEqual({ emblem: null });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/teams/t1/shield",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("treats a 204 no-op removal (no shield stored) as success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 204, json: () => Promise.reject(new Error("no body")) }),
+    );
+
+    const result = await removeTeamShield("t1");
+
+    expect(result).toEqual({ emblem: null });
+  });
+
+  it("throws the server error on a denied removal (404 foreign team)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: "Not found" }),
+      }),
+    );
+    await expect(removeTeamShield("t1")).rejects.toThrow("Not found");
   });
 });
