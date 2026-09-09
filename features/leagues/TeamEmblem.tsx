@@ -1,9 +1,13 @@
 /**
- * The deterministic team emblem placeholder (teams have NO emblem field yet).
- * Each team gets a navy-or-red tinted circle whose color is derived from the
- * team id (stable across renders/pages) with the team's INITIAL (uppercase)
- * inside — a future change introduces real emblems. Rulebook-light: the tones
- * are navy/red tints only, no icon library (inline text glyph).
+ * The deterministic team emblem: when the team has a shield (`emblem` storage
+ * value, RAU-78) it renders that image inside the same circular size, otherwise
+ * it renders the deterministic tinted-initial placeholder. Each placeholder
+ * team gets a navy-or-red tinted circle whose color is derived from the team id
+ * (stable across renders/pages) with the team's INITIAL (uppercase) inside.
+ * Rulebook-light: the tones are navy/red tints only, no icon library (inline
+ * text glyph). The placeholder keeps `data-testid="emblem-<teamId>"`; a real
+ * shield renders an `<img>` under `data-testid="shield-<teamId>"` so tests can
+ * tell the two apart without touching placeholder assertions (TS-6).
  */
 
 const EMBLEM_TONES = ["#12225a", "#1f3a7a", "#d11938", "#a61b34"] as const;
@@ -65,6 +69,7 @@ export function TeamEmblem({
   name,
   size = "md",
   acronym = false,
+  emblem,
   className = "",
 }: {
   teamId: string;
@@ -72,6 +77,13 @@ export function TeamEmblem({
   size?: "xs" | "sm" | "md" | "lg" | "xl";
   /** MVT-8: match-header glyphs derive from teamAcronym(name) instead of the single initial. */
   acronym?: boolean;
+  /**
+   * RAU-78: the team's shield storage value. When present the badge renders the
+   * shield `<img>` (object-cover within the same circular size); when null or
+   * missing it falls back to the deterministic placeholder below (TS-6). The
+   * live match header (MVT-8) never passes it — its glyph stays acronym-only.
+   */
+  emblem?: string | null;
   className?: string;
 }) {
   const sizeCls =
@@ -84,6 +96,22 @@ export function TeamEmblem({
           : size === "sm"
             ? "h-8 w-8 text-base"
             : "h-10 w-10 text-xl";
+  if (emblem) {
+    return (
+      // RAU-78: shields are adapter-served immutable WebP (local or S3 origin),
+      // so no next/image optimization applies — same rationale as the avatar
+      // crop source in ProfilePanel.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={emblem}
+        alt=""
+        role="img"
+        aria-label={`Emblema de ${name}`}
+        data-testid={`shield-${teamId}`}
+        className={`inline-block select-none rounded-full object-cover ${sizeCls} ${className}`}
+      />
+    );
+  }
   const glyph = acronym ? teamAcronym(name) : teamInitial(name);
   return (
     <span
