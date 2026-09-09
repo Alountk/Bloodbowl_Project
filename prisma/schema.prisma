@@ -307,6 +307,11 @@ model Team {
   /// The league this team belongs to, if any. Set to null when expeled or the league is deleted.
   leagueId     String?
   league       League?   @relation("LeagueMembers", fields: [leagueId], references: [id], onDelete: SetNull)
+  /// RAU-78: adapter-issued value for the custom team shield (emblem) — a
+  /// `/uploads/shields/...` path or a public S3 URL, or null when the team has
+  /// no shield. Never a client-supplied URL. Null renders the deterministic
+  /// TeamEmblem placeholder.
+  emblem       String?
   /// Post-match winnings balance in gold coins (0 until the first result loads).
   treasury     Int       @default(0)
   /// RAU-56: the treasury base the team was created with (1M default, or the
