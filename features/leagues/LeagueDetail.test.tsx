@@ -528,6 +528,26 @@ describe("LeagueDetail — STARTED league", () => {
     expect(within(round1).getByRole("link", { name: /Orcs/ }).getAttribute("href")).toBe("/teams/t2");
   });
 
+  it("renders member-team shields on the match cards of a started league (RAU-78)", async () => {
+    makeFetch({
+      ...startedLeague,
+      teams: [
+        { ...startedLeague.teams[0], emblem: "/uploads/shields/t1.webp" },
+        startedLeague.teams[1],
+      ],
+    });
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    const round1 = screen.getByRole("region", { name: "Jornada 1" });
+    const shield = within(round1).getByRole("img", {
+      name: "Emblema de Reavers",
+    }) as HTMLImageElement;
+    expect(shield.getAttribute("src")).toBe("/uploads/shields/t1.webp");
+    // The shield-less team keeps its deterministic placeholder on the card.
+    expect(within(round1).getByTestId("emblem-t2").textContent).toBe("O");
+  });
+
   it("opens the participant negotiation panel when a participant clicks a card", async () => {
     makeFetch(startedLeague);
     render(<LeagueDetail leagueId="l3" />);

@@ -141,6 +141,12 @@ export interface LeagueMemberTeam {
   userId: string;
   roster: unknown;
   coaching: unknown;
+  /**
+   * RAU-78: the member team's shield storage value (full-row include carries it
+   * on the league detail). Optional for fixture/legacy compat; render surfaces
+   * fall back to the deterministic placeholder when null or missing (TS-6).
+   */
+  emblem?: string | null;
 }
 
 /** A league detail response: the league plus its member teams and fixtures. */
@@ -444,6 +450,12 @@ export interface ScoutedTeamDetail {
   coaching: unknown;
   leagueId: string | null;
   treasury: number;
+  /**
+   * RAU-78: the team's shield storage value (the scouting GET exposes it).
+   * Optional for fixture/legacy compat; render surfaces fall back to the
+   * deterministic placeholder when null or missing (TS-6).
+   */
+  emblem?: string | null;
 }
 
 /** A round (jornada) with its fixtures and whether every match is played. */

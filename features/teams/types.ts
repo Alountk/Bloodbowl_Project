@@ -134,6 +134,14 @@ export interface Team {
   /** The league this team belongs to, or null when unassigned. */
   leagueId: string | null;
   /**
+   * RAU-78: the team shield's adapter-issued storage value (a `/uploads/shields/`
+   * URL) rendered by `TeamEmblem` in place of the deterministic placeholder.
+   * Nullable when the team has no shield. Optional because legacy API responses
+   * and test fixtures omit it; the render surfaces fall back to the placeholder
+   * on null AND missing (TS-6).
+   */
+  emblem?: string | null;
+  /**
    * Post-match winnings balance in gold coins, accumulated on `Team.treasury`
    * (0 for a fresh team). The spendable balance is
    * `startingTreasury + treasury - rosterCost - coachingCost`.

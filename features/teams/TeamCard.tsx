@@ -80,7 +80,7 @@ export function TeamCard({
       <Link href={`/teams/${team.id}`} className="flex flex-col gap-2 p-4">
         <div className="flex items-center gap-3">
           <span aria-hidden="false">
-            <TeamEmblem teamId={team.id} name={team.name} size="md" />
+            <TeamEmblem teamId={team.id} name={team.name} size="md" emblem={team.emblem} />
           </span>
           <div className="flex-1">
             <h3 className="text-[15px] font-extrabold text-navy">{team.name}</h3>

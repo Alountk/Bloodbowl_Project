@@ -24,6 +24,8 @@ interface ApiTeam {
   coaching: unknown;
   treasury: number;
   startingTreasury?: number;
+  /** RAU-78: adapter-issued shield storage value; absent on legacy responses. */
+  emblem?: string | null;
 }
 
 /**
@@ -53,6 +55,9 @@ export class ApiTeamStore implements TeamStore {
       // RAU-56: the treasury base (ruleset-derived at creation); legacy
       // responses without the field default to the 1M rulebook base.
       startingTreasury: team.startingTreasury ?? 1_000_000,
+      // RAU-78: legacy responses without the field default to null so the
+      // deterministic TeamEmblem placeholder renders until a shield is set.
+      emblem: team.emblem ?? null,
     };
   }
 

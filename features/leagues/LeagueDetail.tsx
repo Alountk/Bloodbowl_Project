@@ -441,7 +441,7 @@ function Jornadas({
 }: {
   fixtures: FixtureDraft[];
   rounds: FixtureRound[];
-  teams: { id: string; name: string; raceId?: string; roster: unknown }[];
+  teams: { id: string; name: string; raceId?: string; roster: unknown; emblem?: string | null }[];
   currentUserId: string;
   isLeagueOwner: boolean;
   /** RAU-40: a finished league hides the result/forfeit/negotiation affordances
@@ -455,6 +455,12 @@ function Jornadas({
 }) {
   const teamNameById = useMemo(
     () => new Map(teams.map((team) => [team.id, team.name])),
+    [teams],
+  );
+  const emblemById = useMemo(
+    // RAU-78: the card resolves each side's shield from the member teams; a team
+    // without one maps to null so the deterministic placeholder renders (TS-6).
+    () => new Map(teams.map((team) => [team.id, team.emblem ?? null])),
     [teams],
   );
   const raceNameById = useMemo(
@@ -561,6 +567,7 @@ function Jornadas({
             fixture={fixture}
             teamNameById={teamNameById}
             raceNameById={raceNameById}
+            emblemById={emblemById}
             currentUserId={currentUserId}
             isLeagueOwner={isLeagueOwner}
             leagueFinished={leagueFinished}
