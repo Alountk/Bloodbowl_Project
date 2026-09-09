@@ -1,7 +1,7 @@
 import type { Team } from "@/features/teams/types";
 import type { CasualtyCause } from "@/lib/livePhase";
 import type { RulesetDto } from "@/lib/rulesets";
-import type { PersistedInducements } from "@/lib/rules/inducements";
+import type { InducementBudget, PersistedInducements } from "@/lib/rules/inducements";
 
 /** Lifecycle state of a league: joinable/open, locked after a season starts, or
  * definitively closed once every fixture is played (champion declared, RAU-40). */
@@ -570,6 +570,15 @@ export interface LiveMatchView extends LiveMatchViewState {
    * the BOTH-sides reveal — the casualties step shows them; null per side until
    * the reveal runs. Fixture-GET only (SSE/hub frames omit it). */
   mvpGrantees?: { home: string | null; away: string | null };
+  /** LM-30/S2: the persisted per-side inducement cart exposed on the fixture
+   * GET (S1 serialized it on the SSE snapshot + purchase POST; the fixture GET
+   * now carries it too so a reload renders an existing cart). */
+  inducements?: PersistedInducements | null;
+  /** IND-2/S2: the server-derived eligible side + |ΔTV| budget for the READY
+   * phase purchase step (lower-TV side only; `{side:null,budget:0}` when the
+   * TVs are equal). Fixture-GET only — the step gates on it without trusting
+   * client-computed TV (the purchase command re-derives and enforces it). */
+  inducementBudget?: InducementBudget | null;
 }
 
 /**

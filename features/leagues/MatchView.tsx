@@ -5,6 +5,17 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
 import { PE_MVP } from "@/lib/rules";
+import {
+  cartCost,
+  effectiveCost,
+  getInducement,
+  isEligible,
+  listInducements,
+  maxAllowed,
+  type InducementBudget,
+  type InducementCartItem,
+  type PersistedInducements,
+} from "@/lib/rules";
 import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
@@ -311,6 +322,195 @@ function ConcedeControls({
     >
       {t("match.concede.action")}
     </button>
+  );
+}
+
+/**
+ * IND-1..3/LM-30/S2: the ready-phase inducement purchase step. Rendered ONLY
+ * for the eligible coach (the lower-TV side — `budget.side === viewerSide`)
+ * while the match is `ready` and the |ΔTV| budget is positive. Shows the
+ * server-derived budget, the race-filtered common catalog (effective cost per
+ * the team's race, rule-gated entries excluded), add/remove against
+ * `maxPerMatch`, the Σ cost + remaining budget, and a confirm that fires the
+ * live `purchaseInducements` command (replace-cart semantics: the command's
+ * `{id,count}[]` REPLACES the persisted cart — an existing cart renders first
+ * so the coach sees what a replace would overwrite). Pending/error/success
+ * feedback is a11y-exposed via the disabled button + a `role=status` line.
+ * Rulebook-light tokens only; copy is Spanish (match/league convention).
+ */
+function InducementPurchasePanel({
+  budget,
+  raceId,
+  persisted,
+  submitting,
+  error,
+  onPurchase,
+}: {
+  /** The server-derived eligible side + |ΔTV| budget (IND-2, fixture GET). */
+  budget: Extract<InducementBudget, { side: "home" | "away" }>;
+  /** The eligible team's race — effective costs + eligibility resolve on it. */
+  raceId: string;
+  /** The persisted cart of the eligible side ([] = nothing bought yet). */
+  persisted: readonly InducementCartItem[];
+  submitting: boolean;
+  error: string | null;
+  /** Fires the replace-cart purchase command for the eligible side. */
+  onPurchase: (items: InducementCartItem[]) => void;
+}) {
+  const { t } = useI18n();
+  // The coach's UNSAVED selection. Starts empty each time the step renders
+  // (the persisted cart stays visible below until a confirm replaces it).
+  const [draft, setDraft] = useState<InducementCartItem[]>([]);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const offered = listInducements().filter((e) => isEligible(e, raceId));
+  const cost = cartCost(draft, raceId);
+  const overBudget = cost > budget.budget;
+  const canSubmit = !submitting && draft.length > 0 && !overBudget;
+
+  const add = (id: string) => {
+    setLocalError(null);
+    setDraft((current) => {
+      const entry = getInducement(id);
+      const line = current.find((c) => c.id === id);
+      const now = line?.count ?? 0;
+      if (entry == null) return current;
+      if (now >= maxAllowed(entry, raceId)) {
+        setLocalError(t("match.inducements.maxReached", { name: entry.displayName }));
+        return current;
+      }
+      if (line) return current.map((c) => (c.id === id ? { ...c, count: c.count + 1 } : c));
+      return [...current, { id, count: 1 }];
+    });
+  };
+  const remove = (id: string) => {
+    setLocalError(null);
+    setDraft((current) =>
+      current
+        .map((c) => (c.id === id ? { ...c, count: c.count - 1 } : c))
+        .filter((c) => c.count > 0),
+    );
+  };
+
+  const shownError = error ?? localError;
+
+  return (
+    <div data-testid="inducement-purchase" className="border-t border-red bg-background px-4 py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 className="text-sm font-black uppercase tracking-wide text-navy">
+          {t("match.inducements.title")}
+        </h3>
+        <p className="text-xs font-bold text-slate-600 tabular-nums">
+          {t("match.inducements.budget", { budget: budget.budget.toLocaleString("es-ES") })}
+        </p>
+      </div>
+
+      {offered.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-600">{t("match.inducements.noneForRace")}</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-1">
+          {offered.map((entry) => {
+            const line = draft.find((c) => c.id === entry.id);
+            const count = line?.count ?? 0;
+            const atMax = count >= maxAllowed(entry, raceId);
+            return (
+              <li key={entry.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="font-semibold text-slate-800">{entry.displayName}</span>
+                  <span className="ml-2 text-xs text-slate-500 tabular-nums">
+                    {effectiveCost(entry, raceId).toLocaleString("es-ES")} M.O.
+                  </span>
+                  {count > 0 ? (
+                    <span className="ml-2 text-xs font-bold text-red tabular-nums">
+                      {t("match.inducements.quantity", { count, name: entry.displayName })}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label={t("match.inducements.remove", { name: entry.displayName })}
+                    onClick={() => remove(entry.id)}
+                    disabled={count === 0 || submitting}
+                    className="flex h-6 w-6 items-center justify-center rounded border border-navy text-navy hover:bg-background disabled:opacity-30"
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t("match.inducements.add", { name: entry.displayName })}
+                    onClick={() => add(entry.id)}
+                    disabled={atMax || submitting}
+                    className="flex h-6 w-6 items-center justify-center rounded border border-navy bg-navy text-white hover:bg-navy-hover disabled:opacity-30"
+                  >
+                    +
+                  </button>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {persisted.length > 0 ? (
+        <p className="mt-2 border-t border-border pt-2 text-xs font-semibold text-slate-600">
+          {t("match.inducements.cart")}:{" "}
+          {persisted
+            .map((line) => {
+              const entry = getInducement(line.id);
+              return entry
+                ? t("match.inducements.quantity", { count: line.count, name: entry.displayName })
+                : line.id;
+            })
+            .join(" · ")}
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+        <div className="text-xs text-slate-600">
+          {draft.length === 0 ? (
+            <p>{t("match.inducements.empty")}</p>
+          ) : (
+            <p className="tabular-nums">
+              {t("match.inducements.spent", { budget: cost.toLocaleString("es-ES") })} ·{" "}
+              {overBudget ? (
+                <span role="alert" className="font-bold text-red">
+                  {t("match.inducements.overBudget")}
+                </span>
+              ) : (
+                t("match.inducements.remaining", {
+                  budget: (budget.budget - cost).toLocaleString("es-ES"),
+                })
+              )}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onPurchase(draft)}
+          disabled={!canSubmit}
+          aria-disabled={submitting ? true : undefined}
+          className="rounded-md bg-navy px-4 py-2 text-sm font-black uppercase tracking-wide text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {submitting
+            ? t("match.inducements.purchasing")
+            : persisted.length > 0
+              ? t("match.inducements.replace")
+              : t("match.inducements.confirm")}
+        </button>
+      </div>
+
+      {submitting ? (
+        <p role="status" className="mt-2 text-xs font-semibold text-slate-600">
+          {t("match.inducements.purchasing")}
+        </p>
+      ) : null}
+      {shownError ? (
+        <p role="alert" className="mt-2 text-xs font-semibold text-red">
+          {shownError}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -928,6 +1128,40 @@ function LiveActiveMatch({
       />
     ) : null;
 
+  // LM-30/S2: the ready-phase purchase step. The ELIGIBLE side + budget are
+  // FIXTURE-GET data (`live.inducementBudget` — the fixture GET derives it
+  // server-side over the persisted team rows, IND-2). The fixture GET is the
+  // stable source (the SSE `state` merge carries only live-transition frames,
+  // which omit the budget); the CURRENT persisted cart is read from the
+  // SSE-fresh state when present (`state.inducements` rides the purchase POST
+  // view + snapshot), falling back to the fixture GET's cart. The step renders
+  // for the lower-TV coach ONLY while `ready`; equal TVs →
+  // `{side:null,budget:0}` → no step. The server command re-derives and
+  // enforces this budget, so the UI gate is display-only (never a forgery
+  // surface).
+  const inducementBudget =
+    live != null && "inducementBudget" in live ? live.inducementBudget ?? null : null;
+  const purchaseStepEligible =
+    state.status === "ready" &&
+    state.viewerSide != null &&
+    inducementBudget != null &&
+    inducementBudget.side === state.viewerSide &&
+    inducementBudget.budget > 0;
+  const eligibleRaceId =
+    inducementBudget?.side === "away"
+      ? awayTeam.raceId
+      : inducementBudget?.side === "home"
+        ? homeTeam.raceId
+        : null;
+  const currentCart: PersistedInducements | null =
+    state.inducements ??
+    (live != null && "inducements" in live ? live.inducements ?? null : null) ??
+    null;
+  const eligibleSidePersisted: InducementCartItem[] =
+    currentCart != null && inducementBudget != null && inducementBudget.side != null
+      ? currentCart[inducementBudget.side] ?? []
+      : [];
+
   return (
     <div className="bg-panel border border-border">
       {/* Uniform sticky match header: renders in EVERY fixture state. */}
@@ -960,6 +1194,22 @@ function LiveActiveMatch({
             onBegin={() => void act({ type: "begin" })}
             submitting={submitting}
           />
+          {purchaseStepEligible && inducementBudget?.side != null && eligibleRaceId != null ? (
+            <InducementPurchasePanel
+              budget={inducementBudget as Extract<InducementBudget, { side: "home" | "away" }>}
+              raceId={eligibleRaceId}
+              persisted={eligibleSidePersisted}
+              submitting={submitting}
+              error={error}
+              onPurchase={(items) =>
+                void act({
+                  type: "purchaseInducements",
+                  side: inducementBudget.side as "home" | "away",
+                  items,
+                })
+              }
+            />
+          ) : null}
           {error ? (
             <p role="alert" className="px-4 pb-3 text-sm text-red-600">
               {error}
