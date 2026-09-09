@@ -177,16 +177,19 @@ test("ready-phase inducement purchase: lower-TV coach buys; rival never sees the
     await expect(admin.getByText(/Presupuesto disponible:/)).toBeVisible();
     await expect(rival.getByTestId("inducement-purchase")).toHaveCount(0);
 
-    // Buy one wizard (150k) through the REAL catalog controls.
-    await admin.getByRole("button", { name: "Añadir Mago" }).click();
-    await expect(admin.getByText(/150\.000/).first()).toBeVisible();
+    // Buy one Bloodweiser Keg (50k) through the REAL catalog controls. The
+    // admin's budget is the TV gap: 11 linemen (550k) vs the rival's 9 linemen
+    // + 2 blitzers (620k) → 70k, so a 50k inducement fits and the wizard
+    // (150k) would not.
+    await admin.getByRole("button", { name: "Añadir Barriles de Bloodweiser" }).click();
+    await expect(admin.getByText(/50\.000/).first()).toBeVisible();
     await admin.getByRole("button", { name: /Confirmar incentivos/i }).click();
 
     // The purchase persists (replace-cart) — reload shows the saved cart and
     // the "Reemplazar" affordance instead of a fresh confirm.
     await admin.reload();
     await expect(admin.getByTestId("inducement-purchase")).toBeVisible();
-    await expect(admin.getByText(/1× Mago/)).toBeVisible();
+    await expect(admin.getByText(/1× Barriles de Bloodweiser/)).toBeVisible();
     await expect(admin.getByRole("button", { name: /Reemplazar incentivos/i })).toBeVisible();
 
     // Begin still works after a purchase (LM-30: begin is untouched by a cart).

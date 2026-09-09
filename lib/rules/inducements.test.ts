@@ -264,7 +264,7 @@ describe("cartCost (S2 — display-side Σ of the ready purchase cart)", () => {
   const item = (id: string, count: number): InducementCartItem => ({ id, count });
 
   it("sums effective cost × count per line", () => {
-    // human: no overrides → bribes 100k + wizard 150k = 250k.
+    // human: no overrides → 2× bribes (100k each) + wizard 150k = 350k.
     expect(cartCost([item("bribes", 2), item("wizard", 1)], "human")).toBe(350_000);
   });
 
