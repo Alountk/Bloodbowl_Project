@@ -165,6 +165,24 @@ describe("GET /api/teams/[id] scouting", () => {
     const res = await getRequest("t1");
     expect(res.status).toBe(404);
   });
+
+  it("returns the stored emblem value when the team has a shield", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.team.findFirst.mockResolvedValue(
+      scoutedTeam({ emblem: "/uploads/shields/t1-abc.webp" }),
+    );
+    const res = await getRequest("t1");
+    expect(res.status).toBe(200);
+    expect((await res.json()).emblem).toBe("/uploads/shields/t1-abc.webp");
+  });
+
+  it("returns emblem null when the team has no shield", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.team.findFirst.mockResolvedValue(scoutedTeam({ emblem: null }));
+    const res = await getRequest("t1");
+    expect(res.status).toBe(200);
+    expect((await res.json()).emblem).toBeNull();
+  });
 });
 
 describe("DELETE /api/teams/[id]", () => {
