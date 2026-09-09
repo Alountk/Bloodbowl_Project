@@ -82,6 +82,14 @@ import {
   type PersistedJourneyman,
   type PersistedJourneymen,
 } from "./journeymen";
+import {
+  budgetForSide,
+  emptyPersistedInducements,
+  parsePersistedInducements,
+  validateCart,
+  type InducementCartItem,
+  type PersistedInducements,
+} from "./rules/inducements";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
 export interface StoreTx {
@@ -744,6 +752,116 @@ export async function beginLiveMatch(
     deps,
   );
   return { seq: nextSeq, view: toLiveViewState({ ...next, seq: nextSeq }, input.now) };
+}
+
+export interface PurchaseInducementsInput {
+  fixtureId: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  /** The purchasing side (the route enforces the caller owns that team, LM-2;
+   * this store fn enforces it is the LOWER-TV side, IND-2/LM-30). */
+  side: TeamSide;
+  /** Replace-cart lines for the side (IND-3): an EMPTY list clears it. */
+  items: InducementCartItem[];
+  now: number;
+}
+
+/**
+ * LM-30: the ready-phase inducement purchase. Server-owned budget derivation —
+ * the per-team TVs come from `raceTvParts` + `computeTeamTv` over the PERSISTED
+ * team rows (never client input, IND-2), the |ΔTV| budget belongs to the
+ * lower-TV side only (equal TVs → no eligible side), and the cart is validated
+ * against the purchaser's race + budget (IND-1/IND-3/IND-5) BEFORE the write.
+ *
+ * The cart is a column OUTSIDE the state machine (like `journeymen`): the write
+ * is a DEDICATED row-scoped `updateMany` under the optimistic `seq` guard that
+ * touches ONLY `inducements` + the seq bump — a concurrent `begin`/consent (seq
+ * winner) turns this command into 409, and no state-machine transition ever
+ * re-persists (or drops) the cart. After commit the new view (cart included) is
+ * fanned out to the hub; `begin` stays untouched and works with an empty cart
+ * or a zero budget.
+ *
+ * Guards: 404 no live row/team, 409 match not ready / not the lower-TV side /
+ * stale-seq, 400 invalid cart. No mutation happens for any rejection.
+ */
+export async function purchaseInducements(
+  input: PurchaseInducementsInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  if (row.status !== "ready") {
+    throw Object.assign(new Error("purchase only when ready"), { status: 409 });
+  }
+
+  // Replace-cart: only THIS side's list is replaced; the rival's persisted
+  // cart survives untouched. The empty default only stands if the tx throws
+  // before the assignment (every throw propagates, so it is never returned).
+  const current = parsePersistedInducements(row.inducements) ?? emptyPersistedInducements();
+  let nextCart: PersistedInducements = emptyPersistedInducements();
+  await deps.prisma.$transaction(async (tx) => {
+    const teams = await tx.team.findMany({
+      where: { id: { in: [input.homeTeamId, input.awayTeamId] } },
+      select: {
+        id: true,
+        raceId: true,
+        roster: true,
+        coaching: true,
+        treasury: true,
+        players: { select: { rosterPlayerId: true, valueBonus: true, alive: true, missNextMatch: true } },
+      },
+    });
+    const byTeamId = new Map(teams.map((team) => [team.id, team]));
+    const homeTeam = byTeamId.get(input.homeTeamId);
+    const awayTeam = byTeamId.get(input.awayTeamId);
+    if (!homeTeam || !awayTeam) throw Object.assign(new Error("not found"), { status: 404 });
+
+    // IND-2: the budget is the |ΔTV| of the two SERVER-derived team values and
+    // belongs to the lower-TV side ONLY (equal TVs → side null → nobody buys).
+    const homeParts = raceTvParts(homeTeam);
+    const awayParts = raceTvParts(awayTeam);
+    const budget = budgetForSide(
+      computeTeamTv(homeParts.rosterCost, homeParts.coachingCost, homeParts.valueBonus),
+      computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus),
+    );
+    if (budget.side !== input.side) {
+      throw Object.assign(new Error("only the lower-TV side may purchase"), { status: 409 });
+    }
+
+    const purchaser = input.side === "home" ? homeTeam : awayTeam;
+    const validated = validateCart({
+      items: input.items,
+      raceId: purchaser.raceId,
+      budget: budget.budget,
+    });
+    if (!validated.ok) {
+      throw Object.assign(new Error(validated.error), { status: 400 });
+    }
+
+    // Replace-cart: only THIS side's list is replaced; the rival's persisted
+    // cart survives untouched.
+    nextCart =
+      input.side === "home"
+        ? { home: validated.cart, away: current.away }
+        : { home: current.home, away: validated.cart };
+
+    const updated = await tx.liveMatch.updateMany({
+      where: { id: row.id, seq: row.seq },
+      data: {
+        inducements: nextCart as unknown as Prisma.InputJsonValue,
+        seq: row.seq + 1,
+      },
+    });
+    if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
+  });
+
+  const view = toLiveViewState(
+    { ...liveMatchRowToState(row), seq: row.seq + 1 },
+    input.now,
+    { viewerSide: input.side, inducements: nextCart },
+  );
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: row.seq + 1, view };
 }
 
 export interface ConcedeInput {

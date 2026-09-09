@@ -240,6 +240,13 @@ model LiveMatch {
   /// JSON, never re-typed; null until the match begins (or for a match with no
   /// LiveMatch row).
   journeymen        Json?
+  /// LM-30: the per-side inducement cart purchased while the match is `ready`
+  /// (`{ home: [{ id, count }], away: [{ id, count }] }` — each catalog id +
+  /// how many, replace-cart per side). The lower-TV side's budget is |ΔTV|;
+  /// equal TVs leave both arrays empty. Additive JSON, never re-typed; null
+  /// until a purchase persists it (or for a match with no LiveMatch row). The
+  /// finished-match snapshot carries its own `scores.*.inducements` copy.
+  inducements       Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   events        LiveEvent[]

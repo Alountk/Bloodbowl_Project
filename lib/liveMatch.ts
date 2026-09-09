@@ -21,6 +21,7 @@
 
 import { resolveInjury, permanentAttribute as permanentAttributeOf } from "./rules/injuries";
 import type { InjuryOutcomeKind, PermanentAttribute } from "./rules/injuries";
+import type { PersistedInducements } from "./rules/inducements";
 
 export type TeamSide = "home" | "away";
 export type LiveMatchStatus = "pending" | "ready" | "live" | "finished";
@@ -348,6 +349,12 @@ export interface LiveMatchViewState {
    * live UI can show it after a reload. OPTIONAL so old stubs/serializers still
    * compile; absent/null = no reason (auto-started turn). Never a feed row. */
   lastTurnReason?: TurnReason | null;
+  /** LM-30: the persisted per-side inducement cart (`{ home: [{ id, count }],
+   * away: [{ id, count }] }`), exposed on the live-state DTO so the purchase
+   * view and the SSE snapshot can render it. OPTIONAL: hub frames of
+   * transitions that do not touch the cart omit it; null = the row never
+   * persisted a cart. */
+  inducements?: PersistedInducements | null;
 }
 
 const TURNS_PER_HALF = 8;
@@ -948,7 +955,14 @@ export function deriveLiveClock(row: ClockRowFields, now: number): DerivedClock 
 export function toLiveViewState(
   state: LiveMatchState,
   now: number,
-  opts: { viewerSide?: "home" | "away" | null; startedAt?: number | null } = {},
+  opts: {
+    viewerSide?: "home" | "away" | null;
+    startedAt?: number | null;
+    /** LM-30: the persisted per-side inducement cart to expose on this view
+     * (purchase POST view + SSE snapshot). Undefined → the key is omitted;
+     * null → the row has no persisted cart. */
+    inducements?: PersistedInducements | null;
+  } = {},
 ): LiveMatchViewState {
   const clock = deriveLiveClock(state, now);
   return {
@@ -973,5 +987,8 @@ export function toLiveViewState(
     resolutionState: state.resolutionState,
     // LM-29: expose the current turn's reason so a reload keeps it visible.
     lastTurnReason: state.lastTurnReason,
+    // LM-30: the cart rides the view ONLY when the caller supplies it (absent
+    // on transitions that never touch the cart).
+    ...(opts.inducements !== undefined ? { inducements: opts.inducements } : {}),
   };
 }
