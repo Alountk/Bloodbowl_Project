@@ -461,6 +461,147 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.fixture.id).toBe("f1");
   });
 
+  it("LM-30/S2: fixture GET carries the persisted inducements cart and the server-derived ready budget", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } }); // home team owner → viewerSide "home"
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeScore: null,
+        awayScore: null,
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "ready",
+          half: 1,
+          turnNumber: 1,
+          activeSide: "home",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: null,
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 0,
+          awayScore: 0,
+          seq: 2,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: null,
+          inducements: { home: [{ id: "wizard", count: 1 }], away: [] },
+          events: [],
+        },
+        // Away is richer (5 dwarf blitzers at 100k = 500k roster + 120k
+        // rerolls) than home (5 human linemen at 50k = 250k) → ΔTV 370k → the
+        // HOME side is eligible with a 370k budget.
+        homeTeam: {
+          id: "t1",
+          name: "Reavers",
+          raceId: "human",
+          userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster: [
+            { id: "p1", name: "L1", positionalKey: "lineman" },
+            { id: "p2", name: "L2", positionalKey: "lineman" },
+            { id: "p3", name: "L3", positionalKey: "lineman" },
+            { id: "p4", name: "L4", positionalKey: "lineman" },
+            { id: "p5", name: "L5", positionalKey: "lineman" },
+          ],
+          coaching: { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
+          players: [
+            { rosterPlayerId: "p1", name: "L1", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p2", name: "L2", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p3", name: "L3", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p4", name: "L4", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p5", name: "L5", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+          ],
+        },
+        awayTeam: {
+          id: "t2",
+          name: "Dwarves",
+          raceId: "dwarf",
+          userId: "user-2",
+          user: { id: "user-2", name: "Coach B", email: "b@x", avatar: null },
+          roster: [
+            { id: "p6", name: "B1", positionalKey: "blitzer" },
+            { id: "p7", name: "B2", positionalKey: "blitzer" },
+            { id: "p8", name: "B3", positionalKey: "blitzer" },
+            { id: "p9", name: "B4", positionalKey: "blitzer" },
+            { id: "p10", name: "B5", positionalKey: "blitzer" },
+          ],
+          coaching: { rerolls: 2, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
+          players: [
+            { rosterPlayerId: "p6", name: "B1", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p7", name: "B2", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p8", name: "B3", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p9", name: "B4", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+            { rosterPlayerId: "p10", name: "B5", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 },
+          ],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.live).not.toBeNull();
+    // The persisted cart rides the fixture-GET live DTO (replace-cart reads it).
+    expect(body.live.inducements).toEqual({ home: [{ id: "wizard", count: 1 }], away: [] });
+    // IND-2: away (dwarf, 620k) is richer than home (human, 250k) → the HOME
+    // coach is the eligible side with a 370k budget.
+    expect(body.live.inducementBudget).toEqual({ side: "home", budget: 370_000 });
+  });
+
+  it("LM-30/S2: fixture GET exposes null inducements + a zero budget for a legacy READY row without a cart", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        homeScore: null,
+        awayScore: null,
+        liveMatch: {
+          id: "lm-1",
+          fixtureId: "f1",
+          status: "ready",
+          half: 1,
+          turnNumber: 1,
+          activeSide: "home",
+          homeConsented: true,
+          awayConsented: true,
+          startedAt: null,
+          homeTurnMs: 0,
+          awayTurnMs: 0,
+          homeScore: 0,
+          awayScore: 0,
+          seq: 2,
+          paused: false,
+          clockStartedAt: null,
+          finishedAt: null,
+          events: [],
+        },
+        homeTeam: {
+          id: "t1", name: "Reavers", raceId: "human", userId: "user-1",
+          user: { id: "user-1", name: "Coach A", email: "a@x", avatar: null },
+          roster: [{ id: "p1", name: "L1", positionalKey: "lineman" }],
+          coaching: { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
+          players: [{ rosterPlayerId: "p1", name: "L1", positionalKey: "lineman", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 }],
+        },
+        awayTeam: {
+          id: "t2", name: "Dwarves", raceId: "dwarf", userId: "user-2",
+          user: { id: "user-2", name: "Coach B", email: "b@x", avatar: null },
+          roster: [{ id: "p2", name: "B1", positionalKey: "blitzer" }],
+          coaching: { rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false },
+          players: [{ rosterPlayerId: "p2", name: "B1", positionalKey: "blitzer", pe: 0, skills: [], injuries: [], alive: true, valueBonus: 0 }],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    const body = await res.json();
+    expect(body.live.status).toBe("ready");
+    // A legacy row (no inducements column value) reads back as null; the budget
+    // still derives (home lineman 50k < dwarf blitzer 100k → HOME gets 50k).
+    expect(body.live.inducements).toBeNull();
+    expect(body.live.inducementBudget).toEqual({ side: "home", budget: 50_000 });
+  });
+
+
   it("returns 200 for an OPEN league to any authenticated user (defensive)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-x" } }); // no membership anywhere
     prismaMock.fixture.findFirst.mockResolvedValue(

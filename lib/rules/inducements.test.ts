@@ -3,8 +3,10 @@ import {
   COMMON_INDUCEMENTS,
   RACE_SPECIAL_RULES,
   budgetForSide,
+  cartCost,
   effectiveCost,
   getInducement,
+  inducementBudgetOf,
   isEligible,
   listInducements,
   maxAllowed,
@@ -191,11 +193,88 @@ describe("budgetForSide (IND-2)", () => {
   });
 });
 
+describe("inducementBudgetOf (S2 — server-derived eligible side for the ready purchase UI)", () => {
+  /** A team row shaped like the fixture GET / store load: raceId + roster
+   * (PlayerEntry[]) + coaching JSON + players (value bonuses). */
+  const rosterEntry = (id: string, positionalKey: string) => ({ id, name: id, positionalKey });
+  const teamRow = (
+    raceId: string,
+    positionalKeys: string[],
+    coaching: Record<string, unknown>,
+    valueBonus = 0,
+  ) => ({
+    raceId,
+    roster: positionalKeys.map((key, i) => rosterEntry(`p${i}`, key)),
+    coaching,
+    players: [{ valueBonus }],
+  });
+
+  it("returns the lower-TV side with the |ΔTV| budget when away has the cheaper roster", () => {
+    // Home: 4 dwarf blitzers (100k each) = 400k roster + 2×60k rerolls = 520k.
+    const home = teamRow("dwarf", ["blitzer", "blitzer", "blitzer", "blitzer"], {
+      rerolls: 2, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false,
+    });
+    // Away: 4 human linemen (50k each) = 200k roster + 0 staff → ΔTV 320k.
+    const away = teamRow("human", ["lineman", "lineman", "lineman", "lineman"], {
+      rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false,
+    });
+    expect(inducementBudgetOf(home, away)).toEqual({ side: "away", budget: 320_000 });
+  });
+
+  it("returns the home side when away is the richer team", () => {
+    const home = teamRow("human", ["lineman", "lineman", "lineman", "lineman"], {
+      rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false,
+    });
+    const away = teamRow("dwarf", ["blitzer", "blitzer", "blitzer", "blitzer"], {
+      rerolls: 2, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false,
+    });
+    expect(inducementBudgetOf(home, away)).toEqual({ side: "home", budget: 320_000 });
+  });
+
+  it("counts coaching staff and value bonuses into the team value", () => {
+    // Same roster both sides; away adds 3 assistant coaches (30k) + a +20k
+    // value bonus → away is richer by 50k → home receives the budget.
+    const base = ["lineman", "lineman", "lineman", "lineman"];
+    const home = teamRow("human", base, {
+      rerolls: 0, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false,
+    });
+    const away = teamRow("human", base, {
+      rerolls: 0, dedicatedFans: 1, assistantCoaches: 3, cheerleaders: 0, apothecary: false,
+    }, 20_000);
+    expect(inducementBudgetOf(home, away)).toEqual({ side: "home", budget: 50_000 });
+  });
+
+  it("returns a zero-budget null side when both teams are equal", () => {
+    const both = teamRow("human", ["lineman", "lineman", "lineman", "lineman"], {
+      rerolls: 1, dedicatedFans: 1, assistantCoaches: 0, cheerleaders: 0, apothecary: false,
+    });
+    expect(inducementBudgetOf(both, both)).toEqual({ side: null, budget: 0 });
+  });
+});
+
 describe("maxAllowed (IND-1 limits)", () => {
   it("respects the entry's maxPerMatch for any race", () => {
     expect(maxAllowed(getInducement("bribes")!, "goblin")).toBe(3);
     expect(maxAllowed(getInducement("temporary-cheerleaders")!, "human")).toBe(5);
     expect(maxAllowed(getInducement("team-mascot")!, "orc")).toBe(1);
+  });
+});
+
+describe("cartCost (S2 — display-side Σ of the ready purchase cart)", () => {
+  const item = (id: string, count: number): InducementCartItem => ({ id, count });
+
+  it("sums effective cost × count per line", () => {
+    // human: no overrides → bribes 100k + wizard 150k = 250k.
+    expect(cartCost([item("bribes", 2), item("wizard", 1)], "human")).toBe(350_000);
+  });
+
+  it("uses the race's EFFECTIVE cost (rule override) not the base cost", () => {
+    // goblin carries bribery-and-corruption → bribes cost 50k each, not 100k.
+    expect(cartCost([item("bribes", 2)], "goblin")).toBe(100_000);
+  });
+
+  it("skips unknown or reserved ids defensively", () => {
+    expect(cartCost([item("not-an-inducement", 1), item("mercenaries", 1)], "human")).toBe(0);
   });
 });
 

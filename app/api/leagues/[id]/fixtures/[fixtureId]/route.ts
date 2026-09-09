@@ -8,6 +8,7 @@ import {
   parsePersistedJourneymen,
   type ServedPlayer,
 } from "@/lib/journeymen";
+import { inducementBudgetOf, parsePersistedInducements } from "@/lib/rules/inducements";
 
 /** A persisted live event, serialized for the timeline (LM-10). */
 interface LiveEventDto {
@@ -90,6 +91,14 @@ export interface LiveDto {
    * the reason is state, never a feed row (LM-16 intact). Null for a legacy
    * match or an auto-started turn. */
   lastTurnReason?: "voluntary" | "turnover" | "injury" | null;
+  /** LM-30/S2: the persisted per-side inducement cart, exposed on the fixture
+   * GET so the ready-phase purchase step can render an existing cart on load
+   * (the SSE snapshot also carries it; hub frames of unrelated transitions
+   * omit it — the UI tolerates absence / re-reads the GET). */
+  inducements?: { home: { id: string; count: number }[]; away: { id: string; count: number }[] } | null;
+  /** IND-2/S2: the server-derived eligible side + |ΔTV| budget for the READY
+   * phase purchase step (lower-TV side only; null/0 when nobody may buy). */
+  inducementBudget?: { side: "home" | "away" | null; budget: number } | null;
   events: LiveEventDto[];
 }
 
@@ -127,6 +136,9 @@ interface LiveMatchRow {
   /** RAU-44: the persisted per-team live winnings JSON (`{ home, away }`),
    * null until the match reaches `finished`. */
   winnings: unknown;
+  /** LM-30: the persisted per-side inducement cart JSON (null = never bought).
+   * Column added in S1; absent on rows predating the additive migration. */
+  inducements?: unknown;
   events: {
     seq: number;
     kind: string;
@@ -197,6 +209,10 @@ export function serializeLive(
     // It is STATE, never feed — the filter below keeps turn/turnStart/requestTurn
     // out of the served event list regardless.
     lastTurnReason: row.lastTurnReason ?? null,
+    // LM-30/S2: expose the persisted per-side cart on the fixture GET (null for
+    // a legacy row that predates the column — the ready UI then shows the
+    // empty purchase step, never a stale cart).
+    inducements: parsePersistedInducements(row.inducements),
     // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
     // `requestTurn` stay in the DB (audit/replay) and are never shown here.
     events: row.events
@@ -317,6 +333,9 @@ export async function GET(
           userId: true,
           user: { select: { id: true, name: true, email: true, avatar: true } },
           roster: true,
+          // IND-2: the coaching JSON feeds the team-value derivation the
+          // ready-phase budget rides on (computeCoachingCost).
+          coaching: true,
           players: {
             // D21: deterministic RAW row order — the served players follow the
             // roster JSON via mergeRosterPlayers (RAU-9 dorsal = roster order);
@@ -344,6 +363,9 @@ export async function GET(
           userId: true,
           user: { select: { id: true, name: true, email: true, avatar: true } },
           roster: true,
+          // IND-2: the coaching JSON feeds the team-value derivation the
+          // ready-phase budget rides on (computeCoachingCost).
+          coaching: true,
           players: {
             orderBy: { id: "asc" }, // D21 fallback; served order = roster JSON (RAU-9)
             select: {
@@ -404,6 +426,17 @@ export async function GET(
   const live = fixture.liveMatch
     ? serializeLive(fixture.liveMatch as LiveMatchRow, side, Date.now())
     : null;
+  // LM-30/S2: the fixture GET serves the SERVER-derived ready-phase inducement
+  // budget (eligible side + |ΔTV|) computed over the persisted team rows — the
+  // same derivation the purchase command enforces (IND-2), so the ready UI can
+  // gate/show the step without trusting client-computed TV.
+  const homeBudgetTeam =
+    fixture.homeTeam && "raceId" in fixture.homeTeam ? (fixture.homeTeam as never) : null;
+  const awayBudgetTeam =
+    fixture.awayTeam && "raceId" in fixture.awayTeam ? (fixture.awayTeam as never) : null;
+  if (live && homeBudgetTeam && awayBudgetTeam) {
+    live.inducementBudget = inducementBudgetOf(homeBudgetTeam, awayBudgetTeam);
+  }
 
   // RAU-13: journeymen are served for every match the teams play (or will play)
   // LIVE — an unplayed fixture, or any fixture with a LiveMatch row. A played
