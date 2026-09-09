@@ -10,6 +10,7 @@ function renderWithSuspense(ui: React.ReactElement) {
   return <Suspense fallback={null}>{ui}</Suspense>;
 }
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
+import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
 import type { TeamStore } from "@/features/teams/store/TeamStore";
 import type { Team } from "@/features/teams/types";
 import { DEFAULT_COACHING } from "@/features/teams/types";
@@ -490,5 +491,198 @@ describe("Team detail page — rival scouting fallback", () => {
     });
     // No scouting fetch for an owned team present in the store.
     expect(fetchMock).not.toHaveBeenCalledWith("/api/teams/team-abc");
+  });
+});
+
+describe("Team detail page — owner shield control (RAU-78)", () => {
+  it("shows the Subir escudo control for the owner (no Quitar escudo without an emblem)", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams/team-abc/progression") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url.startsWith("/api/leagues/")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "L" }) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = new InMemoryTeamStore([fixtureTeam]);
+    await act(async () => {
+      render(
+        <AppProvider store={store}>
+          <HydrationProbe />
+          {renderWithSuspense(
+            <TeamDetailPage params={Promise.resolve({ teamId: "team-abc" })} />,
+          )}
+        </AppProvider>,
+      );
+    });
+
+    await waitForHydration();
+    // Owner: the shield placeholder renders with the upload action mounted.
+    await waitFor(() => {
+      expect(screen.getByTestId("emblem-team-abc")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Subir escudo" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "Quitar escudo" })).toBeNull();
+  });
+
+  it("shows Subir escudo AND Quitar escudo when the owner team already has a shield", async () => {
+    const shieldedTeam: Team = { ...fixtureTeam, id: "team-abc", emblem: "/uploads/shields/team-abc.webp" };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams/team-abc/progression") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url.startsWith("/api/leagues/")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "L" }) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = new InMemoryTeamStore([shieldedTeam]);
+    await act(async () => {
+      render(
+        <AppProvider store={store}>
+          <HydrationProbe />
+          {renderWithSuspense(
+            <TeamDetailPage params={Promise.resolve({ teamId: "team-abc" })} />,
+          )}
+        </AppProvider>,
+      );
+    });
+
+    await waitForHydration();
+    await waitFor(() => {
+      // The hero renders the stored shield and the owner can upload OR remove it.
+      expect(screen.getByTestId("shield-team-abc")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Subir escudo" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Quitar escudo" })).toBeTruthy();
+    });
+  });
+
+  it("owner upload fires the shield POST and re-lists the team so the hero shows the new shield", async () => {
+    const rawTeam = {
+      id: "team-up",
+      name: "Upload Team",
+      raceId: "human",
+      leagueId: null,
+      roster: [],
+      coaching: { ...DEFAULT_COACHING },
+      treasury: 0,
+      startingTreasury: 1_000_000,
+    };
+    // The GET /api/teams payload is swapped to the shield-carrying row after the
+    // shield POST, simulating what the server persisted.
+    let listPayload: unknown[] = [rawTeam];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/teams/team-up/shield" && init?.method === "POST") {
+        listPayload = [{ ...rawTeam, emblem: "/uploads/shields/team-up-a.webp" }];
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ emblem: "/uploads/shields/team-up-a.webp" }),
+        });
+      }
+      if (url === "/api/teams") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(listPayload) });
+      }
+      if (url === "/api/teams/team-up/progression") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url.startsWith("/api/leagues/")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "L" }) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      render(
+        <AppProvider store={new ApiTeamStore()}>
+          <HydrationProbe />
+          {renderWithSuspense(
+            <TeamDetailPage params={Promise.resolve({ teamId: "team-up" })} />,
+          )}
+        </AppProvider>,
+      );
+    });
+
+    await waitForHydration();
+    // Before the upload the team has no shield: placeholder + upload action only.
+    await waitFor(() => {
+      expect(screen.getByTestId("emblem-team-up")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Subir escudo" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "Quitar escudo" })).toBeNull();
+
+    // The owner picks a shield file → uploadTeamShield POSTs it as multipart.
+    const file = new File(["fake-png"], "shield.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("shield-file-input"), { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/teams/team-up/shield",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    // refreshTeams re-lists the owner team → the hero now renders the shield and
+    // the owner gains the Quitar escudo action (TS-1/TS-4 wiring).
+    await waitFor(() => {
+      expect(screen.getByTestId("shield-team-up")).toBeTruthy();
+      expect(screen.queryByTestId("emblem-team-up")).toBeNull();
+      expect(screen.getByRole("button", { name: "Quitar escudo" })).toBeTruthy();
+    });
+  });
+});
+
+describe("Team detail page — rival shield read-only (RAU-78)", () => {
+  it("shows a rival's shield but never the owner upload/remove controls (TS-4)", async () => {
+    const rivalWithShield = {
+      id: "rival-1",
+      name: "Rival Orcboyz",
+      raceId: "orc",
+      leagueId: "foreign-league",
+      coaching: { ...DEFAULT_COACHING },
+      roster: [],
+      emblem: "/uploads/shields/rival-1.webp",
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams/rival-1") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rivalWithShield) });
+      }
+      if (url.startsWith("/api/leagues/")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ name: "Foreign League" }) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const store = new InMemoryTeamStore([]);
+    await act(async () => {
+      render(
+        <AppProvider store={store}>
+          <HydrationProbe />
+          {renderWithSuspense(
+            <TeamDetailPage params={Promise.resolve({ teamId: "rival-1" })} />,
+          )}
+        </AppProvider>,
+      );
+    });
+
+    await waitForHydration();
+    await waitFor(() => {
+      // The scouted shield renders for the authorized viewer…
+      expect(screen.getByTestId("shield-rival-1")).toBeTruthy();
+    });
+    // …but the view stays read-only: no ShieldControl anywhere.
+    expect(screen.queryByTestId("shield-control")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Subir escudo" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quitar escudo" })).toBeNull();
   });
 });

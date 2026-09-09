@@ -13,7 +13,7 @@ import { HirePlayerDialog } from "./HirePlayerDialog";
 import { TeamEmblem } from "@/features/leagues/TeamEmblem";
 import type { ImproveBody } from "@/lib/progression";
 import { useI18n } from "@/lib/i18n";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 const COACHING_LABELS: Record<string, string> = {
   rerolls: "coaching.rerolls",
@@ -56,9 +56,15 @@ export interface TeamDetailViewProps {
   onHire?: (positionalKey: string) => Promise<Record<string, unknown>>;
   /** Fire-route client (RAU-10, rosterPlayerId); absent = no Despedir action. */
   onFire?: (rosterPlayerId: string) => Promise<Record<string, unknown>>;
+  /**
+   * RAU-78: the OWNER-only shield control (ShieldControl), mounted by the page
+   * inside the hero emblem column. Absent for a rival view — the shield image
+   * itself renders from `team.emblem`, the controls are never part of it.
+   */
+  shieldControl?: ReactNode;
 }
 
-export function TeamDetailView({ team, race, leagueName, progression, onImprove, onRename, onReorder, reorderError, onHire, onFire }: TeamDetailViewProps) {
+export function TeamDetailView({ team, race, leagueName, progression, onImprove, onRename, onReorder, reorderError, onHire, onFire, shieldControl }: TeamDetailViewProps) {
   const isDesktop = useIsDesktop();
   const { t } = useI18n();
   const [hiring, setHiring] = useState(false);
@@ -78,9 +84,13 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
       <header className="bg-navy px-4 py-[22px] text-white sm:px-6">
         <div className="flex items-center gap-4">
           {/* RAU-78: the team shield (or its deterministic placeholder) sits
-              beside the team name; the owner's ShieldControl arrives in a later
-              change and never alters this read surface. */}
-          <TeamEmblem teamId={team.id} name={team.name} size="lg" emblem={team.emblem} />
+              beside the team name. The OWNER's ShieldControl mounts below it in
+              the same column (page-passed slot); a rival view renders the
+              emblem with no control (TS-4). */}
+          <div className="flex shrink-0 flex-col items-center gap-2">
+            <TeamEmblem teamId={team.id} name={team.name} size="lg" emblem={team.emblem} />
+            {shieldControl}
+          </div>
           <div className="min-w-0">
             <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{team.name}</h1>
             <p className="mt-2 text-[13px] text-border-subtle">

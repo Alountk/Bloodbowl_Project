@@ -386,4 +386,46 @@ describe("TeamDetailView", () => {
       expect(screen.queryByTestId("improve-modal")).toBeNull();
     });
   });
+
+  describe("owner shield control slot (RAU-78)", () => {
+    it("renders the owner ShieldControl node inside the hero emblem column", () => {
+      render(
+        <TeamDetailView
+          team={baseTeam}
+          race={humanRace}
+          shieldControl={<span data-testid="owner-shield-control">Subir escudo</span>}
+        />,
+      );
+
+      // The slot mounts next to the hero emblem (same flex column as TeamEmblem).
+      const emblem = screen.getByTestId("emblem-t1");
+      const column = emblem.parentElement as HTMLElement;
+      expect(within(column).getByTestId("owner-shield-control")).toBeTruthy();
+    });
+
+    it("renders the shield image AND the owner control when an emblem team gets the slot", () => {
+      const shieldedTeam: Team = { ...baseTeam, emblem: "/uploads/shields/t1.webp" };
+      render(
+        <TeamDetailView
+          team={shieldedTeam}
+          race={humanRace}
+          shieldControl={<span data-testid="owner-shield-control">Quitar escudo</span>}
+        />,
+      );
+
+      expect(screen.getByTestId("shield-t1")).toBeTruthy();
+      expect(screen.getByTestId("owner-shield-control")).toBeTruthy();
+    });
+
+    it("renders no control content when the shieldControl slot is omitted (rival view)", () => {
+      render(<TeamDetailView team={baseTeam} race={humanRace} />);
+
+      // The hero renders the emblem only — the page never passes a control for
+      // a rival team, so nothing with the owner-control markers can appear.
+      expect(screen.getByTestId("emblem-t1")).toBeTruthy();
+      expect(screen.queryByTestId("owner-shield-control")).toBeNull();
+      expect(screen.queryByTestId("shield-control")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Subir escudo" })).toBeNull();
+    });
+  });
 });
