@@ -257,12 +257,13 @@ export function buildMatchSummary(detail: MatchDetail, fn: SummaryTFunc = esT): 
 
 /** One snapshot-derived feed row rendered above the finished-live cards
  * (MVT-4). These are NEVER new event kinds (MV-6/LM-16) and NEVER duplicate the
- * MVP rows, which stay event-derived. `reported` is always first. */
+ * MVP rows, which stay event-derived. `reported` is always first. `incentives`
+ * rows are PER-TEAM (LM-30/S4): each carries one side's budget + chip cards. */
 export type SummaryFeedRow =
   | { type: "reported"; date: string }
   | { type: "winnings"; home: number; away: number }
   | { type: "fans"; home: number; away: number }
-  | { type: "incentives"; team: "home"; value: number };
+  | { type: "incentives"; team: "home" | "away"; budget: number; cards: { name: string; count: number }[] };
 
 /**
  * Formats a persisted ISO datetime as the zero-padded Spanish `dd/MM/yyyy`
@@ -282,17 +283,19 @@ export function formatReportDate(iso: string): string {
 /**
  * Builds the snapshot summary rows for a finished live feed (MVT-4): "Partido
  * reportado" (green success, date = result.createdAt), "Ganancias" (per-team
- * winnings), "Fanáticos dedicados" (per-team post-Ff), and "Incentivos" (the
- * single fixed pettyCash, team-assigned card). Renders ONLY when the
- * `MatchResult` snapshot exists — a walkover (result == null) returns `[]`
- * (MV-2 guard) and never invents rows. The ONE live-only exception (RAU-44):
- * a live-finished match whose result is not loaded yet shows its persisted
- * live winnings as the "Ganancias" row immediately at end — no reported/fans/
- * incentives rows exist without the snapshot, and once the result is loaded
- * the snapshot rows take over (result non-null → liveWinnings ignored). Rows
- * with null snapshot data are omitted (omit-if-empty, never a placeholder).
- * MVP is deliberately excluded: it stays event-derived, so there is exactly
- * one MVP row per grantee.
+ * winnings), "Fanáticos dedicados" (per-team post-Ff), and "Incentivos"
+ * (LM-30/S4: PER-TEAM rows — the side that bought shows its snapshot budget +
+ * chip pills, the other side its zero budget with no chips; a LEGACY snapshot
+ * with only the top-level pettyCash keeps the single home-assigned no-chip
+ * row). Renders ONLY when the `MatchResult` snapshot exists — a walkover
+ * (result == null) returns `[]` (MV-2 guard) and never invents rows. The ONE
+ * live-only exception (RAU-44): a live-finished match whose result is not
+ * loaded yet shows its persisted live winnings as the "Ganancias" row
+ * immediately at end — no reported/fans/incentives rows exist without the
+ * snapshot, and once the result is loaded the snapshot rows take over (result
+ * non-null → liveWinnings ignored). Rows with null snapshot data are omitted
+ * (omit-if-empty, never a placeholder). MVP is deliberately excluded: it stays
+ * event-derived, so there is exactly one MVP row per grantee.
  */
 export function buildSummaryFeedRows(detail: MatchDetail): SummaryFeedRow[] {
   const result = detail.result;
@@ -323,11 +326,30 @@ export function buildSummaryFeedRows(detail: MatchDetail): SummaryFeedRow[] {
     rows.push({ type: "fans", home: homeFf, away: awayFf });
   }
 
-  // The snapshot stores ONE pettyCash (TV difference) with no per-team split.
-  // The row renders as a HOME-assigned card (mock precedent); the inducement
-  // chips are deferred to a follow-up slice (MVT-4 open question).
-  if (result.pettyCash != null) {
-    rows.push({ type: "incentives", team: "home", value: result.pettyCash });
+  // LM-30/S3/S4: a snapshot whose per-side inducements exist (scores.home|away
+  // .inducements from the close builders) renders PER-TEAM rows: each side with
+  // a snapshot carries its own budget + cards (chip pills). A side that has NO
+  // per-side entry — only the lower-TV side could buy — shows its (zero) budget
+  // with no chips (MVT-4). A LEGACY snapshot with no per-side inducements (only
+  // the old top-level pettyCash) keeps the single home-assigned row with no
+  // chips (backward-compatible fallback, never a crash).
+  const homeInducements = result.scores.home.inducements;
+  const awayInducements = result.scores.away.inducements;
+  if (homeInducements != null || awayInducements != null) {
+    rows.push({
+      type: "incentives",
+      team: "home",
+      budget: homeInducements?.budget ?? 0,
+      cards: homeInducements?.cards ?? [],
+    });
+    rows.push({
+      type: "incentives",
+      team: "away",
+      budget: awayInducements?.budget ?? 0,
+      cards: awayInducements?.cards ?? [],
+    });
+  } else if (result.pettyCash != null) {
+    rows.push({ type: "incentives", team: "home", budget: result.pettyCash, cards: [] });
   }
 
   return rows;

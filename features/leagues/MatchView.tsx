@@ -1387,10 +1387,26 @@ function SummaryFeedRowView({ row, names }: { row: SummaryFeedRow; names: { home
           <span aria-hidden="true" className="shrink-0 text-center">💰</span>
           <span className="flex-1">
             <span className="block font-bold uppercase tracking-wide text-slate-500">{t("match.incentives")}</span>
-            {/* The snapshot stores a single pettyCash — the inducement chips are
-                deferred (MVT-4 open question). */}
-            <span className="block text-[11px] font-semibold text-slate-600">{formatCoins(row.value)}</span>
+            {/* LM-30/S4: one row per side that carried a snapshot — the team's
+                name labels its own budget; chips are its cards (IND-4). The
+                legacy fallback row (single home pettyCash) has cards: [] → no
+                chips, exactly like the pre-S4 rendering. */}
+            <span className="block text-[11px] font-semibold text-slate-600 tabular-nums">
+              {names[row.team]}: {formatCoins(row.budget)}
+            </span>
           </span>
+          {row.cards.length > 0 ? (
+            <span className="flex flex-wrap items-center justify-end gap-1">
+              {row.cards.map((card) => (
+                <span
+                  key={card.name}
+                  className="rounded-full border border-border bg-panel px-2 py-0.5 text-[10px] font-bold text-navy"
+                >
+                  {t("match.inducements.quantity", { count: card.count, name: card.name })}
+                </span>
+              ))}
+            </span>
+          ) : null}
         </li>
       );
   }
@@ -1400,10 +1416,15 @@ function SummaryFeedRowView({ row, names }: { row: SummaryFeedRow; names: { home
 function SummaryFeedRows({ detail, names }: { detail: MatchDetail; names: { home: string; away: string } }) {
   const rows = buildSummaryFeedRows(detail);
   if (rows.length === 0) return null;
+  // MVT-4/LM-30 (S4): `incentives` now emits ONE row per side (up to two rows
+  // sharing `type: "incentives"`), so the key must be type + side — `row.type`
+  // alone would collide and duplicate-key-warn.
+  const rowKey = (row: SummaryFeedRow): string =>
+    row.type === "incentives" ? `incentives-${row.team}` : row.type;
   return (
     <ol className="flex flex-col gap-2 bg-[#eef1f6] p-1.5">
       {rows.map((row) => (
-        <SummaryFeedRowView key={row.type} row={row} names={names} />
+        <SummaryFeedRowView key={rowKey(row)} row={row} names={names} />
       ))}
     </ol>
   );

@@ -252,8 +252,54 @@ describe("buildSummaryFeedRows — snapshot feed rows (MVT-4)", () => {
     const fans = rows.find((r) => r.type === "fans") as { type: "fans"; home: number; away: number } | undefined;
     expect(fans).toEqual({ type: "fans", home: 4, away: 2 });
 
-    const incentives = rows.find((r) => r.type === "incentives") as { type: "incentives"; team: "home"; value: number } | undefined;
-    expect(incentives).toEqual({ type: "incentives", team: "home", value: 150_000 });
+    // Legacy snapshot: no per-side inducements → single home-assigned row whose
+    // budget is the top-level pettyCash and which carries NO chips (MVT-4).
+    const incentives = rows.filter((r) => r.type === "incentives");
+    expect(incentives).toEqual([
+      { type: "incentives", team: "home", budget: 150_000, cards: [] },
+    ]);
+  });
+
+  it("emits per-team incentives rows from the per-side snapshot: the side that bought shows budget + chips, the other side its zero budget with no chips (MVT-4)", () => {
+    const detail = playedDetail();
+    // Post-S3 snapshot: only the away (lower-TV) side carried a snapshot entry
+    // ({budget, cards}); the home side has no entry → renders its (zero) budget.
+    if (detail.result) {
+      detail.result.scores.away.inducements = {
+        budget: 150_000,
+        cards: [{ name: "Sobornos", count: 2 }],
+      };
+    }
+    const rows = buildSummaryFeedRows(detail);
+    const incentives = rows.filter((r) => r.type === "incentives");
+    expect(incentives).toEqual([
+      { type: "incentives", team: "home", budget: 0, cards: [] },
+      {
+        type: "incentives",
+        team: "away",
+        budget: 150_000,
+        cards: [{ name: "Sobornos", count: 2 }],
+      },
+    ]);
+  });
+
+  it("renders both per-team rows from their OWN snapshot entries when both sides carried one (no zero synthesis)", () => {
+    const detail = playedDetail();
+    if (detail.result) {
+      detail.result.scores.home.inducements = {
+        budget: 0,
+        cards: [{ name: "Mago", count: 1 }],
+      };
+      detail.result.scores.away.inducements = {
+        budget: 150_000,
+        cards: [{ name: "Sobornos", count: 2 }],
+      };
+    }
+    const incentives = buildSummaryFeedRows(detail).filter((r) => r.type === "incentives");
+    expect(incentives).toEqual([
+      { type: "incentives", team: "home", budget: 0, cards: [{ name: "Mago", count: 1 }] },
+      { type: "incentives", team: "away", budget: 150_000, cards: [{ name: "Sobornos", count: 2 }] },
+    ]);
   });
 
   it("returns an empty array for a walkover (no snapshot, MV-2 guard)", () => {
