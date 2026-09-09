@@ -1,6 +1,7 @@
 import type { Team } from "@/features/teams/types";
 import type { CasualtyCause } from "@/lib/livePhase";
 import type { RulesetDto } from "@/lib/rulesets";
+import type { PersistedInducements } from "@/lib/rules/inducements";
 
 /** Lifecycle state of a league: joinable/open, locked after a season starts, or
  * definitively closed once every fixture is played (champion declared, RAU-40). */
@@ -507,7 +508,11 @@ export interface MatchTeamDetail {
   players: MatchPlayer[];
 }
 
-/** The persisted `scores` snapshot shape (D4: winnings + mvp are new fields). */
+/** The persisted `scores` snapshot shape (D4: winnings + mvp are new fields).
+ * `home`/`away.inducements` (LM-30/S3): the per-side snapshot `{ budget,
+ * cards: [{ name, count }] }` copied from the live cart at close — OPTIONAL,
+ * absent on legacy rows and on rows closed before the close builders carried
+ * it (single-row `pettyCash` fallback). */
 export interface MatchScoreboard {
   home: {
     score: number;
@@ -515,6 +520,7 @@ export interface MatchScoreboard {
     winnings?: number | null;
     casualties: { team: "home" | "away"; rosterPlayerId: string; outcome: { kind: string } }[];
     pe: { rosterPlayerId: string; pe: number }[];
+    inducements?: { budget: number; cards: { name: string; count: number }[] } | null;
   };
   away: MatchScoreboard["home"];
   winnerId: string | null;
@@ -621,6 +627,10 @@ resolutionState: ResolutionState;
  * turn's reason stays visible after a reload. Absent/null = auto-started turn.
  * Never a feed row. */
 lastTurnReason?: "voluntary" | "turnover" | "injury" | null;
+/** LM-30: the persisted per-side inducement cart (`{ home: [{ id, count }],
+ * away: [{ id, count }] }`) — exposed on the purchase POST view + SSE snapshot.
+ * Optional: hub frames that do not touch the cart omit it; null = no cart. */
+inducements?: PersistedInducements | null;
 }
 
 /** The per-side resolution wizard step cursor (see the store's `ResolutionState`
@@ -710,6 +720,16 @@ export type LiveCommand =
       type: "nominateMvp";
       side: "home" | "away";
       players: string[];
+    }
+  | {
+      /** LM-30: the LOWER-TV side's coach buys inducements while the match is
+       * `ready` (budget = |ΔTV|, IND-2; equal TVs → nobody). Replace-cart list:
+       * the items REPLACE the side's persisted cart (an empty list clears it).
+       * 400 invalid cart, 404 no row, 409 not-ready / not-your-team /
+       * not-the-lower-side / seq. */
+      type: "purchaseInducements";
+      side: "home" | "away";
+      items: { id: string; count: number }[];
     }
   | {
       /** RAU-49: server-owned PREVIEW roll for the resolution modal — requires

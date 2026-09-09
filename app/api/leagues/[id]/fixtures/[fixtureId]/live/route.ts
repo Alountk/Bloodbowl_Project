@@ -29,7 +29,9 @@ import {
   resolutionMvpReveal,
   resolutionCasualtiesDone,
   resolutionJourneymenDone,
+  purchaseInducements,
 } from "@/lib/liveStore";
+import { parsePersistedInducements } from "@/lib/rules/inducements";
 import {
   applyEndTurn,
   applyTD,
@@ -478,7 +480,12 @@ export async function GET(
       const snapshotPayload = live
         ? {
             // D19: the snapshot carries the per-viewer side (computed server-side).
-            ...toLiveViewState(live, Date.now(), { viewerSide: viewerSide(ctx, userId) }),
+            ...toLiveViewState(live, Date.now(), {
+              viewerSide: viewerSide(ctx, userId),
+              // LM-30: the SSE snapshot exposes the persisted per-side cart
+              // (null when the row never persisted one).
+              inducements: parsePersistedInducements(liveRow?.inducements ?? null),
+            }),
             seq: snapshotSeq,
             events: toEventDtos(persistedEvents),
           }
@@ -601,9 +608,22 @@ type ControlCommand =
        * route enforces the caller owns that side's team). Persisted per-side on
        * `LiveMatch.mvpNominations`; replace-on-resubmit; both sides gate the
        * roll. 400 invalid/dead/suspended nominees, 409 not finished/resolved. */
+      // RAU-51: a coach submits THEIR OWN side's six MJP nominations (the
+      // route enforces the caller owns that side's team; dead/suspended players
+      // are rejected server-side, RAU-12). Replaces that side's persisted
+      // nominations; both sides gate the roll. */
       type: "nominateMvp";
       side: TeamSide;
       players: string[];
+    }
+  | {
+      /** LM-30: the LOWER-TV side's coach buys inducements while the match is
+       * `ready` (budget = |ΔTV|, IND-2; equal TVs → nobody). The route enforces
+       * the caller owns that side; the store enforces it IS the lower side and
+       * validates the replace-cart list against the catalog + budget (IND-3). */
+      type: "purchaseInducements";
+      side: TeamSide;
+      items: { id: string; count: number }[];
     }
   | {
       /** RAU-14: the post-resolve journeyman decision. `hire: true` pays the
@@ -720,6 +740,21 @@ function isControlCommand(value: unknown): value is ControlCommand {
         (c.side === "home" || c.side === "away") &&
         typeof c.journeymanId === "string" &&
         typeof c.hire === "boolean"
+      );
+    case "purchaseInducements":
+      // LM-30: the purchaser's side + a replace-cart line list ({id,count}[]).
+      // Content validation (catalog ids, limits, eligibility, budget) is the
+      // store's job (IND-3) — here only the SHAPE is checked.
+      return (
+        (c.side === "home" || c.side === "away") &&
+        Array.isArray(c.items) &&
+        c.items.every(
+          (line) =>
+            typeof line === "object" &&
+            line !== null &&
+            typeof (line as Record<string, unknown>).id === "string" &&
+            typeof (line as Record<string, unknown>).count === "number",
+        )
       );
     case "resolutionWinningsSeen":
     case "resolutionFanRoll":
@@ -913,6 +948,45 @@ export async function POST(
     } catch (error) {
       if ((error as { status?: number }).status === 409) {
         return Response.json({ error: "Sequence conflict" }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
+  // LM-30: the ready-phase inducement purchase — restricted to the caller's OWN
+  // side (like nominateMvp/hireJourneyman) and enforced by the store to be the
+  // LOWER-TV side with a server-derived |ΔTV| budget. A side-less admin and a
+  // coach targeting the rival side are rejected here (409); non-ready / lower-
+  // TV / seq / cart errors come from the store (409/400).
+  if (command.type === "purchaseInducements") {
+    const row = await prisma.liveMatch.findFirst({ where: { fixtureId } });
+    if (!row) return Response.json({ error: "Not found" }, { status: 404 });
+    if (side === null) {
+      return Response.json({ error: "No side to purchase" }, { status: 409 });
+    }
+    if (command.side !== side) {
+      return Response.json({ error: "Not your team" }, { status: 409 });
+    }
+    try {
+      const result = await purchaseInducements(
+        {
+          fixtureId,
+          homeTeamId: ctx.homeTeamId,
+          awayTeamId: ctx.awayTeamId,
+          side: command.side,
+          items: command.items,
+          now,
+        },
+        deps,
+      );
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 400) return Response.json({ error: "Invalid inducement cart" }, { status: 400 });
+      if (status === 404) return Response.json({ error: "Not found" }, { status: 404 });
+      if (status === 409) {
+        const message = error instanceof Error ? error.message : "Cannot purchase in current state";
+        return Response.json({ error: message }, { status: 409 });
       }
       throw error;
     }
