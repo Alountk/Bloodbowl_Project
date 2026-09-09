@@ -73,6 +73,27 @@ describe("TeamDetailView", () => {
     expect(screen.getAllByText("Tesorería: 1 000 000").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("renders the team shield in the hero when the team has an emblem (RAU-78)", () => {
+    const shieldedTeam: Team = { ...baseTeam, emblem: "/uploads/shields/t1.webp" };
+    render(<TeamDetailView team={shieldedTeam} race={humanRace} />);
+
+    const shield = screen.getByRole("img", {
+      name: "Emblema de Reikland Reavers",
+    }) as HTMLImageElement;
+    expect(shield.getAttribute("src")).toBe("/uploads/shields/t1.webp");
+    expect(shield.getAttribute("data-testid")).toBe("shield-t1");
+    // The placeholder is gone once the shield shows.
+    expect(screen.queryByTestId("emblem-t1")).toBeNull();
+  });
+
+  it("shows the deterministic placeholder emblem in the hero when emblem is absent (RAU-78)", () => {
+    render(<TeamDetailView team={baseTeam} race={humanRace} />);
+
+    const badge = screen.getByTestId("emblem-t1");
+    expect(badge.getAttribute("aria-label")).toBe("Emblema de Reikland Reavers");
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
   it("shows the resolved league name for an assigned team and never raw tokens", () => {
     const assignedTeam: Team = { ...baseTeam, leagueId: "league-1" };
     render(<TeamDetailView team={assignedTeam} race={humanRace} leagueName="North Reikland League" />);

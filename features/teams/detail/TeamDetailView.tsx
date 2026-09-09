@@ -10,6 +10,7 @@ import {
 import { formatRulebookCost } from "../format";
 import { TeamRosterTable } from "./TeamRosterTable";
 import { HirePlayerDialog } from "./HirePlayerDialog";
+import { TeamEmblem } from "@/features/leagues/TeamEmblem";
 import type { ImproveBody } from "@/lib/progression";
 import { useI18n } from "@/lib/i18n";
 import { useState } from "react";
@@ -75,17 +76,25 @@ export function TeamDetailView({ team, race, leagueName, progression, onImprove,
     <div className="mx-auto max-w-[860px] bg-panel text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)]">
       {/* Hero */}
       <header className="bg-navy px-4 py-[22px] text-white sm:px-6">
-        <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{team.name}</h1>
-        <p className="mt-2 text-[13px] text-border-subtle">
-          <b className="text-white">{race.name}</b> · {leagueLabel}
-        </p>
-        <div className="mt-3">
-          <span className="mr-[6px] inline-block rounded-full border border-white/25 bg-white/10 px-[10px] py-[3px] text-[12px] font-bold text-white">
-            {t("detail.equipoListo")}
-          </span>
-          <span className="inline-block rounded-full border-red bg-red px-[10px] py-[3px] text-[12px] font-bold text-white">
-            {t("detail.treasuryTag", { amount: formatRulebookCost(treasury) })}
-          </span>
+        <div className="flex items-center gap-4">
+          {/* RAU-78: the team shield (or its deterministic placeholder) sits
+              beside the team name; the owner's ShieldControl arrives in a later
+              change and never alters this read surface. */}
+          <TeamEmblem teamId={team.id} name={team.name} size="lg" emblem={team.emblem} />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black tracking-[0.02em] md:text-[28px]">{team.name}</h1>
+            <p className="mt-2 text-[13px] text-border-subtle">
+              <b className="text-white">{race.name}</b> · {leagueLabel}
+            </p>
+            <div className="mt-3">
+              <span className="mr-[6px] inline-block rounded-full border border-white/25 bg-white/10 px-[10px] py-[3px] text-[12px] font-bold text-white">
+                {t("detail.equipoListo")}
+              </span>
+              <span className="inline-block rounded-full border-red bg-red px-[10px] py-[3px] text-[12px] font-bold text-white">
+                {t("detail.treasuryTag", { amount: formatRulebookCost(treasury) })}
+              </span>
+            </div>
+          </div>
         </div>
       </header>
 
