@@ -1,6 +1,7 @@
 export * from "./pe";
 export * from "./improvements";
 export * from "./winnings";
+export * from "./inducements";
 export * from "./fanFactor";
 export * from "./skills";
 export * from "./injuries";
