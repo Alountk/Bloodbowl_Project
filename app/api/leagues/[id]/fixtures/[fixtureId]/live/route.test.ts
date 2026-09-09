@@ -27,6 +27,7 @@ const rollLiveMvpMock = vi.hoisted(() => vi.fn());
 const resolveLiveMatchMock = vi.hoisted(() => vi.fn());
 const nominateMvpLiveMatchMock = vi.hoisted(() => vi.fn());
 const hireJourneymanLiveMatchMock = vi.hoisted(() => vi.fn());
+const purchaseInducementsLiveMatchMock = vi.hoisted(() => vi.fn());
 const acknowledgeEventLiveMatchMock = vi.hoisted(() => vi.fn());
 const liveEventRowToDtoMock = vi.hoisted(() => vi.fn((row: Record<string, unknown>) => ({
   seq: row.seq,
@@ -78,6 +79,7 @@ vi.mock("@/lib/liveStore", () => ({
   resolveLiveMatch: resolveLiveMatchMock,
   nominateMvpLiveMatch: nominateMvpLiveMatchMock,
   hireJourneymanLiveMatch: hireJourneymanLiveMatchMock,
+  purchaseInducements: purchaseInducementsLiveMatchMock,
 }));
 
 import { GET, POST } from "./route";
@@ -2329,5 +2331,161 @@ describe("POST .../live — RAU-14 post-resolve journeyman hire (hireJourneyman)
     );
     expect(res.status).toBe(200);
     expect(hireJourneymanLiveMatchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("POST .../live — LM-30 ready-phase inducement purchase (purchaseInducements)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(5));
+  });
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("404s when no LiveMatch row exists", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(null);
+    const res = await POST(req({ type: "purchaseInducements", side: "away", items: [] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(404);
+    expect(purchaseInducementsLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("409s a side-less admin (owns neither team) with no store call", async () => {
+    authMock.mockResolvedValue(authSession("owner-1")); // league owner, no team
+    const res = await POST(req({ type: "purchaseInducements", side: "home", items: [] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(purchaseInducementsLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("409s a coach who targets the RIVAL side (own-side restriction)", async () => {
+    authMock.mockResolvedValue(authSession("coach-home"));
+    const res = await POST(req({ type: "purchaseInducements", side: "away", items: [{ id: "bribes", count: 1 }] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Not your team" });
+    expect(purchaseInducementsLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("wires a lower-TV purchase through the store with team ids + items (200 view)", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    purchaseInducementsLiveMatchMock.mockResolvedValue({
+      seq: 6,
+      view: { ...liveView({ seq: 6, status: "ready", startedAt: null, clockStartedAt: null }) },
+    });
+    const res = await POST(
+      req({ type: "purchaseInducements", side: "away", items: [{ id: "bribes", count: 2 }] }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(purchaseInducementsLiveMatchMock).toHaveBeenCalledWith(
+      {
+        fixtureId: "f-1",
+        homeTeamId: "home-t",
+        awayTeamId: "away-t",
+        side: "away",
+        items: [{ id: "bribes", count: 2 }],
+        now: expect.any(Number),
+      },
+      expect.anything(),
+    );
+    const body = await res.json();
+    expect(body.view.viewerSide).toBe("away");
+  });
+
+  it("maps a store 409 (not-ready / not-the-lower-side / seq) to 409 with the store message", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    purchaseInducementsLiveMatchMock.mockRejectedValue(
+      Object.assign(new Error("only the lower-TV side may purchase"), { status: 409 }),
+    );
+    const res = await POST(req({ type: "purchaseInducements", side: "away", items: [{ id: "bribes", count: 1 }] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "only the lower-TV side may purchase" });
+  });
+
+  it("maps a store 400 (invalid cart) to 400", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    purchaseInducementsLiveMatchMock.mockRejectedValue(
+      Object.assign(new Error("cart costs 200000 over the 150000 budget"), { status: 400 }),
+    );
+    const res = await POST(req({ type: "purchaseInducements", side: "away", items: [{ id: "extra-training", count: 2 }] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a malformed purchaseInducements body with 400 and never calls the store", async () => {
+    authMock.mockResolvedValue(authSession("coach-home"));
+    let res = await POST(req({ type: "purchaseInducements", side: "midfield", items: [] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    res = await POST(req({ type: "purchaseInducements", side: "home" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    res = await POST(req({ type: "purchaseInducements", side: "home", items: [{ id: 42, count: 1 }] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(purchaseInducementsLiveMatchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET .../live — LM-30 SSE snapshot exposes the persisted inducement cart", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+    authMock.mockResolvedValue(authSession("coach-home"));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveEvent.findMany.mockResolvedValue([]);
+    hubMock.subscribe.mockReturnValue(hubMock.unsubscribe);
+  });
+
+  it("carries the parsed per-side cart on the snapshot frame when the row has one", async () => {
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(5),
+      inducements: { home: [{ id: "bribes", count: 2 }], away: [] },
+    });
+    liveMatchRowToStateMock.mockReturnValue({ ...readyState, seq: 5, events: [] });
+
+    const res = await GET(
+      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(first).toContain("event: snapshot");
+    expect(first).toContain('"inducements":{"home":[{"id":"bribes","count":2}],"away":[]}');
+    await reader.cancel();
+  });
+
+  it("exposes a null cart on the snapshot when the row never persisted one", async () => {
+    prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(5));
+    liveMatchRowToStateMock.mockReturnValue({ ...readyState, seq: 5, events: [] });
+
+    const res = await GET(
+      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live"),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(first).toContain("event: snapshot");
+    expect(first).toContain('"inducements":null');
+    await reader.cancel();
   });
 });
