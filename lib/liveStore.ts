@@ -97,6 +97,9 @@ export interface StoreTx {
   liveMatch: {
     updateMany(args: Prisma.LiveMatchUpdateManyArgs): Promise<{ count: number }>;
     create?(args: Prisma.LiveMatchCreateArgs): Promise<LiveMatch>;
+    /** LMR-2: the reset deletes the fixture's LiveMatch row (its LiveEvents
+     * cascade by FK) in the SAME transaction that clears the fixture scores. */
+    deleteMany(args: Prisma.LiveMatchDeleteManyArgs): Promise<{ count: number }>;
     /** RAU-44: the finish-time idempotency read — already-persisted winnings
      * are never recomputed/overwritten (the row is terminal once finished). */
     findUnique(args: {
@@ -560,6 +563,36 @@ export async function applyTransition(
     deps,
   );
   return { seq: nextSeq, view: toLiveViewState({ ...input.next, seq: nextSeq }, input.now) };
+}
+
+export interface ResetLiveMatchInput {
+  fixtureId: string;
+  /** The LiveMatch row's current seq (read by the route before the reset) —
+   * the published frame advances it by one so it beats the snapshot cursor. */
+  prevSeq: number;
+}
+
+/**
+ * LMR-2: manually resets a stranded live match. In ONE transaction it deletes
+ * the fixture's LiveMatch row (its LiveEvents cascade by FK) and nulls the
+ * fixture's `winnerId`/`homeScore`/`awayScore`; `scheduledAt` is left untouched
+ * so the fixture derives `scheduled` (or `pending` when it never had a date) and
+ * becomes replayable. After commit it publishes a `live: null` frame with
+ * `seq = prevSeq + 1` so every connected subscriber drops the live view
+ * (the SSE route only forwards frames whose seq exceeds its snapshot cursor).
+ */
+export async function resetLiveMatch(
+  input: ResetLiveMatchInput,
+  deps: StoreDeps,
+): Promise<void> {
+  await deps.prisma.$transaction(async (tx) => {
+    await tx.liveMatch.deleteMany({ where: { fixtureId: input.fixtureId } });
+    await tx.fixture.update({
+      where: { id: input.fixtureId },
+      data: { winnerId: null, homeScore: null, awayScore: null },
+    });
+  });
+  deps.hub.publish(input.fixtureId, { seq: input.prevSeq + 1, live: null });
 }
 
 /**

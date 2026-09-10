@@ -11,6 +11,7 @@ import {
   declineConcedeLiveMatch,
   acceptConcedeLiveMatch,
   purchaseInducements,
+  resetLiveMatch,
   liveMatchRowToState,
   type StoreDeps,
 } from "./liveStore";
@@ -65,6 +66,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
   liveMatchCreate: ReturnType<typeof vi.fn>;
   liveMatchFindFirst: ReturnType<typeof vi.fn>;
   liveMatchFindUnique: ReturnType<typeof vi.fn>;
+  liveMatchDeleteMany: ReturnType<typeof vi.fn>;
   teamUpdateMany: ReturnType<typeof vi.fn>;
   teamFindMany: ReturnType<typeof vi.fn>;
   fixtureUpdate: ReturnType<typeof vi.fn>;
@@ -81,6 +83,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
   // RAU-44 default finish-tx reads: no persisted winnings yet, a known fixture,
   // and both teams' coaching JSON (dedicated fans 2 home / 1 away).
   const liveMatchFindUnique = vi.fn().mockResolvedValue({ winnings: null });
+  const liveMatchDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
   const teamUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const teamFindMany = vi.fn().mockResolvedValue([
     { id: "home-t", coaching: { rerolls: 2, dedicatedFans: 2, assistantCoaches: 0, cheerleaders: 0, apothecary: false } },
@@ -93,7 +96,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
   const leagueUpdate = vi.fn().mockResolvedValue({});
   const publish = vi.fn();
   const tx = {
-    liveMatch: { updateMany, create: liveMatchCreate, findUnique: liveMatchFindUnique },
+    liveMatch: { updateMany, create: liveMatchCreate, findUnique: liveMatchFindUnique, deleteMany: liveMatchDeleteMany },
     liveEvent: { create: liveEventCreate },
     team: { updateMany: teamUpdateMany, findMany: teamFindMany },
     fixture: { update: fixtureUpdate, findMany: fixtureFindMany, findUnique: fixtureFindUnique },
@@ -118,6 +121,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
     liveMatchCreate,
     liveMatchFindFirst,
     liveMatchFindUnique,
+    liveMatchDeleteMany,
     teamUpdateMany,
     teamFindMany,
     fixtureUpdate,
@@ -828,6 +832,32 @@ describe("applyTransition — optimistic seq + atomic event + publish-after-comm
 
     expect(liveEventCreate).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("resetLiveMatch — delete row + clear fixture, publish live:null (LMR-2)", () => {
+  it("deletes the fixture LiveMatch, nulls scores/winner, and publishes live:null at prevSeq+1", async () => {
+    const { deps, liveMatchDeleteMany, fixtureUpdate, publish } = makeDeps(1);
+
+    await resetLiveMatch({ fixtureId: "f-1", prevSeq: 5 }, deps);
+
+    expect(liveMatchDeleteMany).toHaveBeenCalledWith({ where: { fixtureId: "f-1" } });
+    expect(fixtureUpdate).toHaveBeenCalledWith({
+      where: { id: "f-1" },
+      data: { winnerId: null, homeScore: null, awayScore: null },
+    });
+    // The SSE frame drops the live view; seq must exceed the snapshot cursor.
+    expect(publish).toHaveBeenCalledWith("f-1", { seq: 6, live: null });
+  });
+
+  it("preserves scheduledAt (never writes it) and derives the seq from prevSeq", async () => {
+    const { deps, fixtureUpdate, publish } = makeDeps(1);
+
+    await resetLiveMatch({ fixtureId: "f-9", prevSeq: 0 }, deps);
+
+    const [updateArgs] = fixtureUpdate.mock.calls[0] as [{ data: Record<string, unknown> }];
+    expect(updateArgs.data).not.toHaveProperty("scheduledAt");
+    expect(publish).toHaveBeenCalledWith("f-9", { seq: 1, live: null });
   });
 });
 
