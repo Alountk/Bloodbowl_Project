@@ -33,6 +33,13 @@ describe("roles (RBAC) — RAU-52", () => {
     expect(canAny("developer", ["rulesets.dev", "users.manage"])).toBe(true);
     expect(canAny("developer", ["users.manage"])).toBe(true);
   });
+
+  it("grants live.manage to developer and admin only (LMR-1)", () => {
+    expect(can("developer", "live.manage")).toBe(true);
+    expect(can("admin", "live.manage")).toBe(true);
+    expect(can("user", "live.manage")).toBe(false);
+    expect(can(null, "live.manage")).toBe(false);
+  });
 });
 
 describe("plans (billing tiers) — RAU-52", () => {
