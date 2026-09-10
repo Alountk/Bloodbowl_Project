@@ -3,6 +3,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { rulesetToDto } from "@/lib/rulesets";
 import { attachPeToTeams } from "@/lib/players";
+import { liveHub } from "@/lib/liveHub";
+import { expireStaleLiveMatches } from "@/lib/liveStore";
 import type { FixtureLiveLite, FixtureStatus } from "@/features/leagues/api";
 
 /** The scheduling/result fields a fixture derives its lifecycle status from. */
@@ -156,6 +158,15 @@ export async function GET(
   const userId = session?.user?.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // LMR-3: lazily auto-close any abandoned (>8h) live match in this league
+  // BEFORE reading fixtures, so the served fixtures/rounds are never stale. The
+  // sweep is seq-guarded and idempotent; a failure must not break the read.
+  try {
+    await expireStaleLiveMatches({ prisma, hub: liveHub }, { leagueId: id });
+  } catch {
+    // Transparent maintenance — the next GET retries.
   }
 
   const league = await prisma.league.findFirst({

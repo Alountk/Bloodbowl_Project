@@ -8,6 +8,12 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+const liveStoreMock = vi.hoisted(() => ({
+  expireStaleLiveMatches: vi.fn().mockResolvedValue(0),
+}));
+
+vi.mock("@/lib/liveStore", () => liveStoreMock);
+
 import { GET } from "./route";
 
 /** Builds the raw Prisma fixture row the GET route fetches with its include. */
@@ -75,6 +81,19 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(res.status).toBe(401);
     expect(prismaMock.fixture.findFirst).not.toHaveBeenCalled();
     expect(await res.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("runs the lazy stale sweep scoped to the fixture before serving (LMR-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+
+    const res = await callGet();
+
+    expect(res.status).toBe(200);
+    expect(liveStoreMock.expireStaleLiveMatches).toHaveBeenCalledWith(
+      { prisma: prismaMock, hub: expect.anything() },
+      { fixtureId: "f1" },
+    );
   });
 
   it("returns 404 for a fixture that does not exist (no existence leak)", async () => {

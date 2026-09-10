@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { liveHub } from "@/lib/liveHub";
+import { expireStaleLiveMatches } from "@/lib/liveStore";
 import { deriveLiveClock, isDisplayEvent, parseMvpGrantees, parseMvpNominations, parseResolutionState } from "@/lib/liveMatch";
 import { enrichFixture } from "@/app/api/leagues/[id]/route";
 import {
@@ -310,6 +312,15 @@ export async function GET(
   const userId = session?.user?.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // LMR-3: lazily auto-close an abandoned (>8h) live match on this fixture
+  // BEFORE reading it, so the served `live` DTO is never stale. The sweep is
+  // seq-guarded and idempotent; a failure must not break the read.
+  try {
+    await expireStaleLiveMatches({ prisma, hub: liveHub }, { fixtureId });
+  } catch {
+    // Transparent maintenance — the next GET retries.
   }
 
   const fixture = await prisma.fixture.findFirst({

@@ -26,6 +26,12 @@ vi.mock("@/lib/prisma", () => ({
   prisma: prismaMock,
 }));
 
+const liveStoreMock = vi.hoisted(() => ({
+  expireStaleLiveMatches: vi.fn().mockResolvedValue(0),
+}));
+
+vi.mock("@/lib/liveStore", () => liveStoreMock);
+
 import { GET, DELETE, deriveFixtureStatus, enrichFixture, buildRoundsWithCompletion } from "./route";
 
 describe("GET /api/leagues/[id]", () => {
@@ -41,6 +47,34 @@ describe("GET /api/leagues/[id]", () => {
     } as never);
     expect(res.status).toBe(401);
     expect(prismaMock.league.findFirst).not.toHaveBeenCalled();
+    // The lazy sweep runs only for an authenticated reader.
+    expect(liveStoreMock.expireStaleLiveMatches).not.toHaveBeenCalled();
+  });
+
+  it("runs the lazy stale sweep scoped to the league before serving (LMR-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-2" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Public League",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: "Owner Coach" },
+      status: "open",
+      seasonLength: null,
+      startedAt: null,
+      createdAt: new Date().toISOString(),
+      teams: [],
+    });
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+
+    expect(res.status).toBe(200);
+    expect(liveStoreMock.expireStaleLiveMatches).toHaveBeenCalledWith(
+      { prisma: prismaMock, hub: expect.anything() },
+      { leagueId: "l1" },
+    );
   });
 
   it("returns an OPEN league to any authenticated user, with teams, ownerName and empty fixtures", async () => {

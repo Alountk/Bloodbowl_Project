@@ -194,7 +194,7 @@ function makeResolveDeps(opts: {
   const deps: StoreDeps = {
     prisma: {
       $transaction,
-      liveMatch: { create: vi.fn(), findFirst: liveMatchFindFirst },
+      liveMatch: { create: vi.fn(), findFirst: liveMatchFindFirst, findMany: vi.fn().mockResolvedValue([]) },
       liveEvent: { findFirst: vi.fn(), update: vi.fn() },
     },
     hub: { publish },
