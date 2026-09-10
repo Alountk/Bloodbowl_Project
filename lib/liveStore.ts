@@ -191,6 +191,9 @@ export interface StoreTx {
         homeScore: true;
         awayScore: true;
         winnerId: true;
+        /** LMR-3: the stale sweep closes the season with `maybeCloseLeague`,
+         * which needs the fixture's league — both callers pass the FULL select. */
+        leagueId: true;
       };
     }): Promise<{
       homeTeamId: string;
@@ -198,6 +201,7 @@ export interface StoreTx {
       homeScore: number | null;
       awayScore: number | null;
       winnerId: string | null;
+      leagueId: string;
     } | null>;
   };
   /** RAU-40: the league row surface `maybeCloseLeague` needs (status read +
@@ -221,6 +225,9 @@ export interface StoreDeps {
     liveMatch: {
       create(args: Prisma.LiveMatchCreateArgs): Promise<LiveMatch>;
       findFirst(args: Prisma.LiveMatchFindFirstArgs): Promise<LiveMatch | null>;
+      /** LMR-3: the lazy stale sweep reads the in-scope `live` rows older than
+       * 8h (scope by league or fixture) before freezing each one. */
+      findMany(args: Prisma.LiveMatchFindManyArgs): Promise<LiveMatch[]>;
     };
     liveEvent: {
       findFirst(args: Prisma.LiveEventFindFirstArgs): Promise<LiveEvent | null>;
@@ -373,7 +380,7 @@ async function computeLiveWinnings(
 
   const fixture = await tx.fixture.findUnique({
     where: { id: input.fixtureId },
-    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true, leagueId: true },
   });
   if (!fixture) return null;
 
@@ -593,6 +600,114 @@ export async function resetLiveMatch(
     });
   });
   deps.hub.publish(input.fixtureId, { seq: input.prevSeq + 1, live: null });
+}
+
+/** LMR-3: a `live` match with no activity for 8 wall-clock hours is abandoned. */
+export const STALE_LIVE_MS = 8 * 60 * 60 * 1000;
+
+/** LMR-3: the scope of a stale sweep — a whole league or a single fixture. */
+export interface StaleLiveMatchScope {
+  leagueId?: string;
+  fixtureId?: string;
+}
+
+/**
+ * LMR-3: pure predicate — ONLY a `live` row whose `startedAt` is more than 8
+ * wall-clock hours in the past is stale. `pending`/`ready`/`finished` rows and a
+ * live row that never started (`startedAt` null) are never swept.
+ */
+export function isStaleLiveMatch(
+  row: { status: string; startedAt: Date | string | null },
+  now: number,
+): boolean {
+  if (row.status !== "live" || row.startedAt == null) return false;
+  const startedAt =
+    row.startedAt instanceof Date ? row.startedAt.getTime() : new Date(row.startedAt).getTime();
+  return now - startedAt > STALE_LIVE_MS;
+}
+
+/**
+ * LMR-3/LMR-4/LMR-5: the lazy auto-close sweep, called at the top of the league
+ * and fixture GETs (no cron). It finds the in-scope `live` rows older than 8h
+ * and, PER ROW, runs a minimal seq-guarded transaction (deliberately NOT
+ * `persistAndPublish`): it re-checks the row is still `live`, flips it to
+ * `finished` (`finishedAt = now`, `seq + 1`), freezes the LIVE scoreboard onto
+ * the fixture, derives the winner from that scoreboard (`null` on a draw) and
+ * runs `maybeCloseLeague` in the same transaction. A 0-row update is a lost
+ * optimistic race → that row no-ops. After a committed close it publishes a
+ * `finished` view frame whose `seq` (`prevSeq + 1`) beats a subscriber's
+ * snapshot cursor (LM-31).
+ *
+ * Option A (documented in the proposal): auto-close awards NO PE, winnings,
+ * MVP, or fan factor and writes no `endMatch` event — progression stays
+ * deferred to the resolution wizard. Idempotent: a re-run finds no `live` row
+ * (already `finished`) and does nothing. Returns the number of rows closed.
+ */
+export async function expireStaleLiveMatches(
+  deps: StoreDeps,
+  scope: StaleLiveMatchScope = {},
+  now: number = Date.now(),
+): Promise<number> {
+  const stale = await deps.prisma.liveMatch.findMany({
+    where: {
+      status: "live",
+      startedAt: { lt: new Date(now - STALE_LIVE_MS) },
+      ...(scope.fixtureId ? { fixtureId: scope.fixtureId } : {}),
+      ...(scope.leagueId ? { fixture: { leagueId: scope.leagueId } } : {}),
+    },
+  });
+
+  let closed = 0;
+  for (const row of stale) {
+    // Defensive: the query already filters, but never freeze a non-stale row.
+    if (!isStaleLiveMatch({ status: row.status, startedAt: row.startedAt }, now)) continue;
+
+    const committed = await deps.prisma.$transaction(async (tx) => {
+      const fixture = await tx.fixture.findUnique({
+        where: { id: row.fixtureId },
+        select: {
+          homeTeamId: true,
+          awayTeamId: true,
+          homeScore: true,
+          awayScore: true,
+          winnerId: true,
+          leagueId: true,
+        },
+      });
+      if (!fixture) return false;
+
+      // Optimistic seq + status guard: a concurrent sweep that already closed
+      // the row leaves 0 rows here → this reader loses the race and no-ops.
+      const updated = await tx.liveMatch.updateMany({
+        where: { id: row.id, seq: row.seq, status: "live" },
+        data: { status: "finished", finishedAt: new Date(now), seq: row.seq + 1 },
+      });
+      if (updated.count === 0) return false;
+
+      // Freeze the LIVE scoreboard (Option A: no PE/winnings/MVP/FF) and derive
+      // the winner from it — a draw records no winner.
+      const winnerId = deriveWinnerId(row.homeScore, row.awayScore, fixture.homeTeamId, fixture.awayTeamId);
+      await tx.fixture.update({
+        where: { id: row.fixtureId },
+        data: { winnerId, homeScore: row.homeScore, awayScore: row.awayScore },
+      });
+      // The frozen scoreboard counts for the league; this may close the season.
+      await maybeCloseLeague(tx, fixture.leagueId);
+      return true;
+    });
+
+    if (!committed) continue;
+    closed++;
+    const finished: LiveMatchState = {
+      ...liveMatchRowToState(row),
+      status: "finished",
+      finishedAt: now,
+      seq: row.seq + 1,
+      events: [],
+    };
+    deps.hub.publish(row.fixtureId, { ...toLiveViewState(finished, now), events: [] });
+  }
+  return closed;
 }
 
 /**
@@ -1563,7 +1678,7 @@ export async function rollLiveMvp(
     // fixture scores win over the live state's own scoreboard).
     const fixture = await tx.fixture.findUnique({
       where: { id: input.fixtureId },
-      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true, leagueId: true },
     });
     const homeScore = fixture?.homeScore ?? row.homeScore;
     const awayScore = fixture?.awayScore ?? row.awayScore;
@@ -1710,7 +1825,7 @@ export async function resolveLiveMatch(
 
     const fixture = await tx.fixture.findUnique({
       where: { id: input.fixtureId },
-      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true, leagueId: true },
     });
     if (!fixture) throw Object.assign(new Error("not found"), { status: 404 });
 
@@ -2006,7 +2121,7 @@ async function runWizardClose(
 
   const fixture = await tx.fixture.findUnique({
     where: { id: input.fixtureId },
-    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+    select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true, leagueId: true },
   });
   if (!fixture) throw Object.assign(new Error("not found"), { status: 404 });
 
@@ -2607,7 +2722,7 @@ export async function resolutionFanRoll(
 
     const fixture = await tx.fixture.findUnique({
       where: { id: input.fixtureId },
-      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, winnerId: true, leagueId: true },
     });
     const teams = await tx.team.findMany({
       where: { id: { in: [input.teamId] } },

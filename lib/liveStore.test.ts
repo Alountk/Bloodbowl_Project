@@ -12,6 +12,9 @@ import {
   acceptConcedeLiveMatch,
   purchaseInducements,
   resetLiveMatch,
+  expireStaleLiveMatches,
+  isStaleLiveMatch,
+  STALE_LIVE_MS,
   liveMatchRowToState,
   type StoreDeps,
 } from "./liveStore";
@@ -67,6 +70,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
   liveMatchFindFirst: ReturnType<typeof vi.fn>;
   liveMatchFindUnique: ReturnType<typeof vi.fn>;
   liveMatchDeleteMany: ReturnType<typeof vi.fn>;
+  liveMatchFindMany: ReturnType<typeof vi.fn>;
   teamUpdateMany: ReturnType<typeof vi.fn>;
   teamFindMany: ReturnType<typeof vi.fn>;
   fixtureUpdate: ReturnType<typeof vi.fn>;
@@ -84,6 +88,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
   // and both teams' coaching JSON (dedicated fans 2 home / 1 away).
   const liveMatchFindUnique = vi.fn().mockResolvedValue({ winnings: null });
   const liveMatchDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
+  const liveMatchFindMany = vi.fn().mockResolvedValue([]);
   const teamUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const teamFindMany = vi.fn().mockResolvedValue([
     { id: "home-t", coaching: { rerolls: 2, dedicatedFans: 2, assistantCoaches: 0, cheerleaders: 0, apothecary: false } },
@@ -108,7 +113,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
   const deps: StoreDeps = {
     prisma: {
       $transaction,
-      liveMatch: { create: liveMatchCreate, findFirst: liveMatchFindFirst },
+      liveMatch: { create: liveMatchCreate, findFirst: liveMatchFindFirst, findMany: liveMatchFindMany },
       liveEvent: { findFirst: vi.fn(), update: vi.fn() },
     },
     hub: { publish },
@@ -122,6 +127,7 @@ function makeDeps(updateCount: number, rollD3?: () => number): {
     liveMatchFindFirst,
     liveMatchFindUnique,
     liveMatchDeleteMany,
+    liveMatchFindMany,
     teamUpdateMany,
     teamFindMany,
     fixtureUpdate,
@@ -861,6 +867,177 @@ describe("resetLiveMatch — delete row + clear fixture, publish live:null (LMR-
   });
 });
 
+describe("isStaleLiveMatch — only a `live` row older than 8h is stale (LMR-3)", () => {
+  const NOW = 1_000_000_000_000;
+
+  it("is true for a live row started more than 8h ago", () => {
+    expect(
+      isStaleLiveMatch({ status: "live", startedAt: new Date(NOW - STALE_LIVE_MS - 1) }, NOW),
+    ).toBe(true);
+  });
+
+  it("is false for a live row under 8h old", () => {
+    expect(
+      isStaleLiveMatch({ status: "live", startedAt: new Date(NOW - STALE_LIVE_MS + 1) }, NOW),
+    ).toBe(false);
+  });
+
+  it("is false for ready/pending/finished rows and a live row with no startedAt", () => {
+    const old = new Date(NOW - STALE_LIVE_MS - 1);
+    expect(isStaleLiveMatch({ status: "ready", startedAt: old }, NOW)).toBe(false);
+    expect(isStaleLiveMatch({ status: "pending", startedAt: old }, NOW)).toBe(false);
+    expect(isStaleLiveMatch({ status: "finished", startedAt: old }, NOW)).toBe(false);
+    expect(isStaleLiveMatch({ status: "live", startedAt: null }, NOW)).toBe(false);
+  });
+});
+
+describe("expireStaleLiveMatches — lazy 8h freeze, seq-guarded (LMR-3/LMR-4/LMR-5)", () => {
+  const NOW = 1_000_000_000_000;
+
+  /** A persisted stale `live` row as `findMany` returns it. */
+  function staleRow(over: Record<string, unknown> = {}) {
+    return {
+      id: "lm-1",
+      fixtureId: "f-1",
+      seq: 5,
+      status: "live",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      startedAt: new Date(NOW - STALE_LIVE_MS - 1000),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      homeScore: 2,
+      awayScore: 1,
+      paused: false,
+      clockStartedAt: null,
+      finishedAt: null,
+      concedeProposedBy: null,
+      mvpNominations: null,
+      resolutionState: null,
+      ...over,
+    };
+  }
+
+  it("freezes the row, records the live scoreboard + derived winner, closes the league and publishes finished", async () => {
+    const { deps, updateMany, fixtureUpdate, fixtureFindUnique, fixtureFindMany, leagueUpdate, publish, liveMatchFindMany } =
+      makeDeps(1);
+    liveMatchFindMany.mockResolvedValue([staleRow()]);
+    fixtureFindUnique.mockResolvedValue({
+      homeTeamId: "home-t",
+      awayTeamId: "away-t",
+      homeScore: null,
+      awayScore: null,
+      winnerId: null,
+      leagueId: "league-1",
+    });
+    // A fully-played season so maybeCloseLeague actually flips the league.
+    fixtureFindMany.mockResolvedValue([
+      { homeTeamId: "home-t", awayTeamId: "away-t", homeScore: 2, awayScore: 1, winnerId: "home-t" },
+    ]);
+
+    const closed = await expireStaleLiveMatches(deps, { leagueId: "league-1" }, NOW);
+
+    expect(closed).toBe(1);
+    expect(liveMatchFindMany).toHaveBeenCalledWith({
+      where: {
+        status: "live",
+        startedAt: { lt: new Date(NOW - STALE_LIVE_MS) },
+        fixture: { leagueId: "league-1" },
+      },
+    });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 5, status: "live" },
+      data: { status: "finished", finishedAt: new Date(NOW), seq: 6 },
+    });
+    expect(fixtureUpdate).toHaveBeenCalledWith({
+      where: { id: "f-1" },
+      data: { winnerId: "home-t", homeScore: 2, awayScore: 1 },
+    });
+    expect(leagueUpdate).toHaveBeenCalledWith({
+      where: { id: "league-1" },
+      data: { status: "finished", championTeamId: "home-t" },
+    });
+    expect(publish).toHaveBeenCalledWith(
+      "f-1",
+      expect.objectContaining({ seq: 6, status: "finished", homeScore: 2, awayScore: 1 }),
+    );
+  });
+
+  it("leaves winnerId null on a draw", async () => {
+    const { deps, fixtureUpdate, fixtureFindUnique, liveMatchFindMany } = makeDeps(1);
+    liveMatchFindMany.mockResolvedValue([staleRow({ homeScore: 1, awayScore: 1 })]);
+    fixtureFindUnique.mockResolvedValue({
+      homeTeamId: "home-t",
+      awayTeamId: "away-t",
+      homeScore: null,
+      awayScore: null,
+      winnerId: null,
+      leagueId: "league-1",
+    });
+
+    const closed = await expireStaleLiveMatches(deps, { fixtureId: "f-1" }, NOW);
+
+    expect(closed).toBe(1);
+    expect(fixtureUpdate).toHaveBeenCalledWith({
+      where: { id: "f-1" },
+      data: { winnerId: null, homeScore: 1, awayScore: 1 },
+    });
+  });
+
+  it("scopes the query by fixtureId when given a fixture scope", async () => {
+    const { deps, liveMatchFindMany } = makeDeps(1);
+
+    await expireStaleLiveMatches(deps, { fixtureId: "f-9" }, NOW);
+
+    expect(liveMatchFindMany).toHaveBeenCalledWith({
+      where: { status: "live", startedAt: { lt: new Date(NOW - STALE_LIVE_MS) }, fixtureId: "f-9" },
+    });
+  });
+
+  it("no-ops on a lost seq race (0 rows) without writing the fixture or publishing", async () => {
+    const { deps, fixtureUpdate, fixtureFindUnique, publish, liveMatchFindMany } = makeDeps(0);
+    liveMatchFindMany.mockResolvedValue([staleRow()]);
+    fixtureFindUnique.mockResolvedValue({
+      homeTeamId: "home-t",
+      awayTeamId: "away-t",
+      homeScore: null,
+      awayScore: null,
+      winnerId: null,
+      leagueId: "league-1",
+    });
+
+    const closed = await expireStaleLiveMatches(deps, { leagueId: "league-1" }, NOW);
+
+    expect(closed).toBe(0);
+    expect(fixtureUpdate).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent — a re-run finds no live rows and does nothing", async () => {
+    const { deps, updateMany } = makeDeps(1);
+    // Already-finished rows are not `live`, so the sweep query returns nothing.
+    deps.prisma.liveMatch.findMany = vi.fn().mockResolvedValue([]);
+
+    const closed = await expireStaleLiveMatches(deps, { leagueId: "league-1" }, NOW);
+
+    expect(closed).toBe(0);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it("skips a returned row that is not actually stale (defensive predicate)", async () => {
+    const { deps, updateMany, liveMatchFindMany } = makeDeps(1);
+    liveMatchFindMany.mockResolvedValue([staleRow({ startedAt: new Date(NOW - 1000) })]);
+
+    const closed = await expireStaleLiveMatches(deps, { leagueId: "league-1" }, NOW);
+
+    expect(closed).toBe(0);
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("pause/resume — unified clock segment handling (LM-7, D18)", () => {
   it("pause bumps the ACTIVE accumulator by the in-flight segment then nulls the segment start", async () => {
     const { deps, updateMany, publish } = makeDeps(1);
@@ -1501,6 +1678,7 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
         homeScore: true,
         awayScore: true,
         winnerId: true,
+        leagueId: true,
       },
     });
     expect(teamFindMany).toHaveBeenCalledWith({
