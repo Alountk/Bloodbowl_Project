@@ -133,6 +133,10 @@ model Fixture {
   awayScore   Int?
   /// The persisted match result record (populated by the result route).
   result      MatchResult?
+  /// RAU-7: public read-only share token (192-bit base64url), minted lazily on
+  /// the first share and never rotated. Unique so a token resolves to exactly
+  /// one fixture. Null until the fixture is shared.
+  shareToken  String?   @unique
   /// The (optional) live match row governing this fixture's realtime state.
   liveMatch   LiveMatch?
 
