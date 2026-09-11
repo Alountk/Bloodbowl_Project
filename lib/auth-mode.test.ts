@@ -59,6 +59,29 @@ describe("resolveAuthGate", () => {
     expect(resolveAuthGate({ auth: null, pathname: "/", authEnabled: true })).toBe("allow");
   });
 
+  it("allows an unauthenticated user on the public share prefix", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/watch/abc123", authEnabled: true })).toBe(
+      "allow",
+    );
+    expect(resolveAuthGate({ auth: null, pathname: "/watch", authEnabled: true })).toBe("allow");
+  });
+
+  it("allows an authenticated user on the public share prefix", () => {
+    expect(
+      resolveAuthGate({
+        auth: { user: { id: "u1" } } as never,
+        pathname: "/watch/abc123",
+        authEnabled: true,
+      }),
+    ).toBe("allow");
+  });
+
+  it("does not open a route that merely starts with the watch word", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/watchdog", authEnabled: true })).toBe(
+      "redirect-login",
+    );
+  });
+
   it("keeps redirecting an unauthenticated user on protected routes other than the landing", () => {
     expect(resolveAuthGate({ auth: null, pathname: "/teams", authEnabled: true })).toBe(
       "redirect-login",
