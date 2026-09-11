@@ -63,6 +63,22 @@ describe("t (dictionaries)", () => {
     expect(esKeys.length).toBeGreaterThan(20);
   });
 
+  it("resolves the public watch page keys in es and en (MSL-6/MSL-7)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["watch.title", "Partido compartido", "Shared match"],
+      ["watch.shared", "Compartido", "Shared"],
+      ["watch.finished", "Finalizado", "Finished"],
+      ["watch.loading", "Cargando partido…", "Loading match…"],
+      ["watch.closed", "Este link ya no está disponible", "This link is no longer available"],
+      ["match.share", "Compartir", "Share"],
+      ["match.shareCopied", "Copiado", "Copied"],
+    ];
+    for (const [key, esValue, enValue] of cases) {
+      expect(t("es", key), `es "${key}"`).toBe(esValue);
+      expect(t("en", key), `en "${key}"`).toBe(enValue);
+    }
+  });
+
   it("resolves the dedicated teams page keys in es and en (TP-6)", () => {
     const cases: Array<[string, string, string]> = [
       ["teams.unassigned", "Sin liga", "Unassigned"],

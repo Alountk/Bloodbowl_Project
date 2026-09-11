@@ -835,6 +835,15 @@ const es: Dict = {
   "match.journeymen.hire": "Contratar",
   "match.journeymen.letGo": "Dejar ir",
   "match.journeymen.error": "No se pudo procesar la decisión.",
+
+  // RAU-7 / MSL-6·MSL-7 — public share page + share affordance
+  "watch.title": "Partido compartido",
+  "watch.shared": "Compartido",
+  "watch.finished": "Finalizado",
+  "watch.loading": "Cargando partido…",
+  "watch.closed": "Este link ya no está disponible",
+  "match.share": "Compartir",
+  "match.shareCopied": "Copiado",
 };
 
 const en: Dict = {
@@ -1649,6 +1658,15 @@ const en: Dict = {
    "match.journeymen.hire": "Hire",
    "match.journeymen.letGo": "Let go",
    "match.journeymen.error": "Could not process the decision.",
+
+   // RAU-7 / MSL-6·MSL-7 — public share page + share affordance
+   "watch.title": "Shared match",
+   "watch.shared": "Shared",
+   "watch.finished": "Finished",
+   "watch.loading": "Loading match…",
+   "watch.closed": "This link is no longer available",
+   "match.share": "Share",
+   "match.shareCopied": "Copied",
 };
 
 /** The full es/en dictionaries, keyed by locale. */
