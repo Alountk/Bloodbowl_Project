@@ -341,6 +341,24 @@ export async function forfeitFixture(
   return readJson<FixtureDraft>(res);
 }
 
+/**
+ * Manually recovers a stranded live match (LMR-7): POSTs the fixture reset
+ * route, which deletes the fixture's LiveMatch (events cascade) and returns it
+ * to `scheduled`/`pending`, replayable. Authorized server-side for the league
+ * owner OR a developer/admin holding `live.manage`; the caller refreshes the
+ * detail afterwards. Returns `{ ok: true }`.
+ */
+export async function resetLiveMatch(
+  leagueId: string,
+  fixtureId: string,
+): Promise<{ ok: true }> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/reset`,
+    { method: "POST" },
+  );
+  return readJson<{ ok: true }>(res);
+}
+
 /** A single player's per-action report within a result load. */
 export interface ResultPlayerAction {
   rosterPlayerId: string;

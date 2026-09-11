@@ -84,6 +84,10 @@ export async function POST(
       where: { fixtureId, acceptedAt: null, closedAt: null },
       data: { closedAt: new Date() },
     });
+    // LMR-6: a walkover is a played result — clear any orphan LiveMatch (and
+    // its cascading events) in the SAME transaction so the fixture never shows
+    // a live badge after the forfeit.
+    await tx.liveMatch.deleteMany({ where: { fixtureId } });
     const updatedFixture = await tx.fixture.update({
       where: { id: fixtureId },
       data: { winnerId: winnerTeamId, homeScore, awayScore, scheduledAt: null },
