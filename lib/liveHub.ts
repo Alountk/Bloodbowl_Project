@@ -203,7 +203,11 @@ export function createLiveHub(): LiveHub {
       if (!ch) return;
       const entry = subscriber as SubscriberEntry;
       ch.subs.delete(entry);
-      if (!activeCoachConnected(ch)) armGrace(ch, fixtureId);
+      // Arm the grace ONLY when no active coach is connected AND no window is
+      // already pending. A non-active subscriber (e.g. a guest with `coachId`
+      // null) leaving must never RESET an already-running grace window for the
+      // active coach (MSL-5): the pause must fire at the original 10s mark.
+      if (!activeCoachConnected(ch) && !ch.graceTimer) armGrace(ch, fixtureId);
     },
 
     publish(fixtureId, payload) {
