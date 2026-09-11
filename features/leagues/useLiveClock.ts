@@ -19,6 +19,25 @@ export interface DisplayClock {
 }
 
 /**
+ * The minimal live-state slice `useLiveClock` reads. Both the member
+ * `LiveMatchViewState` and the public guest `WatchLiveView` satisfy it, so the
+ * clock is reused on the share page WITHOUT fabricating the member-only fields
+ * (consent, MVP nominations, resolution state) the clock never touches.
+ */
+export type LiveClockState = Pick<
+  LiveMatchViewState,
+  | "seq"
+  | "status"
+  | "half"
+  | "turnNumber"
+  | "activeSide"
+  | "elapsed"
+  | "homeTurnMs"
+  | "awayTurnMs"
+  | "paused"
+>;
+
+/**
  * Pure: derives the DISPLAY clock from a state baseline + `now`, anchored at
  * `anchoredAt` (the epoch ms the baseline was captured). Mirrors
  * `deriveLiveClock` (lib/liveMatch.ts) segment semantics: only while
@@ -27,7 +46,7 @@ export interface DisplayClock {
  * with the same delta. Never goes backwards (`now <= anchoredAt` → 0).
  */
 export function deriveDisplayClock(
-  state: LiveMatchViewState | null,
+  state: LiveClockState | null,
   now: number,
   anchoredAt: number,
 ): DisplayClock {
@@ -40,7 +59,7 @@ export function deriveDisplayClock(
 }
 
 /** Clock-relevant content signature: re-anchor only when the FRAME changes. */
-function clockSignature(state: LiveMatchViewState | null): string {
+function clockSignature(state: LiveClockState | null): string {
   if (state == null) return "null";
   const { seq, status, half, turnNumber, activeSide, elapsed, homeTurnMs, awayTurnMs, paused } = state;
   return [seq, status, half, turnNumber, activeSide, elapsed, homeTurnMs, awayTurnMs, paused].join(":");
@@ -54,7 +73,7 @@ function clockSignature(state: LiveMatchViewState | null): string {
  * re-anchor uses the derived-state adjustment pattern (React-sanctioned) rather
  * than an effect. No interval is created outside live — cleanup on unmount.
  */
-export function useLiveClock(state: LiveMatchViewState | null): DisplayClock {
+export function useLiveClock(state: LiveClockState | null): DisplayClock {
   const [prevSignature, setPrevSignature] = useState(() => clockSignature(state));
   const [now, setNow] = useState(() => Date.now());
   const [anchorAt, setAnchorAt] = useState(() => Date.now());
