@@ -143,6 +143,83 @@ describe("liveHub — active-coach tracking + 10s grace (LM-7, unconditional)", 
   });
 });
 
+describe("liveHub — guest subscriber never arms the active coach's grace (MSL-5)", () => {
+  let hub: ReturnType<typeof createLiveHub>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    hub = createLiveHub();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** A guest subscription: no coach identity, no grace handler (the SSE route). */
+  function guestSubscribe() {
+    return hub.subscribe({
+      fixtureId: "f-1",
+      subscriber: makeSubscriber(),
+      coachId: null,
+      activeCoachId: null,
+    });
+  }
+
+  it("does not clear, replace, or re-arm the active coach's pending grace on a guest subscribe", () => {
+    const graceHandler = vi.fn();
+    const coach = subscribeFor(hub, { onGraceExpired: graceHandler });
+    coach.dispose(); // the active coach drops → grace armed with ITS handler
+
+    guestSubscribe(); // guest connects — must not touch the pending window
+
+    vi.advanceTimersByTime(9_999);
+    expect(graceHandler).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1); // t=10s from the coach's drop
+    expect(graceHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-arm (extend) the pending grace when a guest disconnects", () => {
+    const graceHandler = vi.fn();
+    const coach = subscribeFor(hub, { onGraceExpired: graceHandler });
+    const guest = guestSubscribe();
+    coach.dispose(); // t=0 → grace armed
+
+    vi.advanceTimersByTime(5_000);
+    guest(); // t=5s guest leaves — must NOT reset the coach's window
+
+    vi.advanceTimersByTime(4_999);
+    expect(graceHandler).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1); // t=10s from the coach's drop, not from the guest's
+    expect(graceHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not count a guest connection as the active coach connected (coach drop still fires)", () => {
+    const graceHandler = vi.fn();
+    const coach = subscribeFor(hub, { onGraceExpired: graceHandler });
+    guestSubscribe(); // a coach-less connection stays open
+
+    coach.dispose();
+    vi.advanceTimersByTime(10_000);
+
+    expect(graceHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the active coach tracked when a guest subscribes with a null activeCoachId", () => {
+    const graceHandler = vi.fn();
+    const coach = subscribeFor(hub, {
+      coachId: "coach-a",
+      activeCoachId: "coach-a",
+      onGraceExpired: graceHandler,
+    });
+    guestSubscribe(); // activeCoachId: null must NOT overwrite the known "coach-a"
+    coach.dispose(); // grace armed for coach-a
+    vi.advanceTimersByTime(5_000);
+
+    // The coach reconnects (its frame carries activeCoachId null) → the channel
+    // must still know coach-a is active and clear the pending grace.
+    subscribeFor(hub, { coachId: "coach-a", activeCoachId: null, onGraceExpired: graceHandler });
+    vi.advanceTimersByTime(20_000);
+    expect(graceHandler).not.toHaveBeenCalled();
+  });
+});
+
 describe("liveHub — 1s ticker derives + publishes the active side's accumulation", () => {
   let hub: ReturnType<typeof createLiveHub>;
 
