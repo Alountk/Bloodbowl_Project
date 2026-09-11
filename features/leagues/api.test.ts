@@ -11,6 +11,7 @@ import {
   listUnassignedTeams,
   nominateMvp,
   proposeFixtureDate,
+  resetLiveMatch,
   resolveLiveMatch,
   rollLiveMvp,
   selfLeave,
@@ -409,6 +410,18 @@ describe("matchday negotiation helpers", () => {
       },
     );
     expect(result.status).toBe("played");
+  });
+
+  it("resetLiveMatch POSTs to the fixture reset route with no body and returns ok (LMR-7)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okJson({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await resetLiveMatch("l1", "f1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l1/fixtures/f1/reset", {
+      method: "POST",
+    });
+    expect(result).toEqual({ ok: true });
   });
 
   it("submitResult POSTs a result payload to the fixture result route", async () => {

@@ -549,6 +549,15 @@ const es: Dict = {
   "forfeit.pickTeam": "Elige un equipo",
   "forfeit.award": "Otorgar victoria a {team}",
 
+  "reset.dialogAria": "Reiniciar partido en vivo",
+  "reset.title": "Reiniciar partido",
+  "reset.prompt":
+    "Se borrará el partido en vivo y el encuentro volverá a estar pendiente. Esta acción no se puede deshacer.",
+  "reset.action": "Reiniciar partido",
+  "reset.confirm": "Sí, reiniciar",
+  "reset.submitting": "Reiniciando…",
+  "reset.error": "No se pudo reiniciar el partido.",
+
   "match.teamFallback": "Equipo",
   "match.status.played": "Jugado",
   "match.status.scheduled": "Programado",
@@ -1353,6 +1362,15 @@ const en: Dict = {
   "forfeit.prompt": "Choose which team wins by the rival's forfeit:",
   "forfeit.pickTeam": "Choose a team",
   "forfeit.award": "Award victory to {team}",
+
+  "reset.dialogAria": "Reset live match",
+  "reset.title": "Reset match",
+  "reset.prompt":
+    "The live match will be deleted and the fixture will return to pending. This action cannot be undone.",
+  "reset.action": "Reset match",
+  "reset.confirm": "Yes, reset",
+  "reset.submitting": "Resetting…",
+  "reset.error": "Could not reset the match.",
 
   "match.teamFallback": "Team",
   "match.status.played": "Played",
