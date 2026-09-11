@@ -34,6 +34,7 @@ export default defineConfig({
     "**/locale.spec.ts",
     "**/teams-page.spec.ts",
     "**/matches-page.spec.ts",
+    "**/watch.spec.ts",
   ],
   forbidOnly: !!process.env.CI,
   // The suite already documents cold-start re-runs; a single retry absorbs the

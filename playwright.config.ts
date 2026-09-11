@@ -37,6 +37,7 @@ export default defineConfig({
         "**/locale.spec.ts",
         "**/teams-page.spec.ts",
         "**/matches-page.spec.ts",
+        "**/watch.spec.ts",
       ],
       use: { ...devices["Desktop Chrome"] },
     },
