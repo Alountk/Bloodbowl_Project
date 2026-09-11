@@ -38,8 +38,14 @@ export function resolveAuthGate(params: {
   // The public landing: anonymous users may reach "/" (the page itself renders
   // the Landing for them). Every other protected route keeps redirecting.
   const isPublicLanding = params.pathname === "/";
+  // RAU-7: the public share prefix — `/watch` and any `/watch/*` path is open to
+  // BOTH anonymous guests and authenticated coaches (a logged-in coach must
+  // still be able to open a share link). A path that merely starts with the word
+  // (e.g. `/watchdog`) is NOT the prefix and stays protected.
+  const isPublicShare = params.pathname === "/watch" || params.pathname.startsWith("/watch/");
+  const isPublic = isPublicLanding || isPublicShare;
 
   if (isAuthenticated && isAuthPage) return "redirect-home";
-  if (!isAuthenticated && !isAuthPage && !isPublicLanding) return "redirect-login";
+  if (!isAuthenticated && !isAuthPage && !isPublic) return "redirect-login";
   return "allow";
 }

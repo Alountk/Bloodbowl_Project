@@ -69,6 +69,28 @@ describe("auth config route gate", () => {
     expect(new URL(location).pathname).toBe("/");
     vi.unstubAllEnvs();
   });
+
+  it("allows an unauthenticated guest to open a share link when auth is enabled", async () => {
+    const authorized = authConfig.callbacks?.authorized;
+    vi.stubEnv("AUTH_MODE", "auth");
+    const result = await authorized?.({
+      auth: null,
+      request: makeRequest("/watch/abc123"),
+    });
+    expect(result).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
+  it("allows an authenticated coach to open a share link when auth is enabled", async () => {
+    const authorized = authConfig.callbacks?.authorized;
+    vi.stubEnv("AUTH_MODE", "auth");
+    const result = await authorized?.({
+      auth: { user: { id: "u1" } } as never,
+      request: makeRequest("/watch/abc123"),
+    });
+    expect(result).toBe(true);
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("auth config session user id propagation", () => {
