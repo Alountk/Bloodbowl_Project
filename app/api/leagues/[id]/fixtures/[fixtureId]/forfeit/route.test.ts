@@ -5,6 +5,8 @@ const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   scheduleProposal: { updateMany: vi.fn() },
   league: { findUnique: vi.fn(), update: vi.fn() },
+  // LMR-6: the walkover tx also clears the fixture's orphan LiveMatch.
+  liveMatch: { deleteMany: vi.fn() },
   $transaction: vi.fn(),
 }));
 
@@ -38,6 +40,7 @@ function stubTransaction() {
         scheduleProposal: { updateMany: prismaMock.scheduleProposal.updateMany },
         fixture: { update: prismaMock.fixture.update, findMany: prismaMock.fixture.findMany },
         league: { findUnique: prismaMock.league.findUnique, update: prismaMock.league.update },
+        liveMatch: { deleteMany: prismaMock.liveMatch.deleteMany },
       };
       return cb(data as never);
     },
@@ -78,6 +81,7 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
     expect(res.status).toBe(403);
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();
     expect(prismaMock.scheduleProposal.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.liveMatch.deleteMany).not.toHaveBeenCalled();
   });
 
   it("returns 400 when winnerTeamId is neither home nor away", async () => {
@@ -135,6 +139,26 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
     expect(prismaMock.fixture.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { winnerId: "t2", homeScore: 0, awayScore: 2, scheduledAt: null } }),
     );
+  });
+
+  it("deletes the fixture's orphan LiveMatch in the same walkover transaction (LMR-6)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-owner" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    prismaMock.fixture.update.mockResolvedValue({
+      id: "f1",
+      winnerId: "t1",
+      homeScore: 2,
+      awayScore: 0,
+    });
+
+    const res = await forfeit({ winnerTeamId: "t1" });
+
+    expect(res.status).toBe(200);
+    // A played walkover must never leave a live badge behind: the orphan
+    // LiveMatch (and its cascading events) is deleted inside the same tx.
+    expect(prismaMock.liveMatch.deleteMany).toHaveBeenCalledWith({
+      where: { fixtureId: "f1" },
+    });
   });
 
   it("returns 409 for a repeat forfeit on an already-played fixture", async () => {
