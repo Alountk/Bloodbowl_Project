@@ -17,7 +17,8 @@ import {
   type PersistedInducements,
 } from "@/lib/rules";
 import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
-import { getMatchDetail, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
+import { can } from "@/lib/permissions";
+import { getMatchDetail, resetLiveMatch, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
 import { LiveEventCards } from "./liveEventCards";
 import { MatchTimelineBar } from "./matchTimelineBar";
@@ -26,8 +27,9 @@ import { LiveActionDock } from "./liveActionDock";
 import { HeaderEmblem } from "./headerEmblem";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock, type DisplayClock } from "./useLiveClock";
-import { useLeagueName } from "./useLeagueName";
+import { useLeague } from "./useLeagueName";
 import { MatchResolveModal } from "./MatchResolveModal";
+import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
 
 /**
  * Internal single-match fetch hook mirroring `useLeagueDetail`: loads the match
@@ -1629,13 +1631,16 @@ function PlayedSections({ sections }: { sections: MatchSummarySection[] }) {
  */
 export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId: string }) {
   const { detail, loading, error, notFound, refresh } = useMatchDetail(leagueId, fixtureId);
-  const leagueName = useLeagueName(leagueId);
+  const league = useLeague(leagueId);
+  const leagueName = league.name;
   const { t } = useI18n();
   // RAU-49: the end-of-match resolution modal — open when the finished live
   // match is NOT resolved yet. Auto-opened ONCE when the match transitions to
   // finished via the SSE-triggered refresh; the persistent "Resolver partido"
   // banner keeps it reachable after a dismiss.
   const [resolveOpen, setResolveOpen] = useState(false);
+  // LMR-7: the manual reset confirmation modal.
+  const [resetOpen, setResetOpen] = useState(false);
   const prevLiveStatusRef = useRef<string | null>(null);
   useEffect(() => {
     const liveStatus = detail?.live?.status ?? null;
@@ -1694,6 +1699,21 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
   // Mockup top-bar label: "{league} · Jornada {round}" (league name resolved
   // client-side; falls back to "Jornada {round}" when unavailable).
   const leagueLabel = `${leagueName ? `${leagueName} · ` : ""}${t("match.jornada", { round: detail.fixture.round })}`;
+
+  // LMR-7: the manual reset is offered ONLY to the league owner or a
+  // developer/admin (`live.manage`), and only while a resettable LiveMatch
+  // (pending/ready/live) exists on a league that is not finished.
+  const canResetLive =
+    session?.user?.id != null &&
+    detail.live != null &&
+    detail.live.status !== "finished" &&
+    league.status !== "finished" &&
+    (league.ownerId === session.user.id || can(session.user.role, "live.manage"));
+
+  const onReset = async () => {
+    await resetLiveMatch(leagueId, fixtureId);
+    await refresh();
+  };
 
   let body: React.ReactNode;
   if (detail.live) {
@@ -1798,6 +1818,24 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     // v7: the duplicated "Partido {round}" + Volver page header is GONE — the
     // back navigation lives in the sticky rulebook header's back arrow (only
     // the notFound/error/loading panels keep their own chrome).
-    <section aria-label={t("match.pageAria", { round: detail.fixture.round })}>{body}</section>
+    <section aria-label={t("match.pageAria", { round: detail.fixture.round })}>
+      {canResetLive ? (
+        <div className="flex justify-end border-b border-border bg-panel px-3 py-1.5">
+          <button
+            type="button"
+            onClick={() => setResetOpen(true)}
+            className="rounded-sm border border-red px-2.5 py-1 text-[11px] font-semibold text-red hover:bg-red hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-red"
+          >
+            {t("reset.action")}
+          </button>
+        </div>
+      ) : null}
+      {body}
+      <ResetLiveMatchModal
+        open={resetOpen}
+        onConfirm={onReset}
+        onClose={() => setResetOpen(false)}
+      />
+    </section>
   );
 }

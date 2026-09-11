@@ -75,6 +75,12 @@ export interface MatchCardProps {
   onNegotiate: (fixture: FixtureDraft) => void;
   /** Opens the forfeit modal for this fixture (admin only). */
   onForfeit: (fixture: FixtureDraft) => void;
+  /** LMR-7: true when the viewer may manually reset the fixture's live match —
+   * the league owner or a developer/admin holding `live.manage`. The parent
+   * computes it from ownership + the session role. */
+  canResetLive?: boolean;
+  /** Opens the reset confirmation modal for this fixture (owner/dev-admin only). */
+  onReset?: (fixture: FixtureDraft) => void;
   /** Opens the ResultModal to load a result (participant/admin on a scheduled fixture). */
   onLoadResult?: (fixture: FixtureDraft) => void;
   /** Opens the ResultModal to correct a result (admin only on a played fixture). */
@@ -101,6 +107,8 @@ export function MatchCard({
   leagueFinished = false,
   onNegotiate,
   onForfeit,
+  canResetLive = false,
+  onReset,
   onLoadResult,
   onCorrectResult,
 }: MatchCardProps) {
@@ -125,6 +133,10 @@ export function MatchCard({
     if (leagueFinished) return;
     onForfeit(fixture);
   };
+  const openReset = () => {
+    if (leagueFinished) return;
+    onReset?.(fixture);
+  };
   const openLoadResult = () => {
     if (leagueFinished) return;
     onLoadResult?.(fixture);
@@ -144,6 +156,15 @@ export function MatchCard({
     (isParticipant || isLeagueOwner);
 
   const played = fixture.status === "played";
+
+  // LMR-7: the manual reset control is for the owner/dev-admin ONLY, and only
+  // while there is a resettable LiveMatch (pending/ready/live) on a league that
+  // is not finished. A finished LiveMatch belongs to the resolution wizard.
+  const showReset =
+    !leagueFinished &&
+    canResetLive &&
+    fixture.live != null &&
+    fixture.live.status !== "finished";
 
   // The negotiation affordance (Design B) lives in the card body center while a
   // participant can still agree a date: pending or scheduled-but-unplayed
@@ -201,6 +222,15 @@ export function MatchCard({
               className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
             >
               {t("forfeit.title")}
+            </button>
+          ) : null}
+          {showReset ? (
+            <button
+              type="button"
+              onClick={openReset}
+              className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
+            >
+              {t("reset.action")}
             </button>
           ) : null}
         </span>

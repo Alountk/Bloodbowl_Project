@@ -44,6 +44,7 @@ function fixture(overrides: Partial<FixtureDraft> = {}): FixtureDraft {
 function renderCard(props: Partial<MatchCardProps> = {}) {
   const onNegotiate = vi.fn();
   const onForfeit = vi.fn();
+  const onReset = vi.fn();
   render(
     <MatchCard
       fixture={fixture()}
@@ -53,10 +54,11 @@ function renderCard(props: Partial<MatchCardProps> = {}) {
       isLeagueOwner={false}
       onNegotiate={onNegotiate}
       onForfeit={onForfeit}
+      onReset={onReset}
       {...props}
     />,
   );
-  return { onNegotiate, onForfeit };
+  return { onNegotiate, onForfeit, onReset };
 }
 
 describe("matchStatusLabel", () => {
@@ -453,3 +455,67 @@ function withinSide(side: HTMLElement) {
     },
   };
 }
+
+describe("MatchCard — reset live match (LMR-7)", () => {
+  const runningLive = {
+    status: "live" as const,
+    homeScore: 1,
+    awayScore: 0,
+    half: 1,
+    turnNumber: 3,
+  };
+
+  it("shows the reset control to a league owner when a live match exists", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
+      canResetLive: true,
+    });
+    expect(screen.getByRole("button", { name: "Reiniciar partido" })).toBeTruthy();
+  });
+
+  it("hides the reset control from a participant/spectator without reset rights", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
+      canResetLive: false,
+    });
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("hides the reset control on a finished league even for a resettable live match", () => {
+    renderCard({
+      canResetLive: true,
+      leagueFinished: true,
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
+    });
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("hides the reset control when the live match is already finished (wizard territory)", () => {
+    renderCard({
+      canResetLive: true,
+      fixture: fixture({
+        status: "scheduled",
+        scheduledAt: "2026-03-01T10:00:00.000Z",
+        live: { ...runningLive, status: "finished" },
+      }),
+    });
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("hides the reset control when the fixture has no live match", () => {
+    renderCard({
+      canResetLive: true,
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+    });
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("fires onReset when the reset control is clicked", () => {
+    const { onReset } = renderCard({
+      canResetLive: true,
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reiniciar partido" }));
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+});

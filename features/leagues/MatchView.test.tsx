@@ -2414,3 +2414,109 @@ describe("MatchView — RAU-13 Journeymen notice", () => {
     expect(screen.queryByTestId("journeymen-notice")).toBeNull();
   });
 });
+
+/**
+ * LMR-7: the manual reset control on the match page. Visibility is gated by the
+ * league owner (resolved from the league detail) OR a developer/admin holding
+ * `live.manage`, and by the presence of a resettable live match on a
+ * non-finished league. The confirm POSTs the reset route and refreshes.
+ */
+function stubMatchAndLeague(
+  detail: MatchDetail,
+  leagueOverrides: Partial<{ ownerId: string; status: string }> = {},
+) {
+  const league = {
+    id: "l1",
+    name: "Liga",
+    description: null,
+    ownerId: "u1",
+    createdAt: "2026-01-01",
+    status: "started",
+    seasonLength: null,
+    startedAt: null,
+    championTeamId: null,
+    ownerName: null,
+    memberCount: 2,
+    isMember: true,
+    turnClockEnabled: false,
+    turnClockSeconds: 120,
+    rulesetId: null,
+    rulesetName: null,
+    teams: [],
+    fixtures: [],
+    rounds: [],
+    ...leagueOverrides,
+  };
+  const fetchMock = vi.fn((url: string) => {
+    const payload = url.includes("/fixtures/") ? detail : league;
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload) });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+describe("MatchView — manual reset control (LMR-7)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows the reset control to the league owner when a live match exists", async () => {
+    stubLiveEventSource();
+    stubMatchAndLeague(liveDetail()); // ownerId u1 === session u1
+    renderPlayed();
+    expect(await screen.findByRole("button", { name: "Reiniciar partido" })).toBeTruthy();
+  });
+
+  it("shows the reset control to a developer (live.manage) who is not the owner", async () => {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { id: "u-dev", role: "developer" } },
+    } as never);
+    stubLiveEventSource();
+    stubMatchAndLeague(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+    expect(await screen.findByRole("button", { name: "Reiniciar partido" })).toBeTruthy();
+  });
+
+  it("hides the reset control from a participant (not owner, no role)", async () => {
+    stubLiveEventSource();
+    stubMatchAndLeague(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+    await screen.findByText(/Mitad 1 · Turno 3/);
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("hides the reset control from a spectator (no side, no role)", async () => {
+    vi.mocked(useSession).mockReturnValue({ data: null } as never);
+    stubLiveEventSource();
+    stubMatchAndLeague(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+    await screen.findByText(/Mitad 1 · Turno 3/);
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("hides the reset control on a finished league", async () => {
+    stubLiveEventSource();
+    stubMatchAndLeague(liveDetail(), { ownerId: "u1", status: "finished" });
+    renderPlayed();
+    await screen.findByText(/Mitad 1 · Turno 3/);
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("hides the reset control when the live match is finished", async () => {
+    stubMatchAndLeague(finishedLiveDetail(), { ownerId: "u1" });
+    renderPlayed();
+    await waitFor(() => expect(screen.getByTestId("rulebook-header")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("confirms the reset: POSTs the reset route and refreshes the detail", async () => {
+    const fetchMock = stubMatchAndLeague(liveDetail());
+    stubLiveEventSource();
+    renderPlayed();
+    fireEvent.click(await screen.findByRole("button", { name: "Reiniciar partido" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, reiniciar" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l1/fixtures/f1/reset", {
+        method: "POST",
+      });
+    });
+  });
+});

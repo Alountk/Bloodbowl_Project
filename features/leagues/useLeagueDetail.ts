@@ -10,6 +10,7 @@ import {
   getLeagueDetail,
   listUnassignedTeams,
   proposeFixtureDate,
+  resetLiveMatch,
   selfLeave,
   startLeague,
   submitResult,
@@ -134,6 +135,16 @@ export function useLeagueDetail(leagueId: string) {
     [leagueId, refresh],
   );
 
+  /** LMR-7: manually resets a stranded live match (owner/dev-admin) and
+   * refreshes so the fixture returns to scheduled/pending. */
+  const reset = useCallback(
+    async (fixtureId: string) => {
+      await resetLiveMatch(leagueId, fixtureId);
+      await refresh();
+    },
+    [leagueId, refresh],
+  );
+
   const submit = useCallback(
     async (fixtureId: string, payload: ResultPayload) => {
       await submitResult(leagueId, fixtureId, payload);
@@ -164,6 +175,7 @@ export function useLeagueDetail(leagueId: string) {
     propose,
     accept,
     forfeit,
+    reset,
     submit,
     correct,
   };
