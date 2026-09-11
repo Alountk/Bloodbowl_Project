@@ -12,9 +12,11 @@ import { useLeagueDetail } from "./useLeagueDetail";
 import { MatchCard } from "./MatchCard";
 import { NegotiationPanel } from "./NegotiationPanel";
 import { ForfeitModal } from "./ForfeitModal";
+import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
 import { ResultModal, type ResultTeamDraft } from "./ResultModal";
 import { buildResultPrefill } from "./resultPrefill";
 import { getMatchDetail } from "./api";
+import { can } from "@/lib/permissions";
 import type { FixtureDraft, FixtureRound, ResultPayload } from "./api";
 
 interface LeagueDetailProps {
@@ -50,6 +52,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
     propose,
     accept,
     forfeit,
+    reset,
     submit,
     correct,
   } = useLeagueDetail(leagueId);
@@ -64,6 +67,9 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
   const isOwner = league?.ownerId === userId;
   const userMemberTeam = league?.teams.find((team) => team.userId === userId);
   const isMember = Boolean(userMemberTeam);
+  // LMR-7: the manual live-match reset is for the league owner or a
+  // developer/admin holding `live.manage`; hidden from participants/spectators.
+  const canResetLive = Boolean(isOwner) || can(session?.user?.role, "live.manage");
 
   if (!loading && notFound) {
     return (
@@ -244,9 +250,11 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
             currentUserId={userId ?? ""}
             isLeagueOwner={isOwner}
             leagueFinished={finished}
+            canResetLive={canResetLive}
             onPropose={propose}
             onAccept={accept}
             onForfeit={forfeit}
+            onReset={reset}
             onSubmitResult={submit}
             onCorrectResult={correct}
           />
@@ -433,9 +441,11 @@ function Jornadas({
   currentUserId,
   isLeagueOwner,
   leagueFinished = false,
+  canResetLive = false,
   onPropose,
   onAccept,
   onForfeit,
+  onReset,
   onSubmitResult,
   onCorrectResult,
 }: {
@@ -447,9 +457,13 @@ function Jornadas({
   /** RAU-40: a finished league hides the result/forfeit/negotiation affordances
    * while keeping the jornadas (and thus the standings) visible. */
   leagueFinished?: boolean;
+  /** LMR-7: the viewer may reset a stranded live match (owner/dev-admin). */
+  canResetLive?: boolean;
   onPropose: (fixtureId: string, date: string) => Promise<void>;
   onAccept: (fixtureId: string, proposalId: string) => Promise<void>;
   onForfeit: (fixtureId: string, winnerTeamId: string) => void;
+  /** LMR-7: POSTs the fixture reset (owner/dev-admin only). */
+  onReset: (fixtureId: string) => Promise<void>;
   onSubmitResult: (fixtureId: string, payload: ResultPayload) => void;
   onCorrectResult: (fixtureId: string, payload: ResultPayload) => void;
 }) {
@@ -497,6 +511,8 @@ function Jornadas({
     : null;
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [forfeitFixture, setForfeitFixture] = useState<FixtureDraft | null>(null);
+  // LMR-7: the fixture whose reset confirmation modal is open.
+  const [resetFixture, setResetFixture] = useState<FixtureDraft | null>(null);
   const { t } = useI18n();
 
   // The fixture whose ResultModal is open, plus its mode ("load" on a scheduled
@@ -571,11 +587,13 @@ function Jornadas({
             currentUserId={currentUserId}
             isLeagueOwner={isLeagueOwner}
             leagueFinished={leagueFinished}
+            canResetLive={canResetLive}
             onNegotiate={(f) => {
               setProposalError(null);
               setNegotiateFixtureId(f.id);
             }}
             onForfeit={setForfeitFixture}
+            onReset={setResetFixture}
             onLoadResult={(f) => {
               setResultMode("load");
               setResultFixture(f);
@@ -644,6 +662,14 @@ function Jornadas({
             setForfeitFixture(null);
           }}
           onClose={() => setForfeitFixture(null)}
+        />
+      ) : null}
+
+      {resetFixture ? (
+        <ResetLiveMatchModal
+          open
+          onConfirm={() => onReset(resetFixture.id)}
+          onClose={() => setResetFixture(null)}
         />
       ) : null}
 
