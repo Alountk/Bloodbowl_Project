@@ -844,6 +844,7 @@ const es: Dict = {
   "watch.closed": "Este link ya no está disponible",
   "match.share": "Compartir",
   "match.shareCopied": "Copiado",
+  "match.shareError": "No se pudo copiar el enlace.",
 };
 
 const en: Dict = {
@@ -1665,9 +1666,10 @@ const en: Dict = {
    "watch.finished": "Finished",
    "watch.loading": "Loading match…",
    "watch.closed": "This link is no longer available",
-   "match.share": "Share",
-   "match.shareCopied": "Copied",
-};
+    "match.share": "Share",
+    "match.shareCopied": "Copied",
+    "match.shareError": "Could not copy the link.",
+  };
 
 /** The full es/en dictionaries, keyed by locale. */
 export const dictionaries: Record<Locale, Dict> = { es, en };

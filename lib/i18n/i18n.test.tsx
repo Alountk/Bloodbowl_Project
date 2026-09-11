@@ -72,6 +72,7 @@ describe("t (dictionaries)", () => {
       ["watch.closed", "Este link ya no está disponible", "This link is no longer available"],
       ["match.share", "Compartir", "Share"],
       ["match.shareCopied", "Copiado", "Copied"],
+      ["match.shareError", "No se pudo copiar el enlace.", "Could not copy the link."],
     ];
     for (const [key, esValue, enValue] of cases) {
       expect(t("es", key), `es "${key}"`).toBe(esValue);

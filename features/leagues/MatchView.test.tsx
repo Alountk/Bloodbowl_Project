@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useSession } from "next-auth/react";
 import { MatchView } from "./MatchView";
@@ -2518,5 +2518,145 @@ describe("MatchView — manual reset control (LMR-7)", () => {
         method: "POST",
       });
     });
+  });
+});
+
+/**
+ * MSL-7/MV-8: the "Compartir" affordance on the match page. Visibility mirrors
+ * the share endpoint RBAC — a match participant (home/away owner), the league
+ * owner, or a developer/admin holding `live.manage`, and NEVER a spectator
+ * member. A click mints the stable token, copies `${origin}/watch/${token}` and
+ * flips the label to "Copiado"; a copy failure surfaces an alert instead.
+ */
+describe("MatchView — share link (MSL-7/MV-8)", () => {
+  const writeText = vi.fn();
+
+  beforeEach(() => {
+    writeText.mockReset().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(navigator, "clipboard");
+  });
+
+  /** Stubs the match detail, the league detail AND the share POST in one mock. */
+  function stubMatchLeagueAndShare(
+    detail: MatchDetail,
+    leagueOverrides: Partial<{ ownerId: string; status: string }> = {},
+    token = "tok-abc",
+  ) {
+    const league = {
+      id: "l1",
+      name: "Liga",
+      description: null,
+      ownerId: "u1",
+      createdAt: "2026-01-01",
+      status: "started",
+      seasonLength: null,
+      startedAt: null,
+      championTeamId: null,
+      ownerName: null,
+      memberCount: 2,
+      isMember: true,
+      turnClockEnabled: false,
+      turnClockSeconds: 120,
+      rulesetId: null,
+      rulesetName: null,
+      teams: [],
+      fixtures: [],
+      rounds: [],
+      ...leagueOverrides,
+    };
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/share")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ token }),
+        });
+      }
+      const payload = url.includes("/fixtures/") ? detail : league;
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("shows 'Compartir' to a match participant and copies the absolute watch URL", async () => {
+    stubLiveEventSource();
+    const fetchMock = stubMatchLeagueAndShare(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+
+    const button = await screen.findByRole("button", { name: "Compartir" });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/watch/tok-abc`);
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l1/fixtures/f1/share", {
+      method: "POST",
+    });
+    expect(await screen.findByRole("button", { name: "Copiado" })).toBeTruthy();
+  });
+
+  it("shows 'Compartir' to the league owner who is not a participant", async () => {
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u-owner" } } } as never);
+    stubLiveEventSource();
+    stubMatchLeagueAndShare(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+    expect(await screen.findByRole("button", { name: "Compartir" })).toBeTruthy();
+  });
+
+  it("shows 'Compartir' to a developer (live.manage) who is neither participant nor owner", async () => {
+    vi.mocked(useSession).mockReturnValue({
+      data: { user: { id: "u-dev", role: "developer" } },
+    } as never);
+    stubLiveEventSource();
+    stubMatchLeagueAndShare(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+    expect(await screen.findByRole("button", { name: "Compartir" })).toBeTruthy();
+  });
+
+  it("hides 'Compartir' from a spectator member (no side, no owner, no role)", async () => {
+    vi.mocked(useSession).mockReturnValue({ data: { user: { id: "user-spectator" } } } as never);
+    stubLiveEventSource();
+    stubMatchLeagueAndShare(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+    await screen.findByText(/Mitad 1 · Turno 3/);
+    expect(screen.queryByRole("button", { name: "Compartir" })).toBeNull();
+  });
+
+  it("surfaces a copy failure as an alert and never shows 'Copiado'", async () => {
+    writeText.mockRejectedValueOnce(new Error("denied"));
+    stubLiveEventSource();
+    stubMatchLeagueAndShare(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+    fireEvent.click(await screen.findByRole("button", { name: "Compartir" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("No se pudo copiar el enlace.");
+    expect(screen.queryByRole("button", { name: "Copiado" })).toBeNull();
+  });
+
+  it("falls back to execCommand when the Clipboard API is unavailable", async () => {
+    Reflect.deleteProperty(navigator, "clipboard");
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, "execCommand", {
+      value: execCommand,
+      configurable: true,
+    });
+    stubLiveEventSource();
+    stubMatchLeagueAndShare(liveDetail(), { ownerId: "u-owner" });
+    renderPlayed();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Compartir" }));
+
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+    expect(writeText).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Copiado" })).toBeTruthy();
+    Reflect.deleteProperty(document, "execCommand");
   });
 });

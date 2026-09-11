@@ -18,7 +18,7 @@ import {
 } from "@/lib/rules";
 import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { can } from "@/lib/permissions";
-import { getMatchDetail, resetLiveMatch, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
+import { createShareLink, getMatchDetail, resetLiveMatch, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
 import { LiveEventCards } from "./liveEventCards";
 import { MatchTimelineBar } from "./matchTimelineBar";
@@ -30,6 +30,33 @@ import { useLiveClock, type DisplayClock } from "./useLiveClock";
 import { useLeague } from "./useLeagueName";
 import { MatchResolveModal } from "./MatchResolveModal";
 import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
+
+/**
+ * Copies `text` to the clipboard (MSL-7). Prefers the async Clipboard API and
+ * falls back to a hidden textarea + `execCommand` for contexts where
+ * `navigator.clipboard` is unavailable (non-secure origin, older webview). The
+ * promise rejects when neither path can copy, so the caller can surface an
+ * error state.
+ */
+async function copyToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const el = document.createElement("textarea");
+  el.value = text;
+  el.setAttribute("readonly", "");
+  el.style.position = "fixed";
+  el.style.opacity = "0";
+  document.body.appendChild(el);
+  try {
+    el.select();
+    const ok = document.execCommand("copy");
+    if (!ok) throw new Error("copy command was rejected");
+  } finally {
+    document.body.removeChild(el);
+  }
+}
 
 /**
  * Internal single-match fetch hook mirroring `useLeagueDetail`: loads the match
@@ -1641,6 +1668,9 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
   const [resolveOpen, setResolveOpen] = useState(false);
   // LMR-7: the manual reset confirmation modal.
   const [resetOpen, setResetOpen] = useState(false);
+  // MSL-7: the share-link affordance state — "copying" disables the button,
+  // "copied" flips its label, "error" surfaces an alert.
+  const [shareState, setShareState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const prevLiveStatusRef = useRef<string | null>(null);
   useEffect(() => {
     const liveStatus = detail?.live?.status ?? null;
@@ -1709,6 +1739,26 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     detail.live.status !== "finished" &&
     league.status !== "finished" &&
     (league.ownerId === session.user.id || can(session.user.role, "live.manage"));
+
+  // MSL-7/MV-8: the share link is offered to a match participant (home/away
+  // owner), the league owner, or a developer/admin (`live.manage`) — never to a
+  // spectator member. The POST route re-enforces this server-side.
+  const canShare =
+    session?.user?.id != null &&
+    (viewerSide != null ||
+      league.ownerId === session.user.id ||
+      can(session.user.role, "live.manage"));
+
+  const onShare = async () => {
+    setShareState("copying");
+    try {
+      const { token } = await createShareLink(leagueId, fixtureId);
+      await copyToClipboard(`${window.location.origin}/watch/${encodeURIComponent(token)}`);
+      setShareState("copied");
+    } catch {
+      setShareState("error");
+    }
+  };
 
   const onReset = async () => {
     await resetLiveMatch(leagueId, fixtureId);
@@ -1819,15 +1869,33 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
     // back navigation lives in the sticky rulebook header's back arrow (only
     // the notFound/error/loading panels keep their own chrome).
     <section aria-label={t("match.pageAria", { round: detail.fixture.round })}>
-      {canResetLive ? (
-        <div className="flex justify-end border-b border-border bg-panel px-3 py-1.5">
-          <button
-            type="button"
-            onClick={() => setResetOpen(true)}
-            className="rounded-sm border border-red px-2.5 py-1 text-[11px] font-semibold text-red hover:bg-red hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-red"
-          >
-            {t("reset.action")}
-          </button>
+      {canResetLive || canShare ? (
+        <div className="flex items-center justify-end gap-2 border-b border-border bg-panel px-3 py-1.5">
+          {shareState === "error" ? (
+            <p role="alert" className="mr-auto text-[11px] font-semibold text-red">
+              {t("match.shareError")}
+            </p>
+          ) : null}
+          {canShare ? (
+            <button
+              type="button"
+              data-testid="share-link"
+              onClick={() => void onShare()}
+              disabled={shareState === "copying"}
+              className="rounded-sm border border-navy px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-navy hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {shareState === "copied" ? t("match.shareCopied") : t("match.share")}
+            </button>
+          ) : null}
+          {canResetLive ? (
+            <button
+              type="button"
+              onClick={() => setResetOpen(true)}
+              className="rounded-sm border border-red px-2.5 py-1 text-[11px] font-semibold text-red hover:bg-red hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-red"
+            >
+              {t("reset.action")}
+            </button>
+          ) : null}
         </div>
       ) : null}
       {body}
