@@ -4,6 +4,7 @@ import {
   assignTeam,
   correctResult,
   createLeague,
+  createShareLink,
   forfeitFixture,
   getFixtureProposals,
   getMatchDetail,
@@ -422,6 +423,32 @@ describe("matchday negotiation helpers", () => {
       method: "POST",
     });
     expect(result).toEqual({ ok: true });
+  });
+
+  it("createShareLink POSTs the fixture share route and returns the token (MSL-2/MSL-7)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okJson({ token: "tok-abc" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createShareLink("l1", "f1");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l1/fixtures/f1/share", {
+      method: "POST",
+    });
+    expect(result).toEqual({ token: "tok-abc" });
+  });
+
+  it("createShareLink URL-encodes ids and propagates the HTTP status on rejection (MSL-2)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ error: "Forbidden" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createShareLink("l/1", "f 1")).rejects.toMatchObject({ status: 403 });
+    expect(fetchMock).toHaveBeenCalledWith("/api/leagues/l%2F1/fixtures/f%201/share", {
+      method: "POST",
+    });
   });
 
   it("submitResult POSTs a result payload to the fixture result route", async () => {

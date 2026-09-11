@@ -359,6 +359,25 @@ export async function resetLiveMatch(
   return readJson<{ ok: true }>(res);
 }
 
+/**
+ * Mints (or returns) the fixture's stable public share token (MSL-2/MSL-7).
+ * POSTs the share route and returns `{ token }`; the caller builds the absolute
+ * `/watch/[token]` URL. The token is generated lazily on first share and never
+ * rotated. Authorized server-side for a match participant, the league owner, or
+ * a `live.manage` holder — a spectator member gets 403, an anonymous or foreign
+ * caller 401/404 (no existence leak).
+ */
+export async function createShareLink(
+  leagueId: string,
+  fixtureId: string,
+): Promise<{ token: string }> {
+  const res = await fetch(
+    `/api/leagues/${encodeURIComponent(leagueId)}/fixtures/${encodeURIComponent(fixtureId)}/share`,
+    { method: "POST" },
+  );
+  return readJson<{ token: string }>(res);
+}
+
 /** A single player's per-action report within a result load. */
 export interface ResultPlayerAction {
   rosterPlayerId: string;
