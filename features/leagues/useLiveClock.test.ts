@@ -70,6 +70,27 @@ describe("deriveDisplayClock (pure)", () => {
   it("returns zero values for a null state", () => {
     expect(deriveDisplayClock(null, 5000, 0)).toEqual({ elapsed: 0, homeTurnMs: 0, awayTurnMs: 0 });
   });
+
+  it("accepts a reduced guest view (no consent/MVP/resolution fields)", () => {
+    // The public watch page passes a `WatchLiveView`; the clock reads only the
+    // minimal slice, so the member-only fields are irrelevant.
+    const guest = {
+      seq: 3,
+      status: "live" as const,
+      half: 1,
+      turnNumber: 2,
+      activeSide: "away" as const,
+      elapsed: 1000,
+      homeTurnMs: 0,
+      awayTurnMs: 1000,
+      paused: false,
+    };
+    expect(deriveDisplayClock(guest, 4000, 0)).toEqual({
+      elapsed: 5000,
+      homeTurnMs: 0,
+      awayTurnMs: 5000,
+    });
+  });
 });
 
 describe("useLiveClock (fake timers)", () => {
