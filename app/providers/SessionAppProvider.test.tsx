@@ -85,6 +85,47 @@ describe("SessionAppProvider", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     nav.pathname = "/teams";
   });
+
+  it("passes children through without the app shell on the /watch share route (AS-9)", () => {
+    nav.pathname = "/watch/tok-1";
+    useSessionMock.mockReturnValue({ status: "unauthenticated" });
+    fetchMock.mockClear();
+
+    render(<SessionAppProvider>watch content</SessionAppProvider>);
+
+    // The public share page renders raw: no Sidebar/Topbar and no session gate,
+    // so a guest never mounts the member chrome.
+    expect(screen.getByText("watch content")).toBeTruthy();
+    expect(screen.queryByRole("banner")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Main navigation" })).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    nav.pathname = "/teams";
+  });
+
+  it("exempts the bare /watch path too", () => {
+    nav.pathname = "/watch";
+    useSessionMock.mockReturnValue({ status: "unauthenticated" });
+    fetchMock.mockClear();
+
+    render(<SessionAppProvider>bare watch</SessionAppProvider>);
+
+    expect(screen.getByText("bare watch")).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Main navigation" })).toBeNull();
+    nav.pathname = "/teams";
+  });
+
+  it("keeps the app shell for a non-watch path that merely starts with /watch", () => {
+    nav.pathname = "/watchlist";
+    useSessionMock.mockReturnValue({ status: "unauthenticated" });
+    fetchMock.mockClear();
+
+    render(<SessionAppProvider>list content</SessionAppProvider>);
+
+    // Anti-overreach: only /watch and /watch/* are exempt — /watchlist keeps the shell.
+    expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeTruthy();
+    nav.pathname = "/teams";
+  });
 });
 
 describe("SessionAppProvider — legacy localStorage migration", () => {

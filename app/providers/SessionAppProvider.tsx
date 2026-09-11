@@ -22,7 +22,17 @@ import { MigrationReloadContext } from "./MigrationReloadContext";
  * The home route ("/") is exempt from the shared shell: the server page decides
  * between the public Landing (anonymous, no app chrome) and a self-shelled
  * `HomeDashboard`, so wrapping "/" here would double-mount the sidebar.
+ *
+ * AS-9: the public share route (`/watch` and `/watch/*`) is exempt too — a guest
+ * opening a match link must never mount the member chrome (Sidebar/Topbar/nav),
+ * and the page owns its own minimal layout. Only the exact `/watch` path and the
+ * `/watch/` prefix are exempt; a path that merely starts with `/watch` (e.g.
+ * `/watchlist`) keeps the shell.
  */
+function isShellExempt(pathname: string): boolean {
+  return pathname === "/" || pathname === "/watch" || pathname.startsWith("/watch/");
+}
+
 export function SessionAppProvider({ children }: { children: ReactNode }) {
   const { status } = useSession();
   const router = useRouter();
@@ -44,7 +54,7 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
     onMigrated: () => setMigrationReload((v) => v + 1),
   });
 
-  if (pathname === "/") {
+  if (isShellExempt(pathname)) {
     return (
       <MigrationReloadContext.Provider value={migrationReload}>
         {children}
