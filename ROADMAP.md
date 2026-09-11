@@ -69,6 +69,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Compra de incentivos pre-partido + chips en el feed** (RAU-5/#98): catálogo de 16 incentivos comunes BB2025 con costes reales (Sobornos 100k / 50k B&C, Chef 300k / 100k Halfling, Árbitro 120k / 80k B&C...), límites por partido y descuentos por regla especial de raza; el coach del equipo de menor TV compra en la fase `ready` (presupuesto = ΔTV) y el feed terminado muestra los incentivos POR EQUIPO con chips de cartas ("2× Sobornos") | #198, #199, #200, #201, #202, #203, #204, #205 |
 | **Resolución del partido para partidos en vivo finalizados** (RAU-48/49): modal guiado con MVP y FF con previsualización confirmada | directos a main |
 | **Recuperación de partidos en vivo** (live-match-recovery): reset manual de un partido atascado (solo owner o developer/admin, permiso `live.manage`) que borra el LiveMatch y devuelve el fixture a rejugable; **auto-cierre lazy a las 8h** desde el kickoff que congela el marcador como jugado (sin PE/ganancias/MVP — progresión diferida al wizard); y el **forfeit admin limpia el LiveMatch huérfano** (ya no queda EN VIVO sobre un partido jugado) | #206, #207, #208, #209 |
+| **Compartir partido por link público** (RAU-7): link fijo por partido (`Fixture.shareToken` de 192 bits, sin rotación) que un invitado **sin registrarse** abre en `/watch/[token]` para ver el partido en solo-lectura (marcador, reloj, timeline, resumen); SSE en vivo reducido por whitelist (sin rosters/tesorería/PE/MVP/resolución/inducements); expira al resolverse el resultado (404 genérico); botón "Compartir" para participantes/owner/admin | #210, #211, #212, #213, #214, #215, #216, #217 |
 | **i18n ES/EN** (cero dependencias): núcleo con diccionarios, migración de shell, auth, wizard, detalle, ligas y match view; idioma por cuenta | directos a main + #120 |
 | **i18n SSR + default inglés**: el layout resuelve el locale con precedencia cuenta > sesión > cookie > `Accept-Language` > **inglés** (mata el hydration mismatch del landing anónimo); **landing localizado** (hero, features, how-it-works, footer — ya no hardcodeado) | #141, #142 |
 | **MVP por lado** (RAU-51): nominación de MVP en el modal de resolución con comando server-side, rollo y gating | #109 |
@@ -162,7 +163,6 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 - Guía de reglas integrada (búsqueda de skill/regla).
 
 **Plataforma y venta**
-- Compartir partido en vivo por link (webcam/móvil/segunda pantalla) — RAU-7.
 - Páginas públicas de liga (resultados/standings sin cuenta).
 - PWA instalable.
 - Import/export de equipos JSON.
