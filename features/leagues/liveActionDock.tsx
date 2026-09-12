@@ -89,11 +89,6 @@ export interface LiveActionDockProps {
   opponentRaceId: string;
   /** Wraps `act`: the `/api/.../live` POST command. */
   onSubmit: (cmd: LiveCommand) => Promise<void>;
-  /** LM-28/MVT-7: the ACTIVE team's display name for the dock bar's
-   * "Turno {team}" status label (only shown to the active coach). Optional so
-   * direct-dock tests (which render no header) can omit it; MatchView provides
-   * it. */
-  activeTeamName?: string;
 }
 
 /** A guided step inside the dock sheet: pick chips vs a RollStepper stage. */
@@ -166,7 +161,6 @@ export function LiveActionDock({
   rosterRaceId,
   opponentRaceId,
   onSubmit,
-  activeTeamName,
 }: LiveActionDockProps) {
   const { t } = useI18n();
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -555,14 +549,6 @@ export function LiveActionDock({
       {modalContent}
       <div className="bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur">
         <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-1.5 px-3 py-2">
-          {active && activeTeamName ? (
-            <small
-              role="status"
-              className="mr-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
-            >
-              {t("match.turnOfTeam", { team: activeTeamName })}
-            </small>
-          ) : null}
           {dockButtons}
         </div>
       </div>

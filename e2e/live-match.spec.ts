@@ -496,19 +496,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     ).toHaveAttribute("href", `/leagues/${leagueId}`);
     await expect(header.getByTestId("match-timeline")).toBeVisible();
     // MVT-3: the sticky header NEVER hosts the pass-turn action — it lives in the
-    // bottom dock (MVT-7). Lock that the header has no "Dar el turno" nor the
-    // "Turno {team}" status small.
+    // bottom dock. Lock that the header has no "Dar el turno".
     await expect(header.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
-    await expect(header.getByRole("status")).toHaveCount(0);
 
-    // LM-12/D19/MVT-7: the first ACTIVE side after begin is home (LM-3: half 1
-    // turn 1 home). The pass-turn control lives ONLY in the bottom dock: its red
-    // "Dar el turno" chip carries the "Turno {team}" role=status; the NON-active
-    // coach sees "Pedir turno" and never "Dar el turno". The header NEVER hosts
-    // the pass control (MVT-3), so the role=status small is the dock chip's.
-    // The timeline turn-start card ALSO reads "Turno {homeTeamName}" (RAU-36/37),
-    // so the status checks target the role=status small specifically.
-    await expect(homeCoach.getByRole("status")).toHaveText(`Turno ${homeTeamName}`);
+    // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
+    // home). The pass-turn control lives ONLY in the bottom dock ("Dar el turno"
+    // for the active coach, "Pedir turno" for the non-active); the dock carries
+    // NO "Turno {team}" status label — the header's turn chip + the active
+    // coach's "Tu turno" accent are the turn-state signals.
     await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
     // MVT-3 Concept B: the ACTIVE coach's rulebook-header shows the coach-only
     // accent "Tu turno · clock". The query is HELD within the header because the
@@ -519,7 +514,6 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       homeCoach.getByTestId("rulebook-header").getByText("Tu turno"),
     ).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
-    await expect(awayCoach.getByRole("status")).toHaveCount(0);
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
     await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
@@ -544,12 +538,9 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // (NOT 2) on both coaches' pages.
     await expect(homeCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
     await expect(awayCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
-    // Regression: exactly one flip — turn 2 never appears, the away coach is
-    // the one now active ("Turno {awayTeamName}"), and the home coach's status
-    // is gone.
-    await expect(awayCoach.getByRole("status")).toHaveText(`Turno ${awayTeamName}`);
+    // Regression: exactly one flip — turn 2 never appears and the away coach is
+    // the one now active (the header's "Tu turno" accent below).
     await expect(homeCoach.getByText(/Mitad 1 · Turno 2/)).toHaveCount(0);
-    await expect(homeCoach.getByRole("status")).toHaveCount(0);
     // The accent tracks the ACTIVE coach only: after the flip away holds the
     // turn, so away's header carries "Tu turno" while home's no longer does
     // (both scoped within each rulebook-header; the feed turnStart tags also

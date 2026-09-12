@@ -606,14 +606,13 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     );
   });
 
-  it("shows 'Turno Reavers' + 'Dar el turno' for the ACTIVE coach (viewerSide === activeSide, LM-12/D19)", async () => {
+  it("shows 'Dar el turno' for the ACTIVE coach (viewerSide === activeSide, LM-12/D19)", async () => {
     stubLiveEventSource();
     stubMatch(liveDetail()); // viewerSide home, activeSide home → active
     renderPlayed();
 
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // The active coach sees the "Turno {team}" notice + the pass control.
-    expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
+    // The active coach sees the pass control in the dock (no status label).
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
     // The active coach does not see the "Pedir turno" nudge.
     expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
@@ -895,17 +894,18 @@ describe("MatchView — casi rulebook hero (Design 10)", () => {
     expect(screen.getByText(/Estadio · Reglamentario/)).toBeTruthy();
   });
 
-  it("passes the turn ONLY from the bottom dock (Dar el turno + 'Turno {team}' status inside it)", async () => {
+  it("passes the turn ONLY from the bottom dock (Dar el turno)", async () => {
     stubLiveEventSource();
     stubMatch(liveDetail()); // home coach active → sees the channel dock pass chip
     const { container } = renderPlayed();
     await screen.findAllByText(/Mitad 1 · Turno 3/);
 
-    // MVT-3/MVT-7: the 'Dar el turno' action now lives in the bottom dock, not
-    // the navy header — the active coach sees the red chip + its status line.
+    // MVT-3: the 'Dar el turno' action lives in the bottom dock, not the navy
+    // header. The dock carries NO "Turno {team}" status label — the header's
+    // turn chip and the active coach's "Tu turno" accent already carry it.
     expect(container.textContent).toMatch(/1ª PARTE/i);
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
-    expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
     // The active coach sees no "Pedir turno" (that stays for the NON-active).
     expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
   });

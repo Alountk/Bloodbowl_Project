@@ -1319,11 +1319,6 @@ function LiveActiveMatch({
             rosterRaceId={state.viewerSide === "away" ? awayTeam.raceId : homeTeam.raceId}
             opponentRaceId={state.viewerSide === "away" ? homeTeam.raceId : awayTeam.raceId}
             onSubmit={act}
-            activeTeamName={
-              state.viewerSide != null && state.activeSide != null
-                ? names[state.activeSide]
-                : undefined
-            }
           />
           {/* Spacer so the fixed dock never covers the tail of the live feed. */}
           <div aria-hidden className="h-20" />

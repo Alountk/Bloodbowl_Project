@@ -46,7 +46,7 @@ const opponentRoster: MatchPlayer[] = [
   human("o4", "Wurrzag Colmillo Negro", "thrower"),
 ];
 
-function Dock({ viewerSide, activeSide, activeTeamName }: { viewerSide: "home" | "away"; activeSide: "home" | "away"; activeTeamName?: string }) {
+function Dock({ viewerSide, activeSide }: { viewerSide: "home" | "away"; activeSide: "home" | "away" }) {
   return (
     <>
       {/* Fake page body so the fixed bar reads as an overlay, not a lone strip. */}
@@ -65,7 +65,6 @@ function Dock({ viewerSide, activeSide, activeTeamName }: { viewerSide: "home" |
         rosterRaceId="human"
         opponentRaceId="orc"
         onSubmit={async () => undefined}
-        activeTeamName={activeTeamName}
       />
     </>
   );
@@ -93,13 +92,13 @@ export default {
 
 export const CoachActivo = {
   name: "Coach activo — dock cerrado",
-  render: () => <Dock viewerSide="home" activeSide="home" activeTeamName="Águilas de Middenheim" />,
+  render: () => <Dock viewerSide="home" activeSide="home" />,
   parameters: { ...baseParams },
 };
 
 export const CoachActivoHojaTD = {
   name: "Coach activo — modal TD abierto",
-  render: () => <Dock viewerSide="home" activeSide="home" activeTeamName="Águilas de Middenheim" />,
+  render: () => <Dock viewerSide="home" activeSide="home" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement);
     const td = await canvas.findByRole("button", { name: "Touchdown" });
@@ -117,7 +116,7 @@ export const CoachActivoHojaTD = {
 
 export const CoachActivoFlujoBaja = {
   name: "Coach activo — Baja guiada (hasta la tirada)",
-  render: () => <Dock viewerSide="home" activeSide="home" activeTeamName="Águilas de Middenheim" />,
+  render: () => <Dock viewerSide="home" activeSide="home" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Baja causada" }));
