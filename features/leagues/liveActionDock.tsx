@@ -548,7 +548,10 @@ export function LiveActionDock({
           would collapse the overlay's `fixed inset-0`). */}
       {modalContent}
       <div className="bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-1.5 px-3 py-2">
+        {/* Align the bar's content with the app's main content (same horizontal
+            padding as the shell) so the chips line up with the event cards'
+            edges, and center them within that width. */}
+        <div className="flex w-full flex-wrap items-center justify-center gap-1.5 px-4 py-2 sm:px-6">
           {dockButtons}
         </div>
       </div>

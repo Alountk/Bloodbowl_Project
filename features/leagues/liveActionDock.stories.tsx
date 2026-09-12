@@ -49,8 +49,10 @@ const opponentRoster: MatchPlayer[] = [
 function Dock({ viewerSide, activeSide }: { viewerSide: "home" | "away"; activeSide: "home" | "away" }) {
   return (
     <>
-      {/* Fake page body so the fixed bar reads as an overlay, not a lone strip. */}
-      <div className="mx-auto max-w-2xl px-3 pb-32 text-[13px] text-slate-500">
+      {/* Fake page body so the fixed bar reads as an overlay, not a lone strip.
+          Mirrors the app shell's main content width (full width + its padding)
+          so the dock's alignment is judged against the real feed width. */}
+      <div className="w-full px-4 pb-32 text-[13px] text-slate-500 sm:px-6">
         <p className="mb-3 rounded border border-[#e2e8f0] bg-white p-3 font-semibold text-[#12225a]">
           Cuerpo del partido (mock)
         </p>
