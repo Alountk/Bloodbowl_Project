@@ -40,6 +40,16 @@ describe("roles (RBAC) — RAU-52", () => {
     expect(can("user", "live.manage")).toBe(false);
     expect(can(null, "live.manage")).toBe(false);
   });
+
+  it("grants leagues.manage to developer and admin only (LAC-1)", () => {
+    expect(can("developer", "leagues.manage")).toBe(true);
+    expect(can("admin", "leagues.manage")).toBe(true);
+    // A plain user must never hold the owner-equivalent override.
+    expect(can("user", "leagues.manage")).toBe(false);
+    expect(can(null, "leagues.manage")).toBe(false);
+    expect(can(undefined, "leagues.manage")).toBe(false);
+    expect(can("mystery", "leagues.manage")).toBe(false);
+  });
 });
 
 describe("plans (billing tiers) — RAU-52", () => {
