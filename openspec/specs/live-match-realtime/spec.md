@@ -502,32 +502,32 @@ A pure derivation over the display-worthy events MUST return, per team: TD count
 
 ### Requirement: LM-20 · Event Recording Controls
 
-Live recording MUST be a player-first strip + action bubble (Design B). A horizontal strip of the viewer's OWN roster chips (dorsal + short name) MUST mount above the chronology ONLY when the match is `live` and `viewerSide !== null`, and MUST list ONLY players who are alive AND NOT missNextMatch. Touching a chip MUST open an action bubble listing the LEGAL actions for that player, per the LM-12 matrix and `activeSide`: the ACTIVE coach → TD, Pase completo, Baja/Herida, Falta; the NON-ACTIVE coach → the casualty actions their side may record: (a) Baja/Herida autoinfligida (`dodge|crowd`) on the tapped own player, and (b) Baja ambos derribados — the tapped own defender PREFILLED as causer, the rival fallen blocker picked as victim. TD and Pase MUST complete in at most TWO touches (chip → action) with no selects. Baja/Falta MUST prefill the tapped player as causer/aggressor and guide cause → rival victim → the 1D16 roll (the 1D6 shown live when the derived band is permanent); the client MUST mirror the derived band only (never send one). Submission MUST fire the corresponding LiveCommand and the server LM-12 matrix stays authoritative (any bypass → 409). The \"+\" FAB, the event-type menu, and the long name-select mini-form MUST be removed. A spectator member or a side-less admin MUST see neither strip nor controls. Every new control MUST expose a stable testid and accessible name; feed cards MUST keep their existing testids/aria. All new strip/bubble copy MUST exist in BOTH the es and en dictionaries, kept in sync; the superseded `match.menu.*`/`match.controls.*` keys MUST be removed only when no longer referenced. e2e assertions on the removed FAB/menu/selects MUST be updated INTENTIONALLY with the behavior (deliberate change, not test rot).
-(Previously: a hidden FAB \"+\" opened a role-aware menu and a mini-form of long selects whose casualty path followed the two-phase proposal; the one-phase direct casualty model is the shipped base.)
+Live recording MUST be a contextual action dock (Design A, LM-46). A fixed bottom bar MUST mount ONLY when the match is `live` and `viewerSide !== null`, showing the actions the viewer may legally record RIGHT NOW per the LM-12 matrix and `activeSide`: the ACTIVE coach → Dar el turno · TD · Pase completo · Baja causada · Falta; the NON-active coach → Baja propia · Baja — ambos derribados. The bar MUST NOT carry a "Registrar acción" label; the `Dar el turno` chip MUST be a normal-sized button showing only its label, with the `Turno {team}` status as a SEPARATE small label inside the dock (never the sticky header). Tapping an action MUST open a CENTERED MODAL over the viewport — not a sheet attached to the dock — hosting the participant pickers. NOTHING MUST be preselected, and picking the LAST required option MUST fire the corresponding LiveCommand immediately (there MUST be no Confirmar / Registrar step). Closing the modal MUST cancel the flow and reset it. TD and Pase MUST complete in at most TWO touches (action → own player) with no selects. Baja/Falta MUST guide cause → own causer/aggressor → rival victim → the 1D16 roll (the 1D6 shown only when the derived band is permanent); the client MUST mirror the derived band only (never send one). The server LM-12 matrix stays authoritative (any bypass → 409). The "+" FAB, the event-type menu, and the long name-select mini-form MUST be removed. A spectator member or a side-less admin MUST see neither the bar nor the modal. Every new control MUST expose a stable testid and accessible name; feed cards MUST keep their existing testids/aria. All new dock/modal copy MUST exist in BOTH the es and en dictionaries, kept in sync. e2e assertions on the removed FAB/menu/selects MUST be updated INTENTIONALLY with the behavior (deliberate change, not test rot).
+(Previously: a hidden FAB "+" opened a role-aware menu and a mini-form of long selects; a later player-first strip + action bubble (Design B) was itself superseded by this contextual dock. The one-phase direct casualty model is the shipped base.)
 
 #### Scenario: TD in two touches
 
-- GIVEN a live match, the ACTIVE coach, and an alive eligible player chip
-- WHEN they tap the chip and then "TD"
+- GIVEN a live match and the ACTIVE coach
+- WHEN they tap the dock's "TD" chip and then their own player in the modal
 - THEN the td command fires with the tapped player and the event appears in the feed; no select was shown
 
 #### Scenario: Pase in two touches
 
-- GIVEN the same strip
-- WHEN they tap a chip and then "Pase completo"
+- GIVEN the same dock
+- WHEN they tap "Pase completo" and then their own player in the modal
 - THEN the completion command fires with the tapped player (★1)
 
-#### Scenario: Active guided Baja prefills the causer
+#### Scenario: Active guided Baja fires on the roll
 
-- GIVEN the ACTIVE coach taps their own blocker
-- WHEN they choose Baja/Herida, pick the cause and the rival victim, and confirm the 1D16 roll (1D6 when permanent)
-- THEN the casualty command carries the tapped player as `causerRosterId`, the rival as victim, `roll16` (no band) and persists
+- GIVEN the ACTIVE coach opens the dock's "Baja causada"
+- WHEN they pick the cause, their own causer, the rival victim, and then the 1D16 roll (the 1D6 too when the band is permanent)
+- THEN the casualty command carries their own player as `causerRosterId`, the rival as victim, `roll16` (no band) and persists — with no Registrar step
 
-#### Scenario: Non-active strip offers only casualty actions
+#### Scenario: Non-active dock offers only casualty actions
 
 - GIVEN the NON-ACTIVE coach during the rival's turn
-- WHEN they tap an own player chip
-- THEN the bubble offers only autoinfligida (`dodge|crowd`) and ambos derribados (causer prefilled = tapped defender, rival victim picked, cause `block` fixed, `bothDown: true` sent)
+- WHEN they open the dock
+- THEN it offers only Baja propia (`dodge|crowd` on an own player) and Baja — ambos derribados (own defender as causer, rival fallen blocker as victim, cause `block` fixed, `bothDown: true` sent)
 
 #### Scenario: Injured and suspended players excluded
 
@@ -757,14 +757,14 @@ Cause→label MUST map: `blitz` → "Blitz", `foul` → "Falta", `dodge` → "Es
 
 ### Requirement: LM-27 · 1D16 Severity Band Presentation
 
-The casualty 1D16 roll-stepper MUST present each option chip with the severity color of its band, derived client-side from the SAME band mapping as its label: rolls 1–8 grey (Herida), 9–10 yellow (Apaleado), 11–12 amber (Grave), 13–14 orange (Permanente), 15–16 intense red (Muerte). This is presentation-only: chip value text and "{n} → {band}" labels MUST stay byte-identical; the chip set, count (16), order, aria-pressed/selected semantics and the roll value submitted on click MUST NOT change; no severity field MAY be added to any command (band stays server-derived, LM-12). Each chip MUST expose an accessible name that includes its band. Text/fill contrast MUST meet WCAG AA on white — yellow/amber/orange fills MUST use dark text. New a11y copy MUST reuse existing band keys and MUST land in BOTH es/en dictionaries in the same change.
+The casualty 1D16 roll-stepper MUST present each option chip with the severity color of its band, derived client-side from the SAME band mapping: rolls 1–8 grey (Herida), 9–10 yellow (Apaleado), 11–12 amber (Grave), 13–14 orange (Permanente), 15–16 intense red (Muerte). The chip's VISIBLE text MUST be the raw roll number ONLY — no "{n} → {band}" label and no 1D6 hint; the band MUST still be exposed through the chip's accessible name (`aria-label`) and its `data-band`, and the 1D6 group MUST still render only when the derived band is `permanent`. This is presentation-only: the chip set, count (16), order, aria-pressed/selected semantics and the roll value submitted on click MUST NOT change; no severity field MAY be added to any command (band stays server-derived, LM-12). Text/fill contrast MUST meet WCAG AA on white — yellow/amber/orange fills MUST use dark text. New a11y copy MUST reuse existing band keys and MUST land in BOTH es/en dictionaries in the same change.
 
 #### Scenario: Chips color by band
 
 - GIVEN the live casualty 1D16 stepper rendering its 16 chips
 - WHEN the chips draw
 - THEN chips 1–8 carry the grey treatment, 9–10 yellow, 11–12 amber, 13–14 orange, 15–16 intense red
-- AND every chip keeps its byte-identical value and "{n} → {band}" label
+- AND every chip shows ONLY its raw number while its accessible name still includes the band
 
 #### Scenario: Accessible severity and contrast
 
@@ -780,7 +780,7 @@ The casualty 1D16 roll-stepper MUST present each option chip with the severity c
 
 ### Requirement: LM-28 · Pass-Turn with Reason
 
-The `endTurn` command (pass-turn, LM-12 active-coach action) MUST accept an optional `reason`: `voluntary | turnover | injury`. An absent reason SHALL behave as `voluntary` — legacy `{type:"endTurn", side}` payloads and the current e2e double-click pass path stay valid with no picker interaction. When a manual pass commits, the reason MUST persist with the turn transition and MUST be stamped on the emitted `turnStart` payload (including when the pass ends the half) so the next turn's live row can render it. A reason outside the three values MUST return 409 with no mutation; the LM-4 side gate and live-only control gate still apply (NON-active coach or finished match → 409, no mutation). A turn that starts WITHOUT a manual pass — the kickoff first turn or a TD auto-flip — MUST carry no reason and MUST clear any previously stored reason. New copy MUST use `match.turnReason.{voluntary,turnover,injury}` (visible ES labels "Voluntario" | "Tirada fallida" | "Baja") and MUST be added to BOTH es/en dictionaries in the same change.
+The `endTurn` command (pass-turn, LM-12 active-coach action) MUST accept an optional `reason`: `voluntary | turnover | injury`. An absent reason SHALL behave as `voluntary` — legacy `{type:"endTurn", side}` payloads stay valid. The dock's pass-turn modal MUST render the three reason chips with NOTHING preselected and MUST fire the `endTurn` as soon as a reason is picked (no separate confirm step). When a manual pass commits, the reason MUST persist with the turn transition and MUST be stamped on the emitted `turnStart` payload (including when the pass ends the half) so the next turn's live row can render it. A reason outside the three values MUST return 409 with no mutation; the LM-4 side gate and live-only control gate still apply (NON-active coach or finished match → 409, no mutation). A turn that starts WITHOUT a manual pass — the kickoff first turn or a TD auto-flip — MUST carry no reason and MUST clear any previously stored reason. New copy MUST use `match.turnReason.{voluntary,turnover,injury}` (visible ES labels "Voluntario" | "Tirada fallida" | "Baja") and MUST be added to BOTH es/en dictionaries in the same change.
 
 #### Scenario: Manual pass with each reason
 
@@ -792,7 +792,7 @@ The `endTurn` command (pass-turn, LM-12 active-coach action) MUST accept an opti
 
 - GIVEN an endTurn POST with no reason, or with `voluntary`
 - WHEN it commits
-- THEN behavior equals today's pass — exactly one flip and one turn event, with no reason selection required
+- THEN behavior equals today's pass — exactly one flip and one turn event (the API default stays `voluntary`; the dock UI requires picking a reason chip)
 
 #### Scenario: Invalid or gated reason rejected
 
