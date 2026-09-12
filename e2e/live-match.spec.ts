@@ -636,28 +636,15 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(
       awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }),
     ).toBeVisible();
-    // LM-26 payload-aware ✓/✗: the RIVAL (home — the fallen player's coach) sees
-    // the ack row + ✓/✗ buttons on the DIRECT injury card; the recorder (away)
-    // never sees its own ack control. The game never waits — card already consumed.
-    await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }).getByRole("button", { name: /Correcto/i }),
-    ).toBeVisible();
-    await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }).getByRole("button", { name: /Correcto/i }),
-    ).toHaveCount(0);
-    await homeCoach
-      .getByTestId("live-event-row")
-      .filter({ hasText: `por ${awayRoster[0].name}` })
-      .getByRole("button", { name: /Correcto/i })
-      .click();
-    // The ✓ persists and shows "Cotejado" on both feeds (the ack frame upserts
-    // the card by seq via the hub).
-    await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }).getByText(/Cotejado/),
-    ).toBeVisible();
-    await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }).getByText(/Cotejado/),
-    ).toBeVisible();
+    // LM-26 (cotejo DISABLED): NO ✓/✗ buttons render to ANY viewer — neither the
+    // rival (home, the fallen player's coach) nor the recorder (away). Each card
+    // keeps only its status badge (pending → auto-verified after 60 s), and the
+    // game never waits — the card is already consumed.
+    for (const page of [homeCoach, awayCoach]) {
+      await expect(
+        page.getByTestId("live-event-row").getByRole("button", { name: /Correcto|Revisar/i }),
+      ).toHaveCount(0);
+    }
 
     // RECURRING REGRESSION (RAU-47): ★2 the CAUSER earns shows ONLY on the
     // causer's action card — the VICTIM's injury card with "por {causer}" MUST
@@ -733,41 +720,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
         page.getByTestId("live-event-row").filter({ hasText: "Ambos derribados" }).filter({ hasText: homeDefenderDown.name }),
       ).toHaveCount(0);
     }
-    // LM-26 payload-aware ack author: record B is caused (home causer = home
-    // recorder) → its author side is home, so ✓/✗ controls render ONLY to the
-    // fallen blocker's coach (away) and appear on the INJURY card (matched by the
-    // causer line); the home recorder's own page must never offer a manual ack.
-    await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).getByRole("button", { name: /(Correcto|Revisar)/ }),
-    ).toHaveCount(0);
-    await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).getByRole("button", { name: /Correcto/i }),
-    ).toBeVisible();
-    await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).getByRole("button", { name: /Revisar/i }),
-    ).toBeVisible();
-    // And the pair's earliest (record A) was a plain away block — recorder away,
-    // so ack controls belong to the fallen HOME defender's coach (homeCoach), not
-    // on the away recorder's action card.
-    await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayBlocker.name}` }).getByRole("button", { name: /(Correcto|Revisar)/ }),
-    ).toHaveCount(0);
-    // The fallen player's coach (home, for record A) is the one offered the ack.
-    await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayBlocker.name}` }).getByRole("button", { name: /Correcto/i }),
-    ).toBeVisible();
-    // Each fallen player's coach acks their own falling record (LM-26 both-down
-    // symmetry): home acks record A, away acks record B.
-    await homeCoach
-      .getByTestId("live-event-row")
-      .filter({ hasText: `por ${awayBlocker.name}` })
-      .getByRole("button", { name: /Correcto/i })
-      .click();
-    await awayCoach
-      .getByTestId("live-event-row")
-      .filter({ hasText: `por ${homeDefenderCauser.name}` })
-      .getByRole("button", { name: /Correcto/i })
-      .click();
+    // LM-26 (cotejo DISABLED): the both-down pair offers NO ✓/✗ controls to ANY
+    // viewer — neither each fallen player's coach nor either recorder. Each card
+    // keeps only its status badge.
+    for (const page of [awayCoach, homeCoach]) {
+      await expect(
+        page.getByTestId("live-event-row").getByRole("button", { name: /(Correcto|Revisar)/ }),
+      ).toHaveCount(0);
+    }
 
     // [C] ACTIVE (away) Pase completo (★1) in TWO dock touches (action → own
     // scorer chip): through the dock (no selects). The row (★1) streams to both.

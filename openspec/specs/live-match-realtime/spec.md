@@ -701,24 +701,24 @@ A coach MAY propose to concede while the match is LIVE; the proposal persists on
 
 ### Requirement: LM-26 · Casualty Acknowledgement Semantics
 
-The event author side MUST be payload-aware: for a casualty WITH a causer, the author is the CAUSER's side (opposite the event's victim side); for a causer-less casualty (self-inflicted `dodge|crowd`) there MUST be NO author side. ✓/✗ acknowledgement controls MUST render ONLY to the RIVAL of the author — i.e., the fallen player's coach — and MUST NEVER render to the recorder of the event. Causer-less entries MUST NOT offer manual ack controls and MUST auto-verify. Any unacked event MUST auto-verify after `ACK_TIMEOUT_MS` (60 s). Acks are informational and MUST NOT mutate the event; an ack POST from any side other than the author's rival (or with no author) MUST return 409 with no mutation.
+The event author side MUST be payload-aware: for a casualty WITH a causer, the author is the CAUSER's side (opposite the event's victim side); for a causer-less casualty (self-inflicted `dodge|crowd`) there MUST be NO author side. The USER's ✓/✗ cotejo controls are DISABLED: the feed MUST NOT render any manual ack control (no `Correcto` / `Revisar` button) to ANY viewer — neither the recorder nor the rival. Each ackable event MUST still render its status badge (pending → auto-verified after `ACK_TIMEOUT_MS` (60 s)); causer-less entries auto-verify the same way. Acks are informational and MUST NOT mutate the event; the server-side ack contract stays as defense in depth — an ack POST from any side other than the author's rival (or with no author) MUST return 409 with no mutation.
 
-#### Scenario: Rival acks a caused casualty, never the recorder
+#### Scenario: No manual ack control for any viewer
 
 - GIVEN a casualty event whose causer side is home (recorder = home coach)
-- WHEN the card renders
-- THEN the ✓/✗ row appears only for the away coach (the fallen player's coach), and the home recorder sees no ack control
+- WHEN the card renders for the away coach (the fallen player's coach) AND for the home recorder
+- THEN NEITHER sees a ✓/✗ control — the cotejo is disabled and only the status badge renders
 
-#### Scenario: Both-down pair acked by each fallen player's coach
+#### Scenario: Both-down pair renders no manual ack
 
 - GIVEN the two symmetric both-down records (defender card by the active; blocker card by the non-active)
 - WHEN both cards render
-- THEN the defender record is acked by the defender's coach and the blocker record by the blocker's coach; neither recorder ever sees its own ack
+- THEN neither card offers a ✓/✗ control; each keeps only its status badge
 
-#### Scenario: Self-inflicted casualty auto-verifies
+#### Scenario: Any unacked event auto-verifies
 
-- GIVEN a causer-less `dodge|crowd` casualty on the recorder's own player
-- WHEN the card renders and 60 s pass
+- GIVEN an ackable event left unacked for more than 60 s
+- WHEN the card renders
 - THEN no ✓/✗ controls ever appear and the card marks "✓ Verificado (auto)"
 
 #### Scenario: Wrong-side ack rejected

@@ -164,10 +164,7 @@ export function WatchMatchView({ token }: { token: string }) {
             startedAt={live.startedAt}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
-            // MSL-6: forced null — the existing viewerSide gates hide every control.
-            viewerSide={null}
             now={live.startedAt != null ? live.startedAt + live.elapsed : 0}
-            onAck={() => undefined}
           />
         </div>
       ) : null}

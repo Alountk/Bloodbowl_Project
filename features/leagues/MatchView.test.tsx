@@ -2167,7 +2167,7 @@ describe("MatchView — design B: single-phase casualty + non-blocking ack (RAU-
     unmount();
   });
 
-  it("renders the RIVAL's acknowledge buttons on a card and fires acknowledgeEvent on click", async () => {
+  it("does NOT render the rival's acknowledge buttons (the user's cotejo is disabled) — only the status badge", async () => {
     const detail = liveDetail();
     detail.live = {
       ...detail.live!,
@@ -2201,16 +2201,14 @@ describe("MatchView — design B: single-phase casualty + non-blocking ack (RAU-
     vi.mocked(useSession).mockReturnValue({ data: { user: { id: "u2" } } } as never);
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // The rival (away) sees the ack buttons on the home-scored TD card.
-    const okButton = screen.getByRole("button", { name: /Correcto/i });
-    expect(okButton).toBeTruthy();
-    act(() => okButton.click());
-    await waitFor(() => {
-      const posts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
-      expect(posts).toHaveLength(1);
-      const init = (posts[0] as unknown as [string, RequestInit])[1];
-      expect(JSON.parse(String(init.body))).toEqual({ type: "acknowledgeEvent", eventSeq: 2, status: "ok" });
-    });
+    // The user's cotejo is DISABLED: the rival gets no ✓/✗ buttons.
+    expect(screen.queryByRole("button", { name: /Correcto/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Revisar/i })).toBeNull();
+    // The status badge still renders (pending until the auto-verify timeout).
+    expect(screen.getByText(/Sin cotejar/)).toBeTruthy();
+    // …and no acknowledgeEvent POST is ever fired.
+    const posts = fetchMock.mock.calls.filter((c) => String(c[0]).endsWith("/live"));
+    expect(posts).toHaveLength(0);
   });
 
   it("renders the ack status badge on an acknowledged card", async () => {
