@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/devGuard";
 
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/propose
- * Lets either participant (owner of the fixture's home or away team) propose a
- * match date for a STARTED-league fixture that is `pending` OR `scheduled` but
- * not yet played (rejornar: a scheduled date can be re-negotiated before play).
+ * Lets either participant (owner of the fixture's home or away team) or a
+ * `leagues.manage` holder (developer/admin) propose a match date for a
+ * STARTED-league fixture that is `pending` OR `scheduled` but not yet played
+ * (rejornar: a scheduled date can be re-negotiated before play).
  *
  * Authorization guards (no existence leak):
  *   - unauthenticated  → 401
- *   - fixture missing, league not started, or caller not a participant → 404
+ *   - fixture missing, league not started, or caller not a participant and not
+ *     privileged → 404
  * Body: `{ date }` where date is an ISO timestamp (UTC). Missing/invalid → 400.
  *
  * One-active-proposal invariant: the route closes the current active proposal
@@ -53,11 +56,15 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Only the home or away team owner may negotiate.
+  // Only the home or away team owner, or a `leagues.manage` holder, may
+  // negotiate. A failed check maps to 404 (no existence leak).
   const isParticipant =
     fixture.homeTeam.userId === userId || fixture.awayTeam.userId === userId;
   if (!isParticipant) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   let body: { date?: unknown };

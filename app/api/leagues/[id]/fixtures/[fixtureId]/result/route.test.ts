@@ -24,6 +24,13 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/random", () => randomMock);
 vi.mock("@/lib/players", () => ({ ensurePlayersForTeam: vi.fn(async () => {}) }));
 
+// LAC-3: the privileged branch authorizes via `requirePermission("leagues.manage")`.
+const requirePermissionMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/devGuard", () => ({
+  requirePermission: requirePermissionMock,
+}));
+
 import { POST, PUT } from "./route";
 
 const EMPTY_COACHING = {
@@ -153,6 +160,8 @@ describe("POST /api/.../[fixtureId]/result", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubTransaction();
+    // Default: a plain `user` is not privileged (the privileged tests override).
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
     prismaMock.fixture.update.mockResolvedValue({ id: "f1" });
     prismaMock.matchResult.create.mockResolvedValue({ id: "r1" });
     // RAU-40 close-check defaults: a started league whose season is NOT yet all
@@ -173,6 +182,37 @@ describe("POST /api/.../[fixtureId]/result", () => {
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
     const res = await callRoute("POST", validBody);
     expect(res.status).toBe(404);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("lets a leagues.manage holder load a result on a foreign fixture (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // ownerId user-admin (foreign)
+    stubFixedRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("POST", validBody);
+
+    expect(res.status).toBe(200);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    // The privileged actor is the recorded loader.
+    expect(prismaMock.matchResult.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ loadedBy: "dev-1" }),
+      }),
+    );
+  });
+
+  it("returns 404 for a plain user who is neither captain nor admin (regression)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-x" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+
+    const res = await callRoute("POST", validBody);
+
+    expect(res.status).toBe(404);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
@@ -644,6 +684,8 @@ describe("POST /api/.../[fixtureId]/result — MVP live-event write (LM-mvp, D20
   beforeEach(() => {
     vi.clearAllMocks();
     stubTransaction();
+    // Default: a plain `user` is not privileged (the privileged tests override).
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
     prismaMock.fixture.update.mockResolvedValue({ id: "f1" });
     prismaMock.matchResult.create.mockResolvedValue({ id: "r1" });
     prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
@@ -775,6 +817,8 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubTransaction();
+    // Default: a plain `user` is not privileged (the privileged tests override).
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
   });
 
   function playedFixture() {
@@ -824,6 +868,36 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
     const res = await callRoute("PUT", validBody);
     expect(res.status).toBe(404);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("lets a leagues.manage holder correct a foreign played result and records the actor (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.fixture.findFirst.mockResolvedValue(playedFixture()); // foreign league
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", validBody);
+
+    expect(res.status).toBe(200);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    // A privileged correction on a foreign league is allowed and audited to the actor.
+    expect(prismaMock.matchResultCorrection.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ correctedBy: "dev-1" }),
+      }),
+    );
+  });
+
+  it("returns 404 for a plain user who is neither captain nor admin (regression)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-x" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
+
+    const res = await callRoute("PUT", validBody);
+
+    expect(res.status).toBe(404);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 

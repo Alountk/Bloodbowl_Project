@@ -9,6 +9,13 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+// LAC-3: the privileged branch authorizes via `requirePermission("leagues.manage")`.
+const requirePermissionMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/devGuard", () => ({
+  requirePermission: requirePermissionMock,
+}));
+
 import { GET } from "./route";
 
 function buildFixture(overrides: Record<string, unknown> = {}) {
@@ -33,7 +40,11 @@ function getProposals(fixtureId = "f1", leagueId = "l1") {
 }
 
 describe("GET /api/leagues/[id]/fixtures/[fixtureId]/proposals", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: a plain `user` is not privileged (the privileged tests override).
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
+  });
 
   it("returns 401 when unauthenticated", async () => {
     authMock.mockResolvedValue(null);
@@ -78,6 +89,34 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]/proposals", () => {
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
     const res = await getProposals();
     expect(res.status).toBe(404);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.scheduleProposal.findMany).not.toHaveBeenCalled();
+  });
+
+  it("lets a leagues.manage holder see the full history of a foreign fixture (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // foreign league
+    prismaMock.scheduleProposal.findMany.mockResolvedValue([
+      { id: "p1", fixtureId: "f1", userId: "user-1", date: "2026-03-01", createdAt: "a", acceptedAt: null, closedAt: null },
+    ]);
+
+    const res = await getProposals();
+
+    expect(res.status).toBe(200);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect((await res.json())).toHaveLength(1);
+    expect(prismaMock.scheduleProposal.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 404 for a nonexistent fixture id without reading a role (no leak)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(null);
+
+    const res = await getProposals("missing");
+
+    expect(res.status).toBe(404);
+    expect(requirePermissionMock).not.toHaveBeenCalled();
     expect(prismaMock.scheduleProposal.findMany).not.toHaveBeenCalled();
   });
 });

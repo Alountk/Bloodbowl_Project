@@ -10,6 +10,13 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+// LAC-3: the privileged branch authorizes via `requirePermission("leagues.manage")`.
+const requirePermissionMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/devGuard", () => ({
+  requirePermission: requirePermissionMock,
+}));
+
 import { POST } from "./route";
 
 function buildFixture(overrides: Record<string, unknown> = {}) {
@@ -73,6 +80,8 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/accept", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubTransaction();
+    // Default: a plain `user` is not privileged (the privileged tests override).
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -87,7 +96,55 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/accept", () => {
     prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
     const res = await accept({ proposalId: "p1" });
     expect(res.status).toBe(404);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
     expect(prismaMock.scheduleProposal.update).not.toHaveBeenCalled();
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
+  });
+
+  it("lets a leagues.manage holder accept a proposal on a foreign fixture (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // foreign fixture
+    // The proposal was created by a participant, not the privileged actor.
+    prismaMock.scheduleProposal.findFirst.mockResolvedValue(buildProposal({ userId: "user-1" }));
+    prismaMock.scheduleProposal.update.mockResolvedValue(buildProposal({ acceptedAt: new Date() }));
+    prismaMock.fixture.update.mockResolvedValue({
+      ...buildFixture(),
+      scheduledAt: new Date("2026-03-01T10:00:00.000Z"),
+    });
+
+    const res = await accept({ proposalId: "p1" });
+
+    expect(res.status).toBe(200);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.fixture.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { scheduledAt: new Date("2026-03-01T10:00:00.000Z") },
+      }),
+    );
+  });
+
+  it("keeps 409 when a privileged actor tries to self-accept their own proposal (invariant)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    // The privileged actor is also the proposal's creator → self-accept is blocked.
+    prismaMock.scheduleProposal.findFirst.mockResolvedValue(buildProposal({ userId: "dev-1" }));
+
+    const res = await accept({ proposalId: "p1" });
+
+    expect(res.status).toBe(409);
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a nonexistent fixture id without reading a role (no leak)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(null);
+
+    const res = await accept({ proposalId: "p1" }, "missing");
+
+    expect(res.status).toBe(404);
+    expect(requirePermissionMock).not.toHaveBeenCalled();
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
 
