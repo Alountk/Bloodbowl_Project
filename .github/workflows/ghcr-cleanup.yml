@@ -3,9 +3,10 @@ name: GHCR Cleanup
 # Prunes old versions of the container image in GitHub Container Registry.
 # Every merge to main publishes a version with three tags (`latest`, a
 # readable date-run tag and the commit sha), so without a cleanup the registry
-# accumulates one version per merge. This workflow keeps the newest KEEP
-# versions (protecting the `latest` tag) and deletes the rest, preserving
-# rollback ability while keeping the package tidy.
+# accumulates one version per merge. This workflow keeps AT MOST `KEEP`
+# versions in total — the `latest`-tagged version is always protected and
+# counts toward the cap — and deletes the rest, preserving rollback ability
+# while keeping the package tidy.
 #
 # Runs weekly, and can be triggered manually via the Actions tab
 # (Run workflow) — the first manual run prunes the historical backlog.
@@ -32,7 +33,9 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       OWNER: ${{ github.repository_owner }}
       PACKAGE: bloodbowl_project
-      KEEP: 10
+      # Hard cap on the TOTAL versions retained in GHCR. The `latest`-tagged
+      # version is always protected and counts toward this cap.
+      KEEP: 5
     steps:
       - name: List package versions
         run: |
@@ -55,33 +58,39 @@ jobs:
           owner = os.environ["OWNER"]
           pkg = os.environ["PACKAGE"]
 
+          def tags_of(v):
+              return v.get("metadata", {}).get("container", {}).get("tags", []) or []
+
           # Newest first by created_at.
           versions.sort(key=lambda v: v.get("created_at", ""), reverse=True)
 
-          kept = 0
-          protected_latest = 0
+          # 1. Never delete the version carrying `latest`: Arcane pulls it and a
+          #    rollback may temporarily point `latest` at an older version. It
+          #    counts toward the KEEP cap.
+          latest_ids = {v["id"] for v in versions if "latest" in tags_of(v)}
+          keep_ids = set(latest_ids)
+
+          # 2. Fill the remaining budget with the newest versions.
+          for v in versions:
+              if len(keep_ids) >= keep:
+                  break
+              keep_ids.add(v["id"])
+
+          # 3. Delete everything else, oldest first.
           deleted = []
           for v in versions:
-              tags = v.get("metadata", {}).get("container", {}).get("tags", []) or []
-              # Never delete the version carrying `latest`: Arcane pulls it and
-              # a rollback may temporarily point `latest` at an older version.
-              if "latest" in tags:
-                  protected_latest += 1
+              if v["id"] in keep_ids:
                   continue
-              if kept < keep:
-                  kept += 1
-                  continue
-              vid = v["id"]
-              url = f"/users/{owner}/packages/container/{pkg}/versions/{vid}"
+              url = f"/users/{owner}/packages/container/{pkg}/versions/{v['id']}"
               r = subprocess.run(["gh", "api", "-X", "DELETE", url],
                                  capture_output=True, text=True)
               if r.returncode == 0:
-                  deleted.append((v.get("created_at", "?"), tags))
+                  deleted.append((v.get("created_at", "?"), tags_of(v)))
               else:
-                  print(f"WARN delete failed {vid}: {r.stderr.strip()}")
+                  print(f"WARN delete failed {v['id']}: {r.stderr.strip()}")
 
-          print(f"kept newest (non-latest): {kept}")
-          print(f"protected 'latest': {protected_latest}")
+          print(f"cap: {keep}")
+          print(f"kept: {len(keep_ids)} (of which 'latest': {len(latest_ids)})")
           print(f"deleted: {len(deleted)}")
           for created, tags in deleted[:15]:
               print(f"  - {created} {tags}")
