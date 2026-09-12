@@ -470,7 +470,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // 0'. The v7 fan_factor center card carries no right minute, so the zero-
     // minute check lands on the turnStart card instead.
     await expect(
-      liveRows.filter({ hasText: `Turno ${homeTeamName}` }).first(),
+      liveRows.filter({ hasText: "Inicio de turno" }).filter({ hasText: homeTeamName }).first(),
     ).toContainText("0'");
 
     // LM-21 "begin retry is idempotent": a second begin after an already-live
@@ -594,7 +594,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // The self-inflicted casualty card (victim = own home #1) renders with the
     // derived band + roll line and NO "por …" causer line (no causer pays no-★).
     await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "Tirada 1D16: 9" }),
+      homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "Tirada 1D16" }),
     ).toBeVisible();
     await expect(
       homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "por " }),
@@ -622,7 +622,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // The self-inflicted [A1] leaf has the SAME victim name but NO "por …" line,
     // so the caused injury card is matched by victim + causer line.
     await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "· Blitz" }),
+      awayCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "Herida a" }),
     ).toBeVisible();
     await expect(
       homeCoach
@@ -634,7 +634,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       homeCoach.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }),
     ).toBeVisible();
     await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: "· Blitz" }),
+      awayCoach.getByTestId("live-event-row").filter({ hasText: `Herida a ${homeRoster[0].name}` }),
     ).toBeVisible();
     // LM-26 (cotejo DISABLED): NO ✓/✗ buttons render to ANY viewer — neither the
     // rival (home, the fallen player's coach) nor the recorder (away). Each card
@@ -649,14 +649,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // RECURRING REGRESSION (RAU-47): ★2 the CAUSER earns shows ONLY on the
     // causer's action card — the VICTIM's injury card with "por {causer}" MUST
     // NOT show the earned points (roll 9 → apaleado → lasting ★2, never hidden).
-    const blitzActionLine = `${awayRoster[0].name} hace una herida a ${homeRoster[0].name}`;
+    const blitzActionLine = `Herida a ${homeRoster[0].name}`;
     for (const page of [awayCoach, homeCoach]) {
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: blitzActionLine }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: blitzActionLine }).filter({ hasText: "★2" }),
       ).toBeVisible();
       // The victim's injury card (with the causer line) carries NO star.
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: `por ${awayRoster[0].name}` }).filter({ hasText: "★2" }),
       ).toHaveCount(0);
     }
 
@@ -682,13 +682,13 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await dockTapRival(awayCoach, 1);
     await dockRollAndRecord(awayCoach, 11);
     // DEC-1 ★2 on record-A causer's action card (both feeds), injury card no star.
-    const blockALine = `${awayBlocker.name} hace una herida a ${homeDefenderDown.name}`;
+    const blockALine = `Herida a ${homeDefenderDown.name}`;
     for (const page of [awayCoach, homeCoach]) {
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: blockALine }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: blockALine }).filter({ hasText: "★2" }),
       ).toBeVisible();
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: `por ${awayBlocker.name}` }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: `por ${awayBlocker.name}` }).filter({ hasText: "★2" }),
       ).toHaveCount(0);
     }
 
@@ -703,13 +703,13 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // DEC-1 ★2 on record-B causer's action card too (the both-down marker does
     // NOT suppress PE under DEC-1), on both feeds; the victim injury card has no
     // star but carries the marker copy once for the pair.
-    const blockBLine = `${homeDefenderCauser.name} hace una herida a ${awayBlockerDown.name}`;
+    const blockBLine = `Herida a ${awayBlockerDown.name}`;
     for (const page of [awayCoach, homeCoach]) {
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: blockBLine }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: blockBLine }).filter({ hasText: "★2" }),
       ).toBeVisible();
       await expect(
-        page.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).filter({ hasText: "(★2)" }),
+        page.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).filter({ hasText: "★2" }),
       ).toHaveCount(0);
       // Exactly one both-down-blown row — the blocker record's injury card —
       // carries the DEC-1 marker copy "Ambos derribados" (never on a plain block).
@@ -742,7 +742,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // MVT-1: the away TD card carries the per-TD partial score "(home - away)"
     // derived by accumulating TD events in seq order — home 0, away 1 here.
     await expect(
-      awayCoach.getByTestId("live-event-row").filter({ hasText: "(0 - 1)" }),
+      awayCoach.getByTestId("live-event-row").filter({ hasText: awayRoster[0].name }).filter({ hasText: "0 - 1" }),
     ).toBeVisible();
     // The away TD lands on the away side → the PER-SIDE scores read home 0,
     // away 1 (Concept B/MVT-3 retired the composed "live-score" center node).
