@@ -1,12 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { PE_MVP } from "@/lib/rules";
+import type { ResultPayload } from "@/features/leagues/api";
 
 const authMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
   fixture: { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   matchResult: { create: vi.fn(), update: vi.fn() },
   matchResultCorrection: { create: vi.fn() },
-  team: { update: vi.fn() },
+  team: { update: vi.fn(), updateMany: vi.fn() },
   liveEvent: { aggregate: vi.fn(), createMany: vi.fn() },
   liveMatch: { updateMany: vi.fn() },
   player: { createMany: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
@@ -83,7 +84,7 @@ function stubTransaction() {
         fixture: { update: prismaMock.fixture.update, findMany: prismaMock.fixture.findMany },
         matchResult: { create: prismaMock.matchResult.create, update: prismaMock.matchResult.update },
         matchResultCorrection: { create: prismaMock.matchResultCorrection.create },
-        team: { update: prismaMock.team.update },
+        team: { update: prismaMock.team.update, updateMany: prismaMock.team.updateMany },
         liveEvent: {
           aggregate: prismaMock.liveEvent.aggregate,
           createMany: prismaMock.liveEvent.createMany,
@@ -1149,5 +1150,111 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "League is finished" });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+/** The extended wizard payload: additive fields over the legacy body (S1). */
+function wizardBody(): ResultPayload {
+  const body = structuredClone(validBody) as unknown as ResultPayload;
+  body.home.ff = 5;
+  body.away.ff = 3;
+  body.home.fanRoll = 4;
+  body.away.fanRoll = 2;
+  body.home.mvp = { grantee: "hstar", nominations: [] };
+  body.away.mvp = { grantee: "astar", nominations: [] };
+  return body;
+}
+
+describe("POST /api/.../[fixtureId]/result — additive wizard contract (S1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubTransaction();
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
+    prismaMock.fixture.update.mockResolvedValue({ id: "f1" });
+    prismaMock.matchResult.create.mockResolvedValue({ id: "r1" });
+    prismaMock.league.findUnique.mockResolvedValue({ status: "started" });
+    prismaMock.fixture.findMany.mockResolvedValue([]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    randomMock.rollD3.mockReset();
+    randomMock.rollD6.mockReset();
+    randomMock.rollD16.mockReset();
+  });
+
+  it("accepts a direct mvp.grantee with no server roll and grants the ★4 PE", async () => {
+    const res = await callRoute("POST", wizardBody());
+    expect(res.status).toBe(200);
+    const updates = prismaMock.player.updateMany.mock.calls.map((c) => c[0]);
+    expect(updates.some((c) => c.where.rosterPlayerId === "hstar" && c.data.pe.increment === PE_MVP)).toBe(true);
+    expect(updates.some((c) => c.where.rosterPlayerId === "astar" && c.data.pe.increment === PE_MVP)).toBe(true);
+    expect(randomMock.rollD6).not.toHaveBeenCalled();
+    expect(randomMock.rollD3).not.toHaveBeenCalled();
+    expect(prismaMock.matchResult.create.mock.calls[0][0].data.scores.mvp).toEqual({ home: "hstar", away: "astar" });
+  });
+
+  it("returns 400 for a present-but-invalid grantee even with six nominations", async () => {
+    const body = wizardBody();
+    body.home.mvp = { grantee: "", nominations: ["p1", "p2", "p3", "p4", "p5", "p6"] };
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(400);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("computes winnings from the input FF (no 1D3) and applies the never-held-ball bonus", async () => {
+    const res = await callRoute("POST", wizardBody());
+    expect(res.status).toBe(200);
+    expect(randomMock.rollD3).not.toHaveBeenCalled();
+    // home: ((5+3)/2 + 2 + 0)*10000 = 60k; away: ((3+5)/2 + 1 + 0)*10000 = 50k.
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    expect(scores.home.winnings).toBe(60_000);
+    expect(scores.home.ff).toBe(5);
+    expect(scores.home.neverHeld).toBe(false);
+    expect(scores.away.winnings).toBe(50_000);
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment === 60_000)).toBe(true);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment === 50_000)).toBe(true);
+    // Post-match dedicated-fans parity: home 1 + win + roll 4 → 2; away loss roll 2 stays 1.
+    const fanWrites = prismaMock.team.updateMany.mock.calls.map((c) => c[0]);
+    expect(fanWrites.some((c) => c.where.id === "t1" && c.data.coaching.dedicatedFans === 2)).toBe(true);
+    expect(fanWrites.some((c) => c.where.id === "t2" && c.data.coaching.dedicatedFans === 1)).toBe(true);
+
+    // Triangulate: neverHeld inverts heldBall → +10k bonus (home 70k).
+    const neverHeld = wizardBody();
+    neverHeld.home.neverHeld = true;
+    const res2 = await callRoute("POST", neverHeld);
+    expect(res2.status).toBe(200);
+    const scores2 = prismaMock.matchResult.create.mock.calls[1][0].data.scores;
+    expect(scores2.home.winnings).toBe(70_000);
+    expect(scores2.home.neverHeld).toBe(true);
+  });
+
+  it("persists the permanent attribute resolved from the client 1D6 rolls", async () => {
+    const body = wizardBody();
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    body.home.injuryRoll = [13]; // 13-14 → Permanente
+    body.home.permanentRoll = [5]; // 5 → ag
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [], alive: true },
+    ]);
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(200);
+    expect(randomMock.rollD16).not.toHaveBeenCalled();
+    const write = prismaMock.player.updateMany.mock.calls
+      .map((c) => c[0])
+      .find((c) => c.where.rosterPlayerId === "av1" && c.data.injuries !== undefined);
+    expect(write!.data.injuries[0]).toEqual({ kind: "permanent", attribute: "ag" });
+    // Victims are grouped by the VICTIM's team: av1 lives on the away side.
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    expect(scores.away.casualties[0].outcome).toEqual({ kind: "permanent", attribute: "ag" });
+    expect(scores.away.injuryRoll).toEqual([13]);
+    expect(scores.away.permanentRoll).toEqual([5]);
+  });
+
+  it("keeps the legacy 6-nomination payload accepted with server dice", async () => {
+    stubFixedRolls();
+    const res = await callRoute("POST", validBody);
+    expect(res.status).toBe(200);
+    expect(prismaMock.matchResult.create.mock.calls[0][0].data.scores.mvp).toEqual({ home: "p1", away: "p5" });
   });
 });

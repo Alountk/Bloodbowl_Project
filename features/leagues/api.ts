@@ -2,6 +2,7 @@ import type { Team } from "@/features/teams/types";
 import type { CasualtyCause } from "@/lib/livePhase";
 import type { RulesetDto } from "@/lib/rulesets";
 import type { InducementBudget, PersistedInducements } from "@/lib/rules/inducements";
+import type { InducementSnapshot } from "@/lib/liveStore";
 
 /** Lifecycle state of a league: joinable/open, locked after a season starts, or
  * definitively closed once every fixture is played (champion declared, RAU-40). */
@@ -404,7 +405,7 @@ export interface TeamResultInput {
   score: number;
   ballHeld: boolean;
   players: ResultPlayerAction[];
-  mvp: { nominations: string[] };
+  mvp: { nominations: string[]; grantee?: string | null };
   /**
    * The casualties caused by this team, each naming the victim's team and
    * rosterPlayerId. The server owns the 1D16 outcome roll per victim (the
@@ -412,6 +413,15 @@ export interface TeamResultInput {
    * matching Player row.
    */
   casualties: { team: "home" | "away"; rosterPlayerId: string }[];
+  // Wizard additions (RAU-122, additive — optional so the live-resolution and
+  // legacy payloads keep compiling): FINAL FF (winnings input as-is), neverHeld
+  // (maps heldBall = !neverHeld), post-match fan 1D6, per-victim 1D16 rolls, and
+  // the 1D6 permanent-attribute rolls (one per permanent-band victim).
+  ff?: number | null;
+  neverHeld?: boolean | null;
+  fanRoll?: number | null;
+  injuryRoll?: number[] | null;
+  permanentRoll?: number[] | null;
 }
 
 /** The POST/PUT result payload shared by the load and correction routes. */
@@ -419,6 +429,10 @@ export interface ResultPayload {
   weather?: string;
   home: TeamResultInput;
   away: TeamResultInput;
+  /** Match duration (minutes) + per-side inducement snapshot — both snapshot-only
+   * (no MatchResult column; same inducement shape the live cart writes). */
+  duration?: number | null;
+  inducements?: InducementSnapshot | null;
 }
 
 /** HTTP result of a load or correction, used to refresh the match card. */
@@ -567,11 +581,23 @@ export interface MatchScoreboard {
     casualties: { team: "home" | "away"; rosterPlayerId: string; outcome: { kind: string } }[];
     pe: { rosterPlayerId: string; pe: number }[];
     inducements?: { budget: number; cards: { name: string; count: number }[] } | null;
+    // Wizard snapshot additions (RAU-122, additive — absent on legacy rows so
+    // correct-mode prefill degrades to partial): FINAL FF, neverHeld, post-match
+    // fan 1D6, per-victim 1D16/permanent rolls (aligned with this side's
+    // casualties), and the Acciones action lines.
+    ff?: number | null;
+    neverHeld?: boolean | null;
+    fanRoll?: number | null;
+    injuryRoll?: number[] | null;
+    permanentRoll?: number[] | null;
+    actions?: ResultPlayerAction[];
   };
   away: MatchScoreboard["home"];
   winnerId: string | null;
   /** Persisted server-rolled MVP grantee ids (absent on legacy rows → fallback). */
   mvp?: { home: string; away: string } | null;
+  /** Match duration in minutes (snapshot-only, no MatchResult column). */
+  duration?: number | null;
 }
 
 /** The persisted `MatchResult` row served for a played fixture. */
