@@ -16,6 +16,7 @@ import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
 import { ResultModal, type ResultTeamDraft } from "./ResultModal";
 import { buildResultPrefill } from "./resultPrefill";
 import { getMatchDetail } from "./api";
+import { isOwnerEquivalent } from "./access";
 import { can } from "@/lib/permissions";
 import type { FixtureDraft, FixtureRound, ResultPayload } from "./api";
 
@@ -64,12 +65,20 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
 
   const userId = session?.user?.id;
+  const role = session?.user?.role;
   const isOwner = league?.ownerId === userId;
+  // LAC-5: owner-equivalent viewers (owner OR a `leagues.manage` holder) get the
+  // owner-only controls. Prefer the server `canManage` flag and fall back to the
+  // pure predicate over the JWT role snapshot — DISPLAY ONLY, the server
+  // re-reads the DB role and authorizes every request.
+  const canManageLeague = league
+    ? league.canManage === true || isOwnerEquivalent(league, userId, role)
+    : false;
   const userMemberTeam = league?.teams.find((team) => team.userId === userId);
   const isMember = Boolean(userMemberTeam);
   // LMR-7: the manual live-match reset is for the league owner or a
   // developer/admin holding `live.manage`; hidden from participants/spectators.
-  const canResetLive = Boolean(isOwner) || can(session?.user?.role, "live.manage");
+  const canResetLive = Boolean(isOwner) || can(role, "live.manage");
 
   if (!loading && notFound) {
     return (
@@ -248,7 +257,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
             rounds={league.rounds}
             teams={league.teams}
             currentUserId={userId ?? ""}
-            isLeagueOwner={isOwner}
+            isLeagueOwner={canManageLeague}
             leagueFinished={finished}
             canResetLive={canResetLive}
             onPropose={propose}
@@ -328,10 +337,11 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
             </>
           ) : null}
 
-          {/* Member list; the owner gets expel and the season start. */}
-          <MemberList teams={league.teams} onExpel={onExpel} canExpel={isOwner} />
+          {/* Member list; the owner (or an owner-equivalent dev/admin) gets
+              expel and the season start. */}
+          <MemberList teams={league.teams} onExpel={onExpel} canExpel={canManageLeague} />
 
-          {isMember && !isOwner ? (
+          {isMember && !canManageLeague ? (
             <div className="flex justify-end">
               <button
                 type="button"
@@ -341,7 +351,7 @@ export function LeagueDetail({ leagueId }: LeagueDetailProps) {
                 {t("leagues.leave")}
               </button>
             </div>
-          ) : isOwner ? (
+          ) : canManageLeague ? (
             <>
               <div className="flex justify-end">
                 <button

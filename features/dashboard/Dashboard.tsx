@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useApp } from "@/app/providers/AppProvider";
 import { useI18n } from "@/lib/i18n";
 import { LeagueCard } from "@/features/leagues/LeagueList";
+import { isOwnerEquivalent } from "@/features/leagues/access";
 import { useLeagues } from "@/features/leagues/useLeagues";
 import { TeamList } from "@/features/teams/TeamList";
 import { TeamSearch } from "@/features/teams/TeamSearch";
@@ -37,9 +38,16 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
   const { leagues, loading, error } = useLeagues();
 
   const userId = session?.user?.id;
-  // My leagues = owned OR joined (any status), mirroring the leagues page.
+  const role = session?.user?.role;
+  // My leagues = owner-equivalent (owner OR a `leagues.manage` holder) OR joined
+  // (any status), mirroring the leagues page. Prefer the server `canManage` flag
+  // and fall back to the pure predicate over the JWT role snapshot — DISPLAY
+  // ONLY, the server re-reads the DB role and authorizes every request.
   const myLeagues = leagues.filter(
-    (league) => league.ownerId === userId || league.isMember,
+    (league) =>
+      league.canManage === true ||
+      isOwnerEquivalent(league, userId, role) ||
+      league.isMember,
   );
   // Local mode has no API sessions: /api/leagues 401s, so the section renders
   // the same empty state instead of surfacing the auth error.

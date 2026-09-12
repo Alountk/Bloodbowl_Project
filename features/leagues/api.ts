@@ -97,6 +97,15 @@ export interface League {
    */
   isMember: boolean;
   /**
+   * LAC-5: server-computed owner-equivalence — true when the session user owns
+   * the league OR holds `leagues.manage` (developer/admin). The list/detail
+   * components prefer this flag and fall back to `isOwnerEquivalent` over the
+   * JWT role snapshot. DISPLAY ONLY — the server re-reads the DB role and
+   * authorizes every request. Optional so legacy fixtures/serializations that
+   * predate the flag still type-check.
+   */
+  canManage?: boolean;
+  /**
    * DEPRECATED (D15): the per-turn clock columns remain on the row for backward
    * compatibility but are never read or written by the current app.
    * @deprecated The turn-clock option no longer constrains live matches.

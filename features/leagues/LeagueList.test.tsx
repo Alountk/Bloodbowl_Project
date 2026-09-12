@@ -13,12 +13,28 @@ import { LeagueList } from "./LeagueList";
 
 const me = "u1";
 
+/** Session mock shape: `role` is optional so tests can simulate a developer. */
+interface SessionShape {
+  data: { user: { id: string; role?: string } };
+  status: string;
+}
+
 const sessionMock = vi.hoisted(() =>
-  vi.fn(() => ({ data: { user: { id: me } }, status: "authenticated" })),
+  vi.fn(
+    (): SessionShape => ({ data: { user: { id: me } }, status: "authenticated" }),
+  ),
 );
 vi.mock("next-auth/react", () => ({
   useSession: () => sessionMock(),
 }));
+
+/** LAC-5: overrides the session with an optional JWT role snapshot. */
+function setSession(role?: string) {
+  sessionMock.mockReturnValue({
+    data: { user: role ? { id: me, role } : { id: me } },
+    status: "authenticated",
+  });
+}
 
 const leaguesResponse = [
   // My own open league → belongs to "Mis Ligas".
@@ -122,6 +138,7 @@ function stubFetch() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setSession();
 });
 
 describe("LeagueList", () => {
@@ -301,5 +318,102 @@ describe("LeagueList", () => {
     // Legacy leagues without a ruleset render no badge.
     const legacyCard = screen.getByText("Legacy League").closest("li") as HTMLElement;
     expect(within(legacyCard).queryByText("Liga Tier 1")).toBeNull();
+  });
+});
+
+describe("LeagueList — LAC-5 owner-equivalent split", () => {
+  function stubLeagues(leagues: unknown[]) {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/leagues") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(leagues) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function sections() {
+    return {
+      own: screen.getByRole("heading", { level: 2, name: "Mis Ligas" }).closest("section") as HTMLElement,
+      open: screen.getByRole("heading", { level: 2, name: "Ligas abiertas" }).closest("section") as HTMLElement,
+    };
+  }
+
+  const foreignStarted = (extra: Record<string, unknown> = {}) => ({
+    id: "lf-started",
+    name: "Foreign Started Cup",
+    description: null,
+    ownerId: "u2",
+    createdAt: "2026-07-01",
+    status: "started",
+    seasonLength: 1,
+    startedAt: "2026-07-02",
+    ownerName: "Coach B",
+    memberCount: 2,
+    isMember: false,
+    ...extra,
+  });
+
+  it("lands a foreign league flagged canManage in Mis Ligas (server flag preferred)", async () => {
+    stubLeagues([foreignStarted({ canManage: true })]);
+    render(<LeagueList />);
+
+    await waitFor(() => expect(screen.getByText("Foreign Started Cup")).toBeTruthy());
+    const { own, open } = sections();
+    expect(within(own).getByText("Foreign Started Cup")).toBeTruthy();
+    expect(within(open).queryByText("Foreign Started Cup")).toBeNull();
+  });
+
+  it("lands foreign leagues in Mis Ligas for a developer session via the predicate", async () => {
+    setSession("developer");
+    stubLeagues([
+      foreignStarted(),
+      {
+        ...foreignStarted(),
+        id: "lf-open",
+        name: "Foreign Open Cup",
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+      },
+    ]);
+    render(<LeagueList />);
+
+    await waitFor(() => expect(screen.getByText("Foreign Started Cup")).toBeTruthy());
+    const { own, open } = sections();
+    expect(within(own).getByText("Foreign Started Cup")).toBeTruthy();
+    expect(within(own).getByText("Foreign Open Cup")).toBeTruthy();
+    expect(within(open).queryByText("Foreign Open Cup")).toBeNull();
+  });
+
+  it("keeps a plain user's split — a foreign started league is not owner-equivalent", async () => {
+    setSession("user");
+    stubLeagues([
+      foreignStarted(),
+      {
+        id: "lo",
+        name: "Plain Open Cup",
+        description: null,
+        ownerId: "u2",
+        createdAt: "2026-07-01",
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        ownerName: "Coach B",
+        memberCount: 2,
+        isMember: false,
+      },
+    ]);
+    render(<LeagueList />);
+
+    await waitFor(() => expect(screen.getByText("Plain Open Cup")).toBeTruthy());
+    const { own, open } = sections();
+    // The foreign OPEN league stays under Ligas abiertas, never Mis Ligas.
+    expect(within(open).getByText("Plain Open Cup")).toBeTruthy();
+    expect(within(own).queryByText("Plain Open Cup")).toBeNull();
+    // The foreign STARTED league is reachable by neither split for a plain user.
+    expect(screen.queryByText("Foreign Started Cup")).toBeNull();
   });
 });
