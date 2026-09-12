@@ -11,6 +11,9 @@ const prismaMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
   },
 }));
+// LAC-1/LAC-3: the DB role read is the only non-pure dependency; mock it while
+// keeping the pure `resolveLeagueAccess` real (partial mock).
+const getDbRoleMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth", () => ({
   auth: authMock,
@@ -20,10 +23,19 @@ vi.mock("@/lib/prisma", () => ({
   prisma: prismaMock,
 }));
 
+vi.mock("@/lib/leagueAccess", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/leagueAccess")>();
+  return { ...actual, getDbRole: getDbRoleMock };
+});
+
 import { GET, POST } from "./route";
 
 describe("GET /api/leagues", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default to a plain user; privileged tests override explicitly.
+    getDbRoleMock.mockResolvedValue("user");
+  });
 
   it("returns 401 when there is no session", async () => {
     authMock.mockResolvedValue(null);
@@ -222,6 +234,130 @@ describe("GET /api/leagues", () => {
     expect(body[1].rulesetName).toBeNull();
     // The nested ruleset object never leaks; only the resolved name is served.
     expect(body[0].ruleset).toBeUndefined();
+  });
+
+  it("returns EVERY league in every status to a leagues.manage holder and drops the OR filter (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    getDbRoleMock.mockResolvedValue("developer");
+    const leagues = [
+      {
+        id: "foreign-open",
+        name: "Open",
+        ownerId: "user-2",
+        owner: { id: "user-2", email: "o@test.local", name: "Owner" },
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        createdAt: new Date().toISOString(),
+        teams: [],
+        _count: { teams: 1 },
+      },
+      {
+        id: "foreign-started",
+        name: "Started",
+        ownerId: "user-2",
+        owner: { id: "user-2", email: "o@test.local", name: "Owner" },
+        status: "started",
+        seasonLength: 2,
+        startedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        teams: [],
+        _count: { teams: 2 },
+      },
+      {
+        id: "foreign-finished",
+        name: "Finished",
+        ownerId: "user-3",
+        owner: { id: "user-3", email: "f@test.local", name: "Champ" },
+        status: "finished",
+        seasonLength: 1,
+        startedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        teams: [],
+        _count: { teams: 3 },
+      },
+    ];
+    prismaMock.league.findMany.mockResolvedValue(leagues);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Every status is visible to the privileged actor.
+    expect(body.map((league: { id: string }) => league.id)).toEqual([
+      "foreign-open",
+      "foreign-started",
+      "foreign-finished",
+    ]);
+    // The server-computed flag marks the actor as a manager on every item.
+    expect(body.every((league: { canManage: boolean }) => league.canManage === true)).toBe(true);
+    // The scoping OR is dropped entirely for a `leagues.manage` holder.
+    expect(prismaMock.league.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {} }),
+    );
+    expect(getDbRoleMock).toHaveBeenCalledWith("dev-1");
+  });
+
+  it("flags canManage true for the owner and false for a plain non-owner member (LAC-5)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    getDbRoleMock.mockResolvedValue("user");
+    const leagues = [
+      {
+        id: "mine",
+        name: "Mine",
+        ownerId: "user-1",
+        owner: { id: "user-1", email: "me@test.local", name: "Me" },
+        status: "open",
+        seasonLength: null,
+        startedAt: null,
+        createdAt: new Date().toISOString(),
+        teams: [],
+        _count: { teams: 0 },
+      },
+      {
+        id: "joined",
+        name: "Joined",
+        ownerId: "user-2",
+        owner: { id: "user-2", email: "o@test.local", name: "Other" },
+        status: "started",
+        seasonLength: 1,
+        startedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        teams: [{ id: "team-1" }],
+        _count: { teams: 2 },
+      },
+    ];
+    prismaMock.league.findMany.mockResolvedValue(leagues);
+
+    const res = await GET();
+    const body = await res.json();
+    // Owner-equivalent → the owner manages their own league.
+    expect(body[0].canManage).toBe(true);
+    // A plain user who merely holds a member team is NOT a manager.
+    expect(body[1].isMember).toBe(true);
+    expect(body[1].canManage).toBe(false);
+  });
+
+  it("keeps foreign STARTED leagues hidden from a plain user and reads the DB role (regression)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    getDbRoleMock.mockResolvedValue("user");
+    // The WHERE never selects a foreign started league for a plain user.
+    prismaMock.league.findMany.mockResolvedValue([]);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+    expect(prismaMock.league.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { status: "open" },
+            { ownerId: "user-1" },
+            { teams: { some: { userId: "user-1", archivedAt: null } } },
+          ],
+        },
+      }),
+    );
+    expect(getDbRoleMock).toHaveBeenCalledWith("user-1");
   });
 });
 

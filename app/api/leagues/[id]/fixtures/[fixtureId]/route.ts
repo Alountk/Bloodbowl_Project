@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getDbRole, resolveLeagueAccess } from "@/lib/leagueAccess";
 import { liveHub } from "@/lib/liveHub";
 import { expireStaleLiveMatches } from "@/lib/liveStore";
 import { deriveLiveClock, isDisplayEvent, parseMvpGrantees, parseMvpNominations, parseResolutionState } from "@/lib/liveMatch";
@@ -295,9 +296,10 @@ interface MatchPlayerRow {
  * Visibility follows the league detail gate (D6): unauthenticated → 401; the
  * fixture is looked up scoped to the league (`findFirst({id, leagueId})`) so a
  * missing fixture or one in another league → 404 with no existence leak; a
- * STARTED league is visible only to the league owner or any current member,
- * else 404 (identical body, no status leak); an OPEN league is visible to any
- * authenticated user (defensive — no fixtures exist while open).
+ * STARTED (or FINISHED) league is visible only to the league owner, any current
+ * member, or a `leagues.manage` holder (developer/admin), else 404 (identical
+ * body, no status leak); an OPEN league is visible to any authenticated user
+ * (defensive — no fixtures exist while open).
  *
  * A walkover (fixture forfeited: scores set, no `MatchResult` row) returns
  * `result: null` (MV-2). Read-only, identical in both `AUTH_MODE` variants —
@@ -401,11 +403,20 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Started/finished league: owner or any current member only, else identical
-  // 404 (a finished league keeps its member shield, RAU-40).
+  // Started/finished league: owner, any current member, or a `leagues.manage`
+  // holder (developer/admin); a foreign plain user gets the identical 404 (a
+  // finished league keeps its member shield, RAU-40). LAC-3: resolve the caller
+  // once — the DB role is authoritative, never the JWT.
   if (fixture.league.status === "started" || fixture.league.status === "finished") {
     const isMember = fixture.league.teams.some((team) => team.userId === userId);
-    if (fixture.league.ownerId !== userId && !isMember) {
+    const role = await getDbRole(userId);
+    const access = resolveLeagueAccess({
+      userId,
+      role,
+      ownerId: fixture.league.ownerId,
+      isMember,
+    });
+    if (access === "foreign") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
   }

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { can } from "@/lib/permissions";
+import { getDbRole } from "@/lib/leagueAccess";
 
 /**
  * GET /api/leagues
@@ -8,12 +10,16 @@ import { prisma } from "@/lib/prisma";
  * any status PLUS every league where the user holds a non-archived member team
  * (so started leagues a member JOINED stay reachable — that is how they accept
  * the match proposal). Foreign started leagues without membership are hidden.
+ * A `leagues.manage` holder (developer/admin, DB role authoritative) is
+ * owner-equivalent and receives EVERY league in every status: the scoping OR
+ * filter is dropped entirely for them (LAC-3).
  * Each league is enriched with the owner's name (falls back to the email), a
- * server-computed member count (non-archived member teams) and an `isMember`
- * flag derived from the user's own member teams — all from the query, not a
- * per-item detail fetch (kills the N+1). Each item also carries its chosen
- * ruleset's `rulesetId` + resolved `rulesetName` (RAU-52; null for legacy
- * leagues). 401 unauthenticated.
+ * server-computed member count (non-archived member teams), an `isMember`
+ * flag derived from the user's own member teams, and a server-computed
+ * `canManage` flag (owner or privileged) — all from the query, not a per-item
+ * detail fetch (kills the N+1). Each item also carries its chosen ruleset's
+ * `rulesetId` + resolved `rulesetName` (RAU-52; null for legacy leagues).
+ * 401 unauthenticated.
  */
 export async function GET() {
   const session = await auth();
@@ -21,17 +27,25 @@ export async function GET() {
   if (!ownerId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // LAC-1: the DB role is authoritative (never the JWT snapshot). Only a
+  // `leagues.manage` holder sees the unscoped list; a plain user keeps the
+  // exact OR filter below.
+  const role = await getDbRole(ownerId);
+  const privileged = can(role, "leagues.manage");
   const leagues = await prisma.league.findMany({
-    where: {
-      // Open leagues are public to all authenticated users; each user's own
-      // leagues (including started) always appear, as do leagues where the user
-      // holds a live member team (started member leagues must stay reachable).
-      OR: [
-        { status: "open" },
-        { ownerId },
-        { teams: { some: { userId: ownerId, archivedAt: null } } },
-      ],
-    },
+    where: privileged
+      ? {}
+      : {
+          // Open leagues are public to all authenticated users; each user's own
+          // leagues (including started) always appear, as do leagues where the
+          // user holds a live member team (started member leagues stay
+          // reachable).
+          OR: [
+            { status: "open" },
+            { ownerId },
+            { teams: { some: { userId: ownerId, archivedAt: null } } },
+          ],
+        },
     orderBy: { createdAt: "asc" },
     include: {
       owner: { select: { id: true, email: true, name: true } },
@@ -51,6 +65,9 @@ export async function GET() {
       ownerName: owner?.name ?? owner?.email ?? null,
       memberCount: _count.teams,
       isMember: teams.length > 0,
+      // Owner-equivalent management: the owner or a `leagues.manage` holder.
+      // Server-computed so the client never authorizes (LAC-5).
+      canManage: privileged || league.ownerId === ownerId,
       rulesetName: ruleset?.name ?? null,
     })),
   );
