@@ -56,12 +56,16 @@ describe("RollStepper — controlled 1D16/1D6 picker", () => {
     return { onRoll16: actor, onRoll6: actor6, ...utils };
   }
 
-  it("renders the 16 options with their derived band on the 1D16 stepper", () => {
+  it("renders 16 number-only options whose band is exposed as the accessible name", () => {
     renderStepper();
     const stepper = screen.getByTestId("roll-stepper-16");
     expect(stepper).toBeTruthy();
     expect(within(stepper).getAllByRole("button")).toHaveLength(16);
-    expect(within(stepper).getByTestId("roll-option-8").textContent).toContain("Magullado");
+    const eight = within(stepper).getByTestId("roll-option-8");
+    // The chip shows ONLY the raw number; the band lives in the aria-label.
+    expect(eight.textContent).toBe("8");
+    expect(eight.getAttribute("aria-label")).toBe("8 → Magullado");
+    expect(eight.getAttribute("data-band")).toBe("bruise");
   });
 
   it("does NOT render the 1D6 stepper until the derived band is permanent", () => {
@@ -165,6 +169,8 @@ describe("rollStepper 1D16 severity bands (LM-27)", () => {
       <RollStepper roll16={13} roll6={""} onRoll16={vi.fn()} onRoll6={vi.fn()} />,
     );
     const selected = screen.getByTestId("roll-option-13");
+    expect(selected.textContent).toBe("13");
+    expect(selected.getAttribute("aria-label")).toContain("Permanente");
     expect(selected.getAttribute("aria-pressed")).toBe("true");
     expect(selected.getAttribute("data-band")).toBe("permanent");
     rerender(<RollStepper roll16={8} roll6={""} onRoll16={vi.fn()} onRoll6={vi.fn()} />);
@@ -178,7 +184,11 @@ describe("rollStepper 1D16 severity bands (LM-27)", () => {
     );
     const roll6 = within(utils.getByTestId("roll-stepper-6"));
     for (const n of Array.from({ length: 6 }, (_, i) => i + 1)) {
-      expect(roll6.getByTestId(`roll-option-${n}`).getAttribute("data-band")).toBeNull();
+      const chip = roll6.getByTestId(`roll-option-${n}`);
+      // Number-only chip, no severity band; the 1D6 attribute is the a11y name.
+      expect(chip.textContent).toBe(String(n));
+      expect(chip.getAttribute("data-band")).toBeNull();
+      expect(chip.getAttribute("aria-label")).toContain("−");
     }
   });
 });

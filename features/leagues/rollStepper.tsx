@@ -10,11 +10,13 @@ import { casualtyBandLabel, type TFunc } from "./liveEventLabels";
 
 /**
  * The shared 1D16(+1D6) roll picker for the live action strip (b2/D3). A compact
- * controlled stepper of roll values (no selects): the 1D16 group labels each
- * option "{roll} → {band}" mirroring RAU-42, and the 1D6 group appears only when
- * the derived band is `permanent` (13-14). The band is DERIVED client-side via
- * the same `resolveInjury` mirror used by the old controls for UX, but the
- * SERVER stays authoritative — the client only ever submits the raw roll values.
+ * controlled stepper of roll values (no selects): each chip shows ONLY its raw
+ * number, while the derived band is exposed to assistive tech through the
+ * `aria-label` built from `roll16OptionLabel` / `roll6OptionLabel` (RAU-42). The
+ * 1D6 group appears only when the derived band is `permanent` (13-14). The band
+ * is DERIVED client-side via the same `resolveInjury` mirror used by the old
+ * controls for UX, but the SERVER stays authoritative — the client only ever
+ * submits the raw roll values.
  *
  * Testids: `roll-stepper-16` / `roll-stepper-6` containers and `roll-option-{n}`
  * per raw value (scoped by their container — the 1D6 group reuses the same
@@ -50,9 +52,11 @@ export const SEVERITY_CLASS: Record<InjuryOutcomeKind, { chip: string; text: str
 const SELECTED_RING = "ring-2 ring-navy";
 
 /**
- * RAU-42: the 1D16 option label — "{roll} → {band}" ("8 → Magullado"), with the
- * required-1D6 hint appended to the permanent band ("13 → Permanente (tira
- * 1D6)"). The option's VALUE stays the raw roll; only the label derives it.
+ * RAU-42: the 1D16 option ACCESSIBLE NAME — "{roll} → {band}" ("8 → Magullado"),
+ * with the required-1D6 hint appended to the permanent band ("13 → Permanente
+ * (tira 1D6)"). The chip renders only the raw number; this label is applied as
+ * `aria-label` so screen readers still get the band. The option's VALUE stays
+ * the raw roll; only the accessible name derives it.
  */
 export function roll16OptionLabel(n: number, fn: TFunc = esT): string {
   const kind = resolveInjury(n).kind;
@@ -62,8 +66,9 @@ export function roll16OptionLabel(n: number, fn: TFunc = esT): string {
   }) + (kind === "permanent" ? fn("match.controls.roll6Suffix") : "");
 }
 
-/** RAU-42: the 1D6 option label — "{roll} → −{attr}" ("5 → −AG"). Display-only;
- * the option value stays the raw roll. */
+/** RAU-42: the 1D6 option ACCESSIBLE NAME — "{roll} → −{attr}" ("5 → −AG"). The
+ * chip renders only the raw number; this label is applied as `aria-label`. The
+ * option value stays the raw roll. */
 export function roll6OptionLabel(n: number, fn: TFunc = esT): string {
   return fn("match.controls.roll6Option", { roll: n, attr: permanentAttribute(n).toUpperCase() });
 }
@@ -102,13 +107,14 @@ export function RollStepper({ roll16, roll6, onRoll16, onRoll6, fn }: RollSteppe
               type="button"
               data-testid={`roll-option-${n}`}
               data-band={kind}
+              aria-label={label}
               aria-pressed={selected}
               onClick={() => onRoll16(n)}
               className={`rounded border px-2 py-1 text-xs font-bold ${severity.text} ${severity.chip} ${
                 selected ? SELECTED_RING : ""
               }`}
             >
-              {label}
+              {n}
             </button>
           );
         })}
@@ -127,6 +133,7 @@ export function RollStepper({ roll16, roll6, onRoll16, onRoll6, fn }: RollSteppe
                 key={n}
                 type="button"
                 data-testid={`roll-option-${n}`}
+                aria-label={label}
                 aria-pressed={selected}
                 onClick={() => onRoll6(n)}
                 className={`rounded border px-2 py-1 text-xs font-bold ${
@@ -135,7 +142,7 @@ export function RollStepper({ roll16, roll6, onRoll16, onRoll6, fn }: RollSteppe
                     : "border-border bg-panel text-navy hover:bg-background"
                 }`}
               >
-                {label}
+                {n}
               </button>
             );
           })}

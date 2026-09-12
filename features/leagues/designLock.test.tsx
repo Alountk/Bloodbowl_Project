@@ -597,10 +597,11 @@ describe("C. rulebook sticky header (MatchView)", () => {
     // MVT-3: the sticky header itself must NEVER carry the pass-turn control.
     expect(within(header).queryByRole("button", { name: /Dar el turno/i })).toBeNull();
     expect(within(header).queryByText(/Turno Reavers/)).toBeNull();
-    // MVT-7: the "Turno {team}" status + the red "Dar el turno" button live ONLY
-    // in the bottom dock (position-agnostic page queries still resolve them).
+    // MVT-3: the red "Dar el turno" button lives ONLY in the bottom dock. The
+    // dock carries NO "Turno {team}" status label — the header's turn chip and
+    // the active coach's "Tu turno" accent already carry the turn state.
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
-    expect(screen.getByText("Turno Reavers")).toBeTruthy();
+    expect(screen.queryByText("Turno Reavers")).toBeNull();
     expect(screen.getByText("1ª Parte")).toBeTruthy();
     expect(screen.getByText("Mitad 1 · Turno 3")).toBeTruthy();
     // Concept B (MVT-3): per-side frozen/"live" scores under the acronyms + the

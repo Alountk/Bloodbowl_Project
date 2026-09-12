@@ -604,9 +604,9 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
     // MVT-7: the pass control lives in the bottom dock — open the reason
-    // sheet and confirm the PRESELECTED voluntary reason (one flip).
+    // modal and click a reason, which fires endTurn immediately.
     fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Confirmar/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Voluntario/ }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -616,14 +616,13 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     );
   });
 
-  it("shows 'Turno Reavers' + 'Dar el turno' for the ACTIVE coach (viewerSide === activeSide, LM-12/D19)", async () => {
+  it("shows 'Dar el turno' for the ACTIVE coach (viewerSide === activeSide, LM-12/D19)", async () => {
     stubLiveEventSource();
     stubMatch(liveDetail()); // viewerSide home, activeSide home → active
     renderPlayed();
 
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // The active coach sees the "Turno {team}" notice + the pass control.
-    expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
+    // The active coach sees the pass control in the dock (no status label).
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
     // The active coach does not see the "Pedir turno" nudge.
     expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
@@ -727,10 +726,10 @@ describe("MatchView — double-click guard on live commands (in-flight lock)", (
 
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // MVT-7: open the bottom dock's reason sheet and confirm the PRESELECTED
-    // voluntary (single interaction after the chip → exactly one flip).
+    // MVT-7: open the bottom dock's reason modal and click Voluntario — the
+    // chip fires endTurn immediately (exactly one flip).
     fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Confirmar/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Voluntario/ }));
 
     // Exactly ONE live POST, and the turn advances by one (3 → 4, no jump to 5).
     await waitFor(() => {
@@ -760,13 +759,13 @@ describe("MatchView — double-click guard on live commands (in-flight lock)", (
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
 
-    // Open the reason sheet ONCE, then double-click its Confirmar while the
-    // first POST is still pending — the in-flight lock drops the 2nd command.
+    // Open the reason modal ONCE, then double-click its Voluntario reason while
+    // the first POST is still pending — the in-flight lock drops the 2nd command.
     fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
-    const confirmButton = await screen.findByRole("button", { name: /Confirmar/ });
+    const reasonButton = await screen.findByRole("button", { name: /Voluntario/ });
     act(() => {
-      confirmButton.click();
-      confirmButton.click();
+      reasonButton.click();
+      reasonButton.click();
     });
 
     // The in-flight ref lock drops the second invocation — ONE command.
@@ -905,17 +904,18 @@ describe("MatchView — casi rulebook hero (Design 10)", () => {
     expect(screen.getByText(/Estadio · Reglamentario/)).toBeTruthy();
   });
 
-  it("passes the turn ONLY from the bottom dock (Dar el turno + 'Turno {team}' status inside it)", async () => {
+  it("passes the turn ONLY from the bottom dock (Dar el turno)", async () => {
     stubLiveEventSource();
     stubMatch(liveDetail()); // home coach active → sees the channel dock pass chip
     const { container } = renderPlayed();
     await screen.findAllByText(/Mitad 1 · Turno 3/);
 
-    // MVT-3/MVT-7: the 'Dar el turno' action now lives in the bottom dock, not
-    // the navy header — the active coach sees the red chip + its status line.
+    // MVT-3: the 'Dar el turno' action lives in the bottom dock, not the navy
+    // header. The dock carries NO "Turno {team}" status label — the header's
+    // turn chip and the active coach's "Tu turno" accent already carry it.
     expect(container.textContent).toMatch(/1ª PARTE/i);
     expect(screen.getByRole("button", { name: /Dar el turno/i })).toBeTruthy();
-    expect(screen.getAllByText(/Turno Reavers/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Turno Reavers/)).toBeNull();
     // The active coach sees no "Pedir turno" (that stays for the NON-active).
     expect(screen.queryByRole("button", { name: /Pedir turno/i })).toBeNull();
   });

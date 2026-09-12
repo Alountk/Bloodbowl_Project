@@ -90,7 +90,7 @@ describe("LiveActionDock — two-touch TD / Pase (action → player)", () => {
     const onSubmit = vi.fn<MockControl>(async () => {});
     renderDock({ onSubmit });
     fireEvent.click(dockAction(/Touchdown/));
-    const sheet = screen.getByTestId("live-action-sheet");
+    const sheet = screen.getByTestId("live-action-modal");
     // Only alive, non-suspended home players are offered.
     expect(within(sheet).queryByRole("button", { name: /#3/ })).toBeNull();
     expect(within(sheet).queryByRole("button", { name: /#4/ })).toBeNull();
@@ -101,7 +101,7 @@ describe("LiveActionDock — two-touch TD / Pase (action → player)", () => {
       side: "home",
       playerRosterId: "p1",
     } as LiveCommand);
-    expect(screen.queryByTestId("live-action-sheet")).toBeNull();
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
   });
 
   it("records a Pase completo in two touches", async () => {
@@ -119,7 +119,7 @@ describe("LiveActionDock — two-touch TD / Pase (action → player)", () => {
 });
 
 describe("LiveActionDock — ACTIVE guided casualty (stepper recap, Design A)", () => {
-  it("walk the full Baja causada stepper: cause → own causer → rival victim → 1D16 → Registrar", async () => {
+  it("walk the full Baja causada stepper: cause → own causer → rival victim → 1D16 fires automatically", async () => {
     const onSubmit = vi.fn<MockControl>(async () => {});
     renderDock({ onSubmit });
     fireEvent.click(dockAction(/Baja causada/));
@@ -130,12 +130,9 @@ describe("LiveActionDock — ACTIVE guided casualty (stepper recap, Design A)", 
     fireEvent.click(within(dockPool("own")).getByRole("button", { name: /#2/i }));
     // step 3 rival victim (#1 Vrok)
     fireEvent.click(within(dockPool("rival")).getByRole("button", { name: /#1/i }));
-    // step 4 1D16 (and a 1D6 when the roll is permanent)
+    // step 4 1D16 → the command fires with no Registrar button
     const stepper = within(dock()).getByTestId("dock-roll-stage");
     fireEvent.click(within(stepper).getByTestId("roll-option-5"));
-    const submit = within(dock()).getByTestId("live-action-submit");
-    expect((submit as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(submit);
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     // The ACTIVE (home) coach inflicts it on the AWAY victim side: causer =
     // home p2, victim = away o1 (the event's `side` is the VICTIM's).
@@ -163,10 +160,10 @@ describe("LiveActionDock — NON-active both-down + self-inflicted (DEC-1)", () 
     fireEvent.click(within(rivalPool).getByRole("button", { name: /#2/i }));
     const stepper = within(dock()).getByTestId("dock-roll-stage");
     fireEvent.click(within(stepper).getByTestId("roll-option-13"));
-    // permanent band (13-14) → the required 1D6 group shows only for it.
+    // permanent band (13-14) → the required 1D6 group shows only for it, and the
+    // flow fires on the completing 1D6 pick (no Registrar button).
     const roll6 = screen.getByTestId("roll-stepper-6");
     fireEvent.click(within(roll6).getByTestId("roll-option-4"));
-    fireEvent.click(within(dock()).getByTestId("live-action-submit"));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith({
       type: "casualty",
@@ -191,7 +188,6 @@ describe("LiveActionDock — NON-active both-down + self-inflicted (DEC-1)", () 
     fireEvent.click(within(causes).getByRole("button", { name: /Esquivando — se cayó/ }));
     const stepper = within(dock()).getByTestId("dock-roll-stage");
     fireEvent.click(within(stepper).getByTestId("roll-option-7"));
-    fireEvent.click(within(dock()).getByTestId("live-action-submit"));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith({
       type: "casualty",
@@ -210,7 +206,6 @@ describe("LiveActionDock — Falta (aggressor → rival) and ack stays in cards"
     fireEvent.click(dockAction(/Falta/));
     fireEvent.click(within(dockPool("own")).getByRole("button", { name: /#1/i }));
     fireEvent.click(within(dockPool("rival")).getByRole("button", { name: /#2/i }));
-    fireEvent.click(within(dock()).getByTestId("live-action-submit"));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith({
       type: "foul",
@@ -227,7 +222,7 @@ describe("LiveActionDock — Falta (aggressor → rival) and ack stays in cards"
   });
 });
 
-describe("LiveActionDock — bottom 'Dar el turno' + reason sheet (MVT-7/LM-28)", () => {
+describe("LiveActionDock — bottom 'Dar el turno' + reason modal (MVT-7/LM-28)", () => {
   it("offers ONLY the ACTIVE coach a 'Dar el turno' chip in the dock bar", () => {
     renderDock(); // home active
     expect(dockAction(/Dar el turno/i)).toBeTruthy();
@@ -240,51 +235,50 @@ describe("LiveActionDock — bottom 'Dar el turno' + reason sheet (MVT-7/LM-28)"
     expect(dockAction(/Baja propia/)).toBeTruthy();
   });
 
-  it("opens a reason sheet with Voluntario PRESELECTED + Confirmar, and confirming the preselect flips exactly once (voluntary)", async () => {
+  it("opens the reason modal with NO preselection, and 'Tirada fallida' fires turnover immediately", async () => {
     const onSubmit = vi.fn<MockControl>(async () => {});
     renderDock({ onSubmit });
     fireEvent.click(dockAction(/Dar el turno/i));
-    const sheet = within(screen.getByTestId("live-action-sheet"));
-    // three reason chips — Voluntario preselected (aria-pressed true)
-    const voluntary = sheet.getByRole("button", { name: /Voluntario/ });
-    expect(voluntary.getAttribute("aria-pressed")).toBe("true");
-    expect(sheet.getByRole("button", { name: /Tirada fallida/ })).toBeTruthy();
-    expect(sheet.getByRole("button", { name: /Baja/ })).toBeTruthy();
-    // confirm with the preselection fires exactly one voluntary endTurn
-    fireEvent.click(sheet.getByRole("button", { name: /Confirmar/ }));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit).toHaveBeenCalledWith({ type: "endTurn", side: "home", reason: "voluntary" });
-  });
-
-  it("picks 'Tirada fallida' then Confirmar → carries turnover", async () => {
-    const onSubmit = vi.fn<MockControl>(async () => {});
-    renderDock({ onSubmit });
-    fireEvent.click(dockAction(/Dar el turno/i));
-    const sheet = () => within(screen.getByTestId("live-action-sheet"));
-    fireEvent.click(sheet().getByRole("button", { name: /Tirada fallida/ }));
-    fireEvent.click(sheet().getByRole("button", { name: /Confirmar/ }));
+    const modal = within(screen.getByTestId("live-action-modal"));
+    // three reason chips, all unpressed until one is clicked
+    for (const name of [/Voluntario/, /Tirada fallida/, /Baja/]) {
+      expect(modal.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("false");
+    }
+    // clicking a reason fires endTurn immediately (no Confirmar)
+    fireEvent.click(modal.getByRole("button", { name: /Tirada fallida/ }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith({ type: "endTurn", side: "home", reason: "turnover" });
   });
 
-  it("picks 'Baja' then Confirmar → carries injury", async () => {
+  it("fires a voluntary endTurn from the 'Voluntario' chip", async () => {
     const onSubmit = vi.fn<MockControl>(async () => {});
     renderDock({ onSubmit });
     fireEvent.click(dockAction(/Dar el turno/i));
-    const sheet = () => within(screen.getByTestId("live-action-sheet"));
-    fireEvent.click(sheet().getByRole("button", { name: "Baja" }));
-    fireEvent.click(sheet().getByRole("button", { name: /Confirmar/ }));
+    fireEvent.click(
+      within(screen.getByTestId("live-action-modal")).getByRole("button", { name: /Voluntario/ }),
+    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({ type: "endTurn", side: "home", reason: "voluntary" });
+  });
+
+  it("fires an injury endTurn from the 'Baja' chip", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderDock({ onSubmit });
+    fireEvent.click(dockAction(/Dar el turno/i));
+    fireEvent.click(
+      within(screen.getByTestId("live-action-modal")).getByRole("button", { name: "Baja" }),
+    );
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenCalledWith({ type: "endTurn", side: "home", reason: "injury" });
   });
 
-  it("dismissing/closing the sheet cancels WITHOUT firing a command", async () => {
+  it("dismissing/closing the modal cancels WITHOUT firing a command", async () => {
     const onSubmit = vi.fn<MockControl>(async () => {});
     renderDock({ onSubmit });
     fireEvent.click(dockAction(/Dar el turno/i));
-    const sheet = within(screen.getByTestId("live-action-sheet"));
-    fireEvent.click(sheet.getByRole("button", { name: /Cerrar/ }));
-    await waitFor(() => expect(screen.queryByTestId("live-action-sheet")).toBeNull());
+    const modal = within(screen.getByTestId("live-action-modal"));
+    fireEvent.click(modal.getByRole("button", { name: /Cerrar/ }));
+    await waitFor(() => expect(screen.queryByTestId("live-action-modal")).toBeNull());
     expect(onSubmit).not.toHaveBeenCalled();
     // the dock chip is still available for another pass
     expect(dockAction(/Dar el turno/i)).toBeTruthy();

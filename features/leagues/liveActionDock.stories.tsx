@@ -8,8 +8,9 @@ import type { MatchPlayer } from "./api";
  *  - ACTIVE coach: Dar el turno (rojo) · TD · Pase completo · Baja causada · Falta.
  *  - NON-active coach: solo Baja propia y Baja — ambos derribados.
  *  - Espectador / partido no live: nada (el dock no se renderiza).
- * Tocar una acción abre una hoja (sheet) sobre el dock; Baja/Falta usan un
- * stepper guiado con el RollStepper 1D16 compartido. Los datos son mock ES.
+ * Tocar una acción abre un modal centrado sobre el dock; Baja/Falta usan un
+ * stepper guiado con el RollStepper 1D16 compartido y el comando se dispara solo
+ * al completar la última selección. Los datos son mock ES.
  */
 
 const human = (
@@ -45,11 +46,13 @@ const opponentRoster: MatchPlayer[] = [
   human("o4", "Wurrzag Colmillo Negro", "thrower"),
 ];
 
-function Dock({ viewerSide, activeSide, activeTeamName }: { viewerSide: "home" | "away"; activeSide: "home" | "away"; activeTeamName?: string }) {
+function Dock({ viewerSide, activeSide }: { viewerSide: "home" | "away"; activeSide: "home" | "away" }) {
   return (
     <>
-      {/* Fake page body so the fixed bar reads as an overlay, not a lone strip. */}
-      <div className="mx-auto max-w-2xl px-3 pb-32 text-[13px] text-slate-500">
+      {/* Fake page body so the fixed bar reads as an overlay, not a lone strip.
+          Mirrors the app shell's main content width (full width + its padding)
+          so the dock's alignment is judged against the real feed width. */}
+      <div className="w-full px-4 pb-32 text-[13px] text-slate-500 sm:px-6">
         <p className="mb-3 rounded border border-[#e2e8f0] bg-white p-3 font-semibold text-[#12225a]">
           Cuerpo del partido (mock)
         </p>
@@ -64,7 +67,6 @@ function Dock({ viewerSide, activeSide, activeTeamName }: { viewerSide: "home" |
         rosterRaceId="human"
         opponentRaceId="orc"
         onSubmit={async () => undefined}
-        activeTeamName={activeTeamName}
       />
     </>
   );
@@ -83,7 +85,7 @@ export default {
       description: {
         component:
           "Dock contextual de acciones del partido en vivo. Barra fija inferior con las acciones " +
-          "legales según el rol; la hoja crece hacia arriba desde el dock. Espectador o partido no " +
+          "legales según el rol; el modal se centra sobre el dock. Espectador o partido no " +
           "live → no renderiza nada. Interactivo: abre las acciones y recorre el stepper guiado.",
       },
     },
@@ -92,13 +94,13 @@ export default {
 
 export const CoachActivo = {
   name: "Coach activo — dock cerrado",
-  render: () => <Dock viewerSide="home" activeSide="home" activeTeamName="Águilas de Middenheim" />,
+  render: () => <Dock viewerSide="home" activeSide="home" />,
   parameters: { ...baseParams },
 };
 
 export const CoachActivoHojaTD = {
-  name: "Coach activo — hoja TD abierta",
-  render: () => <Dock viewerSide="home" activeSide="home" activeTeamName="Águilas de Middenheim" />,
+  name: "Coach activo — modal TD abierto",
+  render: () => <Dock viewerSide="home" activeSide="home" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement);
     const td = await canvas.findByRole("button", { name: "Touchdown" });
@@ -108,7 +110,7 @@ export const CoachActivoHojaTD = {
     ...baseParams,
     docs: {
       description: {
-        story: "TD es de dos toques: acción → jugador. Al abrir la hoja se listan los dorsales propios elegibles.",
+        story: "TD es de dos toques: acción → jugador. Al abrir el modal se listan los dorsales propios elegibles.",
       },
     },
   },
@@ -116,7 +118,7 @@ export const CoachActivoHojaTD = {
 
 export const CoachActivoFlujoBaja = {
   name: "Coach activo — Baja guiada (hasta la tirada)",
-  render: () => <Dock viewerSide="home" activeSide="home" activeTeamName="Águilas de Middenheim" />,
+  render: () => <Dock viewerSide="home" activeSide="home" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole("button", { name: "Baja causada" }));
@@ -126,14 +128,14 @@ export const CoachActivoFlujoBaja = {
     await userEvent.click(own[0]);
     const rival = await canvas.findAllByTestId("dock-player-rival");
     await userEvent.click(rival[0]);
-    // Select a 9 → Grave so the stepper settles without the extra 1D6.
-    await userEvent.click(await canvas.findByTestId("roll-option-9"));
+    // Select a 13 → Permanente so the stepper waits for the 1D6 (stays open).
+    await userEvent.click(await canvas.findByTestId("roll-option-13"));
   },
   parameters: {
     ...baseParams,
     docs: {
       description: {
-        story: "Baja guiada recorrida hasta la tirada: el RollStepper 1D16 con bandas de color aparece en la hoja.",
+        story: "Baja guiada recorrida hasta la tirada: el RollStepper 1D16 con bandas de color aparece en el modal.",
       },
     },
   },
@@ -153,7 +155,7 @@ export const CoachNoActivo = {
 };
 
 export const CoachNoActivoHojaBajaPropia = {
-  name: "Coach no activo — hoja Baja propia",
+  name: "Coach no activo — modal Baja propia",
   render: () => <Dock viewerSide="home" activeSide="away" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement);
@@ -161,14 +163,14 @@ export const CoachNoActivoHojaBajaPropia = {
     await userEvent.click(await canvas.findByRole("button", { name: "Baja propia" }));
     const own = await canvas.findAllByTestId("dock-player-own");
     await userEvent.click(own[0]);
-    // Dejamos la hoja en el stage de causa (Esquivando — se cayó / El público).
+    // Dejamos el modal en el stage de causa (Esquivando — se cayó / El público).
     await canvas.findByTestId("dock-cause-pool");
   },
   parameters: {
     ...baseParams,
     docs: {
       description: {
-        story: "Hoja de 'Baja propia': causa autoinfligida primero (Esquivando — se cayó / El público).",
+        story: "Modal de 'Baja propia': causa autoinfligida primero (Esquivando — se cayó / El público).",
       },
     },
   },

@@ -343,7 +343,7 @@ async function openDockAction(coach: Page, actionName: string): Promise<ReturnTy
   const dock = actionDock(coach);
   await expect(dock).toBeVisible();
   await dock.getByRole("button", { name: new RegExp(actionName, "i") }).click();
-  const sheet = dock.getByTestId("live-action-sheet");
+  const sheet = dock.getByTestId("live-action-modal");
   await expect(sheet).toBeVisible();
   return dock;
 }
@@ -376,7 +376,7 @@ async function dockScoredAction(coach: Page, actionName: string, ownIndex: numbe
   await openDockAction(coach, actionName);
   await dockTapOwn(coach, ownIndex);
   const dock = actionDock(coach);
-  await expect(dock.getByTestId("live-action-sheet")).toHaveCount(0);
+  await expect(dock.getByTestId("live-action-modal")).toHaveCount(0);
 }
 
 /** Picks the active coach's injury CAUSE from the step's cause chips. */
@@ -387,7 +387,8 @@ async function dockPickCause(coach: Page, causeLabel: string) {
   await causes.getByRole("button", { name: new RegExp(causeLabel, "i") }).click();
 }
 
-/** Rolls the 1D16 (+1D6 when permanent) inside the dock sheet + Registers. */
+/** Rolls the 1D16 (+1D6 when permanent) inside the dock modal. The completing
+ *  pick AUTO-FIRES the command and closes the modal — there is no Registrar. */
 async function dockRollAndRecord(coach: Page, roll16: number, roll6?: number) {
   const dock = actionDock(coach);
   const stepper = dock.getByTestId("dock-roll-stage");
@@ -398,8 +399,7 @@ async function dockRollAndRecord(coach: Page, roll16: number, roll6?: number) {
     await expect(six).toBeVisible();
     await six.getByTestId(`roll-option-${roll6}`).click();
   }
-  await dock.getByTestId("live-action-submit").click();
-  await expect(actionDock(coach).getByTestId("live-action-sheet")).toHaveCount(0);
+  await expect(actionDock(coach).getByTestId("live-action-modal")).toHaveCount(0);
 }
 
 
@@ -496,19 +496,14 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     ).toHaveAttribute("href", `/leagues/${leagueId}`);
     await expect(header.getByTestId("match-timeline")).toBeVisible();
     // MVT-3: the sticky header NEVER hosts the pass-turn action — it lives in the
-    // bottom dock (MVT-7). Lock that the header has no "Dar el turno" nor the
-    // "Turno {team}" status small.
+    // bottom dock. Lock that the header has no "Dar el turno".
     await expect(header.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
-    await expect(header.getByRole("status")).toHaveCount(0);
 
-    // LM-12/D19/MVT-7: the first ACTIVE side after begin is home (LM-3: half 1
-    // turn 1 home). The pass-turn control lives ONLY in the bottom dock: its red
-    // "Dar el turno" chip carries the "Turno {team}" role=status; the NON-active
-    // coach sees "Pedir turno" and never "Dar el turno". The header NEVER hosts
-    // the pass control (MVT-3), so the role=status small is the dock chip's.
-    // The timeline turn-start card ALSO reads "Turno {homeTeamName}" (RAU-36/37),
-    // so the status checks target the role=status small specifically.
-    await expect(homeCoach.getByRole("status")).toHaveText(`Turno ${homeTeamName}`);
+    // LM-12/D19: the first ACTIVE side after begin is home (LM-3: half 1 turn 1
+    // home). The pass-turn control lives ONLY in the bottom dock ("Dar el turno"
+    // for the active coach, "Pedir turno" for the non-active); the dock carries
+    // NO "Turno {team}" status label — the header's turn chip + the active
+    // coach's "Tu turno" accent are the turn-state signals.
     await expect(homeCoach.getByRole("button", { name: "Dar el turno" })).toBeVisible();
     // MVT-3 Concept B: the ACTIVE coach's rulebook-header shows the coach-only
     // accent "Tu turno · clock". The query is HELD within the header because the
@@ -519,41 +514,33 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       homeCoach.getByTestId("rulebook-header").getByText("Tu turno"),
     ).toBeVisible();
     await expect(homeCoach.getByRole("button", { name: "Pedir turno" })).toHaveCount(0);
-    await expect(awayCoach.getByRole("status")).toHaveCount(0);
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
     await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
-    // The ACTIVE (home) coach opens the dock chip's reason sheet, then
-    // DOUBLE-CLICKS its Confirmar → the in-flight lock drops the second
-    // invocation (Confirmar defaults to voluntary, MVT-7), so the turn flips by
-    // EXACTLY ONE. A raw pointer dblclick lands the second click while the first
-    // endTurn is still in flight (no actionability waits) — the pre-lock bug sent
-    // a second endTurn and jumped the turn by two. The hub then fans the new
-    // state out over SSE: the OTHER coach's page converges WITHOUT any reload —
-    // the live `event` frame (turn + turnStart deltas) applies the flipped state.
+    // The ACTIVE (home) coach opens the dock chip's reason MODAL. The three
+    // reason chips render with NOTHING preselected: picking one fires the
+    // pass-turn IMMEDIATELY (auto-fire, no Confirmar step) and closes the modal.
+    // The hub then fans the new state out over SSE: the OTHER coach's page
+    // converges WITHOUT any reload — the live `event` frame (turn + turnStart
+    // deltas) applies the flipped state.
     const passChip = homeCoach.getByRole("button", { name: "Dar el turno" });
     await expect(passChip).toBeVisible();
     await passChip.click();
-    const sheet = homeCoach.getByTestId("live-action-sheet");
-    await expect(sheet).toBeVisible();
-    // Three reason chips render; Voluntario is preselected → confirming needs no
-    // further choice (the default voluntary path == today's plain pass).
-    await expect(sheet.getByRole("button", { name: "Voluntario" })).toHaveAttribute("aria-pressed", "true");
-    const confirmBtn = sheet.getByRole("button", { name: "Confirmar" });
-    const box = (await confirmBtn.boundingBox())!;
-    await homeCoach.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+    const modal = homeCoach.getByTestId("live-action-modal");
+    await expect(modal).toBeVisible();
+    for (const reason of ["Voluntario", "Tirada fallida", "Baja"]) {
+      await expect(modal.getByRole("button", { name: reason })).toHaveAttribute("aria-pressed", "false");
+    }
+    await modal.getByRole("button", { name: "Voluntario" }).click();
     // Correct BB2025 turn semantics (recurring regression): the turn number
     // names the ROUND shared by both sides — home T1 → away T1 → home T2. The
     // away side takes their TURN 1, so the header reads "Mitad 1 · Turno 1"
     // (NOT 2) on both coaches' pages.
     await expect(homeCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
     await expect(awayCoach.getByText(/Mitad 1 · Turno 1/).first()).toBeVisible();
-    // Regression: exactly one flip — turn 2 never appears, the away coach is
-    // the one now active ("Turno {awayTeamName}"), and the home coach's status
-    // is gone.
-    await expect(awayCoach.getByRole("status")).toHaveText(`Turno ${awayTeamName}`);
+    // Regression: exactly one flip — turn 2 never appears and the away coach is
+    // the one now active (the header's "Tu turno" accent below).
     await expect(homeCoach.getByText(/Mitad 1 · Turno 2/)).toHaveCount(0);
-    await expect(homeCoach.getByRole("status")).toHaveCount(0);
     // The accent tracks the ACTIVE coach only: after the flip away holds the
     // turn, so away's header carries "Tu turno" while home's no longer does
     // (both scoped within each rulebook-header; the feed turnStart tags also
