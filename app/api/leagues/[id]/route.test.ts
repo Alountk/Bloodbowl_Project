@@ -17,6 +17,11 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn(),
   },
 }));
+// LAC-1/LAC-3: mock the DB role read only; keep the pure `resolveLeagueAccess`
+// real so the guard decision itself stays under test.
+const getDbRoleMock = vi.hoisted(() => vi.fn());
+// LAC-3: the privileged branch authorizes via `requirePermission("leagues.manage")`.
+const requirePermissionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth", () => ({
   auth: authMock,
@@ -24,6 +29,15 @@ vi.mock("@/auth", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: prismaMock,
+}));
+
+vi.mock("@/lib/leagueAccess", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/leagueAccess")>();
+  return { ...actual, getDbRole: getDbRoleMock };
+});
+
+vi.mock("@/lib/devGuard", () => ({
+  requirePermission: requirePermissionMock,
 }));
 
 const liveStoreMock = vi.hoisted(() => ({
@@ -38,6 +52,8 @@ describe("GET /api/leagues/[id]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     prismaMock.player.findMany.mockResolvedValue([]);
+    // Default to a plain user; privileged tests override explicitly.
+    getDbRoleMock.mockResolvedValue("user");
   });
 
   it("returns 401 when there is no session", async () => {
@@ -263,15 +279,112 @@ describe("GET /api/leagues/[id]", () => {
     expect(res.status).toBe(404);
     // No fixture fetch happens for an unauthorized started league.
     expect(prismaMock.fixture.findMany).not.toHaveBeenCalled();
+    // The DB role is read (authoritative), and a plain `user` stays foreign.
+    expect(getDbRoleMock).toHaveBeenCalledWith("user-9");
   });
 
-  it("returns 404 for a league that does not exist", async () => {
+  it("returns a foreign STARTED league to a leagues.manage holder with fixtures (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    getDbRoleMock.mockResolvedValue("developer");
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Foreign Started",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: "Owner" },
+      status: "started",
+      seasonLength: 2,
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      teams: [{ id: "t1", name: "Reavers", raceId: "human", userId: "user-2", leagueId: "l1", archivedAt: null }],
+    });
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { id: "f1", round: 1, homeTeamId: "t1", awayTeamId: "t2", leagueId: "l1" },
+    ]);
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/foreign-started"), {
+      params: Promise.resolve({ id: "foreign-started" }),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("started");
+    expect(body.fixtures).toHaveLength(1);
+    expect(body.canManage).toBe(true);
+    expect(getDbRoleMock).toHaveBeenCalledWith("dev-1");
+  });
+
+  it("returns a foreign FINISHED league with fixtures and the champion to a leagues.manage holder (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "adm-1" } });
+    getDbRoleMock.mockResolvedValue("admin");
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Foreign Finished",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: "Owner" },
+      status: "finished",
+      championTeamId: "t1",
+      seasonLength: 1,
+      startedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      teams: [{ id: "t1", name: "Reavers", raceId: "human", userId: "user-2", leagueId: "l1", archivedAt: null }],
+    });
+    prismaMock.fixture.findMany.mockResolvedValue([
+      { id: "f1", round: 1, homeTeamId: "t1", awayTeamId: "t2", leagueId: "l1", homeScore: 2, awayScore: 1, winnerId: "t1" },
+    ]);
+
+    const res = await GET(new Request("http://localhost:3000/api/leagues/foreign-finished"), {
+      params: Promise.resolve({ id: "foreign-finished" }),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("finished");
+    expect(body.championTeamId).toBe("t1");
+    expect(body.fixtures).toHaveLength(1);
+    expect(body.canManage).toBe(true);
+  });
+
+  it("flags canManage false for a plain user on a foreign open league and true for the owner (LAC-5)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    getDbRoleMock.mockResolvedValue("user");
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      name: "Owner Open",
+      description: null,
+      ownerId: "user-1",
+      owner: { id: "user-1", email: "owner@test.local", name: "Owner" },
+      status: "open",
+      seasonLength: null,
+      startedAt: null,
+      createdAt: new Date().toISOString(),
+      teams: [],
+    });
+
+    const ownerRes = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+    expect((await ownerRes.json()).canManage).toBe(true);
+
+    // A plain user reading a foreign open league is not a manager.
+    authMock.mockResolvedValue({ user: { id: "user-9" } });
+    const foreignRes = await GET(new Request("http://localhost:3000/api/leagues/l1"), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+    expect(foreignRes.status).toBe(200);
+    expect((await foreignRes.json()).canManage).toBe(false);
+  });
+
+  it("returns 404 for a league that does not exist (no role read, no leak)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     prismaMock.league.findFirst.mockResolvedValue(null);
     const res = await GET(new Request("http://localhost:3000/api/leagues/nope"), {
       params: Promise.resolve({ id: "nope" }),
     } as never);
     expect(res.status).toBe(404);
+    // A missing league short-circuits before the DB role read.
+    expect(getDbRoleMock).not.toHaveBeenCalled();
   });
 });
 
@@ -575,7 +688,11 @@ describe("GET /api/leagues/[id] matchday enrichment", () => {
 });
 
 describe("DELETE /api/leagues/[id]", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: a plain `user` is not privileged (the privileged tests override).
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
+  });
 
   it("returns 401 when there is no session", async () => {
     authMock.mockResolvedValue(null);
@@ -649,6 +766,98 @@ describe("DELETE /api/leagues/[id]", () => {
       params: Promise.resolve({ id: "l1" }),
     } as never);
     expect(res.status).toBe(409);
+    expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.league.delete).not.toHaveBeenCalled();
+  });
+
+  it("lets a leagues.manage holder delete a foreign OPEN league (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      ownerId: "user-1", // foreign league
+      status: "open",
+    });
+
+    const res = await DELETE(new Request("http://localhost:3000/api/leagues/l1", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+
+    expect(res.status).toBe(204);
+    // The league is looked up by id (owner scope dropped), then authorized.
+    expect(prismaMock.league.findFirst).toHaveBeenCalledWith({ where: { id: "l1" } });
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.team.updateMany).toHaveBeenCalledWith({
+      where: { leagueId: "l1" },
+      data: { leagueId: null },
+    });
+    expect(prismaMock.league.delete).toHaveBeenCalledWith({ where: { id: "l1" } });
+  });
+
+  it("returns 404 for a plain user on a foreign open league (regression)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-2" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      ownerId: "user-1",
+      status: "open",
+    });
+
+    const res = await DELETE(new Request("http://localhost:3000/api/leagues/foreign", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "foreign" }),
+    } as never);
+    expect(res.status).toBe(404);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.league.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps 404 for a plain user on a foreign STARTED league (no status leak)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-2" } });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      ownerId: "user-1",
+      status: "started",
+      seasonLength: 2,
+      startedAt: new Date().toISOString(),
+    });
+
+    const res = await DELETE(new Request("http://localhost:3000/api/leagues/foreign", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "foreign" }),
+    } as never);
+    expect(res.status).toBe(404);
+    expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.league.delete).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 for a foreign STARTED league to a leagues.manage holder (lifecycle preserved)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.league.findFirst.mockResolvedValue({
+      id: "l1",
+      ownerId: "user-1",
+      status: "started",
+      seasonLength: 2,
+      startedAt: new Date().toISOString(),
+    });
+
+    const res = await DELETE(new Request("http://localhost:3000/api/leagues/l1", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "l1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.league.delete).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a nonexistent league id without reading a role (no leak)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    prismaMock.league.findFirst.mockResolvedValue(null);
+
+    const res = await DELETE(new Request("http://localhost:3000/api/leagues/nope", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "nope" }),
+    } as never);
+    expect(res.status).toBe(404);
+    expect(requirePermissionMock).not.toHaveBeenCalled();
     expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
     expect(prismaMock.league.delete).not.toHaveBeenCalled();
   });

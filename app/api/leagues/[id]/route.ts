@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getDbRole, resolveLeagueAccess } from "@/lib/leagueAccess";
+import { requirePermission } from "@/lib/devGuard";
 import { rulesetToDto } from "@/lib/rulesets";
 import { attachPeToTeams } from "@/lib/players";
 import { liveHub } from "@/lib/liveHub";
@@ -144,10 +146,12 @@ export function buildRoundsWithCompletion(
  * carries its jornada `round` with labeled home/away teams).
  *
  * Visibility: an OPEN league is readable by any authenticated user; a STARTED
- * league is readable only by its owner or a current member (a FINISHED league
- * keeps the same shield — its fixtures and champion stay member-visible). A
- * foreign non-member requesting a started/finished league gets 404 (no
- * existence/status leak), and a nonexistent id returns 404.
+ * league is readable only by its owner, a current member, or a `leagues.manage`
+ * holder (a FINISHED league keeps the same shield — its fixtures and champion
+ * stay member-visible). A foreign non-member requesting a started/finished
+ * league gets 404 (no existence/status leak), and a nonexistent id returns 404.
+ * The response carries a server-computed `canManage` flag (owner or privileged)
+ * so the client never authorizes (LAC-3/LAC-5).
  */
 export async function GET(
   _req: Request,
@@ -187,13 +191,29 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Started/finished league: owner-only or member-only to shield fixture data.
-  if (league.status === "started" || league.status === "finished") {
-    const isMember = league.teams.some((team) => team.userId === userId);
-    if (league.ownerId !== userId && !isMember) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
+  // LAC-2: resolve the caller's relationship to the league ONCE (owner first,
+  // then a `leagues.manage` holder). The DB role is authoritative — never the
+  // JWT snapshot.
+  const isMember = league.teams.some((team) => team.userId === userId);
+  const role = await getDbRole(userId);
+  const access = resolveLeagueAccess({
+    userId,
+    role,
+    ownerId: league.ownerId,
+    isMember,
+  });
+
+  // Started/finished league: owner/member/privileged only — a foreign plain
+  // user still gets 404 (no existence/status leak).
+  if (
+    (league.status === "started" || league.status === "finished") &&
+    access === "foreign"
+  ) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Owner-equivalent management: the owner or a `leagues.manage` holder.
+  const canManage = access === "owner" || access === "privileged";
 
   const fixtures =
     league.status === "started" || league.status === "finished"
@@ -224,15 +244,18 @@ export async function GET(
     teams: teamsWithPe,
     fixtures: fixtures.map((fixture) => enrichFixture(fixture as FixtureWithMatchday)),
     rounds: buildRoundsWithCompletion(fixtures as never),
+    canManage,
   });
 }
 
 /**
  * DELETE /api/leagues/[id]
- * Deletes an OPEN league owned by the session user, clearing each member
- * team's `leagueId` (SetNull) BEFORE the league row is removed so teams
- * survive. A STARTED league is immutable: DELETE returns 409 and performs no
- * mutation (teams and fixtures remain). A foreign league id returns 404.
+ * Deletes an OPEN league, clearing each member team's `leagueId` (SetNull)
+ * BEFORE the league row is removed so teams survive. The league owner or a
+ * `leagues.manage` holder (developer/admin) may delete it. A STARTED (or
+ * FINISHED) league is immutable: DELETE returns 409 and performs no mutation
+ * (teams and fixtures remain). A foreign league id returns 404 for a plain
+ * user — the privileged 403 is mapped to 404 so nothing leaks.
  */
 export async function DELETE(
   _req: Request,
@@ -240,15 +263,30 @@ export async function DELETE(
 ) {
   const { id } = await params;
   const session = await auth();
-  const ownerId = session?.user?.id;
-  if (!ownerId) {
+  const userId = session?.user?.id;
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const league = await prisma.league.findFirst({ where: { id, ownerId } });
+  // Look up by id only (no owner scope) so the owner AND a `leagues.manage`
+  // holder can act; a missing id → 404 (no existence leak).
+  const league = await prisma.league.findFirst({ where: { id } });
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Owner-first: the owner may always delete. Otherwise the caller needs
+  // `leagues.manage` (developer/admin). Its failure is mapped to 404 so a plain
+  // user (or member) cannot tell a foreign league from a missing one. This runs
+  // BEFORE the lifecycle guard so a foreign STARTED league never leaks its
+  // status to a plain user (today's 404 is preserved).
+  if (league.ownerId !== userId) {
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  }
+
   if (league.status === "started" || league.status === "finished") {
     return NextResponse.json(
       { error: "A started league cannot be deleted" },

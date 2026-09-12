@@ -8,6 +8,15 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+// LAC-3: mock the DB role read only; keep the pure `resolveLeagueAccess` real
+// so the visibility decision itself stays under test.
+const getDbRoleMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/leagueAccess", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/leagueAccess")>();
+  return { ...actual, getDbRole: getDbRoleMock };
+});
+
 const liveStoreMock = vi.hoisted(() => ({
   expireStaleLiveMatches: vi.fn().mockResolvedValue(0),
 }));
@@ -69,7 +78,11 @@ function callGet(leagueId = "l1", fixtureId = "f1") {
 }
 
 describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default to a plain user; privileged tests override explicitly.
+    getDbRoleMock.mockResolvedValue("user");
+  });
 
   it("returns 401 when unauthenticated, in both AUTH_MODE variants (route never reads env)", async () => {
     // The route is AUTH_MODE-agnostic: it only consults `auth()` and never
@@ -124,6 +137,57 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(res.status).toBe(404);
     // Body is byte-identical to the fixture-not-found case: no leak.
     expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
+  it("returns 200 for a leagues.manage holder reading a foreign STARTED fixture (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    getDbRoleMock.mockResolvedValue("developer");
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // owner user-admin, member user-1
+
+    const res = await callGet();
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).fixture.id).toBe("f1");
+    expect(getDbRoleMock).toHaveBeenCalledWith("dev-1");
+  });
+
+  it("returns 200 for a leagues.manage holder reading a foreign FINISHED fixture (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "adm-1" } });
+    getDbRoleMock.mockResolvedValue("admin");
+    prismaMock.fixture.findFirst.mockResolvedValue(
+      buildFixture({
+        league: {
+          id: "l1",
+          status: "finished",
+          ownerId: "user-admin",
+          teams: [{ userId: "user-1" }],
+        },
+      }),
+    );
+
+    const res = await callGet();
+    expect(res.status).toBe(200);
+    expect(getDbRoleMock).toHaveBeenCalledWith("adm-1");
+  });
+
+  it("returns 404 for a plain user on a foreign STARTED fixture (regression)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-x" } });
+    getDbRoleMock.mockResolvedValue("user");
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+
+    const res = await callGet();
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+    expect(getDbRoleMock).toHaveBeenCalledWith("user-x");
+  });
+
+  it("returns 404 for a missing fixture without reading a role (no leak)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(null);
+
+    const res = await callGet();
+    expect(res.status).toBe(404);
+    expect(getDbRoleMock).not.toHaveBeenCalled();
   });
 
   it("returns 200 for the league owner with the normalized payload shape", async () => {

@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/devGuard";
 
 /**
  * DELETE /api/leagues/[id]/members/[teamId]
  * Removes a member team from an OPEN league by clearing its `leagueId`.
  *
  * Authorization: the league owner (admin) may expel ANY member team; the owner
- * of a member team may remove their own team (self-leave). Both paths work only
- * while the league is OPEN — a started league returns 409 (immutable). A
- * nonexistent league, a non-member team, or a foreign caller with no admin or
- * team-owner right returns 404 (no existence leak). No mutation on any
+ * of a member team may remove their own team (self-leave); a `leagues.manage`
+ * holder (developer/admin) may expel any member team. All paths work only while
+ * the league is OPEN — a started/finished league returns 409 (immutable). A
+ * nonexistent league, a non-member team, or a caller with no admin, team-owner,
+ * or privileged right returns 404 (no existence leak). No mutation on any
  * rejected path.
  */
 export async function DELETE(
@@ -44,11 +46,16 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Only the league owner (admin) or the member team's owner may remove it.
+  // The league owner (admin) or the member team's owner may remove it; a
+  // `leagues.manage` holder (developer/admin) may expel any member team. A
+  // caller with none of these rights → 404 (no existence leak).
   const isAdmin = league.ownerId === userId;
   const isTeamOwner = member.userId === userId;
   if (!isAdmin && !isTeamOwner) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   const updated = await prisma.team.update({

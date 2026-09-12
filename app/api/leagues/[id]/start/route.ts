@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/devGuard";
 import { buildRoundRobin, type FixtureDraft } from "@/lib/roundRobin";
 
 /**
  * POST /api/leagues/[id]/start
- * Starts a round-robin season for an OPEN league owned by the session user.
+ * Starts a round-robin season for an OPEN league. Authorized for the league
+ * owner OR a `leagues.manage` holder (developer/admin).
  *
- * Guards: owner-only (foreign → 404), the league must be OPEN (started → 409),
- * at least 2 member teams must exist (409), and `seasonLength` must be a valid
- * integer in `1..teams-1` (400 for a non-integer, 409 out of range). When the
- * body omits `seasonLength` it defaults to `teams - 1` (a perfect round-robin).
+ * Guards: a foreign league id → 404 for a plain user (the privileged 403 is
+ * mapped to 404 so nothing leaks), the league must be OPEN (started/finished →
+ * 409), at least 2 member teams must exist (409), and `seasonLength` must be a
+ * valid integer in `1..teams-1` (400 for a non-integer, 409 out of range). When
+ * the body omits `seasonLength` it defaults to `teams - 1` (a perfect
+ * round-robin).
  *
  * On success, in ONE Prisma transaction: the team ids are shuffled, the circle
  * method produces the requested number of rounds, the fixtures are created
@@ -23,16 +27,29 @@ export async function POST(
 ) {
   const { id } = await params;
   const session = await auth();
-  const ownerId = session?.user?.id;
-  if (!ownerId) {
+  const userId = session?.user?.id;
+  if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Owner-only: a foreign league id returns 404 (no existence leak).
-  const league = await prisma.league.findFirst({ where: { id, ownerId } });
+  // Look up by id only (no owner scope) so the owner AND a `leagues.manage`
+  // holder can act; a missing id → 404 (no existence leak).
+  const league = await prisma.league.findFirst({ where: { id } });
   if (!league) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // Owner-first: the owner may always start. Otherwise the caller needs
+  // `leagues.manage` (developer/admin). Its failure is mapped to 404 so a plain
+  // user cannot tell a foreign league from a missing one. This runs BEFORE the
+  // lifecycle guard so a foreign STARTED league never leaks its status.
+  if (league.ownerId !== userId) {
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  }
+
   if (league.status === "started" || league.status === "finished") {
     return NextResponse.json(
       { error: "This league has already started" },
