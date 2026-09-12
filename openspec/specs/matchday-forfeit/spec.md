@@ -8,7 +8,8 @@ Provides the single match-resolution mechanism this iteration: the league owner 
 
 ### Requirement: Admin-Only Forfeit
 
-Only the league owner SHALL award a forfeit. Participants, other members, and foreign users MUST NOT forfeit. A non-admin request MUST return 403 (authenticated but unauthorized). An absent session MUST return 401.
+Only the league owner or a `leagues.manage` holder (developer/admin) SHALL award a forfeit. Participants, other members, and foreign users MUST NOT forfeit. A non-admin, non-privileged request MUST return 403 (authenticated but unauthorized). An absent session MUST return 401.
+(Previously: forfeit was league-owner only with no privileged override.)
 
 #### Scenario: Admin awards forfeit
 
@@ -27,6 +28,18 @@ Only the league owner SHALL award a forfeit. Participants, other members, and fo
 - GIVEN no session
 - WHEN a forfeit request hits the route
 - THEN it returns 401 and performs no DB write
+
+#### Scenario: Privileged awards a forfeit
+
+- GIVEN a `developer`/`admin` session and a fixture in a foreign STARTED league
+- WHEN they POST a `winnerTeamId` (home or away)
+- THEN the fixture's `winnerId` is set and it derives `played`
+
+#### Scenario: Plain user forfeit still forbidden
+
+- GIVEN a plain `user` who is neither the league owner nor privileged
+- WHEN they POST a forfeit
+- THEN it returns 403 and no mutation occurs
 
 ### Requirement: Forfeit Sets winnerId
 

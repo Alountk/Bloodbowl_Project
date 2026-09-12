@@ -1,45 +1,6 @@
-# leagues Specification
+# Delta for leagues
 
-## Purpose
-
-Introduce the League model to group teams into per-user leagues. Leagues are persisted via Prisma on PostgreSQL, scoped to the session owner, and support assigning/expelling member teams. Deleting a league clears each member team's `leagueId` before the league row is removed.
-
-## Requirements
-
-### Requirement: League Model
-
-The system MUST persist leagues via Prisma on PostgreSQL. The League model MUST have id (cuid), name (unique global), description (String?, optional free text), ownerId (FK to User), createdAt, `status` (enum "open"|"started", default "open"), `seasonLength Int?`, `startedAt DateTime?`, `turnClockEnabled Boolean` (default true), and `turnClockSeconds Int` (default 240) — the two turn-clock columns are DEPRECATED and MUST remain only for backward compatibility (no destructive migration drops them). A `Fixture` model MUST exist with id (cuid), leagueId (cascade), round Int, homeTeamId, awayTeamId and MUST be indexed on `[leagueId, round]`. Deleting a User MUST cascade-delete their Leagues. Deleting an OPEN League MUST set each member team's `leagueId` to null (onDelete SetNull) and MUST fail with 409 when the league is STARTED; deleting a started league MUST NOT run the SetNull-clearing and MUST leave teams and fixtures intact.
-(Previously: the turn-clock fields were the active per-turn clock configuration; this delta deprecates them without dropping the columns.)
-
-#### Scenario: League persisted (unchanged)
-
-- GIVEN an authenticated user
-- WHEN a league is created with a name and optional description
-- THEN a League row with the user's ownerId, name, description, createdAt, and `status: "open"` is stored
-
-#### Scenario: Duplicate league name rejected (unchanged)
-
-- GIVEN a league name already exists globally
-- WHEN any user creates a league with the same name
-- THEN creation fails with 409 and no league row is created
-
-#### Scenario: Deprecated clock columns retained
-
-- GIVEN a league whose creation predates the deprecation
-- WHEN its League row is read
-- THEN `turnClockEnabled` and `turnClockSeconds` remain stored unchanged; new leagues persist them at schema defaults
-
-#### Scenario: Open league delete clears members (unchanged)
-
-- GIVEN an OPEN league with member teams owned by other users
-- WHEN the owner deletes the league
-- THEN each member team's `leagueId` is set to null and the league row is removed
-
-#### Scenario: Started league delete blocked
-
-- GIVEN a STARTED league with fixtures and members
-- WHEN the owner deletes the league
-- THEN it returns 409 and the league row, fixtures, and memberships remain
+## MODIFIED Requirements
 
 ### Requirement: League User-Scoped API
 
@@ -206,23 +167,3 @@ GET `/api/leagues` MUST require a session (401 unauthenticated) and return ALL l
 - GIVEN a plain `user` session and a foreign STARTED league
 - WHEN they call GET `/api/leagues`
 - THEN it does not appear in the listing
-
-### Requirement: Open League Detail Public
-
-GET `/api/leagues/[id]` MUST return an OPEN league to any authenticated user (not only the owner). The response MUST include member (non-archived) teams and, when started, fixtures grouped by round.
-
-#### Scenario: Foreign open league readable
-
-- GIVEN an OPEN league owned by another user
-- WHEN a different authenticated user requests its detail
-- THEN it returns 200 with the league and member teams
-
-### Requirement: Member Self-Leave
-
-DELETE `/api/leagues/[id]/members/[teamId]` MUST allow the OWNER of a member TEAM (i.e. any member team's user) to remove their own team, and MUST allow the league owner (admin) to expel any member. A team not a member MUST return 404. Both paths MUST work only while the league is OPEN (409 if started).
-
-#### Scenario: Member removes own team while open
-
-- GIVEN a team in an OPEN league owned by a non-admin user
-- WHEN that user DELETEs its membership by team id
-- THEN the team's `leagueId` is nulled and it leaves the member list

@@ -20,15 +20,20 @@ export type Plan = (typeof PLANS)[number];
 export const PLAN_ORDER: readonly Plan[] = ["free", "club", "premium"];
 
 /** The application's capability surface (permission keys). */
-export const PERMISSIONS = ["rulesets.dev", "users.manage", "live.manage"] as const;
+export const PERMISSIONS = [
+  "rulesets.dev",
+  "users.manage",
+  "live.manage",
+  "leagues.manage",
+] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 /** role → permissions. Extend here when a new capability appears. */
 const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   user: [],
-  developer: ["rulesets.dev", "users.manage", "live.manage"],
+  developer: ["rulesets.dev", "users.manage", "live.manage", "leagues.manage"],
   // Future platform management (users, plans, billing) — inherits the dev set.
-  admin: ["rulesets.dev", "users.manage", "live.manage"],
+  admin: ["rulesets.dev", "users.manage", "live.manage", "leagues.manage"],
 };
 
 /** Narrower type guard: any value is a valid role only when in ROLES. */
