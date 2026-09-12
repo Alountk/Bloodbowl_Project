@@ -8,8 +8,9 @@ import type { MatchPlayer } from "./api";
  *  - ACTIVE coach: Dar el turno (rojo) · TD · Pase completo · Baja causada · Falta.
  *  - NON-active coach: solo Baja propia y Baja — ambos derribados.
  *  - Espectador / partido no live: nada (el dock no se renderiza).
- * Tocar una acción abre una hoja (sheet) sobre el dock; Baja/Falta usan un
- * stepper guiado con el RollStepper 1D16 compartido. Los datos son mock ES.
+ * Tocar una acción abre un modal centrado sobre el dock; Baja/Falta usan un
+ * stepper guiado con el RollStepper 1D16 compartido y el comando se dispara solo
+ * al completar la última selección. Los datos son mock ES.
  */
 
 const human = (
@@ -83,7 +84,7 @@ export default {
       description: {
         component:
           "Dock contextual de acciones del partido en vivo. Barra fija inferior con las acciones " +
-          "legales según el rol; la hoja crece hacia arriba desde el dock. Espectador o partido no " +
+          "legales según el rol; el modal se centra sobre el dock. Espectador o partido no " +
           "live → no renderiza nada. Interactivo: abre las acciones y recorre el stepper guiado.",
       },
     },
@@ -97,7 +98,7 @@ export const CoachActivo = {
 };
 
 export const CoachActivoHojaTD = {
-  name: "Coach activo — hoja TD abierta",
+  name: "Coach activo — modal TD abierto",
   render: () => <Dock viewerSide="home" activeSide="home" activeTeamName="Águilas de Middenheim" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement);
@@ -108,7 +109,7 @@ export const CoachActivoHojaTD = {
     ...baseParams,
     docs: {
       description: {
-        story: "TD es de dos toques: acción → jugador. Al abrir la hoja se listan los dorsales propios elegibles.",
+        story: "TD es de dos toques: acción → jugador. Al abrir el modal se listan los dorsales propios elegibles.",
       },
     },
   },
@@ -126,14 +127,14 @@ export const CoachActivoFlujoBaja = {
     await userEvent.click(own[0]);
     const rival = await canvas.findAllByTestId("dock-player-rival");
     await userEvent.click(rival[0]);
-    // Select a 9 → Grave so the stepper settles without the extra 1D6.
-    await userEvent.click(await canvas.findByTestId("roll-option-9"));
+    // Select a 13 → Permanente so the stepper waits for the 1D6 (stays open).
+    await userEvent.click(await canvas.findByTestId("roll-option-13"));
   },
   parameters: {
     ...baseParams,
     docs: {
       description: {
-        story: "Baja guiada recorrida hasta la tirada: el RollStepper 1D16 con bandas de color aparece en la hoja.",
+        story: "Baja guiada recorrida hasta la tirada: el RollStepper 1D16 con bandas de color aparece en el modal.",
       },
     },
   },
@@ -153,7 +154,7 @@ export const CoachNoActivo = {
 };
 
 export const CoachNoActivoHojaBajaPropia = {
-  name: "Coach no activo — hoja Baja propia",
+  name: "Coach no activo — modal Baja propia",
   render: () => <Dock viewerSide="home" activeSide="away" />,
   play: async ({ canvasElement }: { canvasElement: HTMLElement }) => {
     const canvas = within(canvasElement);
@@ -161,14 +162,14 @@ export const CoachNoActivoHojaBajaPropia = {
     await userEvent.click(await canvas.findByRole("button", { name: "Baja propia" }));
     const own = await canvas.findAllByTestId("dock-player-own");
     await userEvent.click(own[0]);
-    // Dejamos la hoja en el stage de causa (Esquivando — se cayó / El público).
+    // Dejamos el modal en el stage de causa (Esquivando — se cayó / El público).
     await canvas.findByTestId("dock-cause-pool");
   },
   parameters: {
     ...baseParams,
     docs: {
       description: {
-        story: "Hoja de 'Baja propia': causa autoinfligida primero (Esquivando — se cayó / El público).",
+        story: "Modal de 'Baja propia': causa autoinfligida primero (Esquivando — se cayó / El público).",
       },
     },
   },

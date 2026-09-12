@@ -30,14 +30,17 @@ import type { LiveCommand, MatchPlayer } from "./api";
  *    ambos derribados" (a rival fallen blocker whose own defender caused the
  *    both-down, DEC-1). A spectator/admin or a non-live match sees nothing.
  *
- * Tapping an action opens a SHEET over the dock listing the players involved as
- * chips (dorsal + short name; alive + not `missNextMatch` only). TD/Pase are TWO
+ * Tapping an action opens a centered MODAL listing the players involved as chips
+ * (dorsal + short name; alive + not `missNextMatch` only). TD/Pase are TWO
  * TOUCHES (action → player fires instantly). Baja/Falta use a guided stepper
- * that reuses the shared `RollStepper` for the 1D16(+1D6) band — the SERVER stays
+ * that reuses the shared `RollStepper` for the 1D16(+1D6) band; the guided
+ * command fires AUTOMATICALLY the moment the last required selection is made
+ * (there is no Registrar button). The pass-turn reason chips fire `endTurn`
+ * immediately on click (there is no Confirmar button). The SERVER stays
  * authoritative (the raw rolls are what the route reads), ack stays a feed-card
  * concern (this dock never renders ✓/✗).
  *
- * The sheet's chips mirror the strip's old pickers but are rebuilt here around
+ * The modal's chips mirror the strip's old pickers but are rebuilt here around
  * the action-first mental model (mockup Design A): who-before-what is gone.
  */
 
@@ -49,6 +52,28 @@ type Flow =
   | "selfInflicted"
   | "bothDown"
   | "passTurn";
+
+/** The end-turn reasons the active coach can pick (no preselection). */
+type TurnReason = "voluntary" | "turnover" | "injury";
+
+/** The guided flows that map onto a `buildGuidedCommand` kind. */
+type GuidedKind = "casualty" | "selfInflicted" | "bothDown" | "foul";
+
+/** Maps a guided `Flow` to its `buildGuidedCommand` kind (null for TD/Pase/pass). */
+function guidedKindFor(flow: Flow): GuidedKind | null {
+  switch (flow) {
+    case "casualtyCaused":
+      return "casualty";
+    case "selfInflicted":
+      return "selfInflicted";
+    case "bothDown":
+      return "bothDown";
+    case "foul":
+      return "foul";
+    default:
+      return null;
+  }
+}
 
 export interface LiveActionDockProps {
   viewerSide: "home" | "away" | null;
@@ -64,9 +89,10 @@ export interface LiveActionDockProps {
   opponentRaceId: string;
   /** Wraps `act`: the `/api/.../live` POST command. */
   onSubmit: (cmd: LiveCommand) => Promise<void>;
-  /** LM-28/MVT-7: the ACTIVE team's display name for the bottom "Turno {team}"
-   * status small inside the red pass-turn chip. Optional so direct-dock tests
-   * (which render no header) can omit it; MatchView provides it. */
+  /** LM-28/MVT-7: the ACTIVE team's display name for the dock bar's
+   * "Turno {team}" status label (only shown to the active coach). Optional so
+   * direct-dock tests (which render no header) can omit it; MatchView provides
+   * it. */
   activeTeamName?: string;
 }
 
@@ -146,7 +172,7 @@ export function LiveActionDock({
   const [flow, setFlow] = useState<Flow | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [selections, setSelections] = useState<GuidedSelections>({});
-  const [reason, setReason] = useState<"voluntary" | "turnover" | "injury">("voluntary");
+  const [reason, setReason] = useState<TurnReason | null>(null);
 
   // Gates: spectator (no side) or a non-live match → no dock at all.
   if (viewerSide == null || status !== "live") return null;
@@ -157,37 +183,63 @@ export function LiveActionDock({
   const ownDorsal = dorsalMap(roster);
   const rivalDorsal = dorsalMap(opponentRoster);
 
-  const derivedKind =
-    selections.roll16 === "" || selections.roll16 == null
-      ? null
-      : resolveInjury(Number(selections.roll16)).kind;
-  const needsRoll6 = derivedKind === "permanent";
-
   const begin = (next: Flow) => {
     setFlow(next);
     setStepIndex(0);
     setSelections({});
-    setReason("voluntary"); // the sheet always opens with Voluntario PRESELECTED
+    setReason(null); // no preselection: the reason chips start unpressed
   };
 
   const close = () => {
     setFlow(null);
     setStepIndex(0);
     setSelections({});
-    setReason("voluntary");
+    setReason(null);
   };
-
-  const setRoll16 = (n: number) => setSelections((s) => ({ ...s, roll16: n, roll6: "" }));
-  const setRoll6 = (n: number) => setSelections((s) => ({ ...s, roll6: n }));
 
   const nextStep = () => setStepIndex((i) => i + 1);
 
-  /** Fire a complete command. Two-touch flows submit directly; guided ones go
-   * through the Registrar button at the roll/confirm boundary. */
+  /** Fire a complete command and reset the flow. */
   const submit = (cmd: LiveCommand) => {
     void onSubmit(cmd);
     close();
   };
+
+  /**
+   * Pure completion check for a guided flow against a CANDIDATE selections
+   * object (never the stale state). `buildGuidedCommand` treats the 1D6 as
+   * optional, so a permanent band (13-14) additionally requires the 1D6 pick
+   * before the flow counts as complete.
+   */
+  const isGuidedComplete = (kind: GuidedKind, next: GuidedSelections): boolean => {
+    if (buildGuidedCommand(kind, viewerSide, next) == null) return false;
+    const r16 = next.roll16;
+    const needs6 =
+      r16 != null && r16 !== "" && resolveInjury(Number(r16)).kind === "permanent";
+    return !needs6 || (next.roll6 !== "" && next.roll6 != null);
+  };
+
+  /**
+   * Applies the NEXT selections and either fires the flow (when the last
+   * required pick completed it) or advances the visible stage. Completeness is
+   * checked on `next`, so it never races the async state update.
+   */
+  const applyGuided = (next: GuidedSelections, advance: boolean) => {
+    if (flow == null) return;
+    setSelections(next);
+    const kind = guidedKindFor(flow);
+    if (kind != null && isGuidedComplete(kind, next)) {
+      const cmd = buildGuidedCommand(kind, viewerSide, next);
+      if (cmd) {
+        submit(cmd);
+        return;
+      }
+    }
+    if (advance) nextStep();
+  };
+
+  const setRoll16 = (n: number) => applyGuided({ ...selections, roll16: n, roll6: "" }, false);
+  const setRoll6 = (n: number) => applyGuided({ ...selections, roll6: n }, false);
 
   const pickPlayer = (p: MatchPlayer, side: "own" | "rival") => {
     if (flow === "td" || flow === "completion") {
@@ -195,17 +247,15 @@ export function LiveActionDock({
       submit(buildScoredCommand(flow, viewerSide, p.rosterPlayerId));
       return;
     }
-    // Guided flows: remember the pick in its stage-slot according to role.
-    if (side === "own") {
-      const slot =
-        flow === "bothDown" || flow === "casualtyCaused" || flow === "foul"
+    // Guided flows: remember the pick in its stage-slot according to role, then
+    // fire automatically when it was the last required selection.
+    const slot =
+      side === "own"
+        ? flow === "bothDown" || flow === "casualtyCaused" || flow === "foul"
           ? "causerId"
-          : "victimId"; // selfInflicted victim is each own fallen player
-      setSelections((s) => ({ ...s, [slot]: p.rosterPlayerId }));
-    } else {
-      setSelections((s) => ({ ...s, victimId: p.rosterPlayerId }));
-    }
-    nextStep();
+          : "victimId" // selfInflicted victim is each own fallen player
+        : "victimId";
+    applyGuided({ ...selections, [slot]: p.rosterPlayerId }, true);
   };
 
   // --- Guided stage render ------------------------------------------------
@@ -215,63 +265,17 @@ export function LiveActionDock({
   const stage = stages[Math.min(stepIndex, stages.length)];
   const isRollStage = openFlow != null && stage?.kind === "roll";
 
-  const canRegister = (() => {
-    if (openFlow == null) return false;
-    if (openFlow === "bothDown" || openFlow === "casualtyCaused") {
-      const readyRoll = selections.roll16 !== "" && selections.roll16 != null;
-      return (
-        selections.causerId != null &&
-        selections.victimId != null &&
-        readyRoll &&
-        (!needsRoll6 || (selections.roll6 !== "" && selections.roll6 != null))
-      );
-    }
-    if (openFlow === "selfInflicted") {
-      const readyRoll = selections.roll16 !== "" && selections.roll16 != null;
-      return (
-        selections.cause != null &&
-        selections.victimId != null &&
-        readyRoll &&
-        (!needsRoll6 || (selections.roll6 !== "" && selections.roll6 != null))
-      );
-    }
-    if (openFlow === "foul") {
-      return selections.causerId != null && selections.victimId != null;
-    }
-    return false;
-  })();
-
-  const register = () => {
-    if (!openFlow || !canRegister) return;
-    const guidedKind =
-      openFlow === "casualtyCaused"
-        ? "casualty"
-        : openFlow === "selfInflicted"
-          ? "selfInflicted"
-          : openFlow === "bothDown"
-            ? "bothDown"
-            : openFlow === "foul"
-              ? "foul"
-              : null;
-    if (!guidedKind) return;
-    const cmd = buildGuidedCommand(
-      guidedKind,
-      viewerSide,
-      selections as GuidedSelections,
-    );
-    if (cmd) submit(cmd);
-  };
-
-  /** LM-28: fires the ACTIVE coach's pass with the selected reason (default
-   * voluntary). The ACTIVITY dock gate already proved viewerSide === activeSide
-   * (only an active coach reaches this); ends once via `submit`. */
-  const confirmPassTurn = () => {
+  /** LM-28: fires the ACTIVE coach's pass with the clicked reason. The dock gate
+   * already proved viewerSide === activeSide (only an active coach reaches this);
+   * ends once via `submit`. */
+  const firePassTurn = (value: TurnReason) => {
     if (flow !== "passTurn" || viewerSide == null) return;
-    submit({ type: "endTurn", side: viewerSide, reason });
+    setReason(value);
+    submit({ type: "endTurn", side: viewerSide, reason: value });
   };
 
-  // Lay out the fixed dock bar + an expanding sheet (when a flow is open).
-  const sheetContent = (() => {
+  // The centered modal that hosts the open flow (the dock bar stays underneath).
+  const modalContent = (() => {
     if (!openFlow) return null;
     const heading = (() => {
       if (stage?.kind === "cause") return t("match.controls.injuryCause");
@@ -290,180 +294,149 @@ export function LiveActionDock({
     })();
 
     return (
-      <div
-        data-testid="live-action-sheet"
-        className="rounded-t-xl border border-b-0 border-border bg-panel px-3 pb-2 pt-3 shadow-[0_-6px_18px_rgba(18,34,90,0.12)]"
-      >
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            {heading ? (
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                {heading}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div
+          data-testid="live-action-modal"
+          className="w-full max-w-md rounded-lg border border-border bg-panel p-4 shadow-xl"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              {heading ? (
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  {heading}
+                </p>
+              ) : null}
+              <p className="truncate text-sm font-bold text-navy">
+                {flow === "passTurn"
+                  ? t("match.turnReason.heading")
+                  : t("match.dock.sheetTitle")}
               </p>
-            ) : null}
-            <p className="truncate text-sm font-bold text-navy">
-              {flow === "passTurn"
-                ? t("match.turnReason.heading")
-                : t("match.dock.sheetTitle")}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={close}
-            aria-label={t("match.dock.closeSheet")}
-            className="rounded border border-border px-2 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-background"
-          >
-            {t("match.dock.closeSheet")}
-          </button>
-        </div>
-
-        {/* Guided stages: cause / self-cause chips sit above the pool in their
-            own step; own/rival pools are shown one at a time. */}
-        {stage?.kind === "cause" ||
-        stage?.kind === "selfCause" ? (
-          <div data-testid="dock-cause-pool" className="flex flex-wrap gap-1.5">
-            {(stage.kind === "cause" ? ACTIVE_CAUSES : SELF_CAUSES).map((c) => (
-              <button
-                key={c}
-                type="button"
-                data-testid="dock-cause-option"
-                aria-pressed={selections.cause === c}
-                onClick={() => {
-                  setSelections((s) => ({ ...s, cause: c }));
-                  nextStep();
-                }}
-                className={`rounded border px-2 py-1 text-xs font-bold ${
-                  selections.cause === c
-                    ? "border-red bg-red text-white"
-                    : "border-border bg-panel text-navy hover:bg-background"
-                }`}
-              >
-                {causeLabel(c, t)}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {stage?.kind === "pickOwn" ? (
-          <>
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              {t("match.dock.yourSide")}
-            </p>
-            <div data-testid="dock-pool-own" className="flex flex-wrap gap-1.5">
-              {own.map((p) => {
-                const dorsal = ownDorsal.get(p.rosterPlayerId) ?? 0;
-                const position = p.journeyman
-                  ? t("match.journeyman")
-                  : positionName(rosterRaceId, p.positionalKey);
-                return playerChip(
-                  p,
-                  dorsal,
-                  "own",
-                  position,
-                  selections.causerId === p.rosterPlayerId ||
-                    selections.victimId === p.rosterPlayerId,
-                  () => pickPlayer(p, "own"),
-                );
-              })}
             </div>
-          </>
-        ) : null}
-
-        {stage?.kind === "pickRival" ? (
-          <>
-            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              {t("match.dock.rival")}
-            </p>
-            <div data-testid="dock-pool-rival" className="flex flex-wrap gap-1.5">
-              {rival.map((p) => {
-                const dorsal = rivalDorsal.get(p.rosterPlayerId) ?? 0;
-                const position = p.journeyman
-                  ? t("match.journeyman")
-                  : positionName(opponentRaceId, p.positionalKey);
-                return playerChip(
-                  p,
-                  dorsal,
-                  "rival",
-                  position,
-                  selections.victimId === p.rosterPlayerId,
-                  () => pickPlayer(p, "rival"),
-                );
-              })}
-            </div>
-          </>
-        ) : null}
-
-        {isRollStage ? (
-          <div data-testid="dock-roll-stage">
-            <RollStepper
-              roll16={selections.roll16 ?? ""}
-              roll6={selections.roll6 ?? ""}
-              onRoll16={setRoll16}
-              onRoll6={setRoll6}
-              fn={t}
-            />
+            <button
+              type="button"
+              onClick={close}
+              aria-label={t("match.dock.closeSheet")}
+              className="rounded border border-border px-2 py-0.5 text-[11px] font-semibold text-slate-500 hover:bg-background"
+            >
+              {t("match.dock.closeSheet")}
+            </button>
           </div>
-        ) : null}
 
-        {/* LM-28/MVT-7: the ACTIVE coach's pass-turn reason stage. Three reason
-            chips (Voluntario preselected) + Confirmar (fires endTurn once) or
-            Cerrar (dismiss = cancel, no command — the sheet's top-right close). */}
-        {openFlow === "passTurn" ? (
-          <div data-testid="dock-turnreason-stage" className="mt-1">
-            <div className="flex flex-wrap gap-1.5">
-              {(
-                [
-                  ["voluntary", t("match.turnReason.voluntary")],
-                  ["turnover", t("match.turnReason.turnover")],
-                  ["injury", t("match.turnReason.injury")],
-                ] as const
-              ).map(([value, label]) => (
+          {/* Guided stages: cause / self-cause chips sit above the pool in their
+              own step; own/rival pools are shown one at a time. */}
+          {stage?.kind === "cause" || stage?.kind === "selfCause" ? (
+            <div data-testid="dock-cause-pool" className="flex flex-wrap gap-1.5">
+              {(stage.kind === "cause" ? ACTIVE_CAUSES : SELF_CAUSES).map((c) => (
                 <button
-                  key={value}
+                  key={c}
                   type="button"
-                  role="button"
-                  aria-pressed={reason === value}
-                  onClick={() => setReason(value)}
-                  className={`rounded border px-3 py-1 text-xs font-bold ${
-                    reason === value
+                  data-testid="dock-cause-option"
+                  aria-pressed={selections.cause === c}
+                  onClick={() => applyGuided({ ...selections, cause: c }, true)}
+                  className={`rounded border px-2 py-1 text-xs font-bold ${
+                    selections.cause === c
                       ? "border-red bg-red text-white"
                       : "border-border bg-panel text-navy hover:bg-background"
                   }`}
                 >
-                  {label}
+                  {causeLabel(c, t)}
                 </button>
               ))}
             </div>
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                data-testid="dock-confirm-passturn"
-                onClick={confirmPassTurn}
-                className="rounded bg-red px-4 py-1.5 text-xs font-bold text-white hover:bg-red-hover"
-              >
-                {t("match.turnReason.confirm")}
-              </button>
-            </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {/* Registrar: any guided flow after its chip/roll stages are met.
-            The pass-turn flow has NO guided Registrar (it uses Confirmar). */}
-        {openFlow !== "td" &&
-        openFlow !== "completion" &&
-        openFlow !== "passTurn" ? (
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              data-testid="live-action-submit"
-              onClick={register}
-              disabled={!canRegister}
-              className="rounded bg-navy px-4 py-1.5 text-xs font-semibold text-white hover:bg-navy-hover disabled:opacity-40"
-            >
-              {t("match.controls.record")}
-            </button>
-          </div>
-        ) : null}
+          {stage?.kind === "pickOwn" ? (
+            <>
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                {t("match.dock.yourSide")}
+              </p>
+              <div data-testid="dock-pool-own" className="flex flex-wrap gap-1.5">
+                {own.map((p) => {
+                  const dorsal = ownDorsal.get(p.rosterPlayerId) ?? 0;
+                  const position = p.journeyman
+                    ? t("match.journeyman")
+                    : positionName(rosterRaceId, p.positionalKey);
+                  return playerChip(
+                    p,
+                    dorsal,
+                    "own",
+                    position,
+                    selections.causerId === p.rosterPlayerId ||
+                      selections.victimId === p.rosterPlayerId,
+                    () => pickPlayer(p, "own"),
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {stage?.kind === "pickRival" ? (
+            <>
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                {t("match.dock.rival")}
+              </p>
+              <div data-testid="dock-pool-rival" className="flex flex-wrap gap-1.5">
+                {rival.map((p) => {
+                  const dorsal = rivalDorsal.get(p.rosterPlayerId) ?? 0;
+                  const position = p.journeyman
+                    ? t("match.journeyman")
+                    : positionName(opponentRaceId, p.positionalKey);
+                  return playerChip(
+                    p,
+                    dorsal,
+                    "rival",
+                    position,
+                    selections.victimId === p.rosterPlayerId,
+                    () => pickPlayer(p, "rival"),
+                  );
+                })}
+              </div>
+            </>
+          ) : null}
+
+          {isRollStage ? (
+            <div data-testid="dock-roll-stage">
+              <RollStepper
+                roll16={selections.roll16 ?? ""}
+                roll6={selections.roll6 ?? ""}
+                onRoll16={setRoll16}
+                onRoll6={setRoll6}
+                fn={t}
+              />
+            </div>
+          ) : null}
+
+          {/* LM-28/MVT-7: the ACTIVE coach's pass-turn reason stage. Clicking a
+              reason chip fires endTurn immediately (no preselection, no confirm). */}
+          {openFlow === "passTurn" ? (
+            <div data-testid="dock-turnreason-stage" className="mt-1">
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    ["voluntary", t("match.turnReason.voluntary")],
+                    ["turnover", t("match.turnReason.turnover")],
+                    ["injury", t("match.turnReason.injury")],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="button"
+                    aria-pressed={reason === value}
+                    onClick={() => firePassTurn(value)}
+                    className={`rounded border px-3 py-1 text-xs font-bold ${
+                      reason === value
+                        ? "border-red bg-red text-white"
+                        : "border-border bg-panel text-navy hover:bg-background"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   })();
@@ -475,25 +448,16 @@ export function LiveActionDock({
       return (
         <>
           {/* MVT-7: the ONLY pass-turn control lives here in the bottom dock —
-              never in the sticky header (MVT-3). The red chip keeps the inner
-              "Turno {team}" status small; opening it shows a reason sheet whose
-              preselected Voluntario confirms without extra interaction. */}
+              never in the sticky header (MVT-3). A normal red chip; opening it
+              shows the reason modal whose chips fire endTurn on click. */}
           <button
             type="button"
             onClick={() => begin("passTurn")}
             role="button"
             aria-label={t("match.endTurn")}
             title={t("match.endTurn")}
-            className="flex flex-col items-center gap-0 rounded border border-red bg-red px-3 py-1 text-[11px] font-black uppercase tracking-[0.05em] text-white hover:bg-red-hover"
+            className="rounded border border-red bg-red px-3 py-1.5 text-xs font-bold text-white hover:bg-red-hover"
           >
-            {activeTeamName ? (
-              <small
-                role="status"
-                className="text-[9px] font-bold uppercase tracking-[0.03em] text-[#ffd9e0]"
-              >
-                {t("match.turnOfTeam", { team: activeTeamName })}
-              </small>
-            ) : null}
             {t("match.endTurn")}
           </button>
           <button
@@ -575,15 +539,22 @@ export function LiveActionDock({
     <section
       data-testid="live-action-dock"
       aria-label={t("match.dock.actions")}
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border"
     >
-      {/* The fixed dock grows upward: the sheet renders ABOVE the chips row. */}
-      <div className="mx-auto w-full max-w-3xl px-3 pt-1">
-        {sheetContent}
-        <div className="flex flex-wrap items-center gap-1.5 py-2">
-          <p className="mr-1 hidden text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:inline">
-            {t("match.dock.actions")}
-          </p>
+      {/* The centered modal sits ABOVE the bar. The bar is a sibling wrapper so
+          its backdrop blur never becomes the modal's containing block (which
+          would collapse the overlay's `fixed inset-0`). */}
+      {modalContent}
+      <div className="bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur">
+        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-1.5 px-3 py-2">
+          {active && activeTeamName ? (
+            <small
+              role="status"
+              className="mr-1 text-[10px] font-bold uppercase tracking-wide text-slate-500"
+            >
+              {t("match.turnOfTeam", { team: activeTeamName })}
+            </small>
+          ) : null}
           {dockButtons}
         </div>
       </div>

@@ -343,7 +343,7 @@ async function openDockAction(coach: Page, actionName: string): Promise<ReturnTy
   const dock = actionDock(coach);
   await expect(dock).toBeVisible();
   await dock.getByRole("button", { name: new RegExp(actionName, "i") }).click();
-  const sheet = dock.getByTestId("live-action-sheet");
+  const sheet = dock.getByTestId("live-action-modal");
   await expect(sheet).toBeVisible();
   return dock;
 }
@@ -376,7 +376,7 @@ async function dockScoredAction(coach: Page, actionName: string, ownIndex: numbe
   await openDockAction(coach, actionName);
   await dockTapOwn(coach, ownIndex);
   const dock = actionDock(coach);
-  await expect(dock.getByTestId("live-action-sheet")).toHaveCount(0);
+  await expect(dock.getByTestId("live-action-modal")).toHaveCount(0);
 }
 
 /** Picks the active coach's injury CAUSE from the step's cause chips. */
@@ -387,7 +387,8 @@ async function dockPickCause(coach: Page, causeLabel: string) {
   await causes.getByRole("button", { name: new RegExp(causeLabel, "i") }).click();
 }
 
-/** Rolls the 1D16 (+1D6 when permanent) inside the dock sheet + Registers. */
+/** Rolls the 1D16 (+1D6 when permanent) inside the dock modal. The completing
+ *  pick AUTO-FIRES the command and closes the modal — there is no Registrar. */
 async function dockRollAndRecord(coach: Page, roll16: number, roll6?: number) {
   const dock = actionDock(coach);
   const stepper = dock.getByTestId("dock-roll-stage");
@@ -398,8 +399,7 @@ async function dockRollAndRecord(coach: Page, roll16: number, roll6?: number) {
     await expect(six).toBeVisible();
     await six.getByTestId(`roll-option-${roll6}`).click();
   }
-  await dock.getByTestId("live-action-submit").click();
-  await expect(actionDock(coach).getByTestId("live-action-sheet")).toHaveCount(0);
+  await expect(actionDock(coach).getByTestId("live-action-modal")).toHaveCount(0);
 }
 
 
@@ -523,25 +523,21 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await expect(awayCoach.getByRole("button", { name: "Pedir turno" })).toBeVisible();
     await expect(awayCoach.getByRole("button", { name: "Dar el turno" })).toHaveCount(0);
 
-    // The ACTIVE (home) coach opens the dock chip's reason sheet, then
-    // DOUBLE-CLICKS its Confirmar → the in-flight lock drops the second
-    // invocation (Confirmar defaults to voluntary, MVT-7), so the turn flips by
-    // EXACTLY ONE. A raw pointer dblclick lands the second click while the first
-    // endTurn is still in flight (no actionability waits) — the pre-lock bug sent
-    // a second endTurn and jumped the turn by two. The hub then fans the new
-    // state out over SSE: the OTHER coach's page converges WITHOUT any reload —
-    // the live `event` frame (turn + turnStart deltas) applies the flipped state.
+    // The ACTIVE (home) coach opens the dock chip's reason MODAL. The three
+    // reason chips render with NOTHING preselected: picking one fires the
+    // pass-turn IMMEDIATELY (auto-fire, no Confirmar step) and closes the modal.
+    // The hub then fans the new state out over SSE: the OTHER coach's page
+    // converges WITHOUT any reload — the live `event` frame (turn + turnStart
+    // deltas) applies the flipped state.
     const passChip = homeCoach.getByRole("button", { name: "Dar el turno" });
     await expect(passChip).toBeVisible();
     await passChip.click();
-    const sheet = homeCoach.getByTestId("live-action-sheet");
-    await expect(sheet).toBeVisible();
-    // Three reason chips render; Voluntario is preselected → confirming needs no
-    // further choice (the default voluntary path == today's plain pass).
-    await expect(sheet.getByRole("button", { name: "Voluntario" })).toHaveAttribute("aria-pressed", "true");
-    const confirmBtn = sheet.getByRole("button", { name: "Confirmar" });
-    const box = (await confirmBtn.boundingBox())!;
-    await homeCoach.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+    const modal = homeCoach.getByTestId("live-action-modal");
+    await expect(modal).toBeVisible();
+    for (const reason of ["Voluntario", "Tirada fallida", "Baja"]) {
+      await expect(modal.getByRole("button", { name: reason })).toHaveAttribute("aria-pressed", "false");
+    }
+    await modal.getByRole("button", { name: "Voluntario" }).click();
     // Correct BB2025 turn semantics (recurring regression): the turn number
     // names the ROUND shared by both sides — home T1 → away T1 → home T2. The
     // away side takes their TURN 1, so the header reads "Mitad 1 · Turno 1"

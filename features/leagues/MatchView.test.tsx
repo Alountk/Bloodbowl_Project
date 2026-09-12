@@ -594,9 +594,9 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
     // MVT-7: the pass control lives in the bottom dock — open the reason
-    // sheet and confirm the PRESELECTED voluntary reason (one flip).
+    // modal and click a reason, which fires endTurn immediately.
     fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Confirmar/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Voluntario/ }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -717,10 +717,10 @@ describe("MatchView — double-click guard on live commands (in-flight lock)", (
 
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // MVT-7: open the bottom dock's reason sheet and confirm the PRESELECTED
-    // voluntary (single interaction after the chip → exactly one flip).
+    // MVT-7: open the bottom dock's reason modal and click Voluntario — the
+    // chip fires endTurn immediately (exactly one flip).
     fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Confirmar/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Voluntario/ }));
 
     // Exactly ONE live POST, and the turn advances by one (3 → 4, no jump to 5).
     await waitFor(() => {
@@ -750,13 +750,13 @@ describe("MatchView — double-click guard on live commands (in-flight lock)", (
     renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
 
-    // Open the reason sheet ONCE, then double-click its Confirmar while the
-    // first POST is still pending — the in-flight lock drops the 2nd command.
+    // Open the reason modal ONCE, then double-click its Voluntario reason while
+    // the first POST is still pending — the in-flight lock drops the 2nd command.
     fireEvent.click(screen.getByRole("button", { name: /Dar el turno/i }));
-    const confirmButton = await screen.findByRole("button", { name: /Confirmar/ });
+    const reasonButton = await screen.findByRole("button", { name: /Voluntario/ });
     act(() => {
-      confirmButton.click();
-      confirmButton.click();
+      reasonButton.click();
+      reasonButton.click();
     });
 
     // The in-flight ref lock drops the second invocation — ONE command.
