@@ -7,12 +7,28 @@ import { Dashboard } from "./Dashboard";
 
 const me = "u1";
 
+/** Session mock shape: `role` is optional so tests can simulate a developer. */
+interface SessionShape {
+  data: { user: { id: string; role?: string } };
+  status: string;
+}
+
 const sessionMock = vi.hoisted(() =>
-  vi.fn(() => ({ data: { user: { id: me } }, status: "authenticated" })),
+  vi.fn(
+    (): SessionShape => ({ data: { user: { id: me } }, status: "authenticated" }),
+  ),
 );
 vi.mock("next-auth/react", () => ({
   useSession: () => sessionMock(),
 }));
+
+/** LAC-5: overrides the session with an optional JWT role snapshot. */
+function setSession(role?: string) {
+  sessionMock.mockReturnValue({
+    data: { user: role ? { id: me, role } : { id: me } },
+    status: "authenticated",
+  });
+}
 
 const teams: Team[] = [
   {
@@ -62,6 +78,7 @@ function stubLeaguesFetch(status = 200) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setSession();
 });
 
 describe("Dashboard", () => {
@@ -113,5 +130,66 @@ describe("Dashboard", () => {
     // The 401 is swallowed: the section renders the leagues empty state.
     await waitFor(() => expect(screen.getByText(/Aún no tienes ligas/)).toBeTruthy());
     expect(screen.queryByText("Unauthorized")).toBeNull();
+  });
+});
+
+describe("Dashboard — LAC-5 owner-equivalent leagues", () => {
+  /** The "Leagues" stat card, isolated so its count is unambiguous. */
+  function leaguesStat(): HTMLElement {
+    return screen.getByText("Leagues").closest("div") as HTMLElement;
+  }
+
+  function stubLeagues(leagues: unknown[]) {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/leagues") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(leagues) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("lands a foreign league in My leagues for a developer session via the predicate", async () => {
+    setSession("developer");
+    stubLeaguesFetch();
+    render(
+      <AppProvider store={new InMemoryTeamStore(teams)} authenticated>
+        <Dashboard authenticated userName="Coach" />
+      </AppProvider>,
+    );
+
+    // The foreign open league (l2) is now owner-equivalent → rendered + counted.
+    await waitFor(() => expect(screen.getByText("Foreign Open Cup")).toBeTruthy());
+    expect(leaguesStat().textContent).toContain("2");
+  });
+
+  it("lands a foreign league flagged canManage in My leagues (server flag preferred)", async () => {
+    stubLeagues([
+      { id: "l2", name: "Foreign Open Cup", ownerId: "u2", status: "open", memberCount: 5, isMember: false, canManage: true },
+    ]);
+    render(
+      <AppProvider store={new InMemoryTeamStore(teams)} authenticated>
+        <Dashboard authenticated userName="Coach" />
+      </AppProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText("Foreign Open Cup")).toBeTruthy());
+    expect(leaguesStat().textContent).toContain("1");
+  });
+
+  it("keeps a plain user's My leagues to owned/joined only", async () => {
+    setSession("user");
+    stubLeaguesFetch();
+    render(
+      <AppProvider store={new InMemoryTeamStore(teams)} authenticated>
+        <Dashboard authenticated userName="Coach" />
+      </AppProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByText("North Reikland")).toBeTruthy());
+    expect(screen.queryByText("Foreign Open Cup")).toBeNull();
+    expect(leaguesStat().textContent).toContain("1");
   });
 });

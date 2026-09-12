@@ -79,6 +79,32 @@ describe("League lifecycle types", () => {
     expect(disabled.turnClockSeconds).toBe(120);
   });
 
+  it("League carries the server-computed canManage flag, inherited by LeagueDetail (LAC-5)", () => {
+    const league: League = {
+      id: "l1",
+      name: "Liga",
+      description: null,
+      ownerId: "u1",
+      createdAt: "2026-01-01",
+      status: "started",
+      seasonLength: 2,
+      startedAt: "2026-02-01",
+      championTeamId: null,
+      ownerName: "Coach",
+      memberCount: 4,
+      isMember: false,
+      canManage: true,
+      turnClockEnabled: true,
+      turnClockSeconds: 240,
+      rulesetId: null,
+      rulesetName: null,
+    };
+    expect(league.canManage).toBe(true);
+    // LeagueDetail extends League, so the flag flows through the detail type too.
+    const detail: LeagueDetail = { ...league, teams: [], rounds: [], fixtures: [] };
+    expect(detail.canManage).toBe(true);
+  });
+
   it("LeagueStatus includes finished and carries the championTeamId (RAU-40)", () => {
     const league: League = {
       id: "l1",

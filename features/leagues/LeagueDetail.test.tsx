@@ -23,12 +23,28 @@ vi.mock("next/navigation", () => ({
 
 const me = "u1";
 
+/** Session mock shape: `role` is optional so tests can simulate a developer. */
+interface SessionShape {
+  data: { user: { id: string; role?: string } };
+  status: string;
+}
+
 const sessionMock = vi.hoisted(() =>
-  vi.fn(() => ({ data: { user: { id: me } }, status: "authenticated" })),
+  vi.fn(
+    (): SessionShape => ({ data: { user: { id: me } }, status: "authenticated" }),
+  ),
 );
 vi.mock("next-auth/react", () => ({
   useSession: () => sessionMock(),
 }));
+
+/** LAC-5: overrides the session with an optional JWT role snapshot. */
+function setSession(role?: string) {
+  sessionMock.mockReturnValue({
+    data: { user: role ? { id: me, role } : { id: me } },
+    status: "authenticated",
+  });
+}
 
 const ownOpenLeague = {
   id: "l1",
@@ -155,6 +171,7 @@ function makeFetch(detail: unknown, ownTeams: unknown[] = []) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  setSession();
 });
 
 describe("LeagueDetail — owner of an open league (admin)", () => {
@@ -847,6 +864,54 @@ describe("LeagueDetail — ruleset badge (RAU-52)", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "My Public League" })).toBeTruthy());
     expect(screen.queryByText("Estándar BB2025")).toBeNull();
+  });
+});
+
+describe("LeagueDetail — LAC-5 owner-equivalent controls", () => {
+  it("shows the owner-only forfeit control to a developer on a foreign STARTED league", async () => {
+    setSession("developer");
+    makeFetch(startedLeague);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Otorgar victoria" })).toBeTruthy();
+  });
+
+  it("renders owner controls from the server canManage flag (plain session)", async () => {
+    makeFetch({ ...startedLeague, canManage: true });
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Otorgar victoria" })).toBeTruthy();
+  });
+
+  it("keeps owner controls hidden from a plain user on a foreign STARTED league", async () => {
+    setSession("user");
+    makeFetch(startedLeague);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Otorgar victoria" })).toBeNull();
+  });
+
+  it("shows expel + start controls to a developer on a foreign OPEN league", async () => {
+    setSession("developer");
+    makeFetch(foreignOpenLeague);
+    render(<LeagueDetail leagueId="l2" />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Open Public Cup" })).toBeTruthy());
+    expect(screen.getAllByRole("button", { name: "Expulsar" })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Iniciar liga" })).toBeTruthy();
+  });
+
+  it("keeps expel/start hidden from a plain user on a foreign OPEN league", async () => {
+    setSession("user");
+    makeFetch(foreignOpenLeague);
+    render(<LeagueDetail leagueId="l2" />);
+
+    await waitFor(() => expect(screen.getByText("Unirse")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Expulsar" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Iniciar liga" })).toBeNull();
   });
 });
 

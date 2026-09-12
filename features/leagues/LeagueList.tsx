@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { CreateLeagueModal } from "./CreateLeagueModal";
 import { useLeagues } from "./useLeagues";
+import { isOwnerEquivalent } from "./access";
 import type { League } from "./api";
 
 /** Status badge copy + palette, keyed off the server-supplied league status.
@@ -103,15 +104,22 @@ export function LeagueList() {
   }, [refresh]);
 
   const userId = session?.user?.id;
+  const role = session?.user?.role;
+  // LAC-5: owner-equivalent viewers (owner OR a `leagues.manage` holder) see
+  // every league under "Mis Ligas". Prefer the server `canManage` flag and fall
+  // back to the pure predicate over the JWT role snapshot — DISPLAY ONLY, the
+  // server re-reads the DB role and authorizes every request.
+  const isOwnerEquivalentLeague = (league: League) =>
+    league.canManage === true || isOwnerEquivalent(league, userId, role);
   // Owned OR joined (any status): a started league a member plays in must appear
   // here — otherwise it would be unreachable once open leagues are hidden.
   const myLeagues = leagues.filter(
-    (league) => league.ownerId === userId || league.isMember,
+    (league) => isOwnerEquivalentLeague(league) || league.isMember,
   );
   const openLeagues = leagues.filter(
     (league) =>
       league.status === "open" &&
-      league.ownerId !== userId &&
+      !isOwnerEquivalentLeague(league) &&
       !league.isMember,
   );
 
