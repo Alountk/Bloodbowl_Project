@@ -150,17 +150,29 @@ The result route MUST compute winnings from the FINAL FF entered per team in the
 
 ### Requirement: Direct MVP Selection
 
-Each team MUST supply exactly ONE MVP grantee (`mvp.grantee`). The route MUST reject (400) payloads where a team supplies zero or more than one grantee. The MVP MUST receive ★4 PE. The random-MVP mode (server 1D6 over six nominations) is OUT of scope.
+Each team MUST supply exactly ONE MVP grantee (`mvp.grantee`). Because `mvp.grantee` is a single scalar field, a team cannot express more than one grantee. A grantee that is PRESENT but not a non-empty valid roster-player identifier MUST return 400. When no grantee is supplied, the route MUST fall back to the legacy path and require exactly SIX nominations, returning 400 for any other count. The MVP MUST receive ★4 PE. The wizard offers NO random-MVP mode; the server 1D6 over six nominations survives only as the backward-compatible fallback for legacy payloads.
 
 #### Scenario: Exactly one grantee accepted
 
-- GIVEN each team supplies exactly one `mvp.grantee`
+- GIVEN each team supplies exactly one valid `mvp.grantee`
 - WHEN the result loads
-- THEN both MVPs receive ★4 PE
+- THEN both MVPs receive ★4 PE and no 1D6 roll is consumed
 
-#### Scenario: Missing or extra grantee rejected
+#### Scenario: Invalid grantee rejected
 
-- GIVEN a payload where a team has zero or two MVP grantees
+- GIVEN a team supplies an empty or non-roster `mvp.grantee`
+- WHEN the result is validated
+- THEN it returns 400 and nothing is persisted
+
+#### Scenario: Legacy six-nomination fallback
+
+- GIVEN neither team supplies `mvp.grantee` and each supplies exactly six nominations
+- WHEN the result loads
+- THEN the server rolls 1D6 over the nominations and each MVP receives ★4 PE
+
+#### Scenario: Absent grantee with the wrong nomination count rejected
+
+- GIVEN no `mvp.grantee` is supplied and a team supplies a nomination count other than six
 - WHEN the result is validated
 - THEN it returns 400 and nothing is persisted
 
