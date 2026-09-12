@@ -69,15 +69,11 @@ function ev(
   return { half, turnNumber: turn, at: BASE + atMin * MIN, ...rest };
 }
 
-const ackNoop = () => undefined;
-
 function Feed({
   events,
-  viewerSide = "home",
   now = Date.now(),
 }: {
   events: LiveMatchEventDto[];
-  viewerSide?: "home" | "away" | null;
   now?: number;
 }) {
   return (
@@ -86,9 +82,7 @@ function Feed({
       startedAt={BASE}
       homeTeam={homeTeam}
       awayTeam={awayTeam}
-      viewerSide={viewerSide}
       now={now}
-      onAck={ackNoop}
     />
   );
 }
@@ -193,12 +187,11 @@ export const Cotejo = {
   name: "Cotejo ✓/✗ — estados",
   render: () => (
     <Panel>
-      {/* Viewer = local (home): away-authored cards render ✓/✗ when pending. */}
+      {/* The user's ✓/✗ cotejo is DISABLED: only the status badge renders. */}
       <Feed
         now={BASE + 5 * MIN}
-        viewerSide="home"
         events={[
-          // Recent (30 s ago) → the rival still gets ✓/✗ buttons.
+          // Recent (30 s ago) → still pending (the auto-verify timeout has not elapsed).
           ev(4.5, { seq: 30, kind: "foul", side: "away", playerRosterId: "o1", turn: 3, payload: { victimRosterId: "k1" }, ackStatus: "pending" }),
           ev(3, { seq: 31, kind: "td", side: "away", playerRosterId: "o1", turn: 4, payload: {}, ackStatus: "ok", ackAt: BASE + 200 * MIN, ackedBy: "u1" }),
           ev(5, { seq: 32, kind: "completion", side: "away", playerRosterId: "o2", turn: 5, payload: {}, ackStatus: "nok", ackAt: BASE + 320 * MIN, ackedBy: "u1" }),

@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 import { getRaceById } from "@/features/teams/data/races";
 import { deriveMinute, playerRef, derivePartialScore } from "@/lib/liveFeed";
-import { ACK_TIMEOUT_MS, eventAuthorSide, isAckableKind } from "@/lib/livePhase";
+import { ACK_TIMEOUT_MS, isAckableKind } from "@/lib/livePhase";
 import {
   causeLabel,
   outcomeLabel,
@@ -246,31 +246,24 @@ function ActaCard({
 }
 
 /**
- * Design B (RAU-82): the non-blocking acknowledgement row on an event card,
- * copied from v3 and restyled to the Acta `.ack` line (label + ✓/✗ buttons via
- * the shared ack tokens). Only ackable kinds (td/completion/casualty/foul) ever
- * render it; the derived action card never does.
+ * The non-blocking acknowledgement row on an event card (Acta `.ack` line).
+ * The user's ✓/✗ cotejo is DISABLED: the row renders ONLY the status badge
+ * (pending until the timeout, then auto-verified). Only ackable kinds
+ * (td/completion/casualty/foul) render it; the derived action card never does.
  */
 function EventAckRow({
   event,
-  viewerSide,
   now,
-  onAck,
 }: {
   event: LiveMatchView["events"][number];
-  viewerSide: "home" | "away" | null;
   /** Current wall-clock (ms); passed in so auto-verify never calls `Date.now()`. */
   now: number;
-  onAck: (eventSeq: number, status: "ok" | "nok") => void;
 }) {
   const { t } = useI18n();
   if (!isAckableKind(event.kind)) return null;
-  const payloadCauser = typeof event.payload.causerRosterId === "string" ? event.payload.causerRosterId : null;
-  const author = eventAuthorSide(event.kind, event.side, payloadCauser);
   const ack = event.ackStatus ?? "pending";
   const auto = ack === "pending" && now - event.at > ACK_TIMEOUT_MS;
   const status = auto ? "auto" : ack;
-  const isRival = author !== null && viewerSide !== null && viewerSide !== author;
 
   const badgeClass =
     status === "ok" || status === "auto"
@@ -287,35 +280,11 @@ function EventAckRow({
           ? t("match.ack.auto")
           : t("match.ack.pending");
 
-  if (!isRival || status !== "pending") {
-    return (
-      <div className={styles.ack}>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
-          {badgeText}
-        </span>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.ack}>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-slate">
-        {t("match.ack.pending")}
+      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeClass}`}>
+        {badgeText}
       </span>
-      <button
-        type="button"
-        onClick={() => onAck(event.seq, "ok")}
-        className="rounded border border-ack-ok-border bg-panel px-2 py-0.5 text-[10px] font-bold text-ack-ok-text hover:bg-ack-ok-fill"
-      >
-        {t("match.ack.okAction")}
-      </button>
-      <button
-        type="button"
-        onClick={() => onAck(event.seq, "nok")}
-        className="rounded border border-ack-review-border bg-panel px-2 py-0.5 text-[10px] font-bold text-ack-review-text hover:bg-ack-review-fill"
-      >
-        {t("match.ack.nokAction")}
-      </button>
     </div>
   );
 }
@@ -334,20 +303,14 @@ export function LiveEventCardsActa({
   startedAt,
   homeTeam,
   awayTeam,
-  viewerSide,
   now,
-  onAck,
 }: {
   events: LiveMatchView["events"];
   startedAt: number | null;
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
-  /** The session coach's side (D19): drives who sees the ✓/✗ ack buttons. */
-  viewerSide: "home" | "away" | null;
   /** Current wall-clock (ms) for the non-blocking auto-verify derivation. */
   now: number;
-  /** Fires `acknowledgeEvent` for the rival's ✓/✗ (informational only). */
-  onAck: (eventSeq: number, status: "ok" | "nok") => void;
 }) {
   const { t } = useI18n();
   if (events.length === 0) return null;
@@ -482,7 +445,7 @@ export function LiveEventCardsActa({
                   dorsal={dorsal}
                   pos={pos}
                   rows={rows}
-                  ack={<EventAckRow event={event} viewerSide={viewerSide} now={now} onAck={onAck} />}
+                  ack={<EventAckRow event={event} now={now} />}
                 />
               </li>
               {actionCard ? (

@@ -170,9 +170,7 @@ function renderCards(events: LiveMatchEventDto[]) {
       startedAt={1000}
       homeTeam={homeTeam}
       awayTeam={awayTeam}
-      viewerSide={null}
       now={Date.now()}
-      onAck={() => undefined}
     />,
   );
 }

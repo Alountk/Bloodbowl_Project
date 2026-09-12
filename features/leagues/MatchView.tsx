@@ -1276,9 +1276,7 @@ function LiveActiveMatch({
             startedAt={state.startedAt}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
-            viewerSide={state.viewerSide}
             now={state.startedAt != null ? state.startedAt + clock.elapsed : 0}
-            onAck={(eventSeq, status) => void act({ type: "acknowledgeEvent", eventSeq, status })}
           />
 
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
@@ -1347,9 +1345,7 @@ function FinishedLiveTimeline({
         startedAt={live.startedAt}
         homeTeam={homeTeam}
         awayTeam={awayTeam}
-        viewerSide={null}
         now={live.startedAt != null ? live.startedAt + live.elapsed : 0}
-        onAck={() => undefined}
       />
     </div>
   );
