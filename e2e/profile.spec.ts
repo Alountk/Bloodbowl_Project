@@ -47,8 +47,10 @@ async function login(page: Page, email: string, password: string) {
 async function logout(page: Page) {
   await page.getByRole("button", { name: "Menú de usuario" }).click();
   await page.getByRole("button", { name: "Cerrar sesión" }).click();
+  // This spec runs with `locale: "es-ES"` → the public landing renders the
+  // SPANISH hero title (asserting the English copy here was a test bug).
   await expect(
-    page.getByRole("heading", { name: "Your league, in your pocket." }),
+    page.getByRole("heading", { name: "Tu liga, en tu bolsillo." }),
   ).toBeVisible();
 }
 
