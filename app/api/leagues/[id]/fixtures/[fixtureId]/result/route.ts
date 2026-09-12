@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/devGuard";
 import { maybeCloseLeague } from "@/lib/standings";
 import {
   preMatchFanFactor,
@@ -180,9 +181,10 @@ async function persistCasualtyOutcomes(
 
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/result
- * Loads a match result. Authorized callers are the league owner (admin) or
- * either fixture captain (owner of the home/away team); an authenticated
- * non-participant receives 404 (no-leak). The route validates that each team's
+ * Loads a match result. Authorized callers are the league owner (admin), a
+ * `leagues.manage` holder (developer/admin), or either fixture captain (owner
+ * of the home/away team); an authenticated non-participant receives 404
+ * (no-leak). The route validates that each team's
  * per-player TD credits sum to its reported score (400 otherwise) and, in ONE
  * transaction, persists the fixture scores + derived winner, the report record
  * (weather, scoreboard snapshot incl. per-team winnings and MVP grantees, petty
@@ -263,8 +265,14 @@ export async function POST(
   const isAdmin = fixture.league.ownerId === userId;
   const isCaptain =
     fixture.homeTeam.userId === userId || fixture.awayTeam.userId === userId;
+  // Admin/captain, or a `leagues.manage` holder (developer/admin). A failed
+  // check maps to 404 so a plain user cannot tell a foreign fixture from a
+  // missing one (no existence leak).
   if (!isAdmin && !isCaptain) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   if (fixture.winnerId != null || fixture.homeScore != null || fixture.awayScore != null) {
@@ -500,8 +508,9 @@ export async function POST(
 
 /**
  * PUT /api/leagues/[id]/fixtures/[fixtureId]/result
- * Correction of a played fixture, accepted from the league admin OR either
- * participant coach; a foreign actor is rejected with 404 (no existence leak).
+ * Correction of a played fixture, accepted from the league admin, a
+ * `leagues.manage` holder (developer/admin), OR either participant coach; a
+ * foreign actor is rejected with 404 (no existence leak).
  * The correction records an audit `MatchResultCorrection` row (before/after
  * snapshot, actor, correctedAt) and re-runs the PE rules against the corrected
  * payload, applying only the positive `max(0, new - old)` deltas so PE already
@@ -561,10 +570,15 @@ export async function PUT(
   const isAdmin = fixture.league.ownerId === userId;
   const isCaptain =
     fixture.homeTeam.userId === userId || fixture.awayTeam.userId === userId;
-  // A correction is accepted from the league admin OR either participant coach.
+  // A correction is accepted from the league admin OR either participant coach,
+  // or a `leagues.manage` holder (developer/admin). A failed check maps to 404
+  // (no existence leak). The privileged actor is recorded verbatim in the
+  // correction audit row below.
   if (!isAdmin && !isCaptain) {
-    // Foreign user (not a captain, not the admin) → 404, no existence leak.
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   if (!fixture.result) {

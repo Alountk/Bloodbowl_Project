@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/devGuard";
 import { maybeCloseLeague } from "@/lib/standings";
 
 /**
@@ -13,7 +14,8 @@ import { maybeCloseLeague } from "@/lib/standings";
  *
  * Guards:
  *   - unauthenticated → 401
- *   - authenticated non-admin (participant, member, foreign) → 403
+ *   - authenticated non-owner, non-`leagues.manage` holder (participant,
+ *     member, foreign) → 403
  *   - `winnerTeamId` not home or away → 400
  *   - fixture already `played` (a result recorded: scores or winnerId) → 409
  *   - scheduled or pending fixtures MAY be forfeited (scheduledAt is cleared).
@@ -46,12 +48,18 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Only the league owner may award a forfeit.
+  // Owner-first: the league owner may always award a forfeit. Otherwise the
+  // caller needs `leagues.manage` (developer/admin). Unlike the no-leak routes,
+  // a failed privilege check keeps the existing 403 (authenticated but
+  // unauthorized) so the status semantics do not change for a plain user.
   if (fixture.league.ownerId !== userId) {
-    return NextResponse.json(
-      { error: "Only the league owner can forfeit a match" },
-      { status: 403 },
-    );
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json(
+        { error: "Only the league owner can forfeit a match" },
+        { status: 403 },
+      );
+    }
   }
 
   if (fixture.winnerId != null || fixture.homeScore != null || fixture.awayScore != null) {

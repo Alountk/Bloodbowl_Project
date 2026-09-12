@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/lib/devGuard";
 
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/accept
- * Lets the OTHER participant accept the fixture's active proposal, scheduling
- * the match: sets the proposal's `acceptedAt` and the fixture's `scheduledAt`
- * to the proposed date in a single `$transaction`.
+ * Lets the OTHER participant, or a `leagues.manage` holder (developer/admin),
+ * accept the fixture's active proposal, scheduling the match: sets the
+ * proposal's `acceptedAt` and the fixture's `scheduledAt` to the proposed date
+ * in a single `$transaction`.
  *
  * Authorization guards (no existence leak):
  *   - unauthenticated → 401
- *   - fixture missing, league not started, or caller not a participant → 404
+ *   - fixture missing, league not started, or caller not a participant and not
+ *     privileged → 404
  *   - the proposal's creator cannot self-accept → 409
  * Returns `{ fixture }` (the updated fixture plus owner/proposal enrichment).
  */
@@ -44,10 +47,15 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Only a participant, or a `leagues.manage` holder, may accept. A failed check
+  // maps to 404 (no existence leak). The self-accept 409 below still applies.
   const isParticipant =
     fixture.homeTeam.userId === userId || fixture.awayTeam.userId === userId;
   if (!isParticipant) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const guard = await requirePermission("leagues.manage");
+    if (!guard.ok) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
   }
 
   // A PLAYED (or result-loaded) fixture is locked — 409. A merely SCHEDULED

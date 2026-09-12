@@ -13,6 +13,13 @@ const prismaMock = vi.hoisted(() => ({
 vi.mock("@/auth", () => ({ auth: authMock }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
+// LAC-3: the privileged branch authorizes via `requirePermission("leagues.manage")`.
+const requirePermissionMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/devGuard", () => ({
+  requirePermission: requirePermissionMock,
+}));
+
 import { POST } from "./route";
 
 function buildFixture(overrides: Record<string, unknown> = {}) {
@@ -61,6 +68,8 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubTransaction();
+    // Default: a plain `user` is not privileged (the privileged tests override).
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
     // RAU-40 close-check defaults: started league, nothing yet played in this
     // tx → `maybeCloseLeague` is a no-op.
     prismaMock.league.findUnique.mockResolvedValue({ status: "started" });
@@ -231,6 +240,46 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/forfeit", () => {
     const res = await forfeit({ winnerTeamId: "t1" });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "League is finished" });
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
+  });
+
+  it("lets a leagues.manage holder award a forfeit on a foreign STARTED league (LAC-3)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    requirePermissionMock.mockResolvedValue({ ok: true, userId: "dev-1" });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // ownerId user-owner (foreign)
+    prismaMock.fixture.update.mockResolvedValue({ id: "f1", winnerId: "t1", homeScore: 2, awayScore: 0 });
+
+    const res = await forfeit({ winnerTeamId: "t1" });
+
+    expect(res.status).toBe(200);
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.fixture.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { winnerId: "t1", homeScore: 2, awayScore: 0, scheduledAt: null },
+      }),
+    );
+  });
+
+  it("returns 403 for a plain user who is neither owner nor privileged (regression)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } }); // home team owner, not league owner
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+
+    const res = await forfeit({ winnerTeamId: "t1" });
+
+    expect(res.status).toBe(403);
+    // The owner-first check failed and the plain user's privilege check denied.
+    expect(requirePermissionMock).toHaveBeenCalledWith("leagues.manage");
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for a nonexistent fixture id without reading a role (no leak)", async () => {
+    authMock.mockResolvedValue({ user: { id: "dev-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(null);
+
+    const res = await forfeit({ winnerTeamId: "t1" }, "missing", "l1");
+
+    expect(res.status).toBe(404);
+    expect(requirePermissionMock).not.toHaveBeenCalled();
     expect(prismaMock.fixture.update).not.toHaveBeenCalled();
   });
 });
