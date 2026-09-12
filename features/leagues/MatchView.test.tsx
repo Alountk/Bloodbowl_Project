@@ -4,6 +4,16 @@ import { useSession } from "next-auth/react";
 import { MatchView } from "./MatchView";
 import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
 
+/**
+ * The v4 Acta side identity of a `live-event-row`. The `data-testid` sits on the
+ * wrapping `<li>`, while the `home`/`away`/`neutral` module class lives on the
+ * inner `<article>` — read it off that child and compare tokens exactly (a loose
+ * `toContain` would match unrelated substrings).
+ */
+function sideClasses(row: Element): string[] {
+  return (row.querySelector("article")?.className ?? "").split(" ");
+}
+
 // `MatchView` uses the session to derive the viewer's side when no live row
 // exists (D19). Default the viewer to the home coach (u1).
 vi.mock("next-auth/react", () => ({
@@ -1587,8 +1597,9 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     const { container } = renderPlayed();
     await waitFor(() => expect(container.textContent).toContain("Inicio del partido"));
 
-    // td at=2000 from startedAt=1000 → 0'; half 1 turn 3 → T3.
-    expect(container.textContent).toContain("T3");
+    // td at=2000 from startedAt=1000 → 0'; half 1 turn 3 → the v4 meta reads
+    // "Turno 3 · 0'" (the Acta sheet uses the literal "Turno" copy, not "T3").
+    expect(container.textContent).toContain("Turno 3 · 0'");
     // dorsal = roster index+1: home Blitzer A (p1) → #1.
     expect(container.textContent).toContain("#1");
   });
@@ -1622,16 +1633,17 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     expect(localRow).toBeTruthy();
     expect(visitorRow).toBeTruthy();
 
-    // rulebook mirroring (MVT-1/D3): the LOCAL (home) 68% card sits on the left
-    // edge and the VISITOR (away) card on the right edge (module `.ev--home` /
-    // `.ev--away` own the `align-self`), so each team reads its chronology from
-    // its own side.
-    expect(localRow!.className).toContain("ev--home");
-    expect(visitorRow!.className).toContain("ev--away");
-    // Both team cards still carry the preserved turn tag + minute; the away card
-    // keeps the red (visitor) gradient as its side identity.
-    expect(localRow!.textContent).toContain("T3");
-    expect(visitorRow!.textContent).toContain("T14");
+    // rulebook mirroring (MVT-1/D3): the LOCAL (home) card carries the v4 `home`
+    // side class and the VISITOR (away) card the `away` class (the side class
+    // lives on the inner `<article>`, not on the testid `<li>`), so each team
+    // reads its chronology from its own side.
+    expect(sideClasses(localRow!)).toContain("home");
+    expect(sideClasses(visitorRow!)).toContain("away");
+    // Both team cards still carry the turn + minute meta; the v4 Acta sheet
+    // reads the literal "Turno {n}" (home td turn 3, away casualty turn 6) with
+    // no global "T{n}" tag. The away card keeps the `away` side identity.
+    expect(localRow!.textContent).toContain("Turno 3");
+    expect(visitorRow!.textContent).toContain("Turno 6");
     expect(visitorRow!.textContent).toContain("Baja");
     expect(visitorRow!.textContent).toContain("Blitzer B");
   });
@@ -1792,14 +1804,16 @@ describe("MatchView — copy + tokens + notFound (MV-7)", () => {
     expect(reportedCls).toContain("bg-green-50");
     expect(reportedCls).toContain("text-green-700");
 
-    // Cards: navy (home) / red (away) internal gradients over the white base.
-    // The gradients + white base moved to the CSS module (`.ev--home` /
-    // `.ev--away` / `.ev`), so assert the side module classes here.
+    // Cards: navy (home) / red (away) side identity over the panel base. The v4
+    // Acta sheet carries the `acta` base class + the `home`/`away` side class on
+    // the inner `<article>`, so assert those module classes here.
     const cards = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
-    const cls = cards.map((c) => c.getAttribute("class") ?? "").join(" ");
-    expect(cls).toContain("ev--home");
-    expect(cls).toContain("ev--away");
-    expect(cls).toMatch(/\bev\b/);
+    const cls = cards
+      .map((c) => c.querySelector("article")?.getAttribute("class") ?? "")
+      .join(" ");
+    expect(cls.split(" ")).toContain("home");
+    expect(cls.split(" ")).toContain("away");
+    expect(cls).toMatch(/\bacta\b/);
   });
 
   it("collapses to the not-found view when the API returns 404", async () => {
@@ -1866,13 +1880,13 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const emHome = rows.find((li) => li.textContent?.includes("234.000 → 214.000 M.O."));
     const emAway = rows.find((li) => li.textContent?.includes("334.000 → 319.000 M.O."));
-    // Both em cards carry their side gradient + outcome label (MVT-6). The
-    // gradient + 68% width live in the module (`.ev--home` / `.ev--away`).
+    // Both em cards carry their side identity + outcome label (MVT-6). The v4
+    // `home`/`away` module class lives on the inner `<article>`.
     expect(emHome).toBeTruthy();
     expect(emAway).toBeTruthy();
-    expect(emHome!.className).toContain("ev--home");
+    expect(sideClasses(emHome!)).toContain("home");
     expect(emHome!.textContent).toContain("Incidente grave");
-    expect(emAway!.className).toContain("ev--away");
+    expect(sideClasses(emAway!)).toContain("away");
     expect(emAway!.textContent).toContain("Incidente menor");
   });
 
@@ -1885,10 +1899,12 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const fan = rows.find((li) => li.textContent?.includes("Factor de aficionados"));
     expect(fan).toBeTruthy();
-    // Centered 100% width (generic branch, module `.ev--center`).
-    expect(fan!.className).toContain("ev--center");
-    expect(fan!.textContent).toContain("Local: 👥2 + 🎲2 = 4");
-    expect(fan!.textContent).toContain("Visitante: 👥1 + 🎲3 = 4");
+    // Centered side-less card (generic branch → the v4 `neutral` side class).
+    expect(sideClasses(fan!)).toContain("neutral");
+    expect(fan!.textContent).toContain("Local");
+    expect(fan!.textContent).toContain("👥2 + 🎲2 = 4");
+    expect(fan!.textContent).toContain("Visitante");
+    expect(fan!.textContent).toContain("👥1 + 🎲3 = 4");
   });
 
   it("preserves the live-event-row count for the full 5-row kickoff feed (MVT-1 continuity)", async () => {
@@ -1908,10 +1924,12 @@ describe("MatchView — kickoff feed rendering (MVT-6/LM-24)", () => {
     });
     expect(feedRows).toHaveLength(4);
     expect(rows.length).toBeGreaterThanOrEqual(4);
-    const turnStart = rows.find((li) => li.textContent?.includes("Turno Reavers"));
+    // The v4 turnStart team card reads "Inicio de turno" + the team name (not
+    // the compact "Turno {team}" label) and keeps the `home` side class.
+    const turnStart = rows.find((li) => li.textContent?.includes("Inicio de turno"));
     expect(turnStart).toBeTruthy();
-    expect(turnStart!.className).toContain("ev--home");
-    expect(turnStart!.className).toMatch(/\bev\b/);
+    expect(sideClasses(turnStart!)).toContain("home");
+    expect(turnStart!.querySelector("article")!.className).toMatch(/\bacta\b/);
   });
 });
 
@@ -2091,8 +2109,15 @@ describe("MatchView — RAU-38 concede flow (propose → accept/decline)", () =>
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const concedeRow = rows.find((li) => li.textContent?.includes("Concesión"));
     expect(concedeRow).toBeTruthy();
-    expect(concedeRow!.className).toContain("ev--center");
-    expect(concedeRow!.textContent).toContain("Reavers se rinde · Victoria de Dwarves");
+    // Side-less concession → the v4 `neutral` side class on the inner article.
+    expect(sideClasses(concedeRow!)).toContain("neutral");
+    // The v4 sheet splits the v3 one-liner: the surrendering team (name +
+    // "Se rinde") and the winner under the "Victoria" row.
+    const concedeCard = concedeRow!.querySelector("article")!;
+    expect(concedeCard.textContent).toContain("Reavers");
+    expect(concedeCard.textContent).toContain("Se rinde");
+    expect(concedeCard.textContent).toContain("Victoria");
+    expect(concedeCard.textContent).toContain("Dwarves");
   });
 });
 
@@ -2133,8 +2158,9 @@ describe("MatchView — design B: single-phase casualty + non-blocking ack (RAU-
     stubMatch(detail);
     const { unmount } = renderPlayed();
     expect((await screen.findAllByText(/Mitad 1 · Turno 3/)).length).toBeGreaterThan(0);
-    // The direct casualty card renders with the causer/victim line (no modal).
-    expect(screen.getByText(/hace una herida a/)).toBeTruthy();
+    // The direct casualty card renders with the causer/victim relation (no
+    // modal): the v4 Acta action sheet names the victim under the "Acción" row.
+    expect(screen.getByText(/Herida a/)).toBeTruthy();
     expect(screen.queryByRole("dialog", { name: /Baja registrada por el rival/i })).toBeNull();
     expect(screen.queryByText(/El rival registra una baja/)).toBeNull();
     expect(screen.queryByText(/Esperando confirmación del rival/)).toBeNull();

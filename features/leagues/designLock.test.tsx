@@ -3,33 +3,37 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { useSession } from "next-auth/react";
-import { LiveEventCards } from "./liveEventCards";
+import { LiveEventCardsActa } from "./eventCardActa";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { MatchView } from "./MatchView";
-import { EVENT_GLYPH } from "./liveEventLabels";
 import type { LiveMatchEventDto, LiveMatchView, MatchDetail, MatchTeamDetail } from "./api";
 
 /**
- * DESIGN-LOCK suite: the user validated the COMPACT full-width event-card and
- * rulebook layout on the design-study branch. These tests lock TODAY's output so
- * any drift (class rename, geometry change, reintroduced split corner, skipped
- * icon, duplicated page header, emoji glyph replacing an SVG) fails the suite.
- * TEST-ONLY: no production file is touched.
+ * DESIGN-LOCK suite: the user validated the v4 "Acta" data-sheet event cards and
+ * the rulebook layout on the design-study branch. The PRODUCTION live-match feed
+ * now renders `LiveEventCardsActa`; the v3 compact rows (`LiveEventCards`) are the
+ * ARCHIVED reference and keep their own behavior tests (`liveEventCards.test.tsx`).
+ * These tests lock TODAY's production output so any drift (class rename, geometry
+ * change, reintroduced v3 atom, unbolded value, missing ack row, duplicated page
+ * header) fails the suite. TEST-ONLY: no production file is touched.
  *
- * A  — `liveEventCards.module.css` is read as a raw string and the validated
- *       compact declarations are asserted (deleting/changing one fails).
- * B  — rendered card structure per kind (TD / casualty / foul / turnStart /
- *       expensive_mistake / fan_factor / start·endMatch) + the icon set.
+ * A  — `eventCardActa.module.css` is read as a raw string and the validated Acta
+ *       declarations are asserted (deleting/changing one fails).
+ * B  — rendered Acta structure per family: the `.acta` shell + side class, the
+ *       tag/meta header, the name/dorsal/pos line, the dotted-leader `<dl>` with
+ *       BOLD values (Efecto / Tirada 1D16 / Causa / Marcador / Víctima / Acción /
+ *       Motivo / Tesorería / Hora / Minuto / Victoria / Local / Visitante), the
+ *       derived casualty ACTION card and the ack row on ackable kinds only.
  * C  — the rulebook sticky header via a stubbed MatchView (back arrow, no
  *       duplicated page header, TURNO button, half badge, hero mini-line).
  * D  — MatchTimelineBar (light track, always-on boundary markers, chips).
  */
 
 // ---------------------------------------------------------------------------
-// A. Raw CSS module lock
+// A. Raw CSS module lock — v4 Acta (production feed)
 // ---------------------------------------------------------------------------
 
-const css = readFileSync(path.join(__dirname, "liveEventCards.module.css"), "utf8");
+const css = readFileSync(path.join(__dirname, "eventCardActa.module.css"), "utf8");
 
 /** Extracts a single rule block (verbatim inner text) or throws with a hint. */
 function block(pattern: RegExp, label: string): string {
@@ -38,114 +42,94 @@ function block(pattern: RegExp, label: string): string {
   return m[1];
 }
 
-/** Like `block` but takes the LAST match — needed because `.ev--away {` also
- * appears as the grouped selector `.ev--home,\n.ev--away {`. */
-function lastBlock(pattern: RegExp, label: string): string {
-  const global = pattern.flags.includes("g") ? pattern : new RegExp(pattern.source, `${pattern.flags}g`);
-  const matches = [...css.matchAll(global)];
-  if (matches.length === 0) throw new Error(`design-lock: the CSS module no longer contains the "${label}" rule`);
-  return matches[matches.length - 1][1];
-}
+const actaBlock = block(/\.acta\s*\{([\s\S]*?)\}/, ".acta");
+const homeBlock = block(/\.home\s*\{([\s\S]*?)\}/, ".home");
+const awayBlock = block(/\.away\s*\{([\s\S]*?)\}/, ".away");
+const neutralBlock = block(/\.neutral\s*\{([\s\S]*?)\}/, ".neutral");
+const tagBlock = block(/\.acta__tag\s*\{([\s\S]*?)\}/, ".acta__tag");
+const metaBlock = block(/\.acta__meta\s*\{([\s\S]*?)\}/, ".acta__meta");
+const nameBlock = block(/\.acta__name\s*\{([\s\S]*?)\}/, ".acta__name");
+const posBlock = block(/\.acta__pos\s*\{([\s\S]*?)\}/, ".acta__pos");
+const dataBlock = block(/\.acta__data\s*\{([\s\S]*?)\}/, ".acta__data");
+const dataFlushBlock = block(/\.acta__data--flush\s*\{([\s\S]*?)\}/, ".acta__data--flush");
+const rowBlock = block(/\.acta__row\s*\{([\s\S]*?)\}/, ".acta__row");
+const dtBlock = block(/\.acta__row dt\s*\{([\s\S]*?)\}/, ".acta__row dt");
+const leaderBlock = block(/\.acta__leader\s*\{([\s\S]*?)\}/, ".acta__leader");
+const ddBlock = block(/\.acta__row dd\s*\{([\s\S]*?)\}/, ".acta__row dd");
+const ddBoldBlock = block(/\.acta__row dd b\s*\{([\s\S]*?)\}/, ".acta__row dd b");
+const ackBlock = block(/\.ack\s*\{([\s\S]*?)\}/, ".ack");
 
-const homeAway = block(/\.ev--home,\s*\.ev--away\s*\{([\s\S]*?)\}/, ".ev--home, .ev--away");
-const home = block(/\.ev--home\s*\{([\s\S]*?)\}/, ".ev--home");
-const away = lastBlock(/\.ev--away\s*\{([\s\S]*?)\}/, ".ev--away");
-const evBase = block(/\.ev\s*\{([\s\S]*?)\}/, ".ev");
-const token = block(/\.token\s*\{([\s\S]*?)\}/, ".token");
-const center = block(/\.ev--center\s*\{([\s\S]*?)\}/, ".ev--center");
-const turnTag = block(/\.turn-tag\s*\{([\s\S]*?)\}/, ".turn-tag");
-const minute = block(/\.minute\s*\{([\s\S]*?)\}/, ".minute");
-const cardBody = block(/\.card-body,\s*\.kbody\s*\{([\s\S]*?)\}/, ".card-body, .kbody");
-const ackRow = block(/\.ack-row\s*\{([\s\S]*?)\}/, ".ack-row");
+/** Banned v3 atoms: the Acta layout is FLAT and full-width — it must never
+ * reintroduce the archived compact card's split geometry. Comments included. */
+const BANNED = ["linear-gradient", "grid-template-areas", "max-width: 68", "@media"];
 
-/** Banned locked-out geometry: the old split/gradient/corners/media must not
- * return. The module never contains these atoms (comments included). */
-const BANNED = ["linear-gradient", "grid-template-areas", "max-width: 68", "(@media", "430"];
-
-describe("A. liveEventCards.module.css — validated COMPACT full-width declarations", () => {
-  it("never re-introduces the 68% grid, its gradients/areas or the width media query", () => {
+describe("A. eventCardActa.module.css — validated Acta declarations", () => {
+  it("never re-introduces the archived v3 split/gradient/media atoms", () => {
     for (const atom of BANNED) {
       expect(css, `module must not contain "${atom}"`).not.toContain(atom);
     }
   });
 
-  it("locks the full-width flex team-row shell (100%, no mirror, side-agnostic read order)", () => {
-    expect(homeAway).toContain("width: 100%;");
-    expect(homeAway).toContain("max-width: 100%;");
-    expect(homeAway).toContain("display: flex;");
-    expect(homeAway).toContain("flex-wrap: wrap;");
-    // No per-side content mirroring: both rows read token→who→detail directly.
-    expect(homeAway).not.toContain("row-reverse");
+  it("locks the .acta panel base: panel background, 1px border, 3px top rule, radius and padding", () => {
+    expect(actaBlock).toContain("background: var(--color-panel);");
+    expect(actaBlock).toContain("border: 1px solid var(--color-border);");
+    expect(actaBlock).toContain("border-top: 3px solid var(--side, var(--color-slate));");
+    expect(actaBlock).toContain("border-radius: 3px;");
+    expect(actaBlock).toContain("padding: 14px 18px 16px;");
+    expect(actaBlock).toContain("box-sizing: border-box;");
   });
 
-  it("locks the 3px left side accent at the navy/red opacity tokens", () => {
-    expect(home).toContain("border-left: 3px solid rgba(18, 34, 90, .18);");
-    expect(away).toContain("border-left: 3px solid rgba(209, 25, 56, .18);");
-    // Neither side keeps a faint all-over fill above the white card base.
-    expect(home).not.toContain("background:");
-    expect(away).not.toContain("background:");
+  it("locks the side identity custom property: navy home / red away / slate neutral", () => {
+    expect(homeBlock).toContain("--side: var(--color-navy);");
+    expect(awayBlock).toContain("--side: var(--color-red);");
+    expect(neutralBlock).toContain("--side: var(--color-slate);");
   });
 
-  it("locks the card base (.ev): white, 1px rulebook border, 8px radius, soft shadow", () => {
-    expect(evBase).toContain("background: #fff;");
-    expect(evBase).toContain("border: 1px solid #e2e8f0;");
-    expect(evBase).toContain("border-radius: 8px;");
-    expect(evBase).toContain("box-shadow: 0 1px 2px rgba(15, 23, 42, .05);");
-    expect(evBase).toContain("padding: 6px 10px;");
-    expect(evBase).toContain("box-sizing: border-box;");
+  it("locks the tag/meta header typography (uppercase 10px, tag on --side, tabular meta)", () => {
+    expect(tagBlock).toContain("font-size: 10px;");
+    expect(tagBlock).toContain("font-weight: 700;");
+    expect(tagBlock).toContain("letter-spacing: .12em;");
+    expect(tagBlock).toContain("text-transform: uppercase;");
+    expect(tagBlock).toContain("color: var(--side, var(--color-slate));");
+    expect(metaBlock).toContain("font-size: 10px;");
+    expect(metaBlock).toContain("font-weight: 700;");
+    expect(metaBlock).toContain("letter-spacing: .06em;");
+    expect(metaBlock).toContain("text-transform: uppercase;");
+    expect(metaBlock).toContain("color: var(--color-slate);");
+    expect(metaBlock).toContain("font-variant-numeric: tabular-nums;");
   });
 
-  it("locks inline meta: turn-tag as a small white-on-token pill and the minute as muted tabular time", () => {
-    expect(turnTag).toContain("font-size: 10px;");
-    expect(turnTag).toContain("font-weight: 900;");
-    expect(turnTag).toContain("color: #fff;");
-    expect(minute).toContain("font-size: 11px;");
-    expect(minute).toContain("color: #64748b;");
-    expect(minute).toContain("font-variant-numeric: tabular-nums;");
+  it("locks the serif name + position line and the data-list rule", () => {
+    expect(nameBlock).toContain("font-family: var(--font-display);");
+    expect(nameBlock).toContain("font-size: 17px;");
+    expect(nameBlock).toContain("font-weight: 700;");
+    expect(posBlock).toContain("font-size: 11px;");
+    expect(posBlock).toContain("color: var(--color-slate);");
+    expect(dataBlock).toContain("border-top: 1px solid var(--color-border);");
+    expect(dataFlushBlock).toContain("border-top: 0;");
   });
 
-  it("locks the compact token size (28px/6px radius) and a flexible no-mirror card body", () => {
-    expect(token).toContain("flex: 0 0 28px;");
-    expect(token).toContain("width: 28px;");
-    expect(token).toContain("height: 28px;");
-    expect(token).toContain("border-radius: 6px;");
-    expect(cardBody).toContain("display: flex;");
-    expect(cardBody).toContain("flex: 1 1 auto;");
-    expect(cardBody).not.toContain("row-reverse");
+  it("locks the dotted leader row: baseline flex, uppercase label, dotted leader and right-aligned value", () => {
+    expect(rowBlock).toContain("display: flex;");
+    expect(rowBlock).toContain("align-items: baseline;");
+    expect(dtBlock).toContain("text-transform: uppercase;");
+    expect(dtBlock).toContain("font-size: 10px;");
+    expect(leaderBlock).toContain("flex: 1 1 auto;");
+    expect(leaderBlock).toContain("border-bottom: 1px dotted var(--color-border-subtle);");
+    expect(leaderBlock).toContain("transform: translateY(-3px);");
+    expect(ddBlock).toContain("text-align: right;");
   });
 
-  it("locks the centered generic row (no side accent) and the full-width wrapping ack row", () => {
-    expect(center).toContain("width: 100%;");
-    expect(center).toContain("max-width: 100%;");
-    expect(center).toContain("display: flex;");
-    expect(center).not.toMatch(/border-left:\s*3px/);
-    expect(center).not.toContain("rgba(18, 34, 90, .18)");
-    expect(ackRow).toContain("flex: 1 0 100%;");
+  it("locks the bold dd value rule and the right-aligned ack row", () => {
+    expect(ddBoldBlock).toContain("color: var(--color-ink);");
+    expect(ddBoldBlock).toContain("font-weight: 700;");
+    expect(ackBlock).toContain("justify-content: flex-end;");
   });
 });
 
 // ---------------------------------------------------------------------------
 // B. Rendered card structure per kind
 // ---------------------------------------------------------------------------
-
-/** The validated MDI path data (verbatim from `./icons.tsx`) for the icons the
- * design locks on: the casualty band trio, the money bag, football, timer, flag. */
-const GRAVE_PATH =
-  "M10,2H14C17.31,2 19,4.69 19,8V18.66C16.88,17.63 15.07,17 12,17C8.93,17 7.12,17.63 5,18.66V8C5,4.69 6.69,2 10,2M8,8V9.5H16V8H8M9,12V13.5H15V12H9M3,22V21.31C5.66,19.62 13.23,15.84 21,21.25V22H3Z";
-const HELMET_PATH =
-  "M13.5,12A1.5,1.5 0 0,0 12,13.5A1.5,1.5 0 0,0 13.5,15A1.5,1.5 0 0,0 15,13.5A1.5,1.5 0 0,0 13.5,12M13.5,3C18.19,3 22,6.58 22,11C22,12.62 22,14 21.09,16C17,16 16,20 12.5,20C10.32,20 9.27,18.28 9.05,16H9L8.24,16L6.96,20.3C6.81,20.79 6.33,21.08 5.84,21H3A1,1 0 0,1 2,20A1,1 0 0,1 3,19V16A1,1 0 0,1 2,15A1,1 0 0,1 3,14H6.75L7.23,12.39C6.72,12.14 6.13,12 5.5,12H5.07L5,11C5,6.58 8.81,3 13.5,3M5,16V19H5.26L6.15,16H5Z";
-const HOSPITAL_PATH =
-  "M18,14H14V18H10V14H6V10H10V6H14V10H18M19,3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3Z";
-const MONEY_BAG_PATH =
-  "M16,9C20,11 21,18 21,18C21,18 22,22 16,22C10,22 8,22 8,22C2,22 3,18 3,18C3,18 4,11 8,9M14,4L12,2L10,4L6,2L8,7H16L18,2L14,4Z";
-const FOOTBALL_PATH =
-  "M8.39 21L3 15.61C3 16.7 3.04 17.71 3.2 18.63C3.35 19.55 3.5 20.1 3.71 20.29C3.9 20.5 4.44 20.65 5.35 20.81S7.27 21 8.39 21M15.5 9.89L9.89 15.5L8.5 14.11L14.11 8.5L15.5 9.89M3.29 13.08L10.92 20.71C13.7 20.21 15.9 19.15 17.53 17.53C19.15 15.9 20.21 13.7 20.71 10.92L13.08 3.29C10.3 3.79 8.1 4.85 6.47 6.47S3.79 10.3 3.29 13.08M15.61 3L21 8.39C21 7.3 20.96 6.29 20.81 5.37C20.65 4.45 20.5 3.9 20.29 3.71C20.1 3.5 19.56 3.35 18.65 3.2S16.73 3 15.61 3Z";
-const TIMER_PATH =
-  "M12,20A7,7 0 0,1 5,13A7,7 0 0,1 12,6A7,7 0 0,1 19,13A7,7 0 0,1 12,20M19.03,7.39L20.45,5.97C20,5.46 19.55,5 19.04,4.56L17.62,6C16.07,4.74 14.12,4 12,4A9,9 0 0,0 3,13A9,9 0 0,0 12,22C17,22 21,17.97 21,13C21,10.88 20.26,8.93 19.03,7.39M11,14H13V8H11M15,1H9V3H15V1Z";
-const FLAG_PATH =
-  "M14.4,6H20V16H13L12.6,14H7V21H5V4H14L14.4,6M14,14H16V12H18V10H16V8H14V10L13,8V6H11V8H9V6H7V8H9V10H7V12H9V10H11V12H13V10L14,12V14M11,10V8H13V10H11M14,10H16V12H14V10Z";
-const FLAG_VARIANT_PATH =
-  "M6,3A1,1 0 0,1 7,4V4.88C8.06,4.31 9.5,4 11,4C14,4 14,6 16,6C19,6 20,4 20,4V12C20,12 19,14 16,14C13,14 13,12 11,12C8,12 7,14 7,14V21H5V4A1,1 0 0,1 6,3Z";
 
 function player(id: string, name: string, positionalKey = "blitzer") {
   return { rosterPlayerId: id, name, positionalKey, pe: 0, skills: {}, injuries: {}, alive: true, missNextMatch: false, valueBonus: 0 };
@@ -181,7 +165,7 @@ function ev(
 
 function renderCards(events: LiveMatchEventDto[]) {
   return render(
-    <LiveEventCards
+    <LiveEventCardsActa
       events={events}
       startedAt={1000}
       homeTeam={homeTeam}
@@ -193,246 +177,271 @@ function renderCards(events: LiveMatchEventDto[]) {
   );
 }
 
-describe("B. LiveEventCards — validated COMPACT rendered structure", () => {
-  it("locks the token feed shell bg-[#f8fafc] with a 6px column gap (no heavy panel border/padding)", () => {
+describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
+  it("locks the feed shell: an ordered list on bg-background with the 2.5 gap and the chronology aria", () => {
     const { container } = renderCards([ev(1, "td", "home", {}, "p1", 3, 2000)]);
     const ol = container.querySelector("ol");
-    const cls = ol?.getAttribute("class") ?? "";
     expect(ol).toBeTruthy();
     expect(ol?.getAttribute("aria-label")).toBe("Cronología del partido");
+    const cls = ol?.getAttribute("class") ?? "";
     expect(cls).toContain("bg-background");
     expect(cls).toContain("flex flex-col");
-    expect(cls).toContain("gap-1.5");
-    expect(cls).not.toContain("bg-[#eef1f6]");
+    expect(cls).toContain("gap-2.5");
+    expect(container.querySelector("[data-testid='live-event-row']")).toBeTruthy();
   });
 
-  it("locks the home TD card: ev--home accent, inline T-turn tag, minute, 28px token, dorsal, dline--home, partial score", () => {
-    const { container } = renderCards([ev(5, "td", "home", {}, "p1", 4, 241000)]);
-    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    expect(row).toBeTruthy();
-    expect(row.className).toContain("ev--home");
-    const tag = row.querySelector(".turn-tag") as HTMLElement;
-    expect(tag.className).toContain("turn-tag--home");
-    expect(tag.textContent).toBe("T4");
-    expect(row.querySelector(".minute")?.textContent).toBe("4'");
-    const tk = row.querySelector(".token") as HTMLElement;
-    expect(tk.className).toContain("token--home");
-    expect(tk.querySelector("svg")).toBeTruthy();
-    expect(row.querySelector(".dorsal")?.textContent).toBe("#1");
-    expect(row.querySelector(".name")?.textContent).toBe("Blitzer A");
-    expect(row.querySelector(".pos")?.textContent).toBe("Human Blitzer");
-    const line = row.querySelector(".dline") as HTMLElement;
-    expect(line.className).toContain("dline--home");
-    expect(line.querySelector(".dicon svg path")?.getAttribute("d")).toBe(FOOTBALL_PATH);
-    expect(line.textContent).toContain("Touchdown");
-    expect(line.textContent).toContain("(★3)");
-    expect(row.querySelector(".score-note")?.textContent).toBe("(1 - 0)");
-  });
-
-  it("locks the away TD card: ev--away red accent/tag/token, dline--away and its inline minute meta", () => {
-    const { container } = renderCards([ev(6, "td", "away", {}, "p2", 5, 241000)]);
-    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    expect(row.className).toContain("ev--away");
-    const tag = row.querySelector(".turn-tag") as HTMLElement;
-    expect(tag.className).toContain("turn-tag--away");
-    expect(tag.textContent).toBe("T5");
-    expect(row.querySelector(".minute")).toBeTruthy();
-    expect(row.querySelector(".minute")?.textContent).toBe("4'");
-    expect(row.querySelector(".token")?.className).toContain("token--away");
-    expect(row.querySelector(".dline")?.className).toContain("dline--away");
-  });
-
-  it("locks the casualty band sub-lines + the band icon trio (grave/helmet/hospital) under the dline", () => {
+  it("renders newest first (seq desc) and skips the generic 'turn' row", () => {
     const { container } = renderCards([
-      ev(9, "casualty", "home", { band: "dead" }, "p1", 6, 2000),
-      ev(10, "casualty", "home", { band: "grave" }, "p1", 6, 2100),
-      ev(11, "casualty", "home", { band: "bruise" }, "p1", 6, 2200),
+      ev(1, "start", null, {}, null, 1, 1000),
+      ev(2, "turn", null, {}, null, 1, 1100),
+      ev(3, "endMatch", null, {}, null, 8, 481000),
     ]);
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
-    const dead = rows.find((li) => li.textContent?.includes("¡Muerto!"));
-    const lasting = rows.find((li) => li.textContent?.includes("Se pierde el próximo partido"));
-    const bruise = rows.find((li) => li.textContent?.includes("Lesión molesta"));
-    expect(dead).toBeTruthy();
-    expect(lasting).toBeTruthy();
-    expect(bruise).toBeTruthy();
-    // Newest-first ordering: bruise (11), lasting (10), dead (9).
-    expect(rows[0].textContent).toContain("Herida");
-    expect(rows[1].textContent).toContain("Baja");
-    expect(rows[2].textContent).toContain("Baja");
-    // The band sub-line renders right under the dline inside the detail column.
-    const detail = dead!.querySelector(".detail");
-    expect(detail?.firstElementChild?.classList.contains("dline")).toBe(true);
-    expect(detail?.children[1]?.classList.contains("sub")).toBe(true);
-    // The casualty icon varies by band: grave (dead), helmet (lasting), hospital (bruise).
-    expect(dead!.querySelector(".dicon svg path")?.getAttribute("d")).toBe(GRAVE_PATH);
-    expect(lasting!.querySelector(".dicon svg path")?.getAttribute("d")).toBe(HELMET_PATH);
-    expect(bruise!.querySelector(".dicon svg path")?.getAttribute("d")).toBe(HOSPITAL_PATH);
-  });
-
-  it("locks the foul victim line (mini vtoken + 'a {name} (#{dorsal})') and the casualty cause line with the causer bolded", () => {
-    const { container } = renderCards([
-      ev(8, "foul", "home", { victimRosterId: "p8" }, "p1", 3, 2000),
-      ev(9, "casualty", "away", { band: "grave", cause: "blitz", causerRosterId: "p4" }, "p2", 6, 3000),
-    ]);
-    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
-    const foul = rows.find((li) => li.textContent?.includes("Falta"));
-    const casualty = rows.find((li) => li.textContent?.includes("Baja"));
-    expect(foul).toBeTruthy();
-    expect(casualty).toBeTruthy();
-    // Foul: the victim is an OPPONENT (LM-12) — mini token with the rival tint.
-    const victimLine = foul!.querySelector(".victim-line");
-    expect(victimLine?.querySelector(".vtoken")).toBeTruthy();
-    expect(victimLine?.querySelector(".vtoken")?.className).toContain("vtoken--away");
-    expect(victimLine?.querySelector(".vtoken svg")).toBeTruthy();
-    expect(victimLine?.textContent).toContain("a Trash (#2)");
-    // Casualty: "por {causer} (#{dorsal}) · {cause}" with the causer in <b>.
-    const causeLine = casualty!.querySelector(".cause-line");
-    expect(causeLine?.textContent).toBe("por Arnau (#2) · Blitz");
-    expect(causeLine?.querySelector("b")?.textContent).toBe("Arnau");
-  });
-
-  it("locks turnStart as a team card ('Turno {team}', no dorsal) and skips the generic 'turn' row", () => {
-    const { container } = renderCards([
-      ev(4, "turnStart", "home", {}, null, 4, 4000),
-      ev(5, "turn", null, {}, null, 4, 4100),
-      ev(6, "td", "home", {}, "p1", 4, 4200),
-    ]);
-    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
-    // Only the turnStart + TD survive — the "Fin de turno" noise is skipped.
     expect(rows).toHaveLength(2);
     expect(container.textContent).not.toContain("Fin de turno");
-    const turnStart = rows.find((li) => li.textContent?.includes("Empieza el turno"));
-    expect(turnStart).toBeTruthy();
-    expect(turnStart!.className).toContain("ev--home");
-    expect(turnStart!.textContent).toContain("Turno Reavers");
-    expect(turnStart!.textContent).not.toContain("Tu turno");
-    expect(turnStart!.querySelector(".dorsal")).toBeNull();
-    expect(turnStart!.querySelector(".token")).toBeTruthy();
-    expect(turnStart!.querySelector(".token svg")).toBeTruthy();
-    expect(turnStart!.querySelector(".name")?.textContent).toBe("Turno Reavers");
-    expect(turnStart!.querySelector(".pos")?.textContent).toBe("Empieza el turno");
+    expect(rows[0].querySelector(".acta__tag")?.textContent).toBe("Fin del partido");
+    expect(rows[1].querySelector(".acta__tag")?.textContent).toBe("Inicio del partido");
   });
 
-  it("locks the expensive_mistake team card: no corners, money-bag icon, outcome label, es-ES treasury line", () => {
+  it("locks the home TD sheet: .acta + home, tag/meta, name/dorsal/pos, bold Marcador row and ack", () => {
+    const { container } = renderCards([ev(5, "td", "home", {}, "p1", 4, 241000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("acta")).toBe(true);
+    expect(article.classList.contains("home")).toBe(true);
+    expect(article.classList.contains("away")).toBe(false);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Touchdown · ★3");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Turno 4 · 4'");
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Blitzer A #1");
+    expect(article.querySelector(".acta__pos")?.textContent).toBe("Human Blitzer · Reavers");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Marcador");
+    expect(row.querySelector(".acta__leader")).toBeTruthy();
+    expect(row.querySelector("dd")?.className).toContain("acta__num");
+    expect(row.querySelector("dd b")?.textContent).toBe("1 - 0");
+    expect(article.querySelector(".ack")).toBeTruthy();
+  });
+
+  it("locks the away TD sheet: .acta + away and the mirrored partial score", () => {
+    const { container } = renderCards([ev(6, "td", "away", {}, "p2", 5, 241000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("away")).toBe(true);
+    expect(article.classList.contains("home")).toBe(false);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Touchdown · ★3");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Turno 5 · 4'");
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Blitzer B #1");
+    expect(article.querySelector(".acta__pos")?.textContent).toBe("Dwarf Blitzer · Dwarves");
+    expect(article.querySelector("dd b")?.textContent).toBe("0 - 1");
+    expect(article.querySelector(".ack")).toBeTruthy();
+  });
+
+  it("locks the completion sheet: ★1 tag, no data list, ack row", () => {
+    const { container } = renderCards([ev(6, "completion", "home", {}, "p4", 3, 2000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Pase completo · ★1");
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Arnau #2");
+    expect(article.querySelector(".acta__data")).toBeNull();
+    expect(article.querySelector(".ack")).toBeTruthy();
+  });
+
+  it("locks the foul sheet: Falta tag + the bold Víctima value", () => {
+    const { container } = renderCards([ev(8, "foul", "home", { victimRosterId: "p8" }, "p1", 3, 2000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("home")).toBe(true);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Falta");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Víctima");
+    expect(row.querySelector("dd")?.textContent).toBe("a Trash (#2)");
+    expect(row.querySelector("dd b")?.textContent).toBe("Trash");
+    expect(article.querySelector(".ack")).toBeTruthy();
+  });
+
+  it("locks the casualty INJURY sheet: Baja tag, Efecto/Tirada 1D16/Causa rows with bold values and the ack", () => {
     const { container } = renderCards([
-      ev(
-        6,
-        "expensive_mistake",
-        "home",
-        { outcome: "serious-incident", treasuryBefore: 234000, treasuryAfter: 214000 },
-        null,
-        1,
-        1000,
-      ),
+      ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 9, band: "permanent" }, "p2", 6, 3000),
     ]);
-    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    expect(row.className).toContain("ev--home");
-    expect(row.querySelector(".turn-tag")).toBeNull();
-    expect(row.querySelector(".minute")).toBeNull();
-    const kcicon = row.querySelector(".kcicon") as HTMLElement;
-    expect(kcicon.className).toContain("kcicon--home");
-    expect(kcicon.querySelector("svg path")?.getAttribute("d")).toBe(MONEY_BAG_PATH);
-    expect(row.querySelector(".ktitle")?.textContent).toBe("Error costoso");
-    expect(row.querySelector(".ksub")?.textContent).toBe("Reavers · Incidente grave");
-    expect(row.querySelector(".ktreasury")?.textContent).toBe("234.000 → 214.000 M.O.");
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    const injury = rows.find((li) => li.querySelector(".acta__name")?.textContent === "Blitzer B #1") as HTMLElement;
+    expect(injury).toBeTruthy();
+    expect(injury.querySelector("article")?.classList.contains("away")).toBe(true);
+    expect(injury.querySelector(".acta__tag")?.textContent).toBe("Baja");
+    expect(injury.querySelector(".acta__meta")?.textContent).toBe("Turno 6 · 0'");
+    const dataRows = Array.from(injury.querySelectorAll(".acta__row"));
+    expect(dataRows).toHaveLength(3);
+    expect(dataRows[0].querySelector("dt")?.textContent).toBe("Efecto");
+    expect(dataRows[0].querySelector("dd b")?.textContent).toBe("Se pierde el próximo partido");
+    expect(dataRows[1].querySelector("dt")?.textContent).toBe("Tirada 1D16");
+    expect(dataRows[1].querySelector("dd")?.className).toContain("acta__num");
+    expect(dataRows[1].querySelector("dd b")?.textContent).toBe("9");
+    expect(dataRows[2].querySelector("dt")?.textContent).toBe("Causa");
+    expect(dataRows[2].querySelector("dd")?.textContent).toBe("por Arnau (#2) · Bloqueo");
+    expect(Array.from(dataRows[2].querySelectorAll("dd b")).map((b) => b.textContent)).toEqual(["Arnau", "Bloqueo"]);
+    expect(injury.querySelector(".ack")).toBeTruthy();
   });
 
-  it("locks the fan_factor centered row with the exact per-team totals copy", () => {
+  it("locks the derived ACTION card on the causer's side: Bloqueo · ★2 + bold Acción victim, NO ack", () => {
+    const { container } = renderCards([
+      ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 9, band: "permanent" }, "p2", 6, 3000),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const action = rows.find((li) => li.querySelector(".acta__name")?.textContent === "Arnau #2") as HTMLElement;
+    expect(action).toBeTruthy();
+    expect(action.querySelector("article")?.classList.contains("home")).toBe(true);
+    expect(action.querySelector(".acta__tag")?.textContent).toBe("Bloqueo · ★2");
+    expect(action.querySelector(".acta__pos")?.textContent).toBe("Human Thrower · Reavers");
+    const row = action.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Acción");
+    expect(row.querySelector("dd")?.textContent).toBe("Herida a Blitzer B");
+    expect(row.querySelector("dd b")?.textContent).toBe("Blitzer B");
+    expect(action.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the turnStart team sheet: Inicio de turno + Empieza el turno, Motivo row when a reason exists, no ack", () => {
+    const { container } = renderCards([ev(7, "turnStart", "home", { reason: "injury" }, null, 4, 4600)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("home")).toBe(true);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Inicio de turno");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Turno 4 · 0'");
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Reavers");
+    expect(article.querySelector(".acta__pos")?.textContent).toBe("Empieza el turno");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Motivo");
+    expect(row.querySelector("dd b")?.textContent).toBe("Baja");
+    expect(article.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the turnStart sheet with no reason: no data list and no ack", () => {
+    const { container } = renderCards([ev(4, "turnStart", "away", {}, null, 4, 4000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("away")).toBe(true);
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Dwarves");
+    expect(article.querySelector(".acta__data")).toBeNull();
+    expect(article.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the expensive_mistake team sheet: Error costoso, Incidente grave, bold Tesorería value, no ack", () => {
+    const { container } = renderCards([
+      ev(6, "expensive_mistake", "home", { outcome: "serious-incident", treasuryBefore: 234000, treasuryAfter: 214000 }, null, 1, 1000),
+    ]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("home")).toBe(true);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Error costoso");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Kickoff");
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Reavers");
+    expect(article.querySelector(".acta__pos")?.textContent).toBe("Incidente grave");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Tesorería");
+    expect(row.querySelector("dd b")?.textContent).toBe("234.000 → 214.000 M.O.");
+    expect(article.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the fan_factor neutral sheet: Local / Visitante rows with bold totals and no ack", () => {
     const { container } = renderCards([
       ev(7, "fan_factor", null, { home: { base: 2, dice: 2, total: 4 }, away: { base: 1, dice: 3, total: 4 } }, null, 1, 1000),
     ]);
-    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    expect(row.className).toContain("ev--center");
-    expect(row.querySelector(".ctitle")?.textContent).toBe("Factor de aficionados");
-    expect(row.querySelector(".ff-line")?.textContent).toBe("Local: 👥2 + 🎲2 = 4 · Visitante: 👥1 + 🎲3 = 4");
-    expect(row.querySelector(".cicon svg")).toBeTruthy();
-  });
-
-  it("locks the start / endMatch centered rows with the timer/flag icons and the wall-clock sub", () => {
-    const { container } = renderCards([
-      ev(1, "start", null, {}, null, 1, 1000),
-      ev(2, "endMatch", null, {}, null, 8, 481000),
-    ]);
-    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
-    const start = rows.find((li) => li.textContent?.includes("Inicio del partido"));
-    const end = rows.find((li) => li.textContent?.includes("Fin del partido"));
-    expect(start).toBeTruthy();
-    expect(end).toBeTruthy();
-    expect(start!.className).toContain("ev--center");
-    expect(start!.querySelector(".cicon svg path")?.getAttribute("d")).toBe(TIMER_PATH);
-    expect(start!.querySelector(".ctitle")?.textContent).toBe("Inicio del partido");
-    expect(start!.querySelector(".csub")?.textContent).toMatch(/^\d{2}:\d{2}$/);
-    expect(start!.querySelector(".cright")).toBeNull();
-    expect(end!.querySelector(".cicon svg path")?.getAttribute("d")).toBe(FLAG_PATH);
-    expect(end!.querySelector(".ctitle")?.textContent).toBe("Fin del partido");
-    expect(end!.querySelector(".csub")?.textContent).toMatch(/^\d{2}:\d{2}$/);
-    expect(end!.querySelector(".cright")?.textContent).toBe("8'");
-  });
-
-  it("locks the RAU-39 derived ACTION card: a caused casualty renders the injury card PLUS a causer-side action card (cause label + roll/band sub-line, no stars)", () => {
-    // Victim Blitzer B (away, p2) hit by a blitz from Arnau (home, p4) — the
-    // causer is an OPPONENT of the victim (LM-12), so the action card carries
-    // the home (navy) accent with the standard player-card anatomy.
-    const { container } = renderCards([
-      ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 14, roll6: 5, band: "permanent", permanentAttribute: "ag" }, "p2", 6, 3000),
-    ]);
-    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("neutral")).toBe(true);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Factor de aficionados");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Kickoff");
+    const rows = Array.from(article.querySelectorAll(".acta__row"));
     expect(rows).toHaveLength(2);
-    const injury = rows.find((li) => li.textContent?.includes("Blitzer B"));
-    // The action card's MAIN player is the causer (the injury card only names
-    // Arnau inside its "por Arnau" cause line).
-    const action = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau");
-    expect(injury).toBeTruthy();
-    expect(action).toBeTruthy();
-    expect(injury!.className).toContain("ev--away");
-    expect(action!.className).toContain("ev--home");
-    // The action card reuses the exact player-card anatomy (token/dorsal/who/
-    // dline) with the CAUSE label and the band/roll sub-line under it.
-    expect(action!.querySelector(".turn-tag")?.className).toContain("turn-tag--home");
-    expect(action!.querySelector(".token")?.className).toContain("token--home");
-    expect(action!.querySelector(".dorsal")?.textContent).toBe("#2");
-    expect(action!.querySelector(".name")?.textContent).toBe("Arnau");
-    expect(action!.querySelector(".dline")?.className).toContain("dline--home");
-    expect(action!.querySelector(".dline")?.textContent).toBe("Blitz(★2)");
-    expect(action!.querySelector(".sub")?.textContent).toBe("Arnau hace una herida a Blitzer B");
-    expect(action!.querySelector(".stars")?.textContent).toBe("(★2)");
-    // The injury card keeps its band sub-line + the roll line + the cause line.
-    expect(injury!.querySelectorAll(".sub").length).toBeGreaterThanOrEqual(2);
-    expect(injury!.querySelector(".cause-line")?.textContent).toBe("por Arnau (#2) · Blitz");
+    expect(rows[0].querySelector("dt")?.textContent).toBe("Local");
+    expect(rows[0].querySelector("dd")?.textContent).toBe("👥2 + 🎲2 = 4");
+    expect(rows[0].querySelector("dd b")?.textContent).toBe("4");
+    expect(rows[1].querySelector("dt")?.textContent).toBe("Visitante");
+    expect(rows[1].querySelector("dd")?.textContent).toBe("👥1 + 🎲3 = 4");
+    expect(rows[1].querySelector("dd b")?.textContent).toBe("4");
+    expect(article.querySelector(".ack")).toBeNull();
   });
 
-  it("locks the concede centered row: white-flag glyph, 'Concesión', surrender·victory sub-line", () => {    const { container } = renderCards([
-      ev(9, "concede", "home", { winnerSide: "away" }, null, 3, 4000),
-    ]);
-    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
-    expect(row.className).toContain("ev--center");
-    expect(row.querySelector(".cicon svg path")?.getAttribute("d")).toBe(FLAG_VARIANT_PATH);
-    expect(row.querySelector(".ctitle")?.textContent).toBe("Concesión");
-    expect(row.querySelector(".csub")?.textContent).toBe("Reavers se rinde · Victoria de Dwarves");
-    expect(row.querySelector(".cright")).toBeNull();
+  it("locks the start sheet: Inicio del partido + Kickoff + a bold Hora time, flush data, no ack", () => {
+    const { container } = renderCards([ev(1, "start", null, {}, null, 1, 1000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("neutral")).toBe(true);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Inicio del partido");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Kickoff");
+    expect(article.querySelector(".acta__name")).toBeNull();
+    expect(article.querySelector(".acta__data")?.className).toContain("acta__data--flush");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Hora");
+    expect(row.querySelector("dd b")?.textContent).toMatch(/^\d{2}:\d{2}$/);
+    expect(article.querySelector(".ack")).toBeNull();
   });
 
-  it("locks the icon set: EVENT_GLYPH values are icon names and every icon area renders an inline <svg> (no emoji glyphs)", () => {
-    const { container } = renderCards([
-      ev(1, "start", null, {}, null, 1, 1000),
-      ev(2, "td", "home", {}, "p1", 3, 2000),
-      ev(3, "casualty", "away", { band: "dead" }, "p2", 4, 3000),
-      ev(4, "foul", "home", { victimRosterId: "p8" }, "p1", 3, 4000),
-      ev(5, "expensive_mistake", "home", { outcome: "catastrophe", treasuryBefore: 234000, treasuryAfter: 214000 }, null, 1, 1000),
-      ev(6, "fan_factor", null, { home: { base: 2, dice: 2, total: 4 }, away: { base: 1, dice: 3, total: 4 } }, null, 1, 1000),
-      ev(7, "turnStart", "away", {}, null, 5, 5000),
-    ]);
-    // Icon-name lock: every EVENT_GLYPH entry is a kebab-case icon name, never an emoji.
-    expect(Object.values(EVENT_GLYPH).every((v) => /^[a-z][a-z-]*$/.test(v))).toBe(true);
-    expect(Object.values(EVENT_GLYPH).every((v) => !/\p{Extended_Pictographic}/u.test(v))).toBe(true);
-    // Rendered lock: every icon area (.token/.dicon/.cicon/.kcicon/.vtoken) is
-    // an inline SVG with empty text — an emoji glyph replacing it fails here.
-    const iconAreas = container.querySelectorAll(".token, .dicon, .cicon, .kcicon, .vtoken");
-    expect(iconAreas.length).toBeGreaterThan(0);
-    iconAreas.forEach((el) => {
-      expect(el.querySelector("svg")).toBeTruthy();
-      expect(el.textContent).toBe("");
-    });
+  it("locks the endHalf sheet: Fin de la mitad + Mitad 1 + a bold Minuto, no ack", () => {
+    const { container } = renderCards([ev(3, "endHalf", null, {}, null, 4, 200000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Fin de la mitad");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Mitad 1");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Minuto");
+    expect(row.querySelector("dd b")?.textContent).toBe("3'");
+    expect(article.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the endMatch sheet: Fin del partido + Final + a bold Hora, no ack", () => {
+    const { container } = renderCards([ev(2, "endMatch", null, {}, null, 8, 481000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Fin del partido");
+    expect(article.querySelector(".acta__meta")?.textContent).toBe("Final");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Hora");
+    expect(row.querySelector("dd b")?.textContent).toMatch(/^\d{2}:\d{2}$/);
+    expect(article.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the concede neutral sheet: Concesión + Se rinde + a bold Victoria, no ack", () => {
+    const { container } = renderCards([ev(9, "concede", "home", { winnerSide: "away" }, null, 3, 4000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("neutral")).toBe(true);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Concesión");
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Reavers");
+    expect(article.querySelector(".acta__pos")?.textContent).toBe("Se rinde");
+    const row = article.querySelector(".acta__row") as HTMLElement;
+    expect(row.querySelector("dt")?.textContent).toBe("Victoria");
+    expect(row.querySelector("dd b")?.textContent).toBe("Dwarves");
+    expect(article.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the journeyman team sheet: Novato tag, the join name/pos and no data list", () => {
+    const { container } = renderCards([ev(7, "journeyman", "home", { count: 1, names: ["Aldric Martillo"] }, null, 1, 1000)]);
+    const article = container.querySelector("article") as HTMLElement;
+    expect(article.classList.contains("home")).toBe(true);
+    expect(article.querySelector(".acta__tag")?.textContent).toBe("Novato");
+    expect(article.querySelector(".acta__name")?.textContent).toBe("Aldric Martillo");
+    expect(article.querySelector(".acta__pos")?.textContent).toBe("Se une como novato");
+    expect(article.querySelector(".acta__data")).toBeNull();
+    expect(article.querySelector(".ack")).toBeNull();
+  });
+
+  it("locks the ack row on ACKABLE kinds only (td/completion/casualty/foul), never on system/team cards", () => {
+    const ackable: [string, string, "home"][] = [
+      ["td", "p1", "home"],
+      ["completion", "p4", "home"],
+      ["foul", "p1", "home"],
+      ["casualty", "p1", "home"],
+    ];
+    for (const [kind, playerId, side] of ackable) {
+      const payload = kind === "foul" ? { victimRosterId: "p8" } : {};
+      const { container, unmount } = renderCards([ev(1, kind, side, payload, playerId, 1, 1000)]);
+      expect(container.querySelector(".ack"), `${kind} must carry the ack row`).toBeTruthy();
+      unmount();
+    }
+    const system: [string, "home" | null][] = [
+      ["start", null],
+      ["turnStart", "home"],
+      ["endHalf", null],
+      ["endMatch", null],
+      ["expensive_mistake", "home"],
+      ["fan_factor", null],
+      ["concede", "home"],
+      ["journeyman", "home"],
+    ];
+    for (const [kind, side] of system) {
+      const { container, unmount } = renderCards([ev(1, kind, side, {}, null, 1, 1000)]);
+      expect(container.querySelector(".ack"), `${kind} must not carry the ack row`).toBeNull();
+      unmount();
+    }
   });
 });
 

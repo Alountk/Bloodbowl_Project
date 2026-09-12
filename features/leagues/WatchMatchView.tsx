@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n";
 import type { WatchLiveView, WatchMatchDto, WatchTeam } from "@/lib/watchAccess";
 import { useWatchLive } from "./useWatchLive";
 import { useLiveClock } from "./useLiveClock";
-import { LiveEventCards } from "./liveEventCards";
+import { LiveEventCardsActa } from "./eventCardActa";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
 import type { MatchTeamDetail } from "./api";
@@ -18,7 +18,7 @@ import type { MatchTeamDetail } from "./api";
  *
  * PRIVACY: the guest DTO carries no roster, owner, PE, MVP, resolution,
  * inducements, consent or winnings — so this view reuses the presentational
- * `MatchTimelineBar`/`LiveEventCards` (adapted through `toMatchTeamDetail`) but
+ * `MatchTimelineBar`/`LiveEventCardsActa` (adapted through `toMatchTeamDetail`) but
  * NEVER mounts any member control. `viewerSide` is forced `null`, which is the
  * existing gate that hides every coach affordance (share, begin, concede, ✓/✗).
  */
@@ -159,7 +159,7 @@ export function WatchMatchView({ token }: { token: string }) {
             homeTeam={homeTeam}
             awayTeam={awayTeam}
           />
-          <LiveEventCards
+          <LiveEventCardsActa
             events={live.events}
             startedAt={live.startedAt}
             homeTeam={homeTeam}

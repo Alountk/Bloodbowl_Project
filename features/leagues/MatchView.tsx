@@ -20,7 +20,7 @@ import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { can } from "@/lib/permissions";
 import { createShareLink, getMatchDetail, resetLiveMatch, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
 import { buildMatchSummary, buildSummaryFeedRows, type MatchSummarySection, type SummaryFeedRow } from "./matchSummary";
-import { LiveEventCards } from "./liveEventCards";
+import { LiveEventCardsActa } from "./eventCardActa";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
 import { LiveActionDock } from "./liveActionDock";
@@ -1257,7 +1257,7 @@ function LiveActiveMatch({
           ) : null}
           {/* LM-29: the current turn's reason at the top of the feed — only when
               the reload/reconnect shape has no live turnStart row carrying it
-              (steady-live renders it ON that row via LiveEventCards). The reason
+              (steady-live renders it ON that row via LiveEventCardsActa). The reason
               is STATE, never a feed row (LM-16). */}
           {showTurnReasonChip ? (
             <p
@@ -1271,7 +1271,7 @@ function LiveActiveMatch({
           {/* MVT-10: the per-team mini-stat strip sits in the FEED above the
               event rows (never the sticky header). Null when no pill is shown. */}
           <MiniStatsFeedStrip events={events} />
-          <LiveEventCards
+          <LiveEventCardsActa
             events={events}
             startedAt={state.startedAt}
             homeTeam={homeTeam}
@@ -1342,7 +1342,7 @@ function FinishedLiveTimeline({
     <div className="bg-panel border border-border">
       {/* MVT-10: the finished feed's per-team mini-strip sits above the rows. */}
       <MiniStatsFeedStrip events={live.events} />
-      <LiveEventCards
+      <LiveEventCardsActa
         events={live.events}
         startedAt={live.startedAt}
         homeTeam={homeTeam}

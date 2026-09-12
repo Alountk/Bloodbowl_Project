@@ -1,16 +1,13 @@
 import type { ReactNode } from "react";
-import { LiveEventCards } from "./liveEventCards";
+import { LiveEventCardsActa } from "./eventCardActa";
 import type { LiveMatchEventDto, MatchTeamDetail } from "./api";
 
 /**
- * Live event card set (Design A, compact v3). White full-width cards over the
- * #f8fafc feed shell, read left → right: token/dorsal + who + label + optional
- * sub-lines, with the turn tag + minute as inline meta and a 3px side accent on
- * team cards (navy home / red away). Data is mock ES UI — no network, no i18n
- * provider (the repo's `useI18n` falls back to the Spanish dictionary).
- *
- * Server feed order is CHRONOLOGICAL (seq ascending); the component renders
- * newest first.
+ * v4 "Acta" event cards: data-sheet style cards over the crema feed shell,
+ * newest first, with the important values bolded. Data is mock ES UI — no
+ * network, no i18n provider (the repo's `useI18n` falls back to the Spanish
+ * dictionary). The mock teams + `ev()` builder mirror
+ * `liveEventCards.stories.tsx`.
  */
 
 function player(
@@ -74,9 +71,17 @@ function ev(
 
 const ackNoop = () => undefined;
 
-function Feed({ events, viewerSide = "home", now = Date.now() }: { events: LiveMatchEventDto[]; viewerSide?: "home" | "away" | null; now?: number }) {
+function Feed({
+  events,
+  viewerSide = "home",
+  now = Date.now(),
+}: {
+  events: LiveMatchEventDto[];
+  viewerSide?: "home" | "away" | null;
+  now?: number;
+}) {
   return (
-    <LiveEventCards
+    <LiveEventCardsActa
       events={events}
       startedAt={BASE}
       homeTeam={homeTeam}
@@ -89,31 +94,31 @@ function Feed({ events, viewerSide = "home", now = Date.now() }: { events: LiveM
 }
 
 /** A centered canvas panel that reads like the live-match body. */
-function Panel({ children, max = "md" }: { children: ReactNode; max?: "md" | "lg" }) {
+function Panel({ children }: { children: ReactNode }) {
   return (
-    <div className="flex justify-center bg-[#f8fafc] p-2">
-      <div className={`w-full ${max === "lg" ? "max-w-2xl" : "max-w-md"}`}>{children}</div>
+    <div className="flex justify-center bg-background p-2">
+      <div className="w-full max-w-lg">{children}</div>
     </div>
   );
 }
 
 export default {
-  title: "Event Cards/V3",
-  component: LiveEventCards,
+  title: "Event Cards/V4 · Acta",
+  component: LiveEventCardsActa,
   parameters: {
     docs: {
       description: {
         component:
-          "Tarjetas compactas del feed del partido en vivo (compact v3, mobile-first). " +
-          "Cada evento = tarjeta blanca full-width sobre #f8fafc; tarjetas de equipo con acento lateral " +
-          "de 3px (marino local / rojo visitante), tag de turno y minuto inline. Los datos son mock ES.",
+          "Tarjetas 'Acta' (v4) del feed del partido en vivo. Ficha de datos: cabecera tag/meta, " +
+          "nombre serif + dorsal, línea de posición y lista de datos con puntos guía. Los valores " +
+          "importantes van en negrita. Datos mock ES, sin red ni proveedor de i18n.",
       },
     },
   },
 };
 
 /** One full half of a narrative feed: kickoff → turn starts → plays → finish. */
-export const FullFeed = {
+export const FeedCompleto = {
   name: "Feed completo (narrativa 1T)",
   render: () => {
     const events: LiveMatchEventDto[] = [
@@ -129,7 +134,7 @@ export const FullFeed = {
       ev(65, { seq: 10, kind: "endMatch", side: null, playerRosterId: null, turn: 8, half: 2, payload: {} }),
     ];
     return (
-      <Panel max="lg">
+      <Panel>
         <Feed events={events} />
       </Panel>
     );
@@ -138,48 +143,53 @@ export const FullFeed = {
     docs: {
       description: {
         story:
-          "1ª parte narrada: inicio, turnos (con etiqueta de razón), pase ★1, TD local ★3 " +
-          "(marcador parcial 1-0), falta visitante con línea de víctima, baja propia por el público, " +
-          "Baja causada (tarjeta doble: lesión del jugador + acción derivada del causante ★2) y TD " +
-          "visitante ✓ cotejado (1-1). Vista local (entrenadora del equipo local).",
+          "1ª parte narrada: inicio (hora), turnos (con motivo), pase ★1, TD local ★3 (marcador 1-0), " +
+          "falta visitante con víctima, Herida propia por el público, Baja causada (doble ficha: lesión " +
+          "de la víctima + acción del causante ★2), TD visitante ✓ cotejado (1-1) y fin del partido.",
       },
     },
   },
 };
 
-/** The both-down marker: the non-active coach's own block record (DEC-1). */
-export const BothDownMarker = {
-  name: "Baja — ambos derribados (marcador)",
-  render: () => (
-    <Panel>
-      <Feed
-        events={[
-          ev(4, {
-            seq: 20,
-            kind: "casualty",
-            side: "away",
-            playerRosterId: "o2",
-            turn: 5,
-            payload: { victimRosterId: "o2", causerRosterId: "k1", cause: "block", roll16: 9, band: "grave", bothDown: true },
-          }),
-        ]}
-      />
-    </Panel>
-  ),
+/** One card per family/kind, stacked. */
+export const TodasLasFamilias = {
+  name: "Todas las familias",
+  render: () => {
+    const events: LiveMatchEventDto[] = [
+      ev(0, { seq: 1, kind: "start", side: null, playerRosterId: null, payload: {} }),
+      ev(1, { seq: 2, kind: "turnStart", side: "home", playerRosterId: null, turn: 1, payload: { reason: "turnover" } }),
+      ev(2, { seq: 3, kind: "completion", side: "home", playerRosterId: "k2", turn: 2, payload: {} }),
+      ev(3, { seq: 4, kind: "td", side: "home", playerRosterId: "k1", turn: 3, payload: {} }),
+      ev(4, { seq: 5, kind: "foul", side: "away", playerRosterId: "o1", turn: 3, payload: { victimRosterId: "k1" } }),
+      ev(5, { seq: 6, kind: "casualty", side: "away", playerRosterId: "o2", turn: 4, payload: { victimRosterId: "o2", causerRosterId: "k1", cause: "block", roll16: 9, band: "grave" } }),
+      ev(6, { seq: 7, kind: "mvp", side: "home", playerRosterId: "k1", turn: 8, payload: {} }),
+      ev(7, { seq: 8, kind: "journeyman", side: "home", playerRosterId: null, turn: 6, payload: { names: ["Tik-Tak"] } }),
+      ev(8, { seq: 9, kind: "expensive_mistake", side: "home", playerRosterId: null, turn: 1, payload: { outcome: "serious-incident", treasuryBefore: 234000, treasuryAfter: 214000 } }),
+      ev(9, { seq: 10, kind: "fan_factor", side: null, playerRosterId: null, turn: 1, payload: { home: { base: 2, dice: 2, total: 4 }, away: { base: 1, dice: 3, total: 4 } } }),
+      ev(30, { seq: 11, kind: "endHalf", side: null, playerRosterId: null, turn: 8, payload: {} }),
+      ev(65, { seq: 12, kind: "endMatch", side: null, playerRosterId: null, turn: 8, half: 2, payload: {} }),
+      ev(66, { seq: 13, kind: "concede", side: "away", playerRosterId: null, turn: 5, half: 2, payload: { winnerSide: "home" } }),
+    ];
+    return (
+      <Panel>
+        <Feed events={events} />
+      </Panel>
+    );
+  },
   parameters: {
     docs: {
       description: {
         story:
-          "Bloqueo 'ambos derribados' anotado por la entrenadora NO activa: la tarjeta del caído " +
-          "lleva el marcador '(Ambos derribados)' en la línea de causa, y el causante recibe la " +
-          "tarjeta de acción derivada con su ★2.",
+          "Una ficha por familia/tipo: sistema (inicio, fin de mitad, fin, concesión, factor de " +
+          "aficionados), equipo (inicio de turno, novato, error costoso) y jugador (pase, TD, falta, " +
+          "baja con acción derivada, MVP).",
       },
     },
   },
 };
 
 /** Ack row states (Design B): ✓/✗ for the rival, status badges otherwise. */
-export const AckStates = {
+export const Cotejo = {
   name: "Cotejo ✓/✗ — estados",
   render: () => (
     <Panel>

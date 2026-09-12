@@ -1,0 +1,116 @@
+/**
+ * Event card style archive — the four styles offered in the design round
+ * (Franja / Acta / Tablón / Ficha), kept in Storybook for recovery.
+ *
+ * Story-only: these classes re-skin mockups of the casualty card (the most
+ * complex one). They consume the live "Reglamento vintage" tokens; no raw hex.
+ * The chosen direction (Acta) lives in `features/leagues/eventCardActa.*`.
+ */
+
+/* Side colors */
+.home { --side: var(--color-navy); }
+.away { --side: var(--color-red); }
+.neutral { --side: var(--color-slate); }
+
+/* Shared ack row */
+.ack { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.ack__label { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-slate); }
+.ack__btn { font: inherit; font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 4px; border: 1px solid; cursor: pointer; }
+.ack__btn--ok { border-color: var(--color-ack-ok-border); background: var(--color-ack-ok-fill); color: var(--color-ack-ok-text); }
+.ack__btn--nok { border-color: var(--color-ack-review-border); background: var(--color-ack-review-fill); color: var(--color-ack-review-text); }
+
+/* =====================================================================
+   ESTILO 1 — "FRANJA" (barra horizontal editorial)
+   ===================================================================== */
+.e1 {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 12px 18px 12px 22px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--side, var(--color-navy));
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(43, 38, 24, .05);
+}
+.e1__num { display: flex; flex-direction: column; align-items: center; width: 44px; flex: 0 0 auto; }
+.e1__num b { font-family: var(--font-display); font-size: 24px; line-height: 1; color: var(--side, var(--color-navy)); }
+.e1__num span { font-size: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--color-slate); margin-top: 2px; }
+.e1__icon { flex: 0 0 auto; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--color-border); color: var(--side, var(--color-navy)); }
+.e1__icon svg { width: 18px; height: 18px; fill: currentColor; }
+.e1__body { flex: 1 1 auto; min-width: 0; }
+.e1__line1 { display: flex; align-items: baseline; gap: 8px; }
+.e1__name { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: var(--color-ink); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.e1__dorsal { font-size: 11px; font-weight: 700; color: var(--color-slate); }
+.e1__pos { font-size: 11px; color: var(--color-slate); margin: 1px 0 0; }
+.e1__event { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--side, var(--color-navy)); margin-top: 5px; }
+.e1__event svg { width: 13px; height: 13px; fill: currentColor; }
+.e1__stars { color: var(--color-star); font-weight: 800; }
+.e1__sub { font-size: 11px; color: var(--color-slate); margin: 2px 0 0; }
+.e1__sub b { color: var(--color-ink); }
+.e1__min { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--color-slate); font-variant-numeric: tabular-nums; }
+.e1__ackwrap { flex: 1 0 100%; }
+
+/* =====================================================================
+   ESTILO 2 — "ACTA" (ficha de datos con puntos de guía)
+   ===================================================================== */
+.e2 { background: var(--color-panel); border: 1px solid var(--color-border); border-top: 3px solid var(--side, var(--color-navy)); border-radius: 3px; padding: 14px 18px 16px; box-shadow: 0 1px 0 rgba(43, 38, 24, .04); }
+.e2__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.e2__tag { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--side, var(--color-navy)); }
+.e2__meta { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-slate); font-variant-numeric: tabular-nums; }
+.e2__name { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--color-ink); margin: 0; }
+.e2__name span { font-family: var(--font-sans); font-size: 12px; font-weight: 700; color: var(--color-slate); }
+.e2__pos { font-size: 11px; color: var(--color-slate); margin: 1px 0 10px; }
+.e2__data { margin: 0; border-top: 1px solid var(--color-border); padding-top: 8px; }
+.e2__row { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; margin-bottom: 5px; }
+.e2__row:last-child { margin-bottom: 0; }
+.e2__row dt { flex: 0 0 auto; color: var(--color-slate); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
+.e2__leader { flex: 1 1 auto; border-bottom: 1px dotted var(--color-border-subtle); transform: translateY(-3px); }
+.e2__row dd { flex: 0 0 auto; margin: 0; color: var(--color-slate-strong); text-align: right; }
+.e2__row dd b { color: var(--color-ink); font-weight: 700; }
+.e2__num b { font-variant-numeric: tabular-nums; }
+
+/* =====================================================================
+   ESTILO 3 — "TABLÓN" (scoreboard oscuro)
+   ===================================================================== */
+.e3 { display: flex; align-items: stretch; background: var(--color-navy); color: var(--color-panel); border-radius: 4px; overflow: hidden; box-shadow: 0 3px 10px rgba(29, 42, 77, .25); }
+.e3__turn { flex: 0 0 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--side, var(--color-red)); color: #fff; }
+.e3__turn b { font-family: var(--font-display); font-size: 34px; line-height: 1; }
+.e3__turn span { font-size: 8px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: .85; margin-top: 3px; }
+.e3__main { flex: 1 1 auto; min-width: 0; padding: 10px 16px 12px; }
+.e3__event { display: flex; align-items: center; gap: 6px; }
+.e3__event svg { width: 15px; height: 15px; fill: var(--side, var(--color-red)); }
+.e3__event b { font-family: var(--font-display); font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: #fff; }
+.e3__stars { font-size: 11px; font-weight: 800; color: var(--color-star); }
+.e3__name { font-size: 14px; font-weight: 700; color: #fff; margin: 3px 0 0; }
+.e3__pos { font-size: 10.5px; color: rgba(253, 250, 242, .65); margin: 1px 0 0; }
+.e3__lines { list-style: none; margin: 7px 0 0; padding: 0; }
+.e3__lines li { font-size: 11px; color: rgba(253, 250, 242, .85); line-height: 1.45; }
+.e3__lines li b { color: #fff; }
+.e3__min { flex: 0 0 auto; display: grid; place-items: center; padding: 0 14px; font-size: 12px; font-weight: 700; color: rgba(253, 250, 242, .7); font-variant-numeric: tabular-nums; }
+.e3 .ack__label { color: rgba(253, 250, 242, .6); }
+.e3 .ack__btn--ok { background: rgba(230, 246, 234, .12); }
+.e3 .ack__btn--nok { background: rgba(254, 242, 242, .12); }
+
+/* =====================================================================
+   ESTILO 4 — "FICHA" (tarjeta con banda de cabecera + emblema)
+   ===================================================================== */
+.e4 { background: var(--color-panel); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(43, 38, 24, .06); }
+.e4__band { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 14px; background: var(--side, var(--color-navy)); color: #fff; }
+.e4__ev { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.e4__ev svg { width: 14px; height: 14px; fill: currentColor; }
+.e4__stars { font-size: 11px; font-weight: 800; color: #f2d98a; }
+.e4__meta { font-size: 10px; font-weight: 700; letter-spacing: .06em; opacity: .85; font-variant-numeric: tabular-nums; }
+.e4__body { display: flex; align-items: center; gap: 12px; padding: 12px 14px 4px; }
+.e4__emblem { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--side, var(--color-navy)); color: #fff; font-weight: 800; font-size: 18px; }
+.e4__name { font-family: var(--font-display); font-size: 16px; font-weight: 700; color: var(--color-ink); margin: 0; }
+.e4__name small { font-family: var(--font-sans); font-size: 11px; font-weight: 700; color: var(--color-slate); }
+.e4__pos { font-size: 11px; color: var(--color-slate); margin: 1px 0 0; }
+.e4__lines { list-style: none; margin: 8px 0 0; padding: 0 14px 12px; }
+.e4__lines li { display: flex; gap: 6px; font-size: 11.5px; color: var(--color-slate); line-height: 1.5; }
+.e4__lines li::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; margin-top: 6px; border-radius: 50%; background: var(--side, var(--color-navy)); opacity: .5; }
+.e4__lines li b { color: var(--color-ink); }
+.e4__ackwrap { padding: 0 14px 12px; }
