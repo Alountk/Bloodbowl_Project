@@ -137,7 +137,7 @@ test.describe("public match share link", () => {
       await guest.goto(`/watch/${token}`);
       await expect(guest.getByText(teamAName)).toBeVisible();
       await expect(guest.getByText(teamBName)).toBeVisible();
-      await expect(guest.getByText("Compartido")).toBeVisible();
+      await expect(guest.getByText("Compartido", { exact: true })).toBeVisible();
       // MSL-6/AS-9: the member chrome is NOT mounted on the public share page.
       await expect(guest.getByRole("navigation", { name: "Main navigation" })).toHaveCount(0);
 
@@ -157,7 +157,11 @@ test.describe("public match share link", () => {
 
       // And the guest page collapses to the identical copy after a reload.
       await guest.reload();
-      await expect(guest.getByRole("alert")).toHaveText("Este link ya no está disponible");
+      // Scope to the watch's own alert: Next injects an empty
+      // `__next-route-announcer__` with role=alert too.
+      await expect(
+        guest.getByRole("alert").filter({ hasText: "Este link ya no está disponible" }),
+      ).toHaveText("Este link ya no está disponible");
     } finally {
       await guestContext?.close();
       await contextA.close();

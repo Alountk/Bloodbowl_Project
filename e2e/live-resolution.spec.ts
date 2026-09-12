@@ -533,14 +533,15 @@ test("RAU-12: a lasting casualty suspends the victim for the next match until it
     }
     expect(view.activeSide).toBe(proposerSide);
 
+    // One-phase casualty (LM-12/RAU-83): the ACTIVE coach records it DIRECTLY on
+    // the rival victim — there is no propose/confirm pair any more.
+    const pivotSideR1: "home" | "away" = proposerSide === "home" ? "away" : "home";
     await liveCommand(proposerPage, leagueId, r1.fixtureId, {
-      type: "proposeCasualty", victimRosterId: lastingVictimId, causerRosterId: causerId, cause: "blitz", roll16: 9,
+      type: "casualty", side: pivotSideR1, victimRosterId: lastingVictimId, causerRosterId: causerId, cause: "blitz", roll16: 9,
     });
-    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
     await liveCommand(proposerPage, leagueId, r1.fixtureId, {
-      type: "proposeCasualty", victimRosterId: bruiseVictimId, causerRosterId: causerId, cause: "blitz", roll16: 2,
+      type: "casualty", side: pivotSideR1, victimRosterId: bruiseVictimId, causerRosterId: causerId, cause: "blitz", roll16: 2,
     });
-    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
 
     // Resolve match 1 → the lasting victim is flagged, the bruise is not.
     const afterEnd = await liveCommand(admin, leagueId, r1.fixtureId, { type: "endMatch" });
@@ -579,16 +580,19 @@ test("RAU-12: a lasting casualty suspends the victim for the next match until it
     expect(view.activeSide).toBe(pivotSide2);
 
     await pivotPage.goto(`/leagues/${leagueId}/fixtures/${r2Fixture.id}`);
-    await expect(pivotPage.getByRole("button", { name: "+" })).toBeVisible();
-    await pivotPage.getByRole("button", { name: "+" }).click();
-    await pivotPage.getByRole("button", { name: /Touchdown/i }).click();
-    const tdOptions = await pivotPage
-      .getByLabel("Jugador", { exact: true })
-      .locator("option")
+    // Design-A dock: the "Touchdown" chip opens the modal listing the own-player
+    // chips ("#N {short name}").
+    const r2Dock = pivotPage.getByTestId("live-action-dock");
+    await expect(r2Dock).toBeVisible();
+    await r2Dock.getByRole("button", { name: /Touchdown/i }).click();
+    const tdChips = await pivotPage
+      .getByTestId("live-action-modal")
+      .getByTestId("dock-player-own")
       .allTextContents();
-    // The suspended victim is NOT selectable; the bruised one IS.
-    expect(tdOptions.some((o) => o.includes(lastingVictimName))).toBe(false);
-    expect(tdOptions.some((o) => o.includes(bruiseVictimName))).toBe(true);
+    // The suspended victim is NOT offered; the bruised one IS.
+    const short = (n: string) => n.trim().split(/\s+/)[0];
+    expect(tdChips.some((o) => o.includes(short(lastingVictimName)))).toBe(false);
+    expect(tdChips.some((o) => o.includes(short(bruiseVictimName)))).toBe(true);
 
     // Resolve match 2 → the suspension is SERVED: both players are available again.
     const afterEnd2 = await liveCommand(admin, leagueId, r2Fixture.id, { type: "endMatch" });
@@ -655,14 +659,14 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
       view = await liveCommand(activePage, leagueId, r1.fixtureId, { type: "endTurn", side: view.activeSide });
     }
     const victim2Id = pivotTeam.roster[1].id;
+    // One-phase casualty: the ACTIVE coach records each one directly.
+    const pivotSideR1b: "home" | "away" = proposerSide === "home" ? "away" : "home";
     await liveCommand(proposerPage, leagueId, r1.fixtureId, {
-      type: "proposeCasualty", victimRosterId: victimId, causerRosterId: causerId, cause: "blitz", roll16: 9,
+      type: "casualty", side: pivotSideR1b, victimRosterId: victimId, causerRosterId: causerId, cause: "blitz", roll16: 9,
     });
-    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
     await liveCommand(proposerPage, leagueId, r1.fixtureId, {
-      type: "proposeCasualty", victimRosterId: victim2Id, causerRosterId: causerId, cause: "blitz", roll16: 9,
+      type: "casualty", side: pivotSideR1b, victimRosterId: victim2Id, causerRosterId: causerId, cause: "blitz", roll16: 9,
     });
-    await liveCommand(pivotPage, leagueId, r1.fixtureId, { type: "confirmCasualty" });
 
     const afterEnd = await liveCommand(admin, leagueId, r1.fixtureId, { type: "endMatch" });
     expect(afterEnd.status).toBe("finished");
@@ -735,24 +739,28 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
     await pivotPage.goto(match2Url);
     await expect(pivotPage.getByTestId("journeymen-notice")).toBeVisible();
     await expect(pivotPage.getByText("Faltan 2 jugadores — se añaden 2 novatos")).toBeVisible();
-    // RAU-13: the join timeline event lists BOTH novatos on ONE plural row.
+    // RAU-13: the join timeline event lists BOTH novatos on ONE row. The v4
+    // Acta card splits the join line into the NAME list + the "Se unen como
+    // novatos" line, so match both parts.
     await expect(
       pivotPage
         .getByTestId("live-event-row")
-        .filter({ hasText: `${jrnyName}, ${jrnyName2} se unen como novatos` })
+        .filter({ hasText: `${jrnyName}, ${jrnyName2}` })
+        .filter({ hasText: "Se unen como novatos" })
         .first(),
     ).toBeVisible();
-    await expect(pivotPage.getByRole("button", { name: "+" })).toBeVisible();
-    await pivotPage.getByRole("button", { name: "+" }).click();
-    await pivotPage.getByRole("button", { name: /Touchdown/i }).click();
-    const tdSelect = pivotPage.getByLabel("Jugador", { exact: true });
-    // The novato options read "Name (Novato · #N)" — dorsal = served index + 1.
-    const jrnyOption = tdSelect.locator("option", { hasText: jrnyName });
-    await expect(jrnyOption).toHaveCount(1);
-    expect((await jrnyOption.textContent()) ?? "").toMatch(/\(Novato · #\d+\)$/);
-    await tdSelect.selectOption(jrny!.rosterPlayerId);
-    await pivotPage.getByRole("button", { name: "Registrar" }).click();
-    await expect(pivotPage.getByLabel("Jugador", { exact: true })).toHaveCount(0);
+    // Design-A dock: "Touchdown" → the modal lists the own-player chips; the
+    // novato's chip reads "#N {short name}".
+    const r2Dock2 = pivotPage.getByTestId("live-action-dock");
+    await expect(r2Dock2).toBeVisible();
+    await r2Dock2.getByRole("button", { name: /Touchdown/i }).click();
+    const modal2 = pivotPage.getByTestId("live-action-modal");
+    const jrnyChip = modal2
+      .getByTestId("dock-player-own")
+      .filter({ hasText: jrnyName.trim().split(/\s+/)[0] });
+    await expect(jrnyChip).toHaveCount(1);
+    await jrnyChip.click();
+    await expect(pivotPage.getByTestId("live-action-modal")).toHaveCount(0);
 
     // The TD flips the turn to the OPPOSITE coach — have them injure the
     // Journeyman (1D16 9 → apaleado, lasting); the pivot confirms. RAU-13: the
@@ -776,9 +784,8 @@ test("RAU-13: a <11 lineup gets Journeymen (notice + selectable FAB + earned PE 
       )
       .toBe(true);
     await liveCommand(opponentPage, leagueId, r2Fixture.id, {
-      type: "proposeCasualty", victimRosterId: jrny!.rosterPlayerId, causerRosterId: opponentCauserId, cause: "blitz", roll16: 9,
+      type: "casualty", side: pivotSide2, victimRosterId: jrny!.rosterPlayerId, causerRosterId: opponentCauserId, cause: "blitz", roll16: 9,
     });
-    await liveCommand(pivotPage, leagueId, r2Fixture.id, { type: "confirmCasualty" });
 
     // Resolve match 2 → the closure writes the awards: the Novato's TD earned
     // PE (snapshot) while NO Player row exists for them yet.
