@@ -277,9 +277,9 @@ export function LiveActionDock({
   // The centered modal that hosts the open flow (the dock bar stays underneath).
   const modalContent = (() => {
     if (!openFlow) return null;
+    // The small step label above the title — ONLY the player-pick steps carry
+    // one (the cause and roll steps name themselves in the title below).
     const heading = (() => {
-      if (stage?.kind === "cause") return t("match.controls.injuryCause");
-      if (stage?.kind === "selfCause") return t("match.controls.injuryCause");
       if (stage?.kind === "pickOwn") {
         if (flow === "td" || flow === "completion") return "";
         if (flow === "foul") return t("match.controls.aggressor");
@@ -292,6 +292,18 @@ export function LiveActionDock({
       }
       return "";
     })();
+
+    // The bold title tracks the CURRENT step — picking a cause, picking a
+    // player, rolling the injury, or the pass-turn reason — so the roll stage
+    // never keeps a stale "pick the player" line.
+    const title =
+      flow === "passTurn"
+        ? t("match.turnReason.heading")
+        : stage?.kind === "roll"
+          ? t("match.dock.rollTitle")
+          : stage?.kind === "cause" || stage?.kind === "selfCause"
+            ? t("match.controls.injuryCause")
+            : t("match.dock.sheetTitle");
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -306,11 +318,7 @@ export function LiveActionDock({
                   {heading}
                 </p>
               ) : null}
-              <p className="truncate text-sm font-bold text-navy">
-                {flow === "passTurn"
-                  ? t("match.turnReason.heading")
-                  : t("match.dock.sheetTitle")}
-              </p>
+              <p className="truncate text-sm font-bold text-navy">{title}</p>
             </div>
             <button
               type="button"
