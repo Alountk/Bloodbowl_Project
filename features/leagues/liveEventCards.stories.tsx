@@ -98,7 +98,7 @@ function Panel({ children, max = "md" }: { children: ReactNode; max?: "md" | "lg
 }
 
 export default {
-  title: "Live match/Event cards (v3)",
+  title: "Event Cards/V3",
   component: LiveEventCards,
   parameters: {
     docs: {
