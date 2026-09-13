@@ -302,6 +302,29 @@ describe("MatchActaWizard submit (s4a)", () => {
     expect(payload.away.mvp.grantee).toBe("a1");
   });
 
+  it("keeps the save enabled when the legacy-casualties warning is present (s6a corrective)", () => {
+    // FIX-B: the Step-4 warning is informational — it never blocks the save.
+    const onSubmit = vi.fn<(payload: ResultPayload) => void>();
+    const state = validActa();
+    state.casualtiesUnrecoverable = true;
+    renderWizard({ initial: state, onSubmit });
+
+    // Step 4 renders the warning...
+    for (let i = 0; i < 4; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    }
+    expect(screen.getByRole("alert").textContent).toMatch(/acciones guardadas/i);
+
+    // ...and Step 6 still submits the acta.
+    for (let i = 0; i < 2; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    }
+    const save = screen.getByRole("button", { name: "Guardar acta" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks submit while a team has no MVP selected", () => {
     const onSubmit = vi.fn<(payload: ResultPayload) => void>();
     const state = validActa();

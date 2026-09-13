@@ -13,10 +13,10 @@ import { MatchCard } from "./MatchCard";
 import { NegotiationPanel } from "./NegotiationPanel";
 import { ForfeitModal } from "./ForfeitModal";
 import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
-import { ResultModal, type ResultTeamDraft } from "./ResultModal";
+import { ResultModal } from "./ResultModal";
+import { buildResultPrefill, type ResultTeamDraft } from "./resultPrefill";
 import { MatchActaWizard } from "./MatchActaWizard";
 import { actaPrefill, type ActaState } from "./acta/actaState";
-import { buildResultPrefill } from "./resultPrefill";
 import { getMatchDetail } from "./api";
 import { isOwnerEquivalent } from "./access";
 import { can } from "@/lib/permissions";
@@ -685,11 +685,13 @@ function Jornadas({
         />
       ) : null}
 
-      {/* s4c: the LOAD path now opens the "Acta del partido" wizard; the legacy
-          ResultModal stays for the CORRECT path (retired in s6c). Each branch is
-          keyed per fixture so its initial state is read once. */}
+      {/* s6a: BOTH paths open the "Acta del partido" wizard. The CORRECT path
+          prefills from the persisted `MatchResult.scores` snapshot (MAW-9); the
+          LOAD path keeps the finished-live prefill. `ResultModalFor`/`ResultModal`
+          stay present for s6c to retire. Each branch is keyed per fixture so its
+          initial state is read once. */}
       {resultFixture && resultMode === "correct" ? (
-        <ResultModalFor
+        <MatchActaWizardFor
           key={`c-${resultFixture.id}`}
           fixture={resultFixture}
           teamNameById={teamNameById}
@@ -697,8 +699,8 @@ function Jornadas({
           mode="correct"
           onClose={() => setResultFixture(null)}
           onSubmit={async (payload) => {
-            // Only close on success: ResultModal surfaces rejections (e.g. a
-            // 409 race) in its alert and keeps itself open.
+            // Only close on success: the wizard surfaces a rejection (e.g. a 409
+            // race) in its alert and keeps itself open.
             await onCorrectResult(resultFixture.id, payload);
             setResultFixture(null);
           }}
@@ -711,6 +713,7 @@ function Jornadas({
           fixture={resultFixture}
           teamNameById={teamNameById}
           rostersFor={rostersFor}
+          mode="load"
           onClose={() => setResultFixture(null)}
           onSubmit={(payload) =>
             // s4c corrective: do NOT swallow a rejection — return the promise so
@@ -725,8 +728,9 @@ function Jornadas({
   );
 }
 
-/** Mounts the ResultModal for a fixture, resolving its home/away rosters. */
-function ResultModalFor({
+/** Mounts the ResultModal for a fixture, resolving its home/away rosters.
+ *  Kept (exported) for s6c to retire; s6a moved BOTH paths onto the wizard. */
+export function ResultModalFor({
   fixture,
   teamNameById,
   rostersFor,
@@ -788,16 +792,18 @@ function ResultModalFor({
 }
 
 /**
- * Mounts the "Acta del partido" wizard for a fixture on the LOAD path (s4c),
- * resolving its team names and home/away rosters exactly like `ResultModalFor`.
- * A scheduled fixture whose live match already finished opens PREFILLED (scores
- * + per-scorer TDs) via `actaPrefill(buildResultPrefill(...))`; correct-mode
- * prefill from the persisted snapshot lands in s6a.
+ * Mounts the "Acta del partido" wizard for a fixture, resolving its team names
+ * and home/away rosters exactly like `ResultModalFor`. The `mode` selects the
+ * prefill source (s6a): CORRECT reads the persisted `MatchResult.scores`
+ * snapshot (`actaPrefill(match.result.scores)`, MAW-9); LOAD keeps the
+ * finished-live prefill (`actaPrefill(buildResultPrefill(match.live))`). The
+ * wizard reads `initial` ONCE (the parent keys it per fixture).
  */
 function MatchActaWizardFor({
   fixture,
   teamNameById,
   rostersFor,
+  mode,
   onSubmit,
   onClose,
 }: {
@@ -807,12 +813,11 @@ function MatchActaWizardFor({
     { id: string; name: string }[],
     { id: string; name: string }[],
   ];
+  mode: "load" | "correct";
   onSubmit: (payload: ResultPayload) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [homeRoster, awayRoster] = rostersFor(fixture);
-  // Resolve the finished-live-match prefill from the fixture GET before mounting
-  // the wizard, so it reads `initial` ONCE (the parent keys it per fixture).
   const [initial, setInitial] = useState<ActaState | undefined>(undefined);
   const [ready, setReady] = useState(false);
 
@@ -821,7 +826,11 @@ function MatchActaWizardFor({
     getMatchDetail(fixture.leagueId, fixture.id)
       .then((match) => {
         if (cancelled) return;
-        if (match.live && match.live.status === "finished") {
+        if (mode === "correct") {
+          if (match.result?.scores) {
+            setInitial(actaPrefill(match.result.scores, match.result.weather));
+          }
+        } else if (match.live && match.live.status === "finished") {
           setInitial(actaPrefill(buildResultPrefill(match.live)));
         }
       })
@@ -832,14 +841,14 @@ function MatchActaWizardFor({
     return () => {
       cancelled = true;
     };
-  }, [fixture.leagueId, fixture.id]);
+  }, [fixture.leagueId, fixture.id, mode]);
 
   if (!ready) return null;
 
   return (
     <MatchActaWizard
       open
-      mode="load"
+      mode={mode}
       homeName={teamNameById.get(fixture.homeTeamId) ?? ""}
       awayName={teamNameById.get(fixture.awayTeamId) ?? ""}
       homeRoster={homeRoster}

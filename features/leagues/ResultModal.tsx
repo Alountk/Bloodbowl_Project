@@ -1,41 +1,8 @@
 import { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { FixtureDraft, ResultPayload } from "./api";
-
-/** A roster player reference (id + name) used to render per-player PE inputs. */
-export interface RosterPlayerRef {
-  id: string;
-  name: string;
-}
-
-/** The numeric PE action credits collected for one player in the result form. */
-export interface ResultPlayerDraft {
-  tds: number;
-  casualties: number;
-  completions: number;
-  interceptions: number;
-  fouls: number;
-  throwTeamMates: number;
-  landedSafe: number;
-}
-
-/** A casualty victim targeted by this team (victim's team + roster player id). */
-export interface ResultCasualtyDraft {
-  team: "home" | "away";
-  rosterPlayerId: string;
-}
-
-/** One team's in-progress result form state. */
-export interface ResultTeamDraft {
-  score: number;
-  ballHeld: boolean;
-  /** Per-player actions keyed by rosterPlayerId (every roster player present). */
-  players: Record<string, ResultPlayerDraft>;
-  /** Selected MJP nominations (≤ 6 unique roster player ids). */
-  mvpNominations: string[];
-  /** Casualty victims collected when any player on this team caused casualties. */
-  casualties: ResultCasualtyDraft[];
-}
+import type { RosterPlayerRef } from "./MatchResolveModal";
+import type { ResultPlayerDraft, ResultTeamDraft } from "./resultPrefill";
 
 const EMPTY_ACTIONS: ResultPlayerDraft = {
   tds: 0,
