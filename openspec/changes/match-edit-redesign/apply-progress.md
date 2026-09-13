@@ -608,5 +608,117 @@ public API and the `injuryRoll`/`permanentRoll` field names are unchanged.
   limitation, not a defect.
 - Step 6 remains a "se completa en una porción posterior" placeholder (s4a) — intentional.
 
+## Slice s4a — `StepRevisar` + shell submit (MAW-8)
+
+- **Branch**: `feat/match-edit-redesign-s4a`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main` (slice 4a of the re-forecast 13-slice plan; stacked on s3c)
+- **Boundary**: starts from the s3c wizard (Steps 0–5 real, Step 6 a placeholder); ends with Step 6
+  rendering the real `StepRevisar` and the footer offering a gated "Guardar acta" that invokes the
+  `onSubmit` prop with `buildActaPayload(state)`. The wizard is STILL not wired into the app
+  (`onSubmit` is a prop; wiring lands in s4c).
+- **Rollback boundary**: revert `features/leagues/acta/StepRevisar.tsx` (+ test) and the `step === 6`
+  branch + footer button + import in `MatchActaWizard.tsx` (+ the shell test cases). Steps 0–5
+  unaffected; no protected file (`MatchCard`/`LeagueDetail`/`ResultModal`/`MatchResolveModal`/
+  `liveStore`/route/`lib/rules/*`) touched.
+
+### Code commits
+
+- `f5c3b8e` — `feat(leagues): add Revisar step with save-block validations` (step + test).
+- `8ab1e2a` — `feat(leagues): wire the Revisar step and gated submit into the acta wizard` (shell + shell test).
+
+### THE critical forward dependency — how it is honoured
+
+- The S1 route requires, per team, EITHER a valid non-empty `mvp.grantee` OR exactly six nominations
+  (`parseTeamResult`: present-but-empty grantee → 400; absent grantee → six nominations required).
+  The wizard emits `mvp.grantee` with an EMPTY `nominations` array, so a team with no MVP selected
+  would make the POST receive a **400**.
+- Therefore `validateActa` blocks save unless **BOTH** hold: **Σ anotaciones == marcador** AND
+  **both teams have an MVP selected**. The step renders the failing reason in a `role="alert"`, and
+  the shell's "Guardar acta" button is `disabled` while `!validation.ok`.
+- **Σ anotaciones parity**: `sumAnotaciones` sums the SAME `aggregateActions` per-player TD rows the
+  payload emits, mirroring the server's `scoresMatchReportedTotals`, so the client block matches the
+  server's 400 exactly (a TD line with no player selected is not credited by either side).
+
+### Completed Tasks
+
+- [x] 4.1 (s4a) `features/leagues/acta/StepRevisar.tsx` (MAW-8): readable summary of context, score,
+  actions, MVP, derived casualties with their 1D16/1D6 rolls and bands, and the winnings preview;
+  plus the validation state. `validateActa` (exported) blocks save unless Σ anotaciones == marcador
+  AND both MVPs are selected, naming each failing team. Shell renders the real step and gates the
+  footer "Guardar acta" (calls `onSubmit(buildActaPayload(state))` only when valid); "Atrás" and the
+  focus trap/Esc/focus-restore are unchanged.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 4.1 (step) | `StepRevisar.test.tsx` | Component (jsdom) | ✅ 52 acta tests | ✅ Written first (`Failed to resolve import "./StepRevisar"`) | ✅ 5/5 passed | ✅ Clean |
+| 4.1 (shell) | `MatchActaWizard.test.tsx` | Component (jsdom) | ✅ 14 shell tests | ✅ 3 failed (`Unable to find button "Guardar acta"`; step-6 still a placeholder) | ✅ 17/17 passed | ✅ Clean |
+
+- **Total tests written**: 8 (5 step + 3 shell); **passing**: 8/8 in the focused files.
+- **Layers used**: Component/jsdom (8), E2E (0 — out of s4a scope).
+- **Pure functions created**: 1 (`validateActa`, exported from the step; the summary reuses
+  `aggregateActions`, `planBajas` and `computeWinnings` — no formula or mapping is re-implemented).
+
+### SAVE_BLOCK_PROOF
+
+- **TD/score block**:
+  - `StepRevisar.test.tsx` → "blocks saving when Σ anotaciones differs from the marcador"
+    (asserts `validateActa(...).ok === false` and the `role="alert"` names `anotaciones` + the team).
+  - `MatchActaWizard.test.tsx` → "blocks submit when Σ anotaciones differs from the marcador"
+    (asserts `save.disabled === true`, `onSubmit` NOT called, alert names `anotaciones`).
+- **Missing-MVP block**:
+  - `StepRevisar.test.tsx` → "blocks saving when a team has no MVP selected"
+    (asserts `validateActa(...).ok === false` and the alert names `MVP` + the team).
+  - `MatchActaWizard.test.tsx` → "blocks submit while a team has no MVP selected"
+    (asserts `save.disabled === true`, `onSubmit` NOT called, alert names `MVP` + the team).
+- The valid-state counterpart ("renders the real Revisar step at step 6 and submits the built
+  payload") proves the block is not vacuous: the enabled button calls `onSubmit` once with
+  `home.mvp.grantee === "h1"` / `away.mvp.grantee === "a1"`.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta` → **8 files, 60 tests passed** |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues/acta/MatchActaWizard.test.tsx` → **17 passed (jsdom render of the real step 6 + gated submit)** |
+| Rollback boundary | Revert `acta/StepRevisar.tsx` (+ test) and the `step === 6` branch + footer button + import in `MatchActaWizard.tsx`; steps 0–5 unaffected. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **8 files, 60 passed**
+- `pnpm test` → **188 files, 2729 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s4a)
+
+- Step + test commit (`f5c3b8e`): `added=482 removed=0 total=482` (`StepRevisar.tsx` 315 + test 167).
+- Shell + test commit (`8ab1e2a`): `added=150 removed=13 total=163` (`MatchActaWizard.tsx` +49/−13,
+  test +101).
+- Combined: `added=632 removed=13 total=645` vs the ≈440 forecast (**1.47×**) → **`size:exception`**.
+  The diff was NOT minified; the step + its test are the cohesive MAW-8 unit and stay together.
+
+### Deviations from Design
+
+- `validateActa` and the summary live in `StepRevisar.tsx` (an in-scope file); the shell imports the
+  validator from the step. `actaState.ts` was NOT touched, so the slice stays inside its file set.
+- `onSubmit` is an OPTIONAL prop so every existing render site/test keeps compiling; the app wiring
+  lands in s4c. The footer both natively `disabled`s the button and re-guards inside the click handler.
+- The winnings preview reuses `computeWinnings` with a local `formatGold` (same presentation as
+  `StepFinal`); no winnings amount rides the payload.
+
+### Issues Found (s4a)
+
+- **size:exception**: 645 changed lines vs the ≈440 forecast (1.47×). Within the tasks.md s4a row's
+  pre-acknowledged `size:exception`.
+- **Step-2/Step-6 Σ display divergence (recorded, NOT fixed here)**: `StepAcciones` displays Σ
+  anotaciones counting TD lines even when no player is selected, while the server (and therefore
+  `StepRevisar`'s save-block) credits only per-player rows via `aggregateActions`. A playerless TD
+  line thus shows a Step-2 sum the save-block rejects. Fixing the Step-2 display is out of s4a scope
+  and would change `StepAcciones.tsx` + its test; recorded for a later slice.
+
+
 
 
