@@ -108,4 +108,36 @@ describe("result computation (match-result R1-R5)", () => {
   it("returns no outcomes for an empty victim list", () => {
     expect(resolveCasualtyOutcomes([], [])).toHaveLength(0);
   });
+
+  it("resolves the permanent attribute from the 1D6 for a permanent-band victim", () => {
+    const victims: CasualtyVictim[] = [{ team: "away", rosterPlayerId: "v1" }];
+    // 13-14 → Permanente; the 1D6 of 5 maps to the ag reduction.
+    const resolved = resolveCasualtyOutcomes(victims, [13], [5]);
+    expect(resolved[0].outcome).toEqual({ kind: "permanent", attribute: "ag" });
+  });
+
+  it("aligns the 1D6 permanent rolls with permanent-band victims only", () => {
+    const victims: CasualtyVictim[] = [
+      { team: "away", rosterPlayerId: "v1" }, // bruise — consumes no permanent roll
+      { team: "away", rosterPlayerId: "v2" }, // permanent → first 1D6 (3 → mv)
+      { team: "home", rosterPlayerId: "h1" }, // permanent → second 1D6 (6 → st)
+    ];
+    const resolved = resolveCasualtyOutcomes(victims, [3, 13, 14], [3, 6]);
+    expect(resolved[0].outcome).toEqual({ kind: "bruise" });
+    expect(resolved[1].outcome).toEqual({ kind: "permanent", attribute: "mv" });
+    expect(resolved[2].outcome).toEqual({ kind: "permanent", attribute: "st" });
+  });
+
+  it("carries no attribute for non-permanent victims and none without permanent rolls", () => {
+    const victims: CasualtyVictim[] = [
+      { team: "away", rosterPlayerId: "v1" },
+      { team: "home", rosterPlayerId: "h1" },
+    ];
+    const resolved = resolveCasualtyOutcomes(victims, [2, 16], [4, 1]);
+    expect(resolved[0].outcome).toEqual({ kind: "bruise" });
+    expect(resolved[1].outcome).toEqual({ kind: "dead" });
+    // Legacy call (no permanentRolls) leaves a permanent victim attribute-free.
+    const legacy = resolveCasualtyOutcomes([{ team: "away", rosterPlayerId: "v2" }], [13]);
+    expect(legacy[0].outcome).toEqual({ kind: "permanent" });
+  });
 });

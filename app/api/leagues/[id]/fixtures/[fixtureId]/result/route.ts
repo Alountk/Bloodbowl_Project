@@ -5,7 +5,8 @@ import { requirePermission } from "@/lib/devGuard";
 import { maybeCloseLeague } from "@/lib/standings";
 import {
   preMatchFanFactor,
-  postMatchFanFactor,
+  rollPostMatchFanFactor,
+  resolveInjury,
   computeWinnings,
   type MatchOutcome,
 } from "@/lib/rules";
@@ -26,6 +27,7 @@ import { clearSuspensionUpdate, injurySuspensionUpdate } from "@/lib/playerInjur
 import { ensurePlayersForTeam } from "@/lib/players";
 import { isJourneymanId } from "@/lib/journeymen";
 import { buildInducementSnapshot } from "@/lib/liveStore";
+import type { InducementSnapshot, InducementSnapshotSide } from "@/lib/liveStore";
 import { getRaceById } from "@/features/teams/data/races";
 import {
   computeRosterCostFromPlayers,
@@ -42,8 +44,42 @@ interface TeamResultBody {
   score: number;
   heldBall: boolean;
   players: ResultPlayerAction[];
+  /** Direct MVP selection (RAU-122); null on the legacy nominations path. */
+  grantee: string | null;
   nominations: string[];
   casualties: CasualtyVictim[];
+  // Wizard FF/rolls (RAU-122, all null on the legacy payload).
+  ff: number | null;
+  fanRoll: number | null;
+  injuryRoll: number[] | null;
+  permanentRoll: number[] | null;
+}
+
+/** Reads a finite number, else null (malformed payloads degrade, never throw). */
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Reads a number array, else null (non-numeric entries are dropped). */
+function numberArrayOrNull(value: unknown): number[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+}
+
+/** Parses one side's inducement snapshot ({ budget, cards }); null when empty/malformed. */
+function parseInducements(raw: unknown): InducementSnapshot | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const value = raw as { home?: unknown; away?: unknown };
+  if (!("home" in value) && !("away" in value)) return null;
+  const side = (s: unknown): InducementSnapshotSide | null => {
+    const candidate = s as Partial<InducementSnapshotSide> | null | undefined;
+    if (!candidate || typeof candidate.budget !== "number" || !Array.isArray(candidate.cards)) {
+      return null;
+    }
+    const cards = candidate.cards.filter((card) => card?.name && card.count > 0);
+    return cards.length > 0 ? { budget: candidate.budget, cards } : null;
+  };
+  return { home: side(value.home), away: side(value.away) };
 }
 
 /** Parses the team's reported casualty victims ({team, rosterPlayerId}).
@@ -87,9 +123,15 @@ function parseTeamResult(raw: unknown): TeamResultBody | null {
   if (typeof raw !== "object" || raw === null) return null;
   const team = raw as Record<string, unknown>;
   const score = team.score;
-  // The client contract (`ResultPayload`) sends `ballHeld`; treat an undefined
-  // legacy `heldBall` as absent so the boolean guard below rejects both.
-  const heldBall = typeof team.ballHeld === "boolean" ? team.ballHeld : team.heldBall;
+  // RAU-122: `neverHeld` (wizard) inverts to `heldBall`; otherwise the client
+  // `ballHeld` wins, falling back to the legacy `heldBall`.
+  const neverHeld = typeof team.neverHeld === "boolean" ? team.neverHeld : null;
+  const heldBall =
+    neverHeld !== null
+      ? !neverHeld
+      : typeof team.ballHeld === "boolean"
+        ? team.ballHeld
+        : team.heldBall;
   if (typeof score !== "number" || typeof heldBall !== "boolean") return null;
   const players = asPlayerActions(team.players);
   const mvp = team.mvp as Record<string, unknown> | undefined;
@@ -99,8 +141,27 @@ function parseTeamResult(raw: unknown): TeamResultBody | null {
         // RAU-13 defensive: a journeyman can never be the MJP grantee.
         .filter((n) => !isJourneymanId(n))
     : [];
-  if (nominations.length !== 6) return null;
-  return { score, heldBall, players, nominations, casualties: parseCasualties(team.casualties) };
+  // RAU-122 MVP rule: a non-empty valid `grantee` wins; a present-but-invalid
+  // (empty/journeyman) grantee is rejected (400); an ABSENT grantee requires
+  // exactly six legacy nominations (random-MVP stays out of scope).
+  const grantee = typeof mvp?.grantee === "string" ? mvp.grantee : null;
+  if (grantee != null) {
+    if (grantee === "" || isJourneymanId(grantee)) return null;
+  } else if (nominations.length !== 6) {
+    return null;
+  }
+  return {
+    score,
+    heldBall,
+    players,
+    grantee,
+    nominations,
+    casualties: parseCasualties(team.casualties),
+    ff: numberOrNull(team.ff),
+    fanRoll: numberOrNull(team.fanRoll),
+    injuryRoll: numberArrayOrNull(team.injuryRoll),
+    permanentRoll: numberArrayOrNull(team.permanentRoll),
+  };
 }
 
 function coachingOf(team: { coaching?: unknown }): CoachingStaff {
@@ -172,11 +233,47 @@ async function persistCasualtyOutcomes(
     await player.updateMany({
       where: { teamId, rosterPlayerId: c.rosterPlayerId },
       data: {
-        injuries: [...injuries, { kind: c.outcome.kind }] as never,
+        // RAU-122: a permanent band records the attribute reduced by the 1D6.
+        injuries: [
+          ...injuries,
+          { kind: c.outcome.kind, ...(c.outcome.attribute ? { attribute: c.outcome.attribute } : {}) },
+        ] as never,
         ...injurySuspensionUpdate(c.outcome.kind, row.alive),
       },
     });
   }
+}
+
+/** Resolves every reported victim (RAU-122): client 1D16/permanent rolls when
+ * supplied (aligned per side), server rolls otherwise. Returns the resolved
+ * casualties plus the per-side rolls the extended snapshot stores for prefill. */
+function resolveReportedCasualties(
+  home: TeamResultBody,
+  away: TeamResultBody,
+): {
+  resolved: ResolvedCasualty[];
+  home: { injuryRoll: number[]; permanentRoll: number[] };
+  away: { injuryRoll: number[]; permanentRoll: number[] };
+} {
+  const victims: CasualtyVictim[] = [...home.casualties, ...away.casualties];
+  const injuryRolls = [
+    ...home.casualties.map((_, i) => home.injuryRoll?.[i] ?? rollD16()),
+    ...away.casualties.map((_, i) => away.injuryRoll?.[i] ?? rollD16()),
+  ];
+  const clientPermanent = [...(home.permanentRoll ?? []), ...(away.permanentRoll ?? [])];
+  const permanentRolls: number[] = [];
+  const side = {
+    home: { injuryRoll: [] as number[], permanentRoll: [] as number[] },
+    away: { injuryRoll: [] as number[], permanentRoll: [] as number[] },
+  };
+  victims.forEach((victim, i) => {
+    side[victim.team].injuryRoll.push(injuryRolls[i]);
+    if (resolveInjury(injuryRolls[i], 0).kind !== "permanent") return;
+    const permanentRoll = clientPermanent[permanentRolls.length] ?? rollD6();
+    permanentRolls.push(permanentRoll);
+    side[victim.team].permanentRoll.push(permanentRoll);
+  });
+  return { resolved: resolveCasualtyOutcomes(victims, injuryRolls, permanentRolls), ...side };
 }
 
 /**
@@ -308,27 +405,29 @@ export async function POST(
   const awayTeamId = fixture.awayTeam.id;
   const winnerId = deriveWinnerId(home.score, away.score, homeTeamId, awayTeamId);
 
-  // Server-owned dice, applied through pure rules modules.
-  const preHomeFf = preMatchFanFactor({ roll3: rollD3(), dedicatedFans: dedicatedFansOf(fixture.homeTeam) });
-  const preAwayFf = preMatchFanFactor({ roll3: rollD3(), dedicatedFans: dedicatedFansOf(fixture.awayTeam) });
+  // RAU-122: winnings use the FINAL input FF as-is (no 1D3); a legacy payload
+  // without FF falls back to the server-rolled pre-match attendance factor.
+  const homeFf = home.ff ?? preMatchFanFactor({ roll3: rollD3(), dedicatedFans: dedicatedFansOf(fixture.homeTeam) });
+  const awayFf = away.ff ?? preMatchFanFactor({ roll3: rollD3(), dedicatedFans: dedicatedFansOf(fixture.awayTeam) });
   const homeOutcome: MatchOutcome = home.score > away.score ? "win" : home.score < away.score ? "loss" : "draw";
   const awayOutcome: MatchOutcome = away.score > home.score ? "win" : away.score < home.score ? "loss" : "draw";
-  const postHomeFf = postMatchFanFactor({ ff: preHomeFf, result: homeOutcome, roll6: rollD6() });
-  const postAwayFf = postMatchFanFactor({ ff: preAwayFf, result: awayOutcome, roll6: rollD6() });
-  const homeWinnings = computeWinnings({ ffHome: preHomeFf, ffAway: preAwayFf, ownTds: home.score, heldBall: home.heldBall });
-  const awayWinnings = computeWinnings({ ffHome: preAwayFf, ffAway: preHomeFf, ownTds: away.score, heldBall: away.heldBall });
+  // The post-match fan-factor roll runs against the dedicated-fans ATTRIBUTE
+  // (mirrors the live `resolutionFanRoll`); the client 1D6 is used as-is.
+  const homeFan = rollPostMatchFanFactor({ ff: dedicatedFansOf(fixture.homeTeam), result: homeOutcome, roll6: home.fanRoll ?? rollD6() });
+  const awayFan = rollPostMatchFanFactor({ ff: dedicatedFansOf(fixture.awayTeam), result: awayOutcome, roll6: away.fanRoll ?? rollD6() });
+  const homeWinnings = computeWinnings({ ffHome: homeFf, ffAway: awayFf, ownTds: home.score, heldBall: home.heldBall });
+  const awayWinnings = computeWinnings({ ffHome: awayFf, ffAway: homeFf, ownTds: away.score, heldBall: away.heldBall });
 
-  const homeMvp = computeMvpGrantee(home.nominations, rollD6());
-  const awayMvp = computeMvpGrantee(away.nominations, rollD6());
+  // RAU-122: a direct `mvp.grantee` wins; the legacy 6-nomination path keeps
+  // the server 1D6 (random-MVP stays out of scope).
+  const homeMvp = home.grantee ?? computeMvpGrantee(home.nominations, rollD6());
+  const awayMvp = away.grantee ?? computeMvpGrantee(away.nominations, rollD6());
   const homeAwards = computeTeamPeAwards(home.players, homeMvp);
   const awayAwards = computeTeamPeAwards(away.players, awayMvp);
 
-  // Server-owned 1D16 per reported victim resolves each injury band (bb2025-rules R5).
-  const allVictims: CasualtyVictim[] = [...home.casualties, ...away.casualties];
-  const resolvedCasualties = resolveCasualtyOutcomes(
-    allVictims,
-    allVictims.map(() => rollD16()),
-  );
+  // Client 1D16 / permanent 1D6 when supplied; server rolls otherwise.
+  const { resolved: resolvedCasualties, home: homeRolls, away: awayRolls } =
+    resolveReportedCasualties(home, away);
   const homeTeamVictims = resolvedCasualties.filter((c) => c.team === "home");
   const awayTeamVictims = resolvedCasualties.filter((c) => c.team === "away");
 
@@ -338,37 +437,49 @@ export async function POST(
   const awayTv = computeTeamTv(awayParts.rosterCost, awayParts.coachingCost, awayParts.valueBonus);
   const pettyCash = computePettyCash(homeTv, awayTv);
 
-  // LM-30/S3: when the fixture has a LiveMatch whose coach purchased a cart,
-  // the close snapshot carries the per-side inducements — the SAME shared
-  // helper `resolveLiveMatch`/`runWizardClose` use, so all three close paths
-  // persist the identical `scores.*.inducements` shape (parity). A fixture
-  // without a live row (classic/legacy result) has no cart → no key.
+  // LM-30/S3: a fixture with a LiveMatch uses the shared close-time cart
+  // snapshot (parity with resolveLiveMatch/runWizardClose); a non-live wizard
+  // result persists the payload's own per-side inducements (RAU-122).
+  const parsedInducements = parseInducements(raw.inducements);
   const inducements = fixture.liveMatch
     ? buildInducementSnapshot(fixture.liveMatch, fixture.homeTeam, fixture.awayTeam)
-    : { home: null, away: null };
+    : parsedInducements ?? { home: null, away: null };
+  const duration = numberOrNull(raw.duration);
 
-  // D4: the snapshot carries each side's winnings (per the MatchScoreboard
-  // contract) and the server-rolled MVP grantee ids so the match view renders
-  // them from persisted data (MV-2).
+  // D4/RAU-122: each side's winnings + MVP grantees, plus the full wizard input
+  // (FF, neverHeld, raw rolls, actions, duration) so correct mode can prefill.
   const scoreboard = {
     home: {
       score: home.score,
-      postFf: postHomeFf,
+      postFf: homeFan.after,
       winnings: homeWinnings,
+      ff: homeFf,
+      neverHeld: !home.heldBall,
+      fanRoll: homeFan.roll6,
+      injuryRoll: homeRolls.injuryRoll,
+      permanentRoll: homeRolls.permanentRoll,
+      actions: home.players,
       casualties: homeTeamVictims,
       pe: homeAwards,
       ...(inducements.home ? { inducements: inducements.home } : {}),
     },
     away: {
       score: away.score,
-      postFf: postAwayFf,
+      postFf: awayFan.after,
       winnings: awayWinnings,
+      ff: awayFf,
+      neverHeld: !away.heldBall,
+      fanRoll: awayFan.roll6,
+      injuryRoll: awayRolls.injuryRoll,
+      permanentRoll: awayRolls.permanentRoll,
+      actions: away.players,
       casualties: awayTeamVictims,
       pe: awayAwards,
       ...(inducements.away ? { inducements: inducements.away } : {}),
     },
     winnerId,
     mvp: { home: homeMvp, away: awayMvp },
+    duration,
   };
 
   await ensurePlayersForTeam(homeTeamId, Array.isArray(fixture.homeTeam.roster) ? (fixture.homeTeam.roster as unknown as PlayerEntry[]) : []);
@@ -453,6 +564,16 @@ export async function POST(
       await tx.team.update({
         where: { id: awayTeamId },
         data: { treasury: { increment: awayWinnings } },
+      });
+      // RAU-122: the non-live path applies the post-match dedicated-fans change
+      // exactly like the live resolution (mirrors `resolutionFanRoll`).
+      await tx.team.updateMany({
+        where: { id: homeTeamId },
+        data: { coaching: { ...coachingOf(fixture.homeTeam), dedicatedFans: homeFan.after } as never },
+      });
+      await tx.team.updateMany({
+        where: { id: awayTeamId },
+        data: { coaching: { ...coachingOf(fixture.awayTeam), dedicatedFans: awayFan.after } as never },
       });
       for (const award of homeAwards) {
         await tx.player.updateMany({
@@ -621,8 +742,8 @@ export async function PUT(
     away: { score: number; postFf?: number; winnings?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
     mvp?: { home: string; away: string };
   };
-  const homeMvp = computeMvpGrantee(home.nominations, rollD6());
-  const awayMvp = computeMvpGrantee(away.nominations, rollD6());
+  const homeMvp = home.grantee ?? computeMvpGrantee(home.nominations, rollD6());
+  const awayMvp = away.grantee ?? computeMvpGrantee(away.nominations, rollD6());
   const homeAwards = computeTeamPeAwards(home.players, homeMvp);
   const awayAwards = computeTeamPeAwards(away.players, awayMvp);
   const sumAwards = (list: { rosterPlayerId: string; pe: number }[]) =>
@@ -630,12 +751,9 @@ export async function PUT(
   const prevHomePe = sumAwards(prevScores?.home?.pe ?? []);
   const prevAwayPe = sumAwards(prevScores?.away?.pe ?? []);
 
-  // The correction re-resolves the reported victims (server-owned 1D16 per victim).
-  const allVictims: CasualtyVictim[] = [...home.casualties, ...away.casualties];
-  const resolvedCasualties = resolveCasualtyOutcomes(
-    allVictims,
-    allVictims.map(() => rollD16()),
-  );
+  // The correction re-resolves the reported victims (client 1D16/permanent 1D6
+  // when supplied, server rolls otherwise).
+  const { resolved: resolvedCasualties } = resolveReportedCasualties(home, away);
   const homeTeamVictims = resolvedCasualties.filter((c) => c.team === "home");
   const awayTeamVictims = resolvedCasualties.filter((c) => c.team === "away");
 

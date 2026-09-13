@@ -5,8 +5,10 @@ import {
   awardPeForActions,
   selectMvpWinner,
   resolveInjury,
+  permanentAttribute,
   type PlayerActions,
   type InjuryOutcome,
+  type PermanentAttribute,
 } from "./rules";
 
 /** Re-exported PE award constants for the result route. */
@@ -104,9 +106,10 @@ export interface CasualtyVictim {
   rosterPlayerId: string;
 }
 
-/** A victim with its server-resolved rulebook injury band. */
+/** A victim with its server-resolved rulebook injury band. A permanent band
+ * additionally carries the reduced attribute resolved from the separate 1D6. */
 export interface ResolvedCasualty extends CasualtyVictim {
-  outcome: InjuryOutcome;
+  outcome: InjuryOutcome & { attribute?: PermanentAttribute };
 }
 
 /**
@@ -117,13 +120,24 @@ export interface ResolvedCasualty extends CasualtyVictim {
  * Reuses the rulebook `resolveInjury` band (bb2025-rules R5); the LMC +1
  * permanent modifier is only meaningful with victim identity and is applied by
  * the caller when a victim carries a previous permanent injury (0 here).
+ *
+ * `permanentRolls` (optional) carries the 1D6 attribute rolls, ONE PER
+ * PERMANENT-BAND VICTIM in victim order — a non-permanent victim consumes none.
+ * When supplied, a permanent victim's `outcome.attribute` is set via
+ * `permanentAttribute()`; when omitted (legacy callers) no attribute is added.
  */
 export function resolveCasualtyOutcomes(
   victims: readonly CasualtyVictim[],
   rolls: readonly number[],
+  permanentRolls?: readonly number[],
 ): ResolvedCasualty[] {
-  return victims.map((victim, i) => ({
-    ...victim,
-    outcome: resolveInjury(rolls[i] ?? 0, 0),
-  }));
+  let permanentIndex = 0;
+  return victims.map((victim, i) => {
+    const outcome = resolveInjury(rolls[i] ?? 0, 0);
+    if (outcome.kind !== "permanent") return { ...victim, outcome };
+    const roll = permanentRolls?.[permanentIndex];
+    permanentIndex += 1;
+    if (roll == null) return { ...victim, outcome };
+    return { ...victim, outcome: { ...outcome, attribute: permanentAttribute(roll) } };
+  });
 }
