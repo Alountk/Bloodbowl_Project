@@ -1,6 +1,12 @@
 "use client";
 
-import { ACTA_WEATHER_OPTIONS, type ActaState, type ActaTeamDraft } from "./actaState";
+import { useI18n } from "@/lib/i18n";
+import {
+  ACTA_WEATHER_OPTIONS,
+  weatherOptionLabel,
+  type ActaState,
+  type ActaTeamDraft,
+} from "./actaState";
 
 export interface StepContextoProps {
   state: ActaState;
@@ -21,6 +27,7 @@ export function StepContexto({
   homeName,
   awayName,
 }: StepContextoProps) {
+  const { t } = useI18n();
   const setTeam = (side: "home" | "away", patch: Partial<ActaTeamDraft>) => {
     if (side === "home") {
       onChange({ ...state, home: { ...state.home, ...patch } });
@@ -38,7 +45,7 @@ export function StepContexto({
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className={labelClass}>
-          Clima
+          {t("acta.contexto.weather")}
           <select
             value={state.weather}
             onChange={(event) => onChange({ ...state, weather: event.target.value })}
@@ -46,14 +53,14 @@ export function StepContexto({
           >
             {ACTA_WEATHER_OPTIONS.map((weather) => (
               <option key={weather} value={weather}>
-                {weather}
+                {weatherOptionLabel(weather, t)}
               </option>
             ))}
           </select>
         </label>
 
         <label className={labelClass}>
-          Duración (minutos)
+          {t("acta.contexto.duration")}
           <input
             type="number"
             min={0}
@@ -69,7 +76,7 @@ export function StepContexto({
         </label>
 
         <label className={labelClass}>
-          Factor fan · {homeName}
+          {t("acta.contexto.ff", { team: homeName })}
           <input
             type="number"
             min={0}
@@ -85,7 +92,7 @@ export function StepContexto({
         </label>
 
         <label className={labelClass}>
-          Factor fan · {awayName}
+          {t("acta.contexto.ff", { team: awayName })}
           <input
             type="number"
             min={0}
@@ -101,11 +108,11 @@ export function StepContexto({
 
       <fieldset className="border border-border p-3">
         <legend className="px-1 text-[10px] font-bold uppercase tracking-[0.06em] text-slate">
-          Incentivos
+          {t("acta.contexto.inducements")}
         </legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>
-            Incentivos · {homeName}
+            {t("acta.contexto.inducementsTeam", { team: homeName })}
             <input
               type="number"
               min={0}
@@ -117,7 +124,7 @@ export function StepContexto({
             />
           </label>
           <label className={labelClass}>
-            Incentivos · {awayName}
+            {t("acta.contexto.inducementsTeam", { team: awayName })}
             <input
               type="number"
               min={0}
@@ -141,10 +148,10 @@ export function StepContexto({
                 setTeam("home", { neverHeld: event.target.checked })
               }
             />
-            {homeName} NUNCA tuvo el balón
+            {t("acta.neverHeld", { team: homeName })}
           </label>
           <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase text-slate">
-            +1 ganancias
+            {t("acta.contexto.neverHeldBonus")}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -156,10 +163,10 @@ export function StepContexto({
                 setTeam("away", { neverHeld: event.target.checked })
               }
             />
-            {awayName} NUNCA tuvo el balón
+            {t("acta.neverHeld", { team: awayName })}
           </label>
           <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase text-slate">
-            +1 ganancias
+            {t("acta.contexto.neverHeldBonus")}
           </span>
         </div>
       </div>

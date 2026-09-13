@@ -1,11 +1,13 @@
 "use client";
 
 import { PE_MVP } from "@/lib/rules";
-import { permanentAttribute, type InjuryOutcomeKind } from "@/lib/rules/injuries";
+import { permanentAttribute } from "@/lib/rules/injuries";
 import { computeWinnings } from "@/lib/rules/winnings";
+import { useI18n } from "@/lib/i18n";
 import type { RosterPlayerRef } from "../MatchResolveModal";
 import {
   aggregateActions,
+  weatherOptionLabel,
   type ActaActionKind,
   type ActaState,
   type ActaTeamDraft,
@@ -27,31 +29,20 @@ import { planBajas, type BajasCasualty } from "./bajasPlan";
  * would make the POST receive a 400 (absent grantee → six nominations required).
  */
 
-/** Spanish rulebook labels for the 1D16 injury bands (presentation only). */
-const BAND_LABELS: Record<InjuryOutcomeKind, string> = {
-  bruise: "Magullado",
-  apaleado: "Apaleado",
-  grave: "Herida grave",
-  permanent: "Permanente",
-  dead: "Muerto",
-};
+/** The translator shape pure helpers receive — never the dictionary directly. */
+type Translate = (key: string, params?: Record<string, string | number>) => string;
 
-/** Spanish labels for the Acciones action kinds (presentation only). */
-const ACTION_LABELS: Record<ActaActionKind, string> = {
-  td: "Anotación",
-  casualty: "Baja causada",
-  completion: "Pase completo",
-  interception: "Intercepción",
-  foul: "Falta",
-  throwTeamMate: "Lanzar compañero",
-  landedSafe: "Aterrizar sano",
-};
+/** A team-specific reason the acta cannot be saved yet, as an i18n key. */
+export interface ActaValidationError {
+  key: string;
+  params?: Record<string, string | number>;
+}
 
 /** The result of validating the acta before saving. */
 export interface ActaValidation {
   ok: boolean;
-  /** Human-readable, team-specific reasons the acta cannot be saved yet. */
-  errors: string[];
+  /** Team-specific reasons the acta cannot be saved yet (translated at render). */
+  errors: ActaValidationError[];
   /** Home Σ anotaciones as the server validates it (per-player TD credits). */
   homeTds: number;
   /** Away Σ anotaciones as the server validates it. */
@@ -79,20 +70,26 @@ export function validateActa(
 ): ActaValidation {
   const homeTds = sumAnotaciones(state.home);
   const awayTds = sumAnotaciones(state.away);
-  const errors: string[] = [];
+  const errors: ActaValidationError[] = [];
 
   if (homeTds !== state.home.score) {
-    errors.push(
-      `Σ anotaciones de ${homeName}: ${homeTds} · marcador: ${state.home.score}. Deben coincidir.`,
-    );
+    errors.push({
+      key: "acta.validate.sumMismatch",
+      params: { team: homeName, tds: homeTds, score: state.home.score },
+    });
   }
   if (awayTds !== state.away.score) {
-    errors.push(
-      `Σ anotaciones de ${awayName}: ${awayTds} · marcador: ${state.away.score}. Deben coincidir.`,
-    );
+    errors.push({
+      key: "acta.validate.sumMismatch",
+      params: { team: awayName, tds: awayTds, score: state.away.score },
+    });
   }
-  if (!state.home.mvpGrantee) errors.push(`Falta el MVP de ${homeName}.`);
-  if (!state.away.mvpGrantee) errors.push(`Falta el MVP de ${awayName}.`);
+  if (!state.home.mvpGrantee) {
+    errors.push({ key: "acta.validate.missingMvp", params: { team: homeName } });
+  }
+  if (!state.away.mvpGrantee) {
+    errors.push({ key: "acta.validate.missingMvp", params: { team: awayName } });
+  }
 
   return { ok: errors.length === 0, errors, homeTds, awayTds };
 }
@@ -105,9 +102,9 @@ export interface StepRevisarProps {
   awayRoster: RosterPlayerRef[];
 }
 
-/** Spanish thousands grouping ("65.000"), deterministic across environments. */
-function formatGold(amount: number): string {
-  return `${amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} M.O.`;
+/** Thousands grouping ("65.000") plus the resolved currency unit. */
+function formatGold(amount: number, unit: string): string {
+  return `${amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} ${unit}`;
 }
 
 /** A team's FINAL FF, or a dash while still unset (the server would roll it). */
@@ -139,27 +136,51 @@ function describeLine(
   teamName: string,
   ownRoster: RosterPlayerRef[],
   rivalRoster: RosterPlayerRef[],
+  t: Translate,
 ): string {
   const actor = nameOf(ownRoster, line.rosterPlayerId);
   if (line.kind === "casualty") {
-    return `${teamName}: ${actor} — baja causada a ${nameOf(rivalRoster, line.victimRosterPlayerId ?? "")}`;
+    return t("acta.revisar.lineCasualty", {
+      team: teamName,
+      actor,
+      victim: nameOf(rivalRoster, line.victimRosterPlayerId ?? ""),
+    });
   }
-  return `${teamName}: ${actor} — ${ACTION_LABELS[line.kind]} ×${Math.max(0, line.quantity)}`;
+  return t("acta.revisar.lineAction", {
+    team: teamName,
+    actor,
+    action: t(`acta.accion.${line.kind}`),
+    qty: Math.max(0, line.quantity),
+  });
 }
 
 function describeCasualty(
   casualty: BajasCasualty,
   victimName: string,
   victimTeamName: string,
+  t: Translate,
 ): string {
   const roll = casualty.injuryRoll == null ? "—" : String(casualty.injuryRoll);
-  const band = casualty.band ? BAND_LABELS[casualty.band] : "sin tirada";
+  const band = casualty.band
+    ? t(`acta.band.${casualty.band}`)
+    : t("acta.revisar.noRoll");
   const attribute =
     casualty.permanentRoll == null ? null : permanentAttribute(casualty.permanentRoll);
   const permanent = attribute
-    ? ` · 1D6 ${casualty.permanentRoll} · atributo −${attribute.toUpperCase()}`
+    ? t("acta.revisar.casualtyPermanent", {
+        // `attribute` is non-null only when `permanentRoll` is set.
+        roll: casualty.permanentRoll ?? "—",
+        attr: attribute.toUpperCase(),
+      })
     : "";
-  return `Baja sobre ${victimName} (${victimTeamName}) — 1D16 ${roll} · ${band}${permanent}`;
+  return (
+    t("acta.revisar.casualtyLine", {
+      victim: victimName,
+      team: victimTeamName,
+      roll,
+      band,
+    }) + permanent
+  );
 }
 
 /**
@@ -174,6 +195,7 @@ export function StepRevisar({
   homeRoster,
   awayRoster,
 }: StepRevisarProps) {
+  const { t } = useI18n();
   const validation = validateActa(state, homeName, awayName);
   const plan = planBajas(state);
   const casualties = [...plan.home, ...plan.away];
@@ -186,28 +208,33 @@ export function StepRevisar({
   const ddClass = "mt-0.5 text-sm text-ink";
 
   return (
-    <section aria-label="Resumen del acta" className="space-y-4">
-      <p className="text-[11px] text-slate">
-        Revisa el acta completa. El guardado se bloquea si las anotaciones no
-        cuadran con el marcador o si falta el MVP de algún equipo.
-      </p>
+    <section aria-label={t("acta.revisar.aria")} className="space-y-4">
+      <p className="text-[11px] text-slate">{t("acta.revisar.intro")}</p>
 
       <dl className="space-y-3">
         <div>
-          <dt className={dtClass}>Contexto</dt>
+          <dt className={dtClass}>{t("acta.step.contexto")}</dt>
           <dd className={ddClass}>
-            {state.weather}
-            {state.duration !== undefined ? ` · ${state.duration} min` : ""}
-            {` · FF ${ffText(state.home)} / ${ffText(state.away)}`}
-            {` · incentivos ${formatGold(state.home.inducements)} / ${formatGold(state.away.inducements)}`}
+            {weatherOptionLabel(state.weather, t)}
+            {state.duration !== undefined
+              ? ` · ${t("acta.revisar.duration", { minutes: state.duration })}`
+              : ""}
+            {` · ${t("acta.revisar.ff", {
+              home: ffText(state.home),
+              away: ffText(state.away),
+            })}`}
+            {` · ${t("acta.revisar.incentives", {
+              home: formatGold(state.home.inducements, t("acta.gold")),
+              away: formatGold(state.away.inducements, t("acta.gold")),
+            })}`}
             {neverHeld.length > 0
-              ? ` · ${neverHeld.join(", ")} NUNCA tuvo el balón (+1)`
+              ? ` · ${t("acta.revisar.neverHeldSummary", { teams: neverHeld.join(", ") })}`
               : ""}
           </dd>
         </div>
 
         <div>
-          <dt className={dtClass}>Marcador</dt>
+          <dt className={dtClass}>{t("acta.step.marcador")}</dt>
           <dd className={ddClass}>
             <b>
               {homeName} {state.home.score} : {state.away.score} {awayName}
@@ -216,20 +243,20 @@ export function StepRevisar({
         </div>
 
         <div>
-          <dt className={dtClass}>Acciones</dt>
+          <dt className={dtClass}>{t("acta.step.acciones")}</dt>
           <dd className={ddClass}>
             {state.home.actions.length === 0 && state.away.actions.length === 0 ? (
-              "Sin acciones registradas."
+              t("acta.revisar.noActions")
             ) : (
               <ul className="space-y-0.5">
                 {state.home.actions.map((line) => (
                   <li key={`home-${line.id}`}>
-                    {describeLine(line, homeName, homeRoster, awayRoster)}
+                    {describeLine(line, homeName, homeRoster, awayRoster, t)}
                   </li>
                 ))}
                 {state.away.actions.map((line) => (
                   <li key={`away-${line.id}`}>
-                    {describeLine(line, awayName, awayRoster, homeRoster)}
+                    {describeLine(line, awayName, awayRoster, homeRoster, t)}
                   </li>
                 ))}
               </ul>
@@ -238,18 +265,19 @@ export function StepRevisar({
         </div>
 
         <div>
-          <dt className={dtClass}>MVP</dt>
+          <dt className={dtClass}>{t("acta.step.mvp")}</dt>
           <dd className={ddClass}>
             <b>{nameOf(homeRoster, state.home.mvpGrantee)}</b> /{" "}
-            <b>{nameOf(awayRoster, state.away.mvpGrantee)}</b> (★{PE_MVP} PE cada uno)
+            <b>{nameOf(awayRoster, state.away.mvpGrantee)}</b>{" "}
+            {t("acta.revisar.mvpLine", { pe: PE_MVP })}
           </dd>
         </div>
 
         <div>
-          <dt className={dtClass}>Bajas</dt>
+          <dt className={dtClass}>{t("acta.step.bajas")}</dt>
           <dd className={ddClass}>
             {casualties.length === 0 ? (
-              "Sin bajas causadas."
+              t("acta.revisar.noCasualties")
             ) : (
               <ul className="space-y-0.5">
                 {casualties.map((casualty) => {
@@ -263,6 +291,7 @@ export function StepRevisar({
                         casualty,
                         nameOf(victimRoster, casualty.victimRosterPlayerId),
                         victimTeamName,
+                        t,
                       )}
                     </li>
                   );
@@ -273,31 +302,47 @@ export function StepRevisar({
         </div>
 
         <div>
-          <dt className={dtClass}>Final</dt>
+          <dt className={dtClass}>{t("acta.step.final")}</dt>
           <dd className={ddClass}>
-            Ganancias{" "}
+            {t("acta.final.winnings")}{" "}
             <b>
-              {formatWinnings(winningsFor(state.home, state.away, validation.homeTds))} /{" "}
-              {formatWinnings(winningsFor(state.away, state.home, validation.awayTds))}
+              {formatWinnings(
+                winningsFor(state.home, state.away, validation.homeTds),
+                t("acta.gold"),
+              )}{" "}
+              /{" "}
+              {formatWinnings(
+                winningsFor(state.away, state.home, validation.awayTds),
+                t("acta.gold"),
+              )}
             </b>
-            {` · Afición 1D6 ${state.home.fanRoll ?? "—"} / ${state.away.fanRoll ?? "—"}`}
+            {` · ${t("acta.revisar.aficion", {
+              home: state.home.fanRoll ?? "—",
+              away: state.away.fanRoll ?? "—",
+            })}`}
           </dd>
         </div>
 
         <div>
-          <dt className={dtClass}>Validación</dt>
+          <dt className={dtClass}>{t("acta.revisar.validacion")}</dt>
           <dd className={ddClass}>
             {validation.ok ? (
               <span>
-                ✓ Σ anotaciones = marcador ({validation.homeTds} = {state.home.score} ·{" "}
-                {validation.awayTds} = {state.away.score}) · MVP completo
+                {t("acta.revisar.validationOk", {
+                  homeTds: validation.homeTds,
+                  homeScore: state.home.score,
+                  awayTds: validation.awayTds,
+                  awayScore: state.away.score,
+                })}
               </span>
             ) : (
               <div role="alert" className="border border-red bg-panel px-3 py-2">
-                <p className="font-bold text-red">No se puede guardar el acta:</p>
+                <p className="font-bold text-red">{t("acta.revisar.validationTitle")}</p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-4 text-red">
                   {validation.errors.map((error) => (
-                    <li key={error}>{error}</li>
+                    <li key={`${error.key}:${JSON.stringify(error.params ?? {})}`}>
+                      {t(error.key, error.params)}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -310,6 +355,6 @@ export function StepRevisar({
 }
 
 /** Renders a winnings preview amount, or a dash while an FF is still unset. */
-function formatWinnings(amount: number | null): string {
-  return amount == null ? "—" : formatGold(amount);
+function formatWinnings(amount: number | null, unit: string): string {
+  return amount == null ? "—" : formatGold(amount, unit);
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { I18nProvider } from "@/lib/i18n";
 import type { RosterPlayerRef } from "../MatchResolveModal";
 import {
   type ActaActionLine,
@@ -163,5 +164,23 @@ describe("StepRevisar — summary", () => {
     expect(summary.textContent).toContain("★4 PE");
     expect(summary.textContent).toContain("55.000");
     expect(summary.textContent).toContain("45.000");
+  });
+
+  it("renders the weather label from the active locale, keeping the persisted value (s6b corrective)", () => {
+    render(
+      <I18nProvider initialLocale="en">
+        <StepRevisar
+          state={validState()}
+          homeName={homeName}
+          awayName={awayName}
+          homeRoster={homeRoster}
+          awayRoster={awayRoster}
+        />
+      </I18nProvider>,
+    );
+
+    const summary = screen.getByRole("region", { name: "Match report summary" });
+    expect(summary.textContent).toContain("Perfect");
+    expect(summary.textContent).not.toContain("Perfecto");
   });
 });
