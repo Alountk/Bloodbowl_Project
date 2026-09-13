@@ -40,14 +40,14 @@ Chain strategy: stacked-to-main
 
 ## Phase 2 (S2): Wizard shell + Steps 0–2
 
-- [ ] 2.1 Create `features/leagues/acta/actaState.ts`: `ActaState`, `ActaTeamDraft`, `emptyActaState()`, `buildActaPayload()`, and `actaPrefill(snapshot)` skeleton (single prefill home).
-- [ ] 2.2 Create `features/leagues/acta/deriveCasualties.ts`: pure `deriveCasualtyEntries({home,away})` mapping Step-2 casualty counts → victims (no re-entry).
-- [ ] 2.3 RED then GREEN `features/leagues/acta/actaState.test.ts` + `deriveCasualties.test.ts`: payload assembly and counts→victims.
-- [ ] 2.4 Create `features/leagues/MatchActaWizard.tsx` shell: step nav `<nav aria-label="Acta del partido">` with `aria-current="step"`, focus trap, Esc close, focus restore, `role="dialog" aria-modal="true"` (mirror `ResultModal` L199).
-- [ ] 2.5 Create `features/leagues/acta/StepContexto.tsx` (MAW-2): weather, duration, per-team FF, inducements, "NUNCA tuvo el balón" checkbox.
-- [ ] 2.6 Create `features/leagues/acta/StepMarcador.tsx` (MAW-3): home/away score inputs.
-- [ ] 2.7 Create `features/leagues/acta/StepAcciones.tsx` (MAW-4): free-form player + action + quantity lines; casualties feed `deriveCasualtyEntries`.
-- [ ] 2.8 RED then GREEN `features/leagues/acta/MatchActaWizard.test.tsx`: step gating + Contexto/Marcador/Acciones capture.
+- [x] 2.1 Create `features/leagues/acta/actaState.ts`: `ActaState`, `ActaTeamDraft`, `emptyActaState()`, `buildActaPayload()`, and `actaPrefill(snapshot)` skeleton (single prefill home).
+- [x] 2.2 Create `features/leagues/acta/deriveCasualties.ts`: pure `deriveCasualtyEntries({home,away})` mapping Step-2 casualty counts → victims (no re-entry).
+- [x] 2.3 RED then GREEN `features/leagues/acta/actaState.test.ts` + `deriveCasualties.test.ts`: payload assembly and counts→victims.
+- [x] 2.4 Create `features/leagues/MatchActaWizard.tsx` shell: step nav `<nav aria-label="Acta del partido">` with `aria-current="step"`, focus trap, Esc close, focus restore, `role="dialog" aria-modal="true"` (mirror `ResultModal` L199).
+- [x] 2.5 Create `features/leagues/acta/StepContexto.tsx` (MAW-2): weather, duration, per-team FF, inducements, "NUNCA tuvo el balón" checkbox.
+- [x] 2.6 Create `features/leagues/acta/StepMarcador.tsx` (MAW-3): home/away score inputs.
+- [x] 2.7 Create `features/leagues/acta/StepAcciones.tsx` (MAW-4): free-form player + action + quantity lines; casualties feed `deriveCasualtyEntries`.
+- [x] 2.8 RED then GREEN `features/leagues/acta/MatchActaWizard.test.tsx`: step gating + Contexto/Marcador/Acciones capture.
 
 ## Phase 3 (S3): Steps 3–5
 
@@ -68,6 +68,7 @@ Chain strategy: stacked-to-main
 - [ ] 5.1 Modify route PUT (L618+): recompute winnings from corrected FF (`computeWinnings`), then `tx.team.update({ treasury: { increment: new − old } })` — no floor (negative allowed); extend `after` snapshot with recomputed winnings.
 - [ ] 5.2 Modify route PUT inducements (F1): add `parseInducements(raw.inducements)` helper; wizard input wins → else fall back to `prevScores.*.inducements` → else omit key (never drop a persisted inducement).
 - [ ] 5.3 RED then GREEN `route.test.ts`: correction recomputes winnings + treasury delta; negative delta allowed; inducements preserved; `MatchResultCorrection` before/after audit records actor.
+- [ ] 5.4 DEFERRED from the S2 corrective pass — resolve the **inducement persistence gap** (belongs to S4/S5, no payload shape invented in S2): `buildActaPayload` always emits `cards: []` and the route's `parseInducements` returns null when `cards.length === 0`, so inducements never persist. Genuine DESIGN GAP: how does "money spent per team" in Step 0 map to the `{budget, cards}` snapshot for a non-live match? Decide the payload shape (or persist budget-only) before wiring the wizard entry point.
 
 ## Phase 6 (S6): Prefill + i18n + e2e + retire `ResultModal`
 
