@@ -448,5 +448,74 @@ route's `resolveReportedCasualties`. `setInjuryRoll`/`setPermanentRoll` write to
   as two stacked PRs (322 + 430).
 - Steps 5–6 remain "se completa en una porción posterior" placeholders (s3c/s4a) — intentional.
 
+### s3b corrective pass (post-verify, bounded)
+
+The independent verify FAILED s3b with one blocking defect (reachable by normal form use, not a
+crafted payload). This pass fixes exactly that defect and closes the test blind spot that hid it;
+no re-architecture, no reformatting, and no protected file (`MatchCard`/`LeagueDetail`/
+`ResultModal`/`MatchResolveModal`/`lib/liveStore.ts`/`lib/rules/*`) was touched. `bajasPlan`'s
+public API and the `injuryRoll`/`permanentRoll` field names are unchanged.
+
+- **Mode**: Strict TDD (RED → GREEN) for FIX-1; FIX-2 is a coverage guard (see below).
+- **Code commits**: `3545b8f` — `fix(api): preserve sparse roll positions when parsing result
+  payloads` (route + route test); `2fe96e5` — `test(leagues): cover non-trailing casualty roll hole
+  in StepBajas`.
+
+#### FIX-1 (blocking) · Preserve roll positions through the parser
+
+- **Defect**: `numberArrayOrNull` in `app/api/.../result/route.ts` filtered non-numbers out, so a
+  `null` hole at a NON-trailing index collapsed and later values shifted down. A user who filled the
+  SECOND casualty's 1D16 first sent `[null, 13]`; the route parsed `[13]`, and casualty 0 (the WRONG
+  player) received `13` while casualty 1 got a server-rolled D16. Identical failure for
+  `permanentRoll`.
+- **What**: `numberArrayOrNull` now maps a non-numeric entry to an `undefined` HOLE, keeping the
+  array LENGTH and POSITIONS; `TeamResultBody.injuryRoll`/`permanentRoll` are typed
+  `(number | undefined)[] | null`. The per-index `?? rollD16()` / `?? rollD6()` fallbacks then roll
+  the unset slot instead of shifting later values. DENSE numeric arrays parse exactly as before.
+- **Where**: `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts` L54–55 (type) and L70–76
+  (`numberArrayOrNull`). No other route behavior changed.
+- **Tests**: `route.test.ts` — "keeps a non-trailing 1D16 hole so a later client roll lands on its
+  own victim" and "keeps a non-trailing 1D6 permanent hole so a later client roll lands on its own
+  victim". The existing route tests only exercised DENSE arrays, so this path was uncovered.
+- **RED**: `2 failed | 50 passed` — `expected 'permanent' to be 'bruise'` (av1 wrongly received the
+  client 13) and `expected { attribute: 'ag' } to deeply equal { attribute: 'mv' }` (the permanent
+  hole shifted onto the first victim). **GREEN**: `52 passed`.
+
+#### FIX-2 · Close the StepBajas test blind spot
+
+- **What**: `StepBajas.test.tsx` gained a two-casualty adversarial case (home causes TWO casualties
+  to away AND away causes one to home, so home's slot 1 is NON-trailing). It fills only the SECOND
+  casualty's 1D16 and asserts the later value stays at its own index (`home.injuryRoll[1] === 13`),
+  index 0 stays a hole, and the first victim's input is untouched.
+- **Where**: `features/leagues/acta/StepBajas.test.tsx` (new `homeTwoAwayOne` fixture + the
+  "keeps a later casualty's roll at its own index when an earlier one is left unset" case).
+- **RED/GREEN**: this case is **GREEN on arrival** (`7 passed`). The client `withIndex` already
+  emits the positional wire payload `[null, 13]` — the defect lived ONLY in the route parser, which
+  FIX-1 corrects. The test closes the coverage blind spot (the previous single-casualty case could
+  not even express a non-trailing hole) and guards the client contract; it is not a client fix.
+
+#### FIX-3 · Known positional hazard (recorded, NOT fixed here)
+
+- **Hazard**: the result payload is POSITIONAL. Deleting an EARLIER casualty line in Step 2 shifts
+  every remaining `injuryRoll`/`permanentRoll` entry onto a different victim, because roll slots are
+  aligned by array index with the derived casualty list and the roll arrays carry no stable victim
+  key. FIX-1 makes the parser honor positions; it does not make positions survive a reorder/delete.
+- **Owner**: a later slice (candidate s3c/s6a, where the wizard re-derives victims and the prefill
+  reconstructs them). Do NOT fix in this pass.
+
+#### Verification (s3b corrective pass — exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **6 files, 46 passed**
+- `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **52 passed**
+- `pnpm test` → **186 files, 2715 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+#### Changed Lines (s3b corrective pass)
+
+- Code only (`route.ts`): `added=13 removed=5 total=18`.
+- Tests: `route.test.ts` `+83`; `StepBajas.test.tsx` `+48`.
+- Overall: `added=144 removed=5 total=149` (under the 400-line budget).
+
 
 
