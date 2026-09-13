@@ -1302,11 +1302,71 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     );
   });
 
-  it("LM-30/S3: PUT copies the prior per-side inducements forward — a correction never drops the chips", async () => {
+  it("RAU-122/s5b: PUT persists the wizard-INPUT inducements — input wins over the prior snapshot", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    // The played report carries the away side's prior inducement snapshot, but
+    // the corrected payload supplies DIFFERENT wizard-input inducements. The
+    // payload WINS: the prior snapshot is replaced, not copied forward.
+    const played = playedFixture();
+    played.result.scores.away.inducements = {
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    };
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", {
+      ...validBody,
+      inducements: {
+        home: { budget: 10_000, cards: [] },
+        away: { budget: 25_000, cards: [] },
+      },
+    });
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    // The payload's budget-only snapshot REPLACES the prior 150k Mago cart.
+    expect(updateArg.data.scores.away.inducements).toEqual({ budget: 25_000, cards: [] });
+    expect(updateArg.data.scores.home.inducements).toEqual({ budget: 10_000, cards: [] });
+  });
+
+  it("RAU-122/s5b: PUT resolves inducements PER SIDE — input wins on one side, the snapshot survives on the other", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.away.inducements = {
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    };
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    // The payload supplies ONLY the home side (with real cards); away is omitted.
+    const res = await callRoute("PUT", {
+      ...validBody,
+      inducements: { home: { budget: 40_000, cards: [{ name: "Chef", count: 1 }] } },
+    });
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    // home: the payload's real-card snapshot wins.
+    expect(updateArg.data.scores.home.inducements).toEqual({
+      budget: 40_000,
+      cards: [{ name: "Chef", count: 1 }],
+    });
+    // away: the payload omits it → the prior cart survives untouched.
+    expect(updateArg.data.scores.away.inducements).toEqual({
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    });
+  });
+
+  it("RAU-122/s5b: PUT falls back to the prior per-side inducements when the payload omits them — a correction never drops the chips", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
     // The played report already carries the away side's inducement snapshot
-    // (persisted by the S3 close). The correction must copy it forward exactly
-    // as it does winnings (forward-only, omit-if-absent).
+    // (persisted by the S3 close). A payload that OMITS inducements must KEEP
+    // that snapshot (fallback), never drop it and never invent the other side.
     const played = playedFixture();
     played.result.scores.away.inducements = {
       budget: 150_000,
@@ -1335,10 +1395,10 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     expect(updateArg.data.scores.home).not.toHaveProperty("inducements");
   });
 
-  it("LM-30/S3: PUT leaves legacy rows WITHOUT per-side inducements unaffected (omit-if-absent)", async () => {
+  it("RAU-122/s5b: PUT omits inducements for legacy rows with neither input nor snapshot (omit-if-absent)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
-    // A pre-S3 snapshot has no inducements keys at all; the correction must
-    // not invent them (single-row pettyCash fallback stays).
+    // A pre-S3 snapshot has no inducements keys at all AND the payload omits
+    // them; the correction must not invent them (single-row pettyCash stays).
     prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
     stubMvpRolls();
     prismaMock.player.updateMany.mockResolvedValue({ count: 1 });

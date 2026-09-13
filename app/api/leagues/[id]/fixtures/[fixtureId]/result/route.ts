@@ -812,9 +812,12 @@ export async function PUT(
   // the payload omits preserves the previously persisted value instead of
   // nulling it. `neverHeld` is always derived from the mandatory ball-held input
   // (`heldBall`/`ballHeld`/`neverHeld`), so it is never omitted.
-  // LM-30/S3: the per-side inducements still copy forward — a correction must
-  // never drop the chips a prior report persisted; rows without them stay
-  // untouched (omit-if-absent). (Inducement precedence is s5b.)
+  // RAU-122/s5b F1: inducement precedence on correction — the wizard INPUT
+  // (prefilled from the snapshot) wins; a payload that omits it falls back to
+  // the previously persisted per-side snapshot (a correction must never DROP a
+  // persisted inducement); when neither exists (legacy single-row `pettyCash`),
+  // the key is omitted — no invention. The live POST path keeps its cart snapshot.
+  const ind = parseInducements(raw.inducements);
   const rawHome = (raw.home ?? {}) as Record<string, unknown>;
   const rawAway = (raw.away ?? {}) as Record<string, unknown>;
   const scoreboard = {
@@ -828,7 +831,11 @@ export async function PUT(
       injuryRoll: mergeRolls(homeRolls.injuryRoll, prevScores?.home?.injuryRoll),
       permanentRoll: mergeRolls(homeRolls.permanentRoll, prevScores?.home?.permanentRoll),
       actions: Array.isArray(rawHome.players) ? home.players : prevScores?.home?.actions,
-      ...(prevScores?.home?.inducements != null ? { inducements: prevScores.home.inducements } : {}),
+      ...(ind?.home != null
+        ? { inducements: ind.home }
+        : prevScores?.home?.inducements != null
+          ? { inducements: prevScores.home.inducements }
+          : {}),
       casualties: homeTeamVictims,
       pe: homeAwards,
     },
@@ -842,7 +849,11 @@ export async function PUT(
       injuryRoll: mergeRolls(awayRolls.injuryRoll, prevScores?.away?.injuryRoll),
       permanentRoll: mergeRolls(awayRolls.permanentRoll, prevScores?.away?.permanentRoll),
       actions: Array.isArray(rawAway.players) ? away.players : prevScores?.away?.actions,
-      ...(prevScores?.away?.inducements != null ? { inducements: prevScores.away.inducements } : {}),
+      ...(ind?.away != null
+        ? { inducements: ind.away }
+        : prevScores?.away?.inducements != null
+          ? { inducements: prevScores.away.inducements }
+          : {}),
       casualties: awayTeamVictims,
       pe: awayAwards,
     },
