@@ -347,4 +347,106 @@ players mapped to `{ id, name }`), so the wizard inherits the live-resolution pr
   (`grantee: null` → 400), so the wizard's s4a Revisar step must block save until both teams have a
   grantee — already captured as MAW-8/`StepRevisar` in the s4a plan; no change needed in s3a.
 
+## Slice s3b — `StepBajas` + `bajasPlan` + shell branch (MAW-6)
+
+- **Branch**: `feat/match-edit-redesign-s3b`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main` (slice 3b of the re-forecast 13-slice plan; stacked on s3a)
+- **Boundary**: starts from the s3a wizard (Steps 0–3 real); ends with Step 4 (Bajas) rendering the
+  derived read-only victim list + 1D16/permanent 1D6 inputs. Steps 5–6 stay placeholders (s3c/s4a).
+- **Rollback boundary**: revert `features/leagues/acta/bajasPlan.ts` (+ test), `acta/StepBajas.tsx`
+  (+ test) and the `step === 4` branch + import in `MatchActaWizard.tsx` (+ the shell test case).
+  Steps 0–3 and 5–6 unaffected; no protected file touched.
+
+### Code commits
+
+- `72545e7` — `feat(leagues): plan derived casualty rolls per causing team` (pure logic + test).
+- `97f4f9c` — `feat(leagues): add derived Bajas step with injury rolls` (UI + shell wiring + tests).
+
+### Completed Tasks
+
+- [x] 3.2 (s3b) `features/leagues/acta/bajasPlan.ts` (+ co-located test) binding each victim's
+  1D16/1D6 rolls to the **causing** team's draft, and `features/leagues/acta/StepBajas.tsx`
+  (MAW-6): derived read-only victims list; 1D16 per casualty + 1D6 only when the band is
+  Permanente; shell branch + shell test.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/acta/bajasPlan.ts` | Created | Pure planner: groups derived casualties by CAUSING team, resolves the band via `resolveInjury`, maps the compressed permanent index, and exposes `setInjuryRoll`/`setPermanentRoll` writing to the correct draft |
+| `features/leagues/acta/bajasPlan.test.ts` | Created | 7 unit tests: causing-team grouping (victim's team ≠ causing team), band resolution, compressed permanent index, correct-side writes |
+| `features/leagues/acta/StepBajas.tsx` | Created | MAW-6 step: read-only derived list per causing team; 1D16 input + 1D6 only for Permanente; band + attribute shown |
+| `features/leagues/acta/StepBajas.test.tsx` | Created | 6 component tests: read-only list, permanent gating, correct-side 1D16/1D6 binding, out-of-range clearing, empty state |
+| `features/leagues/MatchActaWizard.tsx` | Modified | `StepBajas` import + `step === 4` render branch (steps 5–6 untouched placeholders) |
+| `features/leagues/acta/MatchActaWizard.test.tsx` | Modified | New step-4 case: real Bajas step renders and derives the victim recorded in Step 2 |
+
+### THE alignment constraint — how it is resolved
+
+`deriveCasualtyEntries` returns a COMBINED list tagged with the VICTIM's team, but the payload's
+`injuryRoll`/`permanentRoll` live on the CAUSING team's draft. `planBajas` is the explicit bridge:
+it calls `casualtiesFromActions` **per side** (the SAME mapping `buildActaPayload` emits) and tags
+each entry with `causingTeam` = that side, so `injuryRoll[i]` aligns with the causing team's i-th
+derived casualty and `permanentRoll` is compressed to permanent-band victims only — mirroring the
+route's `resolveReportedCasualties`. `setInjuryRoll`/`setPermanentRoll` write to
+`state[causingTeam]`, so the UI cannot bind a roll to the victim's draft.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 3.2 (helper) | `bajasPlan.test.ts` | Unit | ✅ 31 acta tests | ✅ Written first (`Failed to resolve import "./bajasPlan"`) | ✅ 7/7 passed | ✅ Clean |
+| 3.2 (step) | `StepBajas.test.tsx` | Component (jsdom) | ✅ 38 acta tests | ✅ Written first (`Failed to resolve import "./StepBajas"`) | ✅ 6/6 passed | ✅ Clean |
+| 3.2 (shell) | `MatchActaWizard.test.tsx` | Component (jsdom) | ✅ 12 shell tests | ✅ Covered by the new step-4 case | ✅ 13/13 passed | ✅ Clean |
+
+- **Total tests written**: 14 (7 unit + 6 step + 1 shell); **passing**: 14/14 in the focused files.
+- **Layers used**: Unit (7), Component/jsdom (7), E2E (0 — out of s3b scope).
+- **Pure functions created**: `planBajas`, `setInjuryRoll`, `setPermanentRoll`.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta` → **6 files, 45 tests passed** |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues/acta/MatchActaWizard.test.tsx` → **13 passed (jsdom render of the real step 4)** |
+| Rollback boundary | Revert `acta/bajasPlan.ts` (+ test), `acta/StepBajas.tsx` (+ test) and the `step === 4` branch + import in `MatchActaWizard.tsx`; steps 0–3/5–6 unaffected. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **6 files, 45 passed**
+- `pnpm test` → **186 files, 2712 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s3b)
+
+- Pure logic commit (`72545e7`): `added=322 removed=0 total=322`.
+- UI + wiring commit (`97f4f9c`): `added=429 removed=1 total=430`.
+- **Combined: `added=751 removed=1 total=752`** (≈460 forecast; tests are 411 of the 752).
+- Per-PR view: the pure-logic commit is under the 400-line budget (322); the UI commit is 30 lines
+  over (430). The split was kept as designed (helper-then-step); the diff was NOT minified, so the
+  UI commit carries a `size:exception` recommendation.
+
+### Deviations from Design
+
+- None material. The design's `StepBajas alignment risk (s3b)` note prescribed exactly this pure
+  `bajasPlan.ts` helper; the implementation groups by causing side, resolves the band with
+  `resolveInjury`, and writes rolls with the two pure setters.
+- `planBajas` reuses `casualtiesFromActions` per side rather than re-filtering `actions`, so the
+  rendered list is guaranteed to match the payload's casualty entries.
+- The step does not re-render the CAUSER's name (the preview shows "Baja de X sobre Y"); MAW-6 only
+  requires the derived list + the two rolls, and `deriveCasualtyEntries` carries no causer identity.
+  The causing team is the section header, which is the alignment-relevant attribution.
+- Spanish copy is literal in the step (like S2/s3a); the `acta.*` i18n keys land in s6b.
+
+### Issues Found (s3b)
+
+- **Changed-line overage** (report, not minify): 752 total vs the ≈460 estimate. The overage is
+  almost entirely test lines (411/752) required by the prompt's explicit assertions; the
+  implementation itself (`bajasPlan.ts` 145 + `StepBajas.tsx` 182 = 327) is at the design's
+  per-unit estimate. Recommend `size:exception` for the UI commit, or accept the two-commit split
+  as two stacked PRs (322 + 430).
+- Steps 5–6 remain "se completa en una porción posterior" placeholders (s3c/s4a) — intentional.
+
+
 
