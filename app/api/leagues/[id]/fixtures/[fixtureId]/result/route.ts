@@ -51,8 +51,8 @@ interface TeamResultBody {
   // Wizard FF/rolls (RAU-122, all null on the legacy payload).
   ff: number | null;
   fanRoll: number | null;
-  injuryRoll: number[] | null;
-  permanentRoll: number[] | null;
+  injuryRoll: (number | undefined)[] | null;
+  permanentRoll: (number | undefined)[] | null;
 }
 
 /** Reads a finite number, else null (malformed payloads degrade, never throw). */
@@ -60,10 +60,18 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-/** Reads a number array, else null (non-numeric entries are dropped). */
-function numberArrayOrNull(value: unknown): number[] | null {
+/**
+ * Reads a number array, else null. A non-numeric entry (the `null` a sparse JSON
+ * array serializes to) becomes an `undefined` HOLE, so the array keeps its LENGTH
+ * and POSITIONS: the per-index `?? rollD16()` / `?? rollD6()` fallbacks then roll
+ * the unset slot instead of later values shifting down onto the wrong victim
+ * (RAU-122 s3b corrective). Dense numeric arrays parse exactly as before.
+ */
+function numberArrayOrNull(value: unknown): (number | undefined)[] | null {
   if (!Array.isArray(value)) return null;
-  return value.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  return value.map((n) =>
+    typeof n === "number" && Number.isFinite(n) ? n : undefined,
+  );
 }
 
 /** Parses one side's inducement snapshot ({ budget, cards }); null when empty/malformed. */
