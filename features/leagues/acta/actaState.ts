@@ -1,5 +1,5 @@
 import type { MatchScoreboard, ResultPayload, ResultPlayerAction } from "../api";
-import type { ResultTeamDraft } from "../ResultModal";
+import type { ResultTeamDraft } from "../resultPrefill";
 import { casualtiesFromActions } from "./deriveCasualties";
 
 /**
@@ -69,6 +69,16 @@ export interface ActaState {
    * rather than a false 0).
    */
   duration?: number;
+  /**
+   * Display-only marker (s6a corrective): true when the persisted snapshot
+   * carried casualties the wizard could NOT reconstruct — a legacy row with
+   * victims but no `actions` to attribute them to. Step 4 shows a warning,
+   * because saving without re-entering them sends `casualties: []` and clears
+   * the persisted casualties (and their served suspensions). It NEVER blocks the
+   * save and is NEVER sent in the payload. Absent/false for a normal
+   * (extended-snapshot) acta.
+   */
+  casualtiesUnrecoverable?: boolean;
   home: ActaTeamDraft;
   away: ActaTeamDraft;
 }
@@ -119,6 +129,17 @@ const ACTION_FIELD: Record<
   throwTeamMate: "throwTeamMates",
   landedSafe: "landedSafe",
 };
+
+/** The action kinds a persisted snapshot can rebuild straight from a row
+ *  (`casualty` is excluded — the snapshot stores no casualty causer). */
+const NON_CASUALTY_KINDS: readonly ActaActionKind[] = [
+  "td",
+  "completion",
+  "interception",
+  "foul",
+  "throwTeamMate",
+  "landedSafe",
+];
 
 /** Aggregates the free-form action lines into the route's per-player rows. */
 export function aggregateActions(
@@ -200,13 +221,21 @@ export function buildActaPayload(state: ActaState): ResultPayload {
 
 /**
  * The SINGLE prefill home (design decision F2). Accepts either the persisted
- * `MatchResult.scores` snapshot (correct mode, MAW-9 — the scalar fields are
- * mapped here; the full action-line + roll reconstruction lands in S6) or the
- * finished-live `buildResultPrefill` draft (load path, s4c corrective). Legacy
- * snapshot rows lacking the extended keys open partially prefilled.
+ * `MatchResult.scores` snapshot (correct mode, MAW-9 — every extended key is
+ * mapped: score, neverHeld, ff, fanRoll, rolls, action lines, inducements,
+ * duration, MVP) or the finished-live `buildResultPrefill` draft (load path,
+ * s4c corrective). Legacy snapshot rows lacking the extended keys open partially
+ * prefilled.
+ *
+ * `weather` is a `MatchResult` COLUMN, not a `scores` key, so the correct-mode
+ * call site passes it as the optional second argument (s6a corrective): the
+ * snapshot branch populates `ActaState.weather` from it, otherwise the wizard
+ * would keep the "Perfecto" default and silently rewrite the persisted weather
+ * on the next save. The load path has no persisted weather and ignores it.
  */
 export function actaPrefill(
   source: MatchScoreboard | ActaLoadPrefill | null | undefined,
+  weather?: string | null,
 ): ActaState {
   const base = emptyActaState();
   if (!source) return base;
@@ -219,21 +248,108 @@ export function actaPrefill(
   }
   return {
     ...base,
+    weather: weather ?? base.weather,
     duration: source.duration ?? base.duration,
-    home: {
-      ...base.home,
-      score: source.home.score,
-      ff: source.home.ff ?? base.home.ff,
-      neverHeld: source.home.neverHeld ?? base.home.neverHeld,
-      mvpGrantee: source.mvp?.home ?? base.home.mvpGrantee,
-    },
-    away: {
-      ...base.away,
-      score: source.away.score,
-      ff: source.away.ff ?? base.away.ff,
-      neverHeld: source.away.neverHeld ?? base.away.neverHeld,
-      mvpGrantee: source.mvp?.away ?? base.away.mvpGrantee,
-    },
+    casualtiesUnrecoverable:
+      hasUnrecoverableCasualties(source.home, source.away) ||
+      hasUnrecoverableCasualties(source.away, source.home),
+    home: teamFromSnapshot(source.home, source.away, source.mvp?.home),
+    away: teamFromSnapshot(source.away, source.home, source.mvp?.away),
+  };
+}
+
+/**
+ * True when the side `own` CAUSED persisted casualties it cannot be credited
+ * for: the opponent side carries victims, but `own.actions` has no stored row
+ * crediting a casualty, so `actionsFromSnapshot` rebuilds no casualty line and
+ * the Bajas step opens EMPTY. The causer↔victim link is not persisted, so the
+ * victims cannot be attributed by any other means (s6a corrective).
+ */
+function hasUnrecoverableCasualties(
+  own: SnapshotSide,
+  opponent: SnapshotSide,
+): boolean {
+  const victims = opponent.casualties?.length ?? 0;
+  if (victims === 0) return false;
+  return !(own.actions ?? []).some((row) => (row.casualties ?? 0) > 0);
+}
+
+/** One side of the persisted `MatchResult.scores` snapshot. */
+type SnapshotSide = MatchScoreboard["home"];
+
+/**
+ * Rebuilds the free-form Acciones lines for one side from the persisted
+ * snapshot (MAW-9). Non-casualty lines come straight from this side's
+ * aggregated `actions` rows. Casualty lines are reconstructed from the OPPONENT
+ * side's `casualties` — the snapshot groups every victim under the VICTIM's
+ * team, not the causer's — and attributed to this side's players in proportion
+ * to their recorded `casualties` counts. The snapshot does NOT persist which
+ * causer hit which victim, so the pairing is reconstructed in recorded victim
+ * order; the victim set, the per-player casualty counts (PE) and the roll
+ * alignment are preserved exactly.
+ */
+function actionsFromSnapshot(
+  own: SnapshotSide,
+  opponent: SnapshotSide,
+): ActaActionLine[] {
+  const lines: ActaActionLine[] = [];
+  for (const row of own.actions ?? []) {
+    for (const kind of NON_CASUALTY_KINDS) {
+      const quantity = row[ACTION_FIELD[kind]];
+      if (quantity > 0) {
+        lines.push({
+          id: `${row.rosterPlayerId}:${kind}`,
+          rosterPlayerId: row.rosterPlayerId,
+          kind,
+          quantity,
+        });
+      }
+    }
+  }
+  const victims = opponent.casualties ?? [];
+  let victimIndex = 0;
+  for (const row of own.actions ?? []) {
+    const caused = row.casualties ?? 0;
+    for (let i = 0; i < caused && victimIndex < victims.length; i += 1) {
+      const victim = victims[victimIndex];
+      victimIndex += 1;
+      lines.push({
+        id: `c${victimIndex}:${row.rosterPlayerId}`,
+        rosterPlayerId: row.rosterPlayerId,
+        kind: "casualty",
+        quantity: 1,
+        victimTeam: victim.team,
+        victimRosterPlayerId: victim.rosterPlayerId,
+      });
+    }
+  }
+  return lines;
+}
+
+/**
+ * Maps one persisted snapshot side into the wizard's team draft. Everything the
+ * snapshot genuinely carries is mapped; a legacy row (no `actions`/`ff`/rolls)
+ * opens partially prefilled (score, neverHeld, MVP) without throwing. The
+ * snapshot groups `injuryRoll`/`permanentRoll` by the VICTIM's side, while the
+ * wizard stores them on the CAUSING draft, so each side reads the OPPONENT's
+ * arrays (the causer↔victim link is not persisted).
+ */
+function teamFromSnapshot(
+  own: SnapshotSide,
+  opponent: SnapshotSide,
+  grantee: string | undefined,
+): ActaTeamDraft {
+  return {
+    ...emptyTeamDraft(),
+    score: own.score,
+    neverHeld: own.neverHeld ?? false,
+    inducements: own.inducements?.budget ?? 0,
+    fanRoll: own.fanRoll ?? null,
+    mvpGrantee: grantee ?? "",
+    actions: actionsFromSnapshot(own, opponent),
+    injuryRoll: opponent.injuryRoll ?? [],
+    permanentRoll: opponent.permanentRoll ?? [],
+    ...(own.ff != null ? { ff: own.ff } : {}),
   };
 }
 
@@ -249,10 +365,16 @@ function isLoadPrefill(
 
 /**
  * Rebuilds the free-form Acciones lines from a `ResultTeamDraft`'s per-player
- * rows. Only directly-sourced counts are mapped: the live draft carries no
- * casualty VICTIM, so a `casualties` count cannot be turned into the wizard's
- * victim-bound casualty line and is deliberately left for manual re-entry
- * rather than invented.
+ * rows. Only the directly-sourced non-casualty counts are mapped: the DRAFT
+ * that `buildResultPrefill` returns carries a casualty COUNT per player but no
+ * casualty VICTIM, so a count cannot be turned into the wizard's victim-bound
+ * casualty line and is deliberately left for manual re-entry rather than
+ * invented. This is a limitation of the DRAFT, not of the live source: the raw
+ * `LiveMatchView.events` casualty payloads DO carry `victimRosterId`,
+ * `causerRosterId`, `roll16`/`roll6`, and `band` (see the live route's
+ * `recordCasualty`), and `LiveMatchView` exposes `mvpGrantees` — but
+ * `buildResultPrefill` discards every non-`td` event, so this function never
+ * sees them. A future slice could prefill casualties by reading those events.
  */
 function actionsFromResultPlayers(
   players: ResultTeamDraft["players"],
