@@ -81,7 +81,12 @@ function stubTransaction() {
   prismaMock.$transaction.mockImplementation(
     async (cb: (tx: Record<string, unknown>) => Promise<unknown>) => {
       const data = {
-        fixture: { update: prismaMock.fixture.update, findMany: prismaMock.fixture.findMany },
+        fixture: {
+          update: prismaMock.fixture.update,
+          findMany: prismaMock.fixture.findMany,
+          // s5a FIX-4: the PUT re-reads the previous snapshot inside the tx.
+          findFirst: prismaMock.fixture.findFirst,
+        },
         matchResult: { create: prismaMock.matchResult.create, update: prismaMock.matchResult.update },
         matchResultCorrection: { create: prismaMock.matchResultCorrection.create },
         team: { update: prismaMock.team.update, updateMany: prismaMock.team.updateMany },
@@ -871,9 +876,10 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
           home: { score: 2, postFf: 4, casualties: 0, pe: [{ rosterPlayerId: "p1", pe: 3 + PE_MVP }] },
           away: { score: 1, postFf: 2, casualties: 0, pe: [{ rosterPlayerId: "p3", pe: 3 }] },
         } as {
-          home: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
-          away: { score: number; postFf: number; casualties: number; winnings?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
+          home: { score: number; postFf: number; casualties: number; winnings?: number; fanRoll?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
+          away: { score: number; postFf: number; casualties: number; winnings?: number; fanRoll?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
           mvp?: { home: string; away: string };
+          duration?: number;
         },
         pettyCash: 150_000,
         loadedBy: "user-1",
@@ -1069,68 +1075,298 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it("PUT recomputes MVP and preserves prior winnings in the snapshot (D4)", async () => {
+  it("PUT recomputes winnings from the corrected payload and moves treasury by the delta (s5a)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
-    // Prior snapshot already carries winnings (per-side, per the MatchScoreboard
-    // contract); the correction must keep them and re-roll the MJP grantee.
+    // The prior snapshot carries the ORIGINAL winnings; the correction must
+    // REPLACE them with a recompute from the corrected FF — never copy the
+    // 45k/35k forward.
     const played = playedFixture();
     played.result.scores.home.winnings = 45_000;
     played.result.scores.away.winnings = 35_000;
     prismaMock.fixture.findFirst.mockResolvedValue(played);
-    // PUT consumes only the two MJP 1D6s (no FF/winnings re-compute): home
-    // roll 1 → p1, away roll 3 → p5.
-    stubMvpRolls();
     prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
 
-    const res = await callRoute("PUT", validBody);
+    const res = await callRoute("PUT", wizardBody());
     expect(res.status).toBe(200);
 
-    // MVP is recomputed from the re-rolled grantee; prior winnings are
-    // preserved verbatim (forward-only, and a correction must never clear the
-    // winnings the original report earned).
+    // home: ((5+3)/2 + 2)*10k = 60k; away: ((3+5)/2 + 1)*10k = 50k.
     expect(prismaMock.matchResult.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           scores: expect.objectContaining({
-            home: expect.objectContaining({ winnings: 45_000 }),
-            away: expect.objectContaining({ winnings: 35_000 }),
-            mvp: { home: "p1", away: "p5" },
+            home: expect.objectContaining({ winnings: 60_000 }),
+            away: expect.objectContaining({ winnings: 50_000 }),
+            mvp: { home: "hstar", away: "astar" },
+          }),
+        }),
+      }),
+    );
+    // Treasury moves by new − old: +15k each.
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment === 15_000)).toBe(true);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment === 15_000)).toBe(true);
+    // The audit after-snapshot records the RECOMPUTED winnings, not the prior.
+    expect(prismaMock.matchResultCorrection.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          correctedBy: "user-admin",
+          after: expect.objectContaining({
+            home: expect.objectContaining({ winnings: 60_000 }),
+            away: expect.objectContaining({ winnings: 50_000 }),
           }),
         }),
       }),
     );
   });
 
-  it("PUT leaves legacy rows without winnings/mvp unaffected (omic-if-absent)", async () => {
+  it("PUT allows a negative treasury delta with no floor (s5a)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
-    // A pre-D4 snapshot has no winnings/mvp keys; the correction must still
-    // persist mvp (recomputed) and must not introduce a winnings field.
+    // The prior report earned MORE than the corrected one; the delta is negative
+    // and MUST be applied verbatim (Team.treasury is a signed accumulator).
+    const played = playedFixture();
+    played.result.scores.home.winnings = 90_000;
+    played.result.scores.away.winnings = 80_000;
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const body = wizardBody();
+    body.home.ff = 1;
+    body.away.ff = 1;
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    // home: ((1+1)/2 + 2)*10k = 30k → 30k−90k = −60k; away: ((1+1)/2 + 1)*10k
+    // = 20k → 20k−80k = −60k.
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment === -60_000)).toBe(true);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment === -60_000)).toBe(true);
+    // No clamp to zero anywhere in the treasury writes.
+    const increments = treasury.map((c) => c.data.treasury.increment);
+    expect(increments).toContain(-60_000);
+  });
+
+  it("PUT recomputes the never-held-ball winnings bonus from neverHeld (s5a)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
     prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const body = wizardBody();
+    body.home.neverHeld = true; // heldBall = false → +10k over the base.
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.update.mock.calls[0][0].data.scores;
+    expect(scores.home.winnings).toBe(70_000);
+    expect(scores.home.neverHeld).toBe(true);
+  });
+
+  it("PUT persists the extended wizard snapshot keys and drops none (s5a)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
+    prismaMock.player.findMany.mockResolvedValue([
+      { teamId: "t2", rosterPlayerId: "av1", injuries: [], alive: true },
+    ]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const body = wizardBody();
+    body.duration = 240;
+    body.home.casualties = [{ team: "away", rosterPlayerId: "av1" }];
+    body.home.injuryRoll = [13];
+    body.home.permanentRoll = [5];
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.update.mock.calls[0][0].data.scores;
+    // Rolls are grouped by the VICTIM's team (av1 is an away victim caused by home).
+    expect(scores.home).toEqual(
+      expect.objectContaining({
+        ff: 5,
+        neverHeld: false,
+        fanRoll: 4,
+        injuryRoll: [],
+        permanentRoll: [],
+        actions: body.home.players,
+      }),
+    );
+    expect(scores.away).toEqual(
+      expect.objectContaining({
+        ff: 3,
+        neverHeld: false,
+        fanRoll: 2,
+        injuryRoll: [13],
+        permanentRoll: [5],
+      }),
+    );
+    expect(scores.duration).toBe(240);
+    for (const key of ["ff", "neverHeld", "fanRoll", "injuryRoll", "permanentRoll", "actions"]) {
+      expect(scores.home).toHaveProperty(key);
+      expect(scores.away).toHaveProperty(key);
+    }
+  });
+
+  it("s5a FIX-1: a legacy correction (winnings present, ff absent) keeps the winnings and never moves treasury", async () => {
+    // The production case reachable TODAY: the legacy ResultModal sends no `ff`
+    // and every production snapshot persists `winnings` with no `ff`. A correction
+    // for an unrelated change must NOT recompute from FF 0 (which would drain or
+    // credit the treasury). Keep the persisted winnings and apply a ZERO delta.
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.home.winnings = 60_000;
+    played.result.scores.away.winnings = 50_000;
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
     stubMvpRolls();
     prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
 
-    const res = await callRoute("PUT", validBody);
+    const res = await callRoute("PUT", validBody); // no ff anywhere
     expect(res.status).toBe(200);
 
-    expect(prismaMock.matchResult.update).toHaveBeenCalledWith(
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    // Winnings are the PREVIOUSLY persisted values, not a FF-0 recompute.
+    expect(updateArg.data.scores.home.winnings).toBe(60_000);
+    expect(updateArg.data.scores.away.winnings).toBe(50_000);
+    // Treasury does not move at all.
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment !== 0)).toBe(false);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment !== 0)).toBe(false);
+  });
+
+  it("s5a FIX-2: no persisted prior winnings → ZERO delta even when the corrected FF is known (no windfall)", async () => {
+    // POST has incremented treasury by winnings since the original route, while
+    // per-side `winnings` was persisted later — so a row without persisted
+    // winnings must NOT be paid the full recomputed amount again.
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(playedFixture()); // no winnings
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", wizardBody()); // ff 5/3 → new 60k/50k
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.update.mock.calls[0][0].data.scores;
+    expect(scores.home.winnings).toBe(60_000);
+    expect(scores.away.winnings).toBe(50_000);
+    // Prior winnings unknown → no delta, no windfall.
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment !== 0)).toBe(false);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment !== 0)).toBe(false);
+  });
+
+  it("s5a FIX-3: a correction that omits fanRoll/duration preserves the prior snapshot values", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.home.fanRoll = 4;
+    played.result.scores.away.fanRoll = 2;
+    played.result.scores.duration = 240;
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", validBody); // no fanRoll, no duration
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.update.mock.calls[0][0].data.scores;
+    expect(scores.home.fanRoll).toBe(4);
+    expect(scores.away.fanRoll).toBe(2);
+    expect(scores.duration).toBe(240);
+  });
+
+  it("s5a FIX-4: reads the previous snapshot inside the transaction and computes the delta from it", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const outer = playedFixture();
+    outer.result.scores.home.winnings = 60_000;
+    outer.result.scores.away.winnings = 50_000;
+    const fresh = playedFixture();
+    fresh.result.scores.home.winnings = 10_000;
+    fresh.result.scores.away.winnings = 0;
+    // First findFirst = the pre-validation read; second = the IN-TX baseline.
+    let findFirstCall = 0;
+    prismaMock.fixture.findFirst.mockImplementation(async () =>
+      findFirstCall++ === 0 ? outer : fresh,
+    );
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", wizardBody()); // ff 5/3 → new 60k/50k
+    expect(res.status).toBe(200);
+    expect(prismaMock.fixture.findFirst).toHaveBeenCalledTimes(2);
+
+    // home new 60k − fresh 10k = 50k; away new 50k − fresh 0 = 50k.
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment === 50_000)).toBe(true);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment === 50_000)).toBe(true);
+    // The audit before-snapshot is the IN-TX baseline, not the stale outer read.
+    expect(prismaMock.matchResultCorrection.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          scores: expect.objectContaining({
-            mvp: { home: "p1", away: "p5" },
-          }),
+          before: expect.objectContaining({ home: expect.objectContaining({ winnings: 10_000 }) }),
         }),
       }),
     );
-    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
-    expect(updateArg.data.scores.home).not.toHaveProperty("winnings");
-    expect(updateArg.data.scores.away).not.toHaveProperty("winnings");
   });
 
-  it("LM-30/S3: PUT copies the prior per-side inducements forward — a correction never drops the chips", async () => {
+  it("RAU-122/s5b: PUT persists the wizard-INPUT inducements — input wins over the prior snapshot", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    // The played report carries the away side's prior inducement snapshot, but
+    // the corrected payload supplies DIFFERENT wizard-input inducements. The
+    // payload WINS: the prior snapshot is replaced, not copied forward.
+    const played = playedFixture();
+    played.result.scores.away.inducements = {
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    };
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", {
+      ...validBody,
+      inducements: {
+        home: { budget: 10_000, cards: [] },
+        away: { budget: 25_000, cards: [] },
+      },
+    });
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    // The payload's budget-only snapshot REPLACES the prior 150k Mago cart.
+    expect(updateArg.data.scores.away.inducements).toEqual({ budget: 25_000, cards: [] });
+    expect(updateArg.data.scores.home.inducements).toEqual({ budget: 10_000, cards: [] });
+  });
+
+  it("RAU-122/s5b: PUT resolves inducements PER SIDE — input wins on one side, the snapshot survives on the other", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.away.inducements = {
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    };
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    // The payload supplies ONLY the home side (with real cards); away is omitted.
+    const res = await callRoute("PUT", {
+      ...validBody,
+      inducements: { home: { budget: 40_000, cards: [{ name: "Chef", count: 1 }] } },
+    });
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    // home: the payload's real-card snapshot wins.
+    expect(updateArg.data.scores.home.inducements).toEqual({
+      budget: 40_000,
+      cards: [{ name: "Chef", count: 1 }],
+    });
+    // away: the payload omits it → the prior cart survives untouched.
+    expect(updateArg.data.scores.away.inducements).toEqual({
+      budget: 150_000,
+      cards: [{ name: "Mago", count: 1 }],
+    });
+  });
+
+  it("RAU-122/s5b: PUT falls back to the prior per-side inducements when the payload omits them — a correction never drops the chips", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
     // The played report already carries the away side's inducement snapshot
-    // (persisted by the S3 close). The correction must copy it forward exactly
-    // as it does winnings (forward-only, omit-if-absent).
+    // (persisted by the S3 close). A payload that OMITS inducements must KEEP
+    // that snapshot (fallback), never drop it and never invent the other side.
     const played = playedFixture();
     played.result.scores.away.inducements = {
       budget: 150_000,
@@ -1159,10 +1395,10 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     expect(updateArg.data.scores.home).not.toHaveProperty("inducements");
   });
 
-  it("LM-30/S3: PUT leaves legacy rows WITHOUT per-side inducements unaffected (omit-if-absent)", async () => {
+  it("RAU-122/s5b: PUT omits inducements for legacy rows with neither input nor snapshot (omit-if-absent)", async () => {
     authMock.mockResolvedValue({ user: { id: "user-admin" } });
-    // A pre-S3 snapshot has no inducements keys at all; the correction must
-    // not invent them (single-row pettyCash fallback stays).
+    // A pre-S3 snapshot has no inducements keys at all AND the payload omits
+    // them; the correction must not invent them (single-row pettyCash stays).
     prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
     stubMvpRolls();
     prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
