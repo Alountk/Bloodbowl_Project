@@ -12,8 +12,8 @@ test.use({ locale: "es-ES" });
  *      rival signs up → team (11) → sees the OPEN league under "Ligas abiertas"
  *      → joins; admin starts a 1-jornada season → single A-vs-B matchup; rival
  *      proposes a date and admin accepts → "Programado"; admin loads a 2–1 win
- *      through the real ResultModal (per-player TDs, a casualty victim, 6 MJP
- *      nominations) → "Partido 1 · Jugado" + the center "2 : 1" with the winner
+ *      through the real "Acta del partido" wizard (per-player actions, a
+ *      casualty victim, both MVPs) → "Partido 1 · Jugado" + the center "2 : 1"
  *      highlighted + "Jornada completa"; the RIVAL then
  *      spends the PE its scorer earned (1 TD + 2 completions + 1 interception =
  *      7 PE) on the élite primary Block through the roster improve modal →
@@ -22,16 +22,16 @@ test.use({ locale: "es-ES" });
  *   2. outsider (non-member) gets 404 on the started detail AND on the
  *      proposals and result routes (no existence leak).
  *   3. repeat result load on an already-played fixture is rejected (409), the
- *      UI no longer offers "Cargar resultado", and forfeit-after-result is 409.
+ *      UI no longer offers "Acta del partido", and forfeit-after-result is 409.
  *   4. forfeit walkover: admin forfeits a scheduled fixture → "Jugado" with
  *      2–0 → round completes; result-after-forfeit is 409 (mutual exclusion).
  *   5. a captain CAN load a result but cannot correct it (no UI control; the
- *      PUT is 403) — and both participants see "Cargar resultado" on the card.
+ *      PUT is 403) — and both participants see "Acta del partido" on the card.
  *   6. unauthenticated result POST → 401.
  *   7. the server rejects a result whose per-player TDs do not sum to the
  *      reported score (400) and leaves the fixture untouched.
- *   8. the ResultModal blocks a submit with fewer than six MJP nominations
- *      client-side (mirrors the route's exact-6 contract).
+ *   8. the wizard blocks a submit with a missing MVP client-side (MAW-8: saving
+ *      needs Σ anotaciones == marcador and both MVPs).
  *
  * Every user runs in its own Playwright browser context (isolated sessions
  * share the DB); all names/emails are unique per run so the persisted Postgres
@@ -310,77 +310,119 @@ async function waitForFixtureStatus(
     .toBe(status);
 }
 
-/** One team's result-form fill: score, per-player actions (by roster player
- * NAME) and an optional casualty victim select VALUE for Víctima 1. */
-interface SectionFill {
-  teamName: string;
-  score: number;
-  actions: Record<
-    string,
-    { tds?: number; casualties?: number; completions?: number; interceptions?: number }
-  >;
+/** One free-form action to record on the wizard's Acciones step (MAW-4). */
+interface ActaActionFill {
+  /** Roster player NAME shown in the "Jugador {slot} · {team}" select. */
+  player: string;
+  kind:
+    | "td"
+    | "casualty"
+    | "completion"
+    | "interception"
+    | "foul"
+    | "throwTeamMate"
+    | "landedSafe";
+  quantity?: number;
+  /** Casualty only: the victim option VALUE (`${side}:${rosterPlayerId}`). */
   victim?: string;
-  /** MJP slots to fill (default 6 — the route requires exactly 6). */
-  mvpCount?: number;
 }
 
-/** Fills one team section of the open ResultModal. */
-async function fillResultSection(section: Locator, fill: SectionFill) {
-  await section.getByLabel(`Goles ${fill.teamName}`).fill(String(fill.score));
-  for (const [playerName, acts] of Object.entries(fill.actions)) {
-    if (acts.tds) {
-      await section.getByLabel(`Anotaciones ${playerName}`, { exact: true }).fill(String(acts.tds));
-    }
-    if (acts.casualties) {
-      await section
-        .getByLabel(`Bajas causadas ${playerName}`, { exact: true })
-        .fill(String(acts.casualties));
-    }
-    if (acts.completions) {
-      await section
-        .getByLabel(`Pases completos ${playerName}`, { exact: true })
-        .fill(String(acts.completions));
-    }
-    if (acts.interceptions) {
-      await section
-        .getByLabel(`Intercepciones ${playerName}`, { exact: true })
-        .fill(String(acts.interceptions));
-    }
+/** Opens the "Acta del partido" wizard (the single entry point that replaced the
+ * legacy ResultModal in s4b/s6c) and returns its dialog. */
+async function openActaWizard(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "Acta del partido" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Acta del partido" });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** Advances the wizard to the next step. */
+async function nextStep(dialog: Locator) {
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+}
+
+/** Adds one free-form Acciones line for `teamName` at 1-based `slot`. Every
+ * locator is scoped by team NAME, so a shuffled home/away side does not matter. */
+async function addActionLine(
+  dialog: Locator,
+  teamName: string,
+  slot: number,
+  action: ActaActionFill,
+) {
+  const team = dialog.getByRole("region", { name: teamName, exact: true });
+  await team
+    .getByRole("button", { name: `Añadir acción · ${teamName}`, exact: true })
+    .click();
+  // The Acciones line labels WRAP their <select>, so an exact match would include
+  // the option text; the " · " separator already prevents slot collisions.
+  await team
+    .getByLabel(`Jugador ${slot} · ${teamName}`)
+    .selectOption({ label: action.player });
+  // "Acción N" also appears in the remove button's aria-label ("Eliminar acción N"),
+  // so scope the kind select to the combobox role to disambiguate.
+  await team
+    .getByRole("combobox", { name: `Acción ${slot} · ${teamName}` })
+    .selectOption(action.kind);
+  if (action.quantity !== undefined) {
+    await team
+      .getByLabel(`Cantidad ${slot} · ${teamName}`)
+      .fill(String(action.quantity));
   }
-  const mvpCount = fill.mvpCount ?? 6;
-  for (let i = 1; i <= mvpCount; i++) {
-    await section.getByLabel(`MVP ${i} ${fill.teamName}`).selectOption({ index: i });
-  }
-  if (fill.victim) {
-    await section.getByLabel("Víctima 1").selectOption(fill.victim);
+  if (action.victim !== undefined) {
+    await team
+      .getByLabel(`Víctima ${slot} · ${teamName}`)
+      .selectOption(action.victim);
   }
 }
 
-/** Loads a 2–0 win for `adminTeamName` through the real ResultModal (its
- * Player 1 scores both TDs, six MJP per team). */
+/** Selects the single MVP for `teamName` (MAW-8 requires BOTH teams to have one). */
+async function selectMvp(dialog: Locator, teamName: string, player: string) {
+  await dialog
+    .getByRole("radio", { name: `MVP · ${teamName} · ${player}`, exact: true })
+    .check();
+}
+
+/** Loads a `score`–0 win for `adminTeamName` through the real "Acta del partido"
+ * wizard: its Player 1 takes every TD and BOTH teams pick an MVP, because the
+ * MAW-8 save-block refuses to save unless Σ anotaciones == marcador AND both
+ * teams have an MVP. */
 async function loadResultViaModal(
   page: Page,
   adminTeamName: string,
   rivalTeamName: string,
   score: number,
 ) {
-  await page.getByRole("button", { name: "Cargar resultado" }).first().click();
-  const dialog = page.getByRole("dialog", { name: /Cargar resultado/ });
-  await expect(dialog).toBeVisible();
+  const dialog = await openActaWizard(page);
 
-  const adminSection = dialog.getByLabel(`Resultado ${adminTeamName}`);
-  const rivalSection = dialog.getByLabel(`Resultado ${rivalTeamName}`);
-  await adminSection.getByLabel(`Goles ${adminTeamName}`).fill(String(score));
-  await rivalSection.getByLabel(`Goles ${rivalTeamName}`).fill("0");
-  await adminSection.getByLabel("Anotaciones Player 1", { exact: true }).fill(String(score));
-  for (const section of [adminSection, rivalSection]) {
-    for (let i = 1; i <= 6; i++) {
-      await section
-        .getByLabel(`MVP ${i} ${section === adminSection ? adminTeamName : rivalTeamName}`)
-        .selectOption({ index: i });
-    }
-  }
-  await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+  // Step 0 · Contexto — the defaults are valid (Perfecto weather, no FF).
+  await nextStep(dialog);
+
+  // Step 1 · Marcador — winner scores `score`, loser 0.
+  await dialog.getByLabel(adminTeamName, { exact: true }).fill(String(score));
+  await dialog.getByLabel(rivalTeamName, { exact: true }).fill("0");
+  await nextStep(dialog);
+
+  // Step 2 · Acciones — the winner's Player 1 takes every TD in one line; the
+  // loser records nothing (its marcador is 0, so Σ anotaciones must be 0).
+  await addActionLine(dialog, adminTeamName, 1, {
+    player: "Player 1",
+    kind: "td",
+    quantity: score,
+  });
+  await nextStep(dialog);
+
+  // Step 3 · MVP — exactly one per team (the MAW-8 save-block requires both).
+  await selectMvp(dialog, adminTeamName, "Player 1");
+  await selectMvp(dialog, rivalTeamName, "Player 1");
+  await nextStep(dialog);
+
+  // Step 4 · Bajas — no casualties recorded, advance.
+  await nextStep(dialog);
+  // Step 5 · Final — the fan 1D6 is optional, advance.
+  await nextStep(dialog);
+
+  // Step 6 · Revisar — the acta validates, save.
+  await dialog.getByRole("button", { name: "Guardar acta" }).click();
   await expect(dialog).not.toBeVisible();
 }
 
@@ -456,10 +498,9 @@ test("complete lifecycle: join → start → schedule → result → progression
     await expect(scheduledCard.getByText("Programado:")).toBeVisible();
     await expect(scheduledCard.getByText(futureSlot(10, 18, 0).esRegex)).toBeVisible();
 
-    // --- Result: A loads 2–1 via the modal (per-player TDs, casualty victim) ---
-    await pageA.getByRole("button", { name: "Cargar resultado" }).first().click();
-    const dialog = pageA.getByRole("dialog", { name: /Cargar resultado/ });
-    await expect(dialog).toBeVisible();
+    // --- Result: A loads 2–1 via the "Acta del partido" wizard (per-player
+    // actions + a casualty victim) ---
+    const dialog = await openActaWizard(pageA);
 
     // Victim = rival's Player 2 (resolve its side + roster id via the API).
     const snap = await snapshotLeague(pageA, leagueId as string);
@@ -470,19 +511,50 @@ test("complete lifecycle: join → start → schedule → result → progression
     const bSide = snap.homeTeamId === teamBId ? "home" : "away";
     const victimValue = `${bSide}:${bPlayer2!.id}`;
 
-    await fillResultSection(dialog.getByLabel(`Resultado ${teamAName}`), {
-      teamName: teamAName,
-      score: 2,
-      actions: { "Player 1": { tds: 2 }, "Player 2": { casualties: 1 } },
+    // Step 0 · Contexto — defaults are valid.
+    await nextStep(dialog);
+    // Step 1 · Marcador — A 2, B 1.
+    await dialog.getByLabel(teamAName, { exact: true }).fill("2");
+    await dialog.getByLabel(teamBName, { exact: true }).fill("1");
+    await nextStep(dialog);
+    // Step 2 · Acciones — A: Player 1 ×2 TDs, Player 2 causes a casualty on B's
+    // Player 2; B: Player 1 1 TD + 2 completions + 1 interception (7 PE).
+    await addActionLine(dialog, teamAName, 1, {
+      player: "Player 1",
+      kind: "td",
+      quantity: 2,
+    });
+    await addActionLine(dialog, teamAName, 2, {
+      player: "Player 2",
+      kind: "casualty",
       victim: victimValue,
     });
-    await fillResultSection(dialog.getByLabel(`Resultado ${teamBName}`), {
-      teamName: teamBName,
-      score: 1,
-      // 1 TD (3) + 2 completions (2) + 1 interception (2) = 7 PE for Player 1.
-      actions: { "Player 1": { tds: 1, completions: 2, interceptions: 1 } },
+    await addActionLine(dialog, teamBName, 1, {
+      player: "Player 1",
+      kind: "td",
+      quantity: 1,
     });
-    await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+    await addActionLine(dialog, teamBName, 2, {
+      player: "Player 1",
+      kind: "completion",
+      quantity: 2,
+    });
+    await addActionLine(dialog, teamBName, 3, {
+      player: "Player 1",
+      kind: "interception",
+      quantity: 1,
+    });
+    await nextStep(dialog);
+    // Step 3 · MVP — one per team (MAW-8 requires both).
+    await selectMvp(dialog, teamAName, "Player 1");
+    await selectMvp(dialog, teamBName, "Player 1");
+    await nextStep(dialog);
+    // Step 4 · Bajas — the derived casualty's 1D16 is server-owned (left blank).
+    await nextStep(dialog);
+    // Step 5 · Final — the fan 1D6 is optional.
+    await nextStep(dialog);
+    // Step 6 · Revisar — the acta validates, save.
+    await dialog.getByRole("button", { name: "Guardar acta" }).click();
     await expect(dialog).not.toBeVisible();
 
     await waitForFixtureStatus(pageA, leagueId as string, fixtureId, "played");
@@ -505,7 +577,7 @@ test("complete lifecycle: join → start → schedule → result → progression
     const peTestId = `spp-pe-${p1Id}`;
     const valueTestId = `player-value-${p1Id}`;
     // Player 1 earned 7 PE (1 TD + 2 completions + 1 interception) plus the +4
-    // MJP grant when the server's 1D6 lands on it — always ≥ the 6-PE primary.
+    // MVP grant (it is the direct MVP) — always ≥ the 6-PE primary.
     const peBefore = Number(
       (await pageB.getByTestId(peTestId).first().textContent())?.trim().replace(/[^\d]/g, ""),
     );
@@ -549,8 +621,10 @@ test("complete lifecycle: join → start → schedule → result → progression
     const championRow = standings.getByTestId("standings-champion-row");
     await expect(championRow).toBeVisible();
     await expect(championRow.getByText(teamAName)).toBeVisible();
-    // The played card stays visible, but the correction affordance is gone.
-    await expect(pageA.getByRole("button", { name: "Corregir resultado" })).toHaveCount(0);
+    // The played card stays visible, but the correction affordance is gone
+    // (the overflow hides entirely once the league is finished).
+    await expect(pageA.getByRole("button", { name: "Más acciones" })).toHaveCount(0);
+    await expect(pageA.getByRole("menuitem", { name: "Corregir resultado" })).toHaveCount(0);
     // A correction PUT is definitively rejected (409) — the champion is final.
     const snapAfterClose = await snapshotLeague(pageA, leagueId as string);
     const rejectedCorrection = await pageA.request.put(
@@ -599,8 +673,8 @@ test("outsider gets 404 on the started detail, proposals, and result routes", as
 });
 
 // --- Journey 3: repeat result load / forfeit-after-result are 409, and the
-// UI hides "Cargar resultado" once the fixture is played -----------------------
-test("repeat result load and forfeit-after-result are rejected (409); UI hides Cargar resultado on played", async ({
+// UI hides "Acta del partido" once the fixture is played ------------------------
+test("repeat result load and forfeit-after-result are rejected (409); UI hides Acta del partido on played", async ({
   browser,
 }) => {
   const league = await buildTwoMemberStartedLeague(browser, "repeat");
@@ -613,7 +687,7 @@ test("repeat result load and forfeit-after-result are rejected (409); UI hides C
 
     const region = league.admin.getByRole("region", { name: "Jornada 1" });
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    await expect(region.getByRole("button", { name: "Cargar resultado" })).toHaveCount(0);
+    await expect(region.getByRole("button", { name: "Acta del partido" })).toHaveCount(0);
 
     const snap = await snapshotLeague(league.admin, league.leagueId);
     const repeat = await league.admin.request.post(
@@ -645,8 +719,9 @@ test("forfeit walkover: admin forfeits a scheduled fixture → Jugado 2–0 → 
     const region = league.admin.getByRole("region", { name: "Jornada 1" });
     await expect(region.getByText(/Partido 1 · Programado/)).toBeVisible();
 
-    // Admin awards the walkover to their OWN team via the real modal.
-    await region.getByRole("button", { name: "Otorgar victoria" }).click();
+    // Admin awards the walkover to their OWN team via the `···` overflow (MAW-1).
+    await league.admin.getByRole("button", { name: "Más acciones" }).first().click();
+    await league.admin.getByRole("menuitem", { name: "Otorgar victoria" }).click();
     const modal = league.admin.getByRole("dialog", { name: /Otorgar victoria por no presentación/ });
     await expect(modal).toBeVisible();
     await modal.getByRole("button", { name: league.teamAName, exact: true }).click();
@@ -681,9 +756,9 @@ test("loading the final result finishes the league: champion panel shows, correc
     const fixtureId = await scheduleFixture(league.admin, league.rival, league.leagueId);
     await league.rival.reload();
 
-    // Both participants see "Cargar resultado" on the scheduled card.
+    // Both participants see "Acta del partido" on the scheduled card.
     const region = league.rival.getByRole("region", { name: "Jornada 1" });
-    await expect(region.getByRole("button", { name: "Cargar resultado" })).toBeVisible();
+    await expect(region.getByRole("button", { name: "Acta del partido" })).toBeVisible();
 
     // The captain (rival B) loads a 1–0 win through the API — this is the
     // season's ONLY fixture, so it auto-closes the league (RAU-40).
@@ -713,7 +788,8 @@ test("loading the final result finishes the league: champion panel shows, correc
     await expect(championPanel.getByText("Campeón")).toBeVisible();
     await expect(championPanel.getByText(league.teamBName)).toBeVisible();
     await expect(region.getByText(/Partido 1 · Jugado/)).toBeVisible();
-    await expect(region.getByRole("button", { name: "Corregir resultado" })).toHaveCount(0);
+    await expect(region.getByRole("button", { name: "Más acciones" })).toHaveCount(0);
+    await expect(region.getByRole("menuitem", { name: "Corregir resultado" })).toHaveCount(0);
 
     // The captain's PUT (correction) is rejected — the champion is definitive.
     const corrected = await league.rival.request.put(
@@ -768,8 +844,8 @@ test("server rejects a result whose per-player TDs do not sum to the score (400)
   }
 });
 
-// --- Journey 8: fewer than six MJP nominations is blocked client-side ----------
-test("fewer than six MVP nominations per team is blocked client-side with an alert", async ({
+// --- Journey 8: a missing MVP blocks the save client-side (MAW-8) --------------
+test("an acta without an MVP is blocked client-side with an alert", async ({
   browser,
 }) => {
   const league = await buildTwoMemberStartedLeague(browser, "mvp");
@@ -777,28 +853,37 @@ test("fewer than six MVP nominations per team is blocked client-side with an ale
     await scheduleFixture(league.admin, league.rival, league.leagueId);
     await league.admin.reload();
 
-    await league.admin.getByRole("button", { name: "Cargar resultado" }).first().click();
-    const dialog = league.admin.getByRole("dialog", { name: /Cargar resultado/ });
-    await expect(dialog).toBeVisible();
+    const dialog = await openActaWizard(league.admin);
 
-    // Scores match the TDs, but the rival nominates only 5 of the 6 MVP slots.
-    await fillResultSection(dialog.getByLabel(`Resultado ${league.teamAName}`), {
-      teamName: league.teamAName,
-      score: 1,
-      actions: { "Player 1": { tds: 1 } },
+    // Step 0 · Contexto — defaults are valid.
+    await nextStep(dialog);
+    // Step 1 · Marcador — A 1, B 0.
+    await dialog.getByLabel(league.teamAName, { exact: true }).fill("1");
+    await dialog.getByLabel(league.teamBName, { exact: true }).fill("0");
+    await nextStep(dialog);
+    // Step 2 · Acciones — A's Player 1 scores the only TD (Σ == marcador).
+    await addActionLine(dialog, league.teamAName, 1, {
+      player: "Player 1",
+      kind: "td",
+      quantity: 1,
     });
-    await fillResultSection(dialog.getByLabel(`Resultado ${league.teamBName}`), {
-      teamName: league.teamBName,
-      score: 0,
-      actions: {},
-      mvpCount: 5,
-    });
-    await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+    await nextStep(dialog);
+    // Step 3 · MVP — select ONLY team A's MVP; team B is left without one.
+    await selectMvp(dialog, league.teamAName, "Player 1");
+    await nextStep(dialog);
+    // Step 4 · Bajas and Step 5 · Final — advance.
+    await nextStep(dialog);
+    await nextStep(dialog);
 
-    // The modal stays open with a client-side warning; nothing is persisted.
+    // Step 6 · Revisar — the MAW-8 save-block refuses: the summary shows the
+    // missing-MVP alert and the save button is disabled.
     await expect(dialog.getByRole("alert")).toBeVisible();
-    await expect(dialog.getByRole("alert")).toHaveText(/exactamente 6/);
-    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("alert")).toHaveText(
+      new RegExp(`Falta el MVP de ${league.teamBName}`),
+    );
+    await expect(dialog.getByRole("button", { name: "Guardar acta" })).toBeDisabled();
+
+    // Nothing is persisted.
     const after = await snapshotLeague(league.admin, league.leagueId);
     expect(after.status).toBe("scheduled");
   } finally {

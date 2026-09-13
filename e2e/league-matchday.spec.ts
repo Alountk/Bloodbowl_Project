@@ -565,11 +565,9 @@ test("forfeit: admin awards a walkover → played + Jornada completa; non-admin 
     );
     expect(forbidden.status()).toBe(403);
 
-    // Admin awards the walkover to t1 via the forfeit modal.
-    await admin
-      .getByRole("region", { name: "Jornada 1" })
-      .getByRole("button", { name: "Otorgar victoria" })
-      .click();
+    // Admin awards the walkover to t1 via the `···` overflow (MAW-1).
+    await admin.getByRole("button", { name: "Más acciones" }).first().click();
+    await admin.getByRole("menuitem", { name: "Otorgar victoria" }).click();
     const modal = admin.getByRole("dialog", { name: /Otorgar victoria por no presentación/ });
     await expect(modal).toBeVisible();
     await modal.getByRole("button", { name: t1, exact: true }).click();

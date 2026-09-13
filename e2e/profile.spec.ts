@@ -181,7 +181,8 @@ test("career stats: league + team + forfeited win → nonzero numbers on /profil
     // Admin awards a walkover to their own team. This is the season's ONLY
     // fixture, so the league finishes and the admin's team becomes champion.
     const region = admin.getByRole("region", { name: "Jornada 1" });
-    await region.getByRole("button", { name: "Otorgar victoria" }).click();
+    await admin.getByRole("button", { name: "Más acciones" }).first().click();
+    await admin.getByRole("menuitem", { name: "Otorgar victoria" }).click();
     const modal = admin.getByRole("dialog", {
       name: /Otorgar victoria por no presentación/,
     });
