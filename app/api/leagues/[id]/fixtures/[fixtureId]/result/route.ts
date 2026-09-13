@@ -74,6 +74,20 @@ function numberArrayOrNull(value: unknown): (number | undefined)[] | null {
   );
 }
 
+/**
+ * RAU-122/s5a FIX-3: a correction's wizard-INPUT keys merge over the prior
+ * snapshot. The COMPUTED fields (`score`, `winnings`, `postFf`, `casualties`,
+ * `pe`) are replaced by the correction; an input key the payload omits must
+ * PRESERVE the previously persisted value instead of overwriting it with
+ * null/absent. Rolls are grouped by the VICTIM's team (not the reporting side),
+ * so one side's resolved list is legitimately empty when the other side caused
+ * its casualties: keep the prior rolls only when the correction resolves NONE.
+ */
+function mergeRolls(next: number[], prior: number[] | undefined): number[] {
+  if (next.length === 0 && prior != null && prior.length > 0) return prior;
+  return next;
+}
+
 /** Parses one side's inducement snapshot ({ budget, cards }); null when absent/malformed. */
 function parseInducements(raw: unknown): InducementSnapshot | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -751,9 +765,10 @@ export async function PUT(
 
   // Correction re-runs the PE rules; the previous awards live in the snapshot.
   const prevScores = (fixture.result.scores ?? {}) as unknown as {
-    home: { score: number; postFf?: number; winnings?: number; ff?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
-    away: { score: number; postFf?: number; winnings?: number; ff?: number; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
+    home: { score: number; postFf?: number; winnings?: number; ff?: number; fanRoll?: number; injuryRoll?: number[]; permanentRoll?: number[]; actions?: ResultPlayerAction[]; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
+    away: { score: number; postFf?: number; winnings?: number; ff?: number; fanRoll?: number; injuryRoll?: number[]; permanentRoll?: number[]; actions?: ResultPlayerAction[]; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
     mvp?: { home: string; away: string };
+    duration?: number;
   };
   const homeMvp = home.grantee ?? computeMvpGrantee(home.nominations, rollD6());
   const awayMvp = away.grantee ?? computeMvpGrantee(away.nominations, rollD6());
@@ -764,18 +779,22 @@ export async function PUT(
   const prevHomePe = sumAwards(prevScores?.home?.pe ?? []);
   const prevAwayPe = sumAwards(prevScores?.away?.pe ?? []);
 
-  // RAU-122/s5a: a correction RECOMPUTES winnings from the corrected data — the
-  // input FF as-is (no 1D3), the team's own TDs, and never-held-ball — instead
-  // of copying the prior report forward. A payload without FF falls back to the
-  // persisted snapshot FF, then blank (0) for a legacy row.
-  const homeFf = home.ff ?? prevScores?.home?.ff ?? 0;
-  const awayFf = away.ff ?? prevScores?.away?.ff ?? 0;
-  const homeWinnings = computeWinnings({ ffHome: homeFf, ffAway: awayFf, ownTds: home.score, heldBall: home.heldBall });
-  const awayWinnings = computeWinnings({ ffHome: awayFf, ffAway: homeFf, ownTds: away.score, heldBall: away.heldBall });
-  // The delta against the PREVIOUSLY persisted winnings; a negative delta is
-  // allowed (`Team.treasury` is a signed accumulator) and is NEVER clamped.
-  const homeWinningsDelta = homeWinnings - (prevScores?.home?.winnings ?? 0);
-  const awayWinningsDelta = awayWinnings - (prevScores?.away?.winnings ?? 0);
+  // RAU-122/s5a FIX-1: a correction RECOMPUTES winnings from the corrected data
+  // — the input FF as-is (no 1D3), the team's own TDs, and never-held-ball —
+  // instead of copying the prior report forward. The FF resolves from the
+  // payload, then the persisted snapshot. NEVER fall back to FF 0: if EITHER
+  // side's FF is unknown, `computeWinnings` (which couples both sides) cannot be
+  // trusted, so BOTH sides keep their previously persisted winnings and move NO
+  // money (the delta is computed inside the transaction below).
+  const homeFf = home.ff ?? prevScores?.home?.ff;
+  const awayFf = away.ff ?? prevScores?.away?.ff;
+  const canRecomputeWinnings = homeFf != null && awayFf != null;
+  const homeWinnings = canRecomputeWinnings
+    ? computeWinnings({ ffHome: homeFf, ffAway: awayFf, ownTds: home.score, heldBall: home.heldBall })
+    : prevScores?.home?.winnings;
+  const awayWinnings = canRecomputeWinnings
+    ? computeWinnings({ ffHome: awayFf, ffAway: homeFf, ownTds: away.score, heldBall: away.heldBall })
+    : prevScores?.away?.winnings;
 
   // The correction re-resolves the reported victims (client 1D16/permanent 1D6
   // when supplied, server rolls otherwise).
@@ -786,23 +805,29 @@ export async function PUT(
 
   // D4/RAU-122/s5a: the correction recomputes the MJP grantee (mirrors the PE
   // re-run) and RECOMPUTES winnings from the corrected payload — never the
-  // prior report's copy. The rebuilt snapshot preserves the extended wizard
-  // input (FF, neverHeld, raw rolls, actions, duration) so correct mode can
-  // prefill; legacy rows without FF read as blank.
+  // prior report's copy. FIX-3: the COMPUTED fields (`score`, `winnings`,
+  // `postFf`, `casualties`, `pe`) are replaced by the correction, while the
+  // wizard-INPUT keys (`ff`, `neverHeld`, `fanRoll`, `injuryRoll`,
+  // `permanentRoll`, `actions`, `duration`) MERGE over the prior snapshot: a key
+  // the payload omits preserves the previously persisted value instead of
+  // nulling it. `neverHeld` is always derived from the mandatory ball-held input
+  // (`heldBall`/`ballHeld`/`neverHeld`), so it is never omitted.
   // LM-30/S3: the per-side inducements still copy forward — a correction must
   // never drop the chips a prior report persisted; rows without them stay
   // untouched (omit-if-absent). (Inducement precedence is s5b.)
+  const rawHome = (raw.home ?? {}) as Record<string, unknown>;
+  const rawAway = (raw.away ?? {}) as Record<string, unknown>;
   const scoreboard = {
     home: {
       score: home.score,
       postFf: prevScores?.home?.postFf ?? 0,
-      winnings: homeWinnings,
+      ...(homeWinnings != null ? { winnings: homeWinnings } : {}),
       ff: homeFf,
       neverHeld: !home.heldBall,
-      fanRoll: home.fanRoll,
-      injuryRoll: homeRolls.injuryRoll,
-      permanentRoll: homeRolls.permanentRoll,
-      actions: home.players,
+      fanRoll: home.fanRoll != null ? home.fanRoll : prevScores?.home?.fanRoll,
+      injuryRoll: mergeRolls(homeRolls.injuryRoll, prevScores?.home?.injuryRoll),
+      permanentRoll: mergeRolls(homeRolls.permanentRoll, prevScores?.home?.permanentRoll),
+      actions: Array.isArray(rawHome.players) ? home.players : prevScores?.home?.actions,
       ...(prevScores?.home?.inducements != null ? { inducements: prevScores.home.inducements } : {}),
       casualties: homeTeamVictims,
       pe: homeAwards,
@@ -810,23 +835,46 @@ export async function PUT(
     away: {
       score: away.score,
       postFf: prevScores?.away?.postFf ?? 0,
-      winnings: awayWinnings,
+      ...(awayWinnings != null ? { winnings: awayWinnings } : {}),
       ff: awayFf,
       neverHeld: !away.heldBall,
-      fanRoll: away.fanRoll,
-      injuryRoll: awayRolls.injuryRoll,
-      permanentRoll: awayRolls.permanentRoll,
-      actions: away.players,
+      fanRoll: away.fanRoll != null ? away.fanRoll : prevScores?.away?.fanRoll,
+      injuryRoll: mergeRolls(awayRolls.injuryRoll, prevScores?.away?.injuryRoll),
+      permanentRoll: mergeRolls(awayRolls.permanentRoll, prevScores?.away?.permanentRoll),
+      actions: Array.isArray(rawAway.players) ? away.players : prevScores?.away?.actions,
       ...(prevScores?.away?.inducements != null ? { inducements: prevScores.away.inducements } : {}),
       casualties: awayTeamVictims,
       pe: awayAwards,
     },
     winnerId,
     mvp: { home: homeMvp, away: awayMvp },
-    duration: numberOrNull(raw.duration),
+    duration: numberOrNull(raw.duration) ?? prevScores?.duration,
   };
 
   await prisma.$transaction(async (tx) => {
+    // RAU-122/s5a FIX-4: read the previous snapshot INSIDE the transaction so the
+    // baseline read and the treasury write share one transaction (the read is no
+    // longer taken outside the tx and reused). This NARROWS the double-adjustment
+    // window but does NOT fully close it: Prisma's typed API exposes no row lock,
+    // and under Read Committed two concurrent corrections can still both read the
+    // same baseline. Residual risk is recorded in apply-progress.md (s5a).
+    const fresh = await tx.fixture.findFirst({
+      where: { id: fixtureId },
+      include: { result: true },
+    });
+    const freshScores = (fresh?.result?.scores ?? {}) as unknown as typeof prevScores;
+    // FIX-1/FIX-2: apply a delta ONLY when BOTH the newly recomputed winnings AND
+    // the previously persisted winnings are trustworthy; otherwise move ZERO.
+    // A negative delta is allowed (`Team.treasury` is a signed accumulator) and
+    // is NEVER clamped.
+    const homeWinningsDelta =
+      canRecomputeWinnings && freshScores?.home?.winnings != null
+        ? homeWinnings! - freshScores.home.winnings
+        : 0;
+    const awayWinningsDelta =
+      canRecomputeWinnings && freshScores?.away?.winnings != null
+        ? awayWinnings! - freshScores.away.winnings
+        : 0;
     await tx.fixture.update({
       where: { id: fixtureId },
       data: { homeScore: home.score, awayScore: away.score, winnerId },
@@ -840,21 +888,26 @@ export async function PUT(
         resultId,
         correctedBy: userId,
         correctedAt: new Date(),
-        before: prevScores as never,
+        before: freshScores as never,
         after: scoreboard as never,
       },
     });
     // RAU-122/s5a: adjust each team's treasury by the winnings delta. No floor —
     // `Team.treasury` is a signed Int accumulator, so a negative increment (a
-    // correction that earns less than the prior report) is applied verbatim.
-    await tx.team.update({
-      where: { id: homeTeamId },
-      data: { treasury: { increment: homeWinningsDelta } },
-    });
-    await tx.team.update({
-      where: { id: awayTeamId },
-      data: { treasury: { increment: awayWinningsDelta } },
-    });
+    // correction that earns less than the prior report) is applied verbatim. A
+    // ZERO delta writes nothing (no no-op money movement).
+    if (homeWinningsDelta !== 0) {
+      await tx.team.update({
+        where: { id: homeTeamId },
+        data: { treasury: { increment: homeWinningsDelta } },
+      });
+    }
+    if (awayWinningsDelta !== 0) {
+      await tx.team.update({
+        where: { id: awayTeamId },
+        data: { treasury: { increment: awayWinningsDelta } },
+      });
+    }
     const apply: { teamId: string; award: { rosterPlayerId: string; pe: number } }[] = [
       ...homeAwards.map((a) => ({ teamId: homeTeamId, award: a })),
       ...awayAwards.map((a) => ({ teamId: awayTeamId, award: a })),
