@@ -136,6 +136,32 @@ describe("MatchActaWizard capture", () => {
     expect((screen.getByLabelText(awayName) as HTMLInputElement).value).toBe("1");
   });
 
+  it("renders the real MVP step at step 3 and captures one grantee per team", () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    expect(activeStepLabel()).toContain("MVP");
+    fireEvent.click(
+      screen.getByRole("radio", { name: `MVP · ${homeName} · Khalid el Impávido` }),
+    );
+    fireEvent.click(
+      screen.getByRole("radio", { name: `MVP · ${awayName} · Grishnak Mordaz` }),
+    );
+    // Navigate away and back: the captured grantees survive the step change.
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
+    const homeMvp = screen.getByRole("radio", {
+      name: `MVP · ${homeName} · Khalid el Impávido`,
+    }) as HTMLInputElement;
+    const awayMvp = screen.getByRole("radio", {
+      name: `MVP · ${awayName} · Grishnak Mordaz`,
+    }) as HTMLInputElement;
+    expect(homeMvp.checked).toBe(true);
+    expect(awayMvp.checked).toBe(true);
+    expect(screen.getByText(/★4 PE/)).toBeTruthy();
+  });
+
   it("captures an Acciones casualty line and surfaces it as a derived victim", () => {
     renderWizard();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
