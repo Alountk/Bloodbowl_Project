@@ -162,6 +162,28 @@ describe("MatchActaWizard capture", () => {
     expect(screen.getByText(/★4 PE/)).toBeTruthy();
   });
 
+  it("renders the real Bajas step at step 4, deriving the victims from Step 2", () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    const home = screen.getByRole("region", { name: homeName });
+    fireEvent.click(
+      within(home).getByRole("button", { name: `Añadir acción · ${homeName}` }),
+    );
+    fireEvent.change(within(home).getByLabelText(`Acción 1 · ${homeName}`), {
+      target: { value: "casualty" },
+    });
+    fireEvent.change(within(home).getByLabelText(`Víctima 1 · ${homeName}`), {
+      target: { value: "away:a1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    expect(activeStepLabel()).toContain("Bajas");
+    const bajas = screen.getByRole("group", { name: "Bajas" });
+    expect(bajas.textContent).toContain("Grishnak Mordaz");
+    expect(bajas.textContent).not.toContain("porción posterior");
+  });
+
   it("captures an Acciones casualty line and surfaces it as a derived victim", () => {
     renderWizard();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));

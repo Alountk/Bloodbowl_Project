@@ -6,6 +6,7 @@ import { StepContexto } from "./acta/StepContexto";
 import { StepMarcador } from "./acta/StepMarcador";
 import { StepAcciones } from "./acta/StepAcciones";
 import { StepMvp } from "./acta/StepMvp";
+import { StepBajas } from "./acta/StepBajas";
 import type { RosterPlayerRef } from "./MatchResolveModal";
 
 /** The seven acta steps in order (MAW-2 … MAW-8). */
@@ -44,7 +45,7 @@ export interface MatchActaWizardProps {
  * contract: `role="dialog" aria-modal="true"`, `aria-current="step"` on the
  * active step, a Tab focus trap, Escape-to-close, and focus restore on close.
  * The step bodies live under `features/leagues/acta/`; this slice ships Steps
- * 0–3 (S2 + s3a) and leaves 4–6 for the following slices.
+ * 0–4 (S2 + s3a + s3b) and leaves 5–6 for the following slices.
  */
 export function MatchActaWizard({
   open,
@@ -154,6 +155,17 @@ export function MatchActaWizard({
   } else if (step === 3) {
     body = (
       <StepMvp
+        state={state}
+        onChange={setState}
+        homeName={homeName}
+        awayName={awayName}
+        homeRoster={homeRoster}
+        awayRoster={awayRoster}
+      />
+    );
+  } else if (step === 4) {
+    body = (
+      <StepBajas
         state={state}
         onChange={setState}
         homeName={homeName}
