@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { I18nProvider } from "@/lib/i18n";
 import { MatchActaWizard } from "../MatchActaWizard";
 import type { RosterPlayerRef } from "../MatchResolveModal";
 import type { ResultPayload } from "../api";
@@ -144,6 +145,28 @@ describe("MatchActaWizard shell", () => {
     unmount();
     expect(document.activeElement).toBe(trigger);
     document.body.removeChild(trigger);
+  });
+
+  it("renders its copy from the active locale, not hardcoded literals (s6b)", () => {
+    // RED before s6b: the wizard hardcoded Spanish, so an English provider had no
+    // effect. GREEN once every string resolves through `useI18n()`.
+    render(
+      <I18nProvider initialLocale="en">
+        <MatchActaWizard
+          open
+          mode="load"
+          homeName={homeName}
+          awayName={awayName}
+          homeRoster={homeRoster}
+          awayRoster={awayRoster}
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("dialog").getAttribute("aria-label")).toBe("Match report");
+    expect(screen.getByRole("navigation", { name: "Match report" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
   });
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useI18n } from "@/lib/i18n";
 import {
   buildActaPayload,
   emptyActaState,
@@ -16,18 +17,18 @@ import { StepRevisar, validateActa } from "./acta/StepRevisar";
 import type { ResultPayload } from "./api";
 import type { RosterPlayerRef } from "./MatchResolveModal";
 
-/** The seven acta steps in order (MAW-2 … MAW-8). */
-const STEP_LABELS = [
-  "Contexto",
-  "Marcador",
-  "Acciones",
-  "MVP",
-  "Bajas",
-  "Final",
-  "Revisar",
+/** The seven acta steps in order (MAW-2 … MAW-8), as i18n keys. */
+const STEP_KEYS = [
+  "acta.step.contexto",
+  "acta.step.marcador",
+  "acta.step.acciones",
+  "acta.step.mvp",
+  "acta.step.bajas",
+  "acta.step.final",
+  "acta.step.revisar",
 ] as const;
 
-const LAST_STEP = STEP_LABELS.length - 1;
+const LAST_STEP = STEP_KEYS.length - 1;
 
 /** The focusable descendants the Tab trap cycles through. */
 const FOCUSABLE_SELECTOR =
@@ -54,7 +55,8 @@ export interface MatchActaWizardProps {
 }
 
 /**
- * MatchActaWizard — the Spanish "Acta del partido" dialog shell (RAU-122). It
+ * MatchActaWizard — the "Acta del partido" / "Match report" dialog shell
+ * (RAU-122); its copy is localized through `useI18n()`. It
  * owns the step navigation, the shared wizard state, and the modal a11y
  * contract: `role="dialog" aria-modal="true"`, `aria-current="step"` on the
  * active step, a Tab focus trap, Escape-to-close, and focus restore on close.
@@ -73,6 +75,7 @@ export function MatchActaWizard({
   initial,
   onSubmit,
 }: MatchActaWizardProps) {
+  const { t } = useI18n();
   const [step, setStep] = useState(0);
   const [state, setState] = useState<ActaState>(() => initial ?? emptyActaState());
   // A rejected submit (400/409) must never be swallowed: it is surfaced in the
@@ -139,7 +142,9 @@ export function MatchActaWizard({
 
   if (!open) return null;
 
-  const title = mode === "correct" ? "Corregir acta del partido" : "Acta del partido";
+  const title =
+    mode === "correct" ? t("acta.title.correct") : t("acta.title.load");
+  const stepLabels = STEP_KEYS.map((key) => t(key));
 
   let body: ReactNode;
   if (step === 0) {
@@ -237,22 +242,23 @@ export function MatchActaWizard({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
+            aria-label={t("acta.close")}
             className="text-xs font-semibold text-white/80 hover:text-white"
           >
-            ✕ Cerrar
+            ✕ {t("acta.close")}
           </button>
         </header>
 
         <nav
-          aria-label="Acta del partido"
+          aria-label={t("acta.nav")}
           className="border-b border-border bg-background px-4 py-2"
         >
           <ol className="flex flex-wrap gap-2">
-            {STEP_LABELS.map((label, index) => {
+            {STEP_KEYS.map((key, index) => {
+              const label = t(key);
               const active = index === step;
               return (
-                <li key={label}>
+                <li key={key}>
                   <span
                     aria-current={active ? "step" : undefined}
                     className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
@@ -279,7 +285,7 @@ export function MatchActaWizard({
         <div
           ref={stepRef}
           role="group"
-          aria-label={STEP_LABELS[step]}
+          aria-label={stepLabels[step]}
           tabIndex={-1}
           className="px-4 py-4 outline-none"
         >
@@ -302,7 +308,7 @@ export function MatchActaWizard({
             disabled={step === 0}
             className="rounded-sm border border-border bg-panel px-4 py-2 text-sm font-semibold text-navy disabled:opacity-50"
           >
-            Atrás
+            {t("acta.back")}
           </button>
           {step === LAST_STEP ? (
             <button
@@ -311,13 +317,13 @@ export function MatchActaWizard({
                 if (!validation.ok) return;
                 setSubmitError(null);
                 Promise.resolve(onSubmit?.(buildActaPayload(state))).catch(() =>
-                  setSubmitError("No se pudo guardar el acta. Inténtalo de nuevo."),
+                  setSubmitError(t("acta.saveError")),
                 );
               }}
               disabled={!validation.ok}
               className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
             >
-              Guardar acta
+              {t("acta.save")}
             </button>
           ) : (
             <button
@@ -326,7 +332,7 @@ export function MatchActaWizard({
               disabled={step === LAST_STEP}
               className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
             >
-              Siguiente
+              {t("acta.next")}
             </button>
           )}
         </footer>

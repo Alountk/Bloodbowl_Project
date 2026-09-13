@@ -1,5 +1,7 @@
+import type { WeatherKind } from "@/lib/rules/weather";
 import type { MatchScoreboard, ResultPayload, ResultPlayerAction } from "../api";
 import type { ResultTeamDraft } from "../resultPrefill";
+import { weatherLabel, type SummaryTFunc } from "../matchSummary";
 import { casualtiesFromActions } from "./deriveCasualties";
 
 /**
@@ -91,6 +93,32 @@ export const ACTA_WEATHER_OPTIONS = [
   "Lluvioso",
   "Ventisca",
 ] as const;
+
+/**
+ * Canonical persisted weather value → locale-independent BB2025 kind (s6b
+ * corrective). `ACTA_WEATHER_OPTIONS` holds the CANONICAL values the payload and
+ * the DB store; this map only lets the wizard render a localized LABEL through
+ * the existing `weatherLabel` helper without touching the stored value.
+ */
+const WEATHER_KIND_BY_VALUE: Record<string, WeatherKind> = {
+  "Perfecto": "perfect",
+  "Calor asfixiante": "heat",
+  "Muy soleado": "sunny",
+  "Lluvioso": "rain",
+  "Ventisca": "blizzard",
+};
+
+/**
+ * Renders a weather LABEL for the active locale from the canonical persisted
+ * value (s6b corrective). Only the label is localized: the value the wizard
+ * sends stays the `ACTA_WEATHER_OPTIONS` Spanish string, unchanged. An unknown
+ * value (legacy row) passes through unchanged, mirroring `weatherLabel`'s
+ * default.
+ */
+export function weatherOptionLabel(value: string, t: SummaryTFunc): string {
+  const kind = WEATHER_KIND_BY_VALUE[value];
+  return kind ? weatherLabel(kind, t) : value;
+}
 
 function emptyTeamDraft(): ActaTeamDraft {
   return {
