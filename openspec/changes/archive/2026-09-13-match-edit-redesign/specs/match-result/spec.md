@@ -1,52 +1,8 @@
-# match-result Specification
+# Delta for match-result
 
-## Purpose
+> Note on headings: the existing `match-result` spec uses name-only requirement headings (no numeric IDs). This delta preserves those exact names so the archive "match by name" merge stays unambiguous.
 
-Load and correct match results with BB2025 post-match resolution: scores, winnings, fan factor, PE, injuries/deaths, and petty cash in one transaction, with authorization, idempotency, and audit.
-
-## Requirements
-
-### Requirement: Result Authorization
-
-The result route MUST accept the league admin, a `leagues.manage` holder (developer/admin), or either fixture captain (owner of the home or away team). Corrections MUST be accepted from the league admin, a `leagues.manage` holder, OR either of the two participant coaches; forfeit/award-walkover MUST remain admin-only or a `leagues.manage` holder. An absent session MUST return 401 with no write. An authenticated non-captain, non-admin (and non-privileged) MUST receive 404 with no fixture data leaked.
-(Previously: corrections by a captain returned 403 — admin-only.)
-(Previously: the result route accepted only admin/captain, with no privileged override.)
-
-#### Scenario: Captain loads a result
-
-- GIVEN a fixture whose home team is owned by the session user
-- WHEN they POST the result
-- THEN it is accepted and persisted
-
-#### Scenario: Foreign user hidden
-
-- GIVEN an authenticated user who is neither captain nor admin
-- WHEN they POST a result
-- THEN it returns 404 and no fixture data leaks
-
-#### Scenario: Unauthenticated rejected
-
-- GIVEN no session
-- WHEN a result request hits the route
-- THEN it returns 401 and performs no DB write
-
-#### Scenario: Captain correction allowed
-
-- GIVEN a played fixture
-- WHEN a participant captain POSTs a correction
-- THEN it returns 200 and the correction is applied
-
-#### Scenario: Privileged loads a result on a foreign fixture
-
-- GIVEN a `developer`/`admin` session and a fixture in a foreign league
-- WHEN they POST the result
-- THEN it is accepted and persisted
-
-#### Scenario: Plain user still hidden
-
-- GIVEN a plain `user` who is neither captain nor admin nor privileged
-- WHEN they POST a result
-- THEN it returns 404 and no fixture data leaks
+## MODIFIED Requirements
 
 ### Requirement: Score Validation
 
@@ -89,21 +45,28 @@ Loading a result MUST persist, in ONE transaction: fixture scores and winner, wi
 - WHEN the result closes (result POST, resolveLiveMatch, or runWizardClose)
 - THEN `scores.home.inducements` and `scores.away.inducements` carry per-side `{ budget, cards }` with names resolved from the catalog
 
-### Requirement: Already-Played Guard and Idempotency
+### Requirement: MVP Event Write on Result Load
 
-A result MUST NOT be loaded twice: a second POST on a fixture with a committed result MUST return 409 with no re-award. Retrying an identical request after a committed result MUST NOT double-award PE or winnings. The result route MUST return 409 on a forfeited fixture.
+When a result is loaded for a fixture that has a `LiveMatch`, the result route MUST append TWO `mvp` events (home grantee, away grantee) to that LiveMatch's event list inside the result transaction, using the DIRECTLY SELECTED grantee `rosterPlayerId` per team (`mvp.grantee`). The next `seq` MUST be read as `max(seq)` inside the transaction and bumped consistently so the `@@unique([liveMatchId, seq])` constraint cannot collide. A fixture with NO LiveMatch (legacy/walkover) MUST NOT write any `mvp` event.
+(Previously: the grantee was MJP-computed by a server 1D6 over exactly six nominations.)
 
-#### Scenario: Repeat load rejected
+#### Scenario: Home and away MVP appended
 
-- GIVEN a fixture with a committed result
-- WHEN a second POST arrives
-- THEN it returns 409 and PE, winnings, and scores are unchanged
+- GIVEN a fixture with a finished LiveMatch and a valid result payload
+- WHEN the result POST commits
+- THEN two `mvp` events (home + away grantee) are appended with monotonic seq
 
-#### Scenario: Forfeited fixture blocked
+#### Scenario: Concurrent seq writes never collide
 
-- GIVEN a fixture resolved by walkover
-- WHEN a result is POSTed
-- THEN it returns 409 and no mutation occurs
+- GIVEN two transactions appending events to the same LiveMatch
+- WHEN both read `max(seq)` inside their transaction
+- THEN no `@@unique([liveMatchId, seq])` collision occurs and both persist distinct seqs
+
+#### Scenario: No LiveMatch, no MVP
+
+- GIVEN a legacy or walkover fixture without a LiveMatch
+- WHEN a result POST commits
+- THEN no `mvp` event is written and the fixture is unchanged
 
 ### Requirement: Correction Authorization with Audit
 
@@ -144,29 +107,6 @@ Corrections MUST be accepted from the league admin, a `leagues.manage` holder (d
 - WHEN they PUT a correction
 - THEN it returns 200, the correction applies, and the audit row records the actor
 
-### Requirement: MVP Event Write on Result Load
-
-When a result is loaded for a fixture that has a `LiveMatch`, the result route MUST append TWO `mvp` events (home grantee, away grantee) to that LiveMatch's event list inside the result transaction, using the DIRECTLY SELECTED grantee `rosterPlayerId` per team (`mvp.grantee`). The next `seq` MUST be read as `max(seq)` inside the transaction and bumped consistently so the `@@unique([liveMatchId, seq])` constraint cannot collide. A fixture with NO LiveMatch (legacy/walkover) MUST NOT write any `mvp` event.
-(Previously: the grantee was MJP-computed by a server 1D6 over exactly six nominations.)
-
-#### Scenario: Home and away MVP appended
-
-- GIVEN a fixture with a finished LiveMatch and a valid result payload
-- WHEN the result POST commits
-- THEN two `mvp` events (home + away grantee) are appended with monotonic seq
-
-#### Scenario: Concurrent seq writes never collide
-
-- GIVEN two transactions appending events to the same LiveMatch
-- WHEN both read `max(seq)` inside their transaction
-- THEN no `@@unique([liveMatchId, seq])` collision occurs and both persist distinct seqs
-
-#### Scenario: No LiveMatch, no MVP
-
-- GIVEN a legacy or walkover fixture without a LiveMatch
-- WHEN a result POST commits
-- THEN no `mvp` event is written and the fixture is unchanged
-
 ### Requirement: Inducement Snapshot Parity and Copy-Forward
 
 The THREE close paths (result POST, `resolveLiveMatch`, `runWizardClose`) MUST each write the SAME per-side `scores.home|away.inducements` shape (additive JSON inside `scores`, no `MatchResult` migration), so a resolved live match and a wizard-closed match persist inducements identically. A result correction (PUT) MUST persist the inducements from the wizard input (prefilled from the snapshot); a correction MUST NOT drop inducements a prior report persisted. Legacy rows without per-side inducements stay untouched (single-row `pettyCash` fallback).
@@ -189,6 +129,8 @@ The THREE close paths (result POST, `resolveLiveMatch`, `runWizardClose`) MUST e
 - GIVEN a legacy result with top-level `pettyCash` but no per-side inducements
 - WHEN it is corrected or re-read
 - THEN no inducements key is invented and the single-row fallback stays
+
+## ADDED Requirements
 
 ### Requirement: Winnings Computed from Input Fan Factor
 
