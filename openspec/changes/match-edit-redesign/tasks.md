@@ -79,7 +79,7 @@ A step slice therefore costs step + test + shell branch + shell test, and the re
 
 ## Phase 3 (s3a–s3c): Steps 3–5
 
-- [ ] 3.1 (s3a) Create `features/leagues/acta/StepMvp.tsx` (MAW-5): DIRECT single MVP per team (`mvp.grantee`); ★4 PE note; add the shell branch + shell test.
+- [x] 3.1 (s3a) Create `features/leagues/acta/StepMvp.tsx` (MAW-5): DIRECT single MVP per team (`mvp.grantee`); ★4 PE note; add the shell branch + shell test.
 - [ ] 3.2 (s3b) Extract pure `features/leagues/acta/bajasPlan.ts` (+ co-located test) binding each victim's 1D16/1D6 rolls to the **causing** team's draft, then create `features/leagues/acta/StepBajas.tsx` (MAW-6): derived victims list (read-only from Step 2); 1D16 injury roll + 1D6 permanent roll only when band is Permanente; add the shell branch + shell test. Splitting helper-then-step keeps each PR under budget (see the s3b alignment risk in `design.md`).
 - [ ] 3.3 (s3c) Create `features/leagues/acta/StepFinal.tsx` (MAW-7): winnings breakdown as a **client preview** using the SAME pure `computeWinnings` from `lib/rules/winnings.ts` — Step 5 precedes submit, so there is no server value to fetch. The server stays authoritative on submit, the client transmits NO amount, and no new API surface is added. Plus fan 1D6 roll input per team; add the shell branch + shell test.
 - [ ] 3.4 (s3a–s3c) RED then GREEN `features/leagues/acta/*.test.tsx` + `bajasPlan.test.ts`: one-MVP-per-team, permanent-roll gating with victim→causing-draft binding, winnings preview + fan roll.

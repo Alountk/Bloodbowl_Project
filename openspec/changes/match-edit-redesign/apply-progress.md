@@ -266,3 +266,85 @@ re-architecture, no re-formatting, no protected file touched.
 - Tests included in the same commit: `added=91 removed=3 total=94`; overall commit
   `added=181 removed=40 total=221`.
 
+## Slice s3a — `StepMvp` + shell branch (MAW-5)
+
+- **Branch**: `feat/match-edit-redesign-s3a`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main` (slice 3a of the re-forecast 13-slice plan; stacked on S2)
+- **Boundary**: starts from the S2 wizard shell + Steps 0–2; ends with Step 3 (MVP) rendering the
+  real direct-selection step. Steps 4–6 stay placeholders (s3b/s3c/s4).
+- **Rollback boundary**: revert `features/leagues/acta/StepMvp.tsx` + its test and the `step === 3`
+  branch + import in `MatchActaWizard.tsx` (+ the shell test case). No protected file touched.
+- **Code commit**: `a780e6c` — `feat(leagues): add direct MVP step to acta wizard`.
+
+### Completed Tasks
+
+- [x] 3.1 (s3a) `features/leagues/acta/StepMvp.tsx` (MAW-5): DIRECT single MVP per team
+  (`mvp.grantee`); ★4 PE note; shell branch + shell test.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/acta/StepMvp.tsx` | Created | Native radio group per team → one grantee per team; ★`PE_MVP` note; no random mode, no 6-nomination list |
+| `features/leagues/acta/StepMvp.test.tsx` | Created | One grantee per team; second pick replaces the first; ★4 PE note; payload carries `mvp.grantee` |
+| `features/leagues/MatchActaWizard.tsx` | Modified | `StepMvp` import + `step === 3` render branch (steps 4–6 untouched placeholders) |
+| `features/leagues/acta/MatchActaWizard.test.tsx` | Modified | New step-3 case: real MVP step renders, captures both grantees, survives a step change |
+
+### actaState — no change required
+
+`ActaTeamDraft.mvpGrantee` already existed (S2) and `buildActaPayload` already emits it as
+`mvp.grantee` (with `nominations: []`), so s3a is additive **without** touching `actaState.ts`. The
+scope's "extend if needed" condition did not fire; adding a second field would have duplicated the
+existing grantee.
+
+### Roster Source
+
+`StepMvp` consumes the **existing** `homeRoster`/`awayRoster` (`RosterPlayerRef[]`) props that the
+shell already receives and passes to `StepAcciones`. No new fetch and no new prop were introduced;
+the roster list reaches the shell the same way `MatchResolveModal` builds it (alive + available
+players mapped to `{ id, name }`), so the wizard inherits the live-resolution precedent.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 3.1 | `StepMvp.test.tsx` | Component (jsdom) | ✅ 27 acta tests | ✅ Written (`Failed to resolve import "./StepMvp"`) | ✅ 4/4 passed | ✅ Clean |
+| 3.1 (shell) | `MatchActaWizard.test.tsx` | Component (jsdom) | ✅ 11 shell tests | ✅ Covered by the new step-3 case | ✅ 12/12 passed | ✅ Clean |
+
+- **Total tests written**: 5 (4 step + 1 shell); **passing**: 5/5 in the two focused files.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta` → **4 files, 31 tests passed** |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues/acta/MatchActaWizard.test.tsx` → **12 passed (jsdom render of the real step 3)** |
+| Rollback boundary | Revert `acta/StepMvp.tsx` + `acta/StepMvp.test.tsx` and the `step === 3` branch + import in `MatchActaWizard.tsx`; steps 0–2 and 4–6 unaffected. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **4 files, 31 passed**
+- `pnpm test` → **184 files, 2698 passed**
+- `pnpm lint` → **clean (no output)**
+- `npx tsc --noEmit` → **clean (no output)**
+
+### Changed Lines (s3a)
+
+- Code only (all four files are code/tests): `added=243 removed=1 total=244` (< 400 budget; ≈310
+  estimate).
+
+### Deviations from Design
+
+- None. MAW-5 says "exactly one MVP per team"; the step uses a native radio group per team (a
+  labelled, keyboard-operable control) rather than clickable divs, matching the accessibility
+  constraint and the `MatchResolveModal` MVP picker's `aria-label` precedent. The unset ("— Sin
+  MVP") option mirrors the preview's default option and lets `mvpGrantee` start empty, as S2 defined.
+
+### Issues Found (s3a)
+
+- None functional. The route rejects an ABSENT grantee by requiring exactly six nominations
+  (`grantee: null` → 400), so the wizard's s4a Revisar step must block save until both teams have a
+  grantee — already captured as MAW-8/`StepRevisar` in the s4a plan; no change needed in s3a.
+
+
