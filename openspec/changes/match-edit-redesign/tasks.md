@@ -96,9 +96,9 @@ A step slice therefore costs step + test + shell branch + shell test, and the re
 
 ## Phase 5 (s5a–s5b): Correction recompute + treasury delta + audit
 
-- [ ] 5.1 (s5a) Modify route PUT (L618+): recompute winnings from corrected FF (`computeWinnings`), then `tx.team.update({ treasury: { increment: new − old } })` — no floor (negative allowed); extend `after` snapshot with recomputed winnings.
+- [x] 5.1 (s5a) Modify route PUT (L618+): recompute winnings from corrected FF (`computeWinnings`), then `tx.team.update({ treasury: { increment: new − old } })` — no floor (negative allowed); extend `after` snapshot with recomputed winnings.
 - [ ] 5.2 (s5b) Modify route PUT inducements (F1): add `parseInducements(raw.inducements)` helper; wizard input wins → else fall back to `prevScores.*.inducements` → else omit key (never drop a persisted inducement).
-- [ ] 5.3 (s5a–s5b) RED then GREEN `route.test.ts`: correction recomputes winnings + treasury delta; negative delta allowed; inducements preserved; `MatchResultCorrection` before/after audit records actor.
+- [ ] 5.3 (s5a–s5b) RED then GREEN `route.test.ts`: correction recomputes winnings + treasury delta; negative delta allowed; inducements preserved; `MatchResultCorrection` before/after audit records actor. **s5a half DONE** (recompute + treasury delta incl. negative + extended snapshot + audit after-snapshot); **s5b half pending** (inducement precedence — the copy-forward tests still pass unchanged).
 - [x] 5.4 (s4c) RESOLVED — inducement persistence shape decided: a non-live acta persists a **budget-only** snapshot (`budget` = money spent per team; `cards` may be empty). `parseInducements` must stop returning `null` when a budget is present but `cards` is empty; the live path (which carries real cards) is unchanged. Implemented with the wizard entry point in s4c. This supersedes the earlier "deferred, unresolved" framing.
 
 ## Phase 6 (s6a–s6e): Prefill + i18n + e2e + retire `ResultModal`

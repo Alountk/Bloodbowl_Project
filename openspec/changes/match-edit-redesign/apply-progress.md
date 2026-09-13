@@ -1085,6 +1085,117 @@ the hint present when lines are dropped and absent when they are not.
 - `d2ed094` — `fix(leagues): restore acta load-path prefill and surface submit errors` (actaState.ts,
   LeagueDetail.tsx, MatchActaWizard.tsx + their tests).
 
+## Slice s5a — PUT recompute + treasury delta + extended snapshot
+
+- **Branch**: `feat/match-edit-redesign-s5a`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main` (slice s5a, stacked on s4c)
+- **Boundary**: starts from the s4c copy-forward PUT; ends with a correction that RECOMPUTES winnings
+  from the corrected payload, moves each treasury by the delta, persists the extended wizard snapshot,
+  and audits the recomputed `after`. The inducement PRECEDENCE (F1) is explicitly s5b — the PUT's
+  inducement behaviour (copy-forward) is left byte-for-byte as it was.
+- **Rollback boundary**: revert `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts` (PUT only)
+  and its `route.test.ts`; the copy-forward PUT is restored with no other slice depending on it.
+
+### Code commit
+
+- `54ac960` — `feat(leagues): recompute winnings and treasury delta on result correction`
+  (`route.ts` PUT + `route.test.ts`).
+
+### Completed Tasks
+
+- [x] 5.1 (s5a) PUT recomputes winnings via `computeWinnings` (input FF as-is, no 1D3; own TDs;
+  `heldBall = !neverHeld`) and moves each treasury by `new − old` with NO floor; the audit `after`
+  snapshot carries the recomputed winnings.
+- [ ] 5.3 (s5a half) RED → GREEN route tests for recompute + treasury delta + negative delta + the
+  extended snapshot. The s5b half (inducement precedence) is untouched/pending.
+
+### What changed (honest reconciliation of the old PUT)
+
+The old PUT at L631–840 copied `winnings` and `inducements` forward from `prevScores` and REBUILT
+`scores` without the extended keys (dropping `ff`, `neverHeld`, `fanRoll`, `injuryRoll`,
+`permanentRoll`, `actions`, `duration`), and it never touched `Team.treasury`. s5a:
+
+1. Recomputes `homeWinnings`/`awayWinnings` with `computeWinnings` (imported already), using
+   `homeFf = home.ff ?? prevScores?.home?.ff ?? 0` (and the away mirror) — the input FF is used as-is
+   with NO `rollD3`, exactly as the POST does. `heldBall` is the parser's `!neverHeld` mapping.
+2. Adds `tx.team.update({ treasury: { increment: homeWinningsDelta } })` (and away) inside the
+   correction transaction, where `delta = new − prevScores.*.winnings ?? 0`. Negative deltas are
+   applied verbatim — no `Math.max`/clamp.
+3. Rebuilds `scores.home|away` with `winnings` (recomputed), `ff`, `neverHeld`, `fanRoll`,
+   `injuryRoll`, `permanentRoll`, `actions`, and top-level `duration` — the extended snapshot keys
+   the wizard needs for correct-mode prefill.
+4. Records `correctedAt: new Date()` explicitly on the `MatchResultCorrection` row (actor already
+   recorded); `before` is the prior snapshot and `after` is the rebuilt snapshot with recomputed
+   winnings.
+5. Leaves the PE `max(0, new − old)` loop, the authorization rule, the 409-finished/409-no-result/
+   404-no-leak semantics, and the inducement copy-forward UNTOUCHED.
+
+### RECOMPUTE_PROOF
+
+| Test | What it proves | Exact numbers |
+|------|----------------|---------------|
+| `PUT recomputes winnings from the corrected payload and moves treasury by the delta (s5a)` | recompute REPLACES copy-forward; treasury delta; audit `after` | prior 45k/35k → corrected FF 5/3, TD 2/1 → **60k/50k**, treasury **+15k/+15k**, audit `after` = 60k/50k |
+| `PUT allows a negative treasury delta with no floor (s5a)` | NEGATIVE delta applied verbatim, no clamp | prior 90k/80k → corrected FF 1/1, TD 2/1 → **30k/20k**, treasury **−60k/−60k** |
+| `PUT recomputes the never-held-ball winnings bonus from neverHeld (s5a)` | `heldBall = !neverHeld` feeds the formula | home `neverHeld: true` → **70k** (60k base + 10k) |
+| `PUT recomputes winnings for a legacy row from a blank FF (0) — no copy-forward` | legacy fallback is blank FF, not the old copy | no prior winnings/ff → **20k/10k**, treasury +20k/+10k |
+
+### SNAPSHOT_KEYS (PUT now preserves)
+
+Per side (`scores.home`, `scores.away`): `score`, `postFf`, **`winnings`** (recomputed), **`ff`**,
+**`neverHeld`**, **`fanRoll`**, **`injuryRoll`**, **`permanentRoll`**, **`actions`**, `casualties`,
+`pe`, and `inducements` (copy-forward, s5b). Top level: `winnerId`, `mvp`, **`duration`**.
+The dedicated test asserts every one of `ff`, `neverHeld`, `fanRoll`, `injuryRoll`, `permanentRoll`,
+`actions` is present on BOTH sides (no extended key dropped) plus top-level `duration`.
+
+### PE_INVARIANT (spent PE still never revoked)
+
+- The PE loop is unchanged: `delta = Math.max(0, award.pe − prev)` and `if (delta === 0) continue`.
+  No negative PE increment is possible.
+- Proof: the pre-existing test `never revokes spent PE on a correction that awards fewer PE` (prior
+  p1 = 9 PE, corrected = 3 PE → delta 0) still passes, and asserts no PE increment is negative. The
+  full `pnpm test` gate (2750 passed) is green.
+
+### TDD Cycle Evidence (s5a)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 5.1/5.3 (s5a) | `app/api/.../result/route.test.ts` | Route/Integration | ✅ 52/57 existing PUT+POST tests | ✅ 5 tests written first → **5 failed / 52 passed** (undefined winnings, no treasury write) | ✅ **57/57 passed** | ✅ Clean |
+
+### Work Unit Evidence (s5a)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **1 file, 57 passed** |
+| Runtime harness command/scenario and exact result | `pnpm test` → **189 files, 2750 passed** (the route runs against a mocked Prisma `$transaction`; no live server boundary for this route slice) |
+| Rollback boundary | Revert the PUT block in `route.ts` + the 5 s5a tests; restore copy-forward. No other file depends on the s5a change. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **57 passed (57)**
+- `pnpm test` → **189 files, 2750 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s5a)
+
+- Code only (`route.ts` + `route.test.ts`): `added=172 removed=30 total=202` — under the ~310 target.
+
+### Deviations from Design
+
+- None material. The design's F1 inducement block is intentionally deferred to s5b; the PUT keeps the
+  copy-forward exactly as designed for this slice.
+- The design said the extended snapshot stores "raw rolls"; the PUT stores the RESOLVED per-victim
+  rolls (client value or the server fallback), matching the POST snapshot semantics (`scores.away`
+  grouping by victim team). This is the value a later prefill can actually read back.
+
+### Issues Found (s5a)
+
+- Legacy rows carry no persisted `winnings`/`ff`; the delta is therefore computed against 0 and the
+  winnings from a blank FF. This is the documented legacy limitation ("legacy rows read as blank FF")
+  and is asserted explicitly rather than silently copied forward.
+
+
 
 
 
