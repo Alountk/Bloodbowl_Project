@@ -1320,6 +1320,94 @@ does not move).
   rows. This corrective pass supersedes it — the guards above replace both behaviours.
 - Inducement handling was NOT touched (s5b owns it); the copy-forward tests still pass unchanged.
 
+## Slice s5b — PUT inducement precedence (F1)
+
+The PUT correction replaced the per-side inducement COPY-FORWARD with the design's F1
+wizard-input-first precedence. No file outside `route.ts` + `route.test.ts` was touched, and the s5a
+winnings/treasury-delta logic is byte-for-byte unchanged.
+
+- **Branch**: `feat/match-edit-redesign-s5b`
+- **Mode**: Strict TDD (RED → GREEN → TRIANGULATE)
+- **Code commit**: `c13f895` — `feat(leagues): prefer wizard inducements on result correction`.
+- **Governing rule (F1)**: the wizard INPUT wins; a payload that OMITS inducements falls back to the
+  previously persisted `prevScores.*.inducements`; when NEITHER exists (legacy single-row `pettyCash`)
+  the key is omitted — no invention. Reuses `parseInducements` (s4c budget-only shape); no duplicated
+  parsing logic.
+
+### The four rules and their proving tests
+
+| Rule | Behavior | Proving test | Decisive assertion |
+|---|---|---|---|
+| 1. Input wins | payload inducements persist, replacing the snapshot | `RAU-122/s5b: PUT persists the wizard-INPUT inducements — input wins over the prior snapshot` | `expect(updateArg.data.scores.away.inducements).toEqual({ budget: 25_000, cards: [] })` against a prior `{ budget: 150_000, cards: [{ name: "Mago", count: 1 }] }` |
+| 2. Fallback preserves | payload omits → prior snapshot kept | `RAU-122/s5b: PUT falls back to the prior per-side inducements when the payload omits them — a correction never drops the chips` | `away.inducements: { budget: 150_000, cards: [{ name: "Mago", count: 1 }] }`; `home` has no key |
+| 3. Legacy omits | neither input nor snapshot → key omitted | `RAU-122/s5b: PUT omits inducements for legacy rows with neither input nor snapshot (omit-if-absent)` | `expect(updateArg.data.scores.home).not.toHaveProperty("inducements")` and the same for `away` |
+| 4. Live unchanged | POST with a `liveMatch` uses the cart snapshot | `LM-30/S3: carries the lower-TV cart into scores.*.inducements when the fixture's liveMatch has one` (existing, unchanged) | `scores.away.inducements` equals the cart `{ budget: 150_000, cards: [{ name: "Mago", count: 1 }] }` even though the payload carries no cart |
+
+Triangulation: `RAU-122/s5b: PUT resolves inducements PER SIDE — input wins on one side, the snapshot
+survives on the other` supplies input for HOME only (real cards) over a prior AWAY cart → asserts
+`home` = payload `{ budget: 40_000, cards: [{ name: "Chef", count: 1 }] }` AND `away` = prior
+`{ budget: 150_000, cards: [{ name: "Mago", count: 1 }] }`, proving the two branches are independent
+per side.
+
+### Implementation (route.ts PUT)
+
+```ts
+const ind = parseInducements(raw.inducements);
+// per side:
+...(ind?.home != null
+  ? { inducements: ind.home }
+  : prevScores?.home?.inducements != null
+    ? { inducements: prevScores.home.inducements }
+    : {}),
+```
+
+### TDD Cycle Evidence (s5b)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 5.2 | `route.test.ts` | Route/Integration | ✅ 60/60 existing | ✅ input-wins test written first → **1 failed / 60 passed** (got 150k copy-forward, expected 25k input) | ✅ **61/61 passed** | ✅ per-side mixed case (input home + snapshot away) → **62/62** | ✅ None needed |
+
+- **Total tests written**: 2 (input-wins + per-side triangulation); **passing**: 2/2 in the focused file.
+- **Layers used**: Route/Integration (2); Unit (0); E2E (0 — s6d/s6e own it).
+- **Pure functions created**: 0 (reused `parseInducements`; no duplicated parsing logic).
+
+### Work Unit Evidence (s5b)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **1 file, 62 passed** |
+| Runtime harness command/scenario and exact result | `pnpm test` → **189 files, 2755 passed** (route exercised against a mocked Prisma `$transaction`; no live server boundary for this slice) |
+| Rollback boundary | Revert commit `c13f895`; the s5a copy-forward behavior is restored. No other file depends on the change. |
+
+### Verification (s5b — exact commands / observed results)
+
+- `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **62 passed (62)**
+- `pnpm test` → **189 files, 2755 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s5b)
+
+- Code only (`route.ts` + `route.test.ts`): `added=82 removed=11 total=93` — under the ~120 target.
+
+### Deviations from Design
+
+- None material. The implementation matches the design's F1 block exactly: `parseInducements` is
+  reused (no duplicated parsing), the wizard input wins, the snapshot is the fallback, and the key is
+  omitted when neither exists.
+- The PUT handler does not fetch `liveMatch`, so rule 4 ("the live path is unchanged") is satisfied by
+  NOT touching the POST live branch (`fixture.liveMatch ? buildInducementSnapshot(...) : ...`) and by
+  the fallback preserving any previously persisted cart snapshot. No `liveMatch` branch was added to
+  the PUT — the design's F1 block does not specify one.
+
+### Issues Found (s5b)
+
+- The two former copy-forward tests were retitled to the fallback/legacy semantics they now prove;
+  their assertions were already correct for the fallback branch and remain green.
+- Preserved invariants (untouched): PE never revoked, audit before/after, authorization (owner OR
+  captain OR `leagues.manage`), 401 / 404 no-leak / 409 finished / 409 no result, and the s5a
+  money-safety guards.
+
 
 
 
