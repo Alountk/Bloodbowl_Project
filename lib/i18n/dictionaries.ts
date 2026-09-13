@@ -513,12 +513,9 @@ const es: Dict = {
   "negotiation.acceptErrorWithMsg": "No se pudo aceptar la fecha. {message}",
 
   // Retired `ResultModal` (s6c): only `result.correctAction` (the MatchCard
-  // overflow entry point) and the server-error messages survive; every other
-  // legacy result.* key was removed with the modal.
+  // overflow entry point) survives; every other legacy result.* key was removed
+  // with the modal. The wizard surfaces its own errors through `acta.saveError`.
   "result.correctAction": "Corregir resultado",
-  "result.server.alreadyPlayed": "Ya hay un resultado cargado para este partido.",
-  "result.server.forbidden": "No tenés permisos para esta acción.",
-  "result.server.saveError": "No se pudo guardar el resultado.",
 
   // RAU-122 s6b — "Acta del partido" wizard (match result entry). NOTE: the
   // wizard's "NUNCA tuvo el balón" checkbox is the INVERSE of the retired
@@ -1412,12 +1409,9 @@ const en: Dict = {
   "negotiation.acceptErrorWithMsg": "Could not accept the date. {message}",
 
   // Retired `ResultModal` (s6c): only `result.correctAction` (the MatchCard
-  // overflow entry point) and the server-error messages survive; every other
-  // legacy result.* key was removed with the modal.
+  // overflow entry point) survives; every other legacy result.* key was removed
+  // with the modal. The wizard surfaces its own errors through `acta.saveError`.
   "result.correctAction": "Correct result",
-  "result.server.alreadyPlayed": "A result is already loaded for this match.",
-  "result.server.forbidden": "You don't have permission for this action.",
-  "result.server.saveError": "Could not save the result.",
 
   // RAU-122 s6b — "Acta del partido" wizard (match result entry). The wizard's
   // "NEVER had the ball" checkbox is the INVERSE of the retired `result.heldBall`
