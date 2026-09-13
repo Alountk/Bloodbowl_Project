@@ -1408,6 +1408,170 @@ const ind = parseInducements(raw.inducements);
   captain OR `leagues.manage`), 401 / 404 no-leak / 409 finished / 409 no result, and the s5a
   money-safety guards.
 
+## Slice s6a — Move result draft types + full `actaPrefill` (MAW-9)
+
+- **Branch**: `feat/match-edit-redesign-s6a` (stacked on s5b, `c13f895`)
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main`
+- **Boundary**: starts from s5b; ends with (a) the accurate live-source comment, (b) the persisted
+  `MatchResult.scores` → wizard prefill, (c) the draft types relocated to `resultPrefill.ts`, and
+  (d) the CORRECT path wired to `MatchActaWizard` prefilled. `ResultModal.tsx` / `ResultModalFor`
+  stay present and compiling for s6c.
+- **Rollback boundary**: revert `f5e1f62`, `20a690f`, `6ea5e01`, `69dcaf6`; the legacy `ResultModal`
+  correct path and the pre-s6a `actaPrefill` skeleton return. No route, schema, or payload-name change.
+
+### Code commits
+
+| Commit | Subject | Kind |
+|---|---|---|
+| `f5e1f62` | docs(leagues): correct the acta live-source prefill comment | comment |
+| `20a690f` | feat(leagues): complete acta prefill from the persisted result snapshot | prefill |
+| `6ea5e01` | refactor(leagues): move the result draft types into resultPrefill | types |
+| `69dcaf6` | feat(leagues): open the acta wizard prefilled on result correction | wiring |
+
+### Completed Tasks
+
+- [x] 6.1 `ResultTeamDraft`/`ResultPlayerDraft`/`ResultCasualtyDraft` moved out of `ResultModal.tsx`
+  into `resultPrefill.ts`; every importer repointed; the duplicate `RosterPlayerRef` dropped.
+- [x] 6.2 `actaPrefill(snapshot)` maps the persisted `MatchResult.scores` snapshot → wizard state
+  (MAW-9); legacy rows open partially prefilled without throwing.
+- [x] 6.3 RED → GREEN `actaState.test.ts` (extended / legacy / null); `resultPrefill.test.ts` stays green.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/acta/actaState.ts` | Modified | Accurate live-source comment; `actaPrefill` snapshot branch + `actionsFromSnapshot`/`teamFromSnapshot` |
+| `features/leagues/acta/actaState.test.ts` | Modified | Extended-snapshot, legacy, no-mvp, and `undefined` prefill tests |
+| `features/leagues/resultPrefill.ts` | Modified | Now the home of `ResultPlayerDraft`/`ResultCasualtyDraft`/`ResultTeamDraft` |
+| `features/leagues/ResultModal.tsx` | Modified | Draft types imported from `resultPrefill.ts`; local `RosterPlayerRef` dropped (imported from `MatchResolveModal`) |
+| `features/leagues/ResultModal.test.tsx` | Modified | Imports repointed to the new type homes |
+| `features/leagues/LeagueDetail.tsx` | Modified | Type import repointed; CORRECT path opens `MatchActaWizardFor mode="correct"` prefilled; `ResultModalFor` kept (exported) for s6c |
+| `features/leagues/LeagueDetail.test.tsx` | Modified | Correct-path test rewritten to assert the wizard + persisted-snapshot prefill |
+
+### COMMENT_CORRECTION
+
+My reading **matched** the orchestrator's. The old comment claimed "the live draft carries no casualty
+VICTIM", which is true of `buildResultPrefill`'s `ResultTeamDraft` (per-player casualty COUNT only) but
+false of the raw live source. Verified against `app/api/.../live/route.ts` `recordCasualty`: the
+persisted casualty event payload carries `victimRosterId`, optional `causerRosterId`, `roll16`,
+optional `roll6`, `band`, and `permanentAttribute`; `LiveMatchView` exposes `mvpGrantees`. The
+corrected comment now states the limitation belongs to the DRAFT, not the live source, and that
+`buildResultPrefill` discards every non-`td` event.
+
+### PREFILL_MAPPING
+
+**Populated** from the persisted snapshot (same-side unless noted):
+
+| Snapshot key | Wizard field |
+|---|---|
+| `home/away.score` | `draft.score` |
+| `home/away.neverHeld` | `draft.neverHeld` (`?? false`) |
+| `home/away.ff` | `draft.ff` (only when non-null) |
+| `home/away.fanRoll` | `draft.fanRoll` (`?? null`) |
+| `home/away.inducements.budget` | `draft.inducements` (`?? 0`) |
+| top-level `mvp.home`/`mvp.away` | `draft.mvpGrantee` (`?? ""`) |
+| top-level `duration` | `state.duration` |
+| `home/away.actions` (non-casualty counts) | `ActaActionLine[]` (td/completion/interception/foul/throwTeamMate/landedSafe) |
+| **opponent** `casualties` + own `actions[].casualties` | casualty lines (victim bound to the reconstructed causer) |
+| **opponent** `injuryRoll` / `permanentRoll` | `draft.injuryRoll` / `draft.permanentRoll` (transposed — see below) |
+
+**Transposition (non-obvious):** the snapshot groups `casualties`/`injuryRoll`/`permanentRoll` by the
+**VICTIM's** side (`route.ts` `side[victim.team].injuryRoll.push(...)`), while the wizard stores the
+rolls on the **CAUSING** draft (`bajasPlan.ts`). `teamFromSnapshot` therefore reads the OPPONENT's
+arrays. Verified by the route test's own comment: "Victims are grouped by the VICTIM's team".
+
+**Genuinely absent — left unset (not invented):**
+
+- `weather` — it is a `MatchResult` **column**, not inside `scores`; the prefill source is the snapshot,
+  so the wizard keeps its `"Perfecto"` default. (Passing `result.weather` would be a follow-up.)
+- The casualty **causer↔victim pairing** — the snapshot never persists which causer hit which victim.
+  The victim set, per-player casualty counts (PE) and roll alignment ARE preserved exactly; the pairing
+  is reconstructed from `actions[].casualties` counts in recorded victim order.
+- **Legacy rows (no `actions`)** — no causer counts exist, so action lines, casualty lines and rolls are
+  all left empty. Score, `neverHeld`, `mvp`, and any present `ff`/`fanRoll`/`duration` still prefill.
+  NOTE: the design's "legacy → score + resolved-casualty identity + `mvp`" is only partially
+  achievable — the victims exist in `scores.<side>.casualties`, but the wizard's casualty line requires
+  a causer, so a legacy row cannot render them in the Bajas step. Recorded as an issue below.
+
+### TYPE_MOVE
+
+- `ResultPlayerDraft`, `ResultCasualtyDraft`, `ResultTeamDraft` now live in
+  `features/leagues/resultPrefill.ts`.
+- Importers: `ResultModal.tsx` (`ResultPlayerDraft`, `ResultTeamDraft`), `acta/actaState.ts`
+  (`ResultTeamDraft`), `LeagueDetail.tsx` (`ResultTeamDraft`), `ResultModal.test.tsx`
+  (`ResultTeamDraft`).
+- `RosterPlayerRef`: the local `{ id, name }` in `ResultModal.tsx` was a structural subset of
+  `MatchResolveModal.tsx`'s `{ id, name, dorsal?, positionalKey?, journeyman? }`. Dropped; `ResultModal.tsx`
+  and `ResultModal.test.tsx` now import it from `./MatchResolveModal`. NOTE: the task called this a
+  "re-export"; it was actually a separate local definition, but the dedup is safe (ResultModal only
+  reads `id`/`name`, both present on the superset).
+- `ResultModal.tsx` was NOT deleted (s6c owns retirement).
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 6.2/6.3 (prefill) | `actaState.test.ts` | Unit | ✅ 9/9 | ✅ Extended-snapshot test written first → **1 failed / 11 passed** (`fanRoll` null, expected 4) | ✅ **12/12 passed** | ✅ legacy + no-`mvp` + `undefined` cases | ✅ Helpers extracted (`actionsFromSnapshot`/`teamFromSnapshot`) |
+| 6.4 (wiring) | `LeagueDetail.test.tsx` | Component | ✅ 30/31 | ✅ Correct-path test rewritten first → **1 failed / 30 passed** ("Corregir acta del partido" not found) | ✅ **31/31 passed** | ✅ Step 0 FF + Step 1 scores both asserted | ✅ None needed |
+| 6.1 (types) | — | Compile | ✅ `tsc --noEmit` + 118 focused tests | ✅ Type move verified by `tsc` + the existing suites (no new behavior) | ✅ Green | ✅ `ResultModal.test.tsx` + `resultPrefill.test.ts` stay green | ✅ Duplicate `RosterPlayerRef` removed |
+
+- **Total tests written**: 4 (3 unit prefill + 1 rewritten component); all green.
+- **Layers used**: Unit (3), Component (1), E2E (0 — s6d/s6e own it).
+- **Pure functions created**: 2 (`actionsFromSnapshot`, `teamFromSnapshot`; both pure).
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta` → **9 files, 66 passed**; `pnpm exec vitest run features/leagues` → **41 files, 634 passed** |
+| Runtime harness command/scenario and exact result | `pnpm test` → **189 files, 2758 passed** (jsdom + route tests; the wizard's correct-mode prefill is exercised through `LeagueDetail.test.tsx` with a mocked `getMatchDetail`) |
+| Rollback boundary | Revert `f5e1f62`, `20a690f`, `6ea5e01`, `69dcaf6`; `ResultModal` correct path + pre-s6a `actaPrefill` skeleton return. No route/schema dependency. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **9 files, 66 passed**
+- `pnpm exec vitest run features/leagues` → **41 files, 634 passed**
+- `pnpm test` → **189 files, 2758 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines
+
+| Commit | Added | Removed | Total |
+|---|---|---|---|
+| `f5e1f62` (comment) | 10 | 4 | 14 |
+| `20a690f` (prefill) | 253 | 18 | 271 |
+| `6ea5e01` (types) | 42 | 45 | 87 |
+| `69dcaf6` (wiring) | 58 | 50 | 108 |
+| **Total (code)** | **363** | **117** | **480** |
+
+**480 changed lines vs the ~350 target (1.37×) and the ~290 s6a estimate (1.66×)** — over the
+400-line review budget. The overage is test-dominated (≈220 of the 480 lines are test code); the
+implementation was not minified. Recommendation: `size:exception` for the s6a stacked PR, OR let the
+orchestrator split the PR (prefill = `f5e1f62`+`20a690f`; types+wiring = `6ea5e01`+`69dcaf6`).
+
+### Deviations from Design
+
+- The design's File Changes table is followed; there is **no "F7" block** in
+  `openspec/changes/match-edit-redesign/design.md` on the docs branch (grepped). The type-move
+  instruction comes from task 6.1 + the File Changes table, and is implemented as described.
+- `actaPrefill`'s weather is NOT prefilled: `weather` is a `MatchResult` column, not a `scores` key,
+  and the task scopes prefill to "the persisted `MatchResult.scores`". Left default; noted above.
+- Casualty lines are reconstructed with a deterministic causer attribution because the causer↔victim
+  pairing is not persisted. Counts/victims/roll alignment are exact; the attribution is the only
+  reconstructed part and is documented in `actionsFromSnapshot`.
+
+### Issues Found (s6a)
+
+- **Legacy casualty identity is not renderable** (recorded, NOT invented): the design's legacy prefill
+  claim ("score + resolved-casualty identity + `mvp`") cannot fully hold — without `actions` there is no
+  causer to bind a wizard casualty line to, so `scores.<side>.casualties` cannot surface in the Bajas
+  step. The victims remain in the snapshot for the summary/audit; only the wizard's derived list is empty.
+- `ResultModalFor` is now unused by the render tree and was **exported** to keep it present and
+  compiling without an unused-symbol lint error (s6c deletes it). `pnpm lint` stays clean.
+- The e2e suite is knowingly red on this chain (s6d/s6e own it); `pnpm test` is the gate and is green.
+
 
 
 

@@ -104,9 +104,9 @@ A step slice therefore costs step + test + shell branch + shell test, and the re
 
 ## Phase 6 (s6a–s6e): Prefill + i18n + e2e + retire `ResultModal`
 
-- [ ] 6.1 (s6a) Move `ResultTeamDraft`/`ResultPlayerDraft`/`ResultCasualtyDraft` from `features/leagues/ResultModal.tsx` into `features/leagues/resultPrefill.ts`; drop duplicate `RosterPlayerRef` (use `MatchResolveModal` L27).
-- [ ] 6.2 (s6a) Implement `actaPrefill(result)` in `features/leagues/acta/actaState.ts` (MAW-9): map extended `scores` keys → wizard state; legacy rows partially prefilled (score + resolved-casualty identity + `mvp`).
-- [ ] 6.3 (s6a) RED then GREEN `actaState.test.ts` (legacy vs extended snapshot) + `resultPrefill.test.ts`.
+- [x] 6.1 (s6a) Move `ResultTeamDraft`/`ResultPlayerDraft`/`ResultCasualtyDraft` from `features/leagues/ResultModal.tsx` into `features/leagues/resultPrefill.ts`; drop duplicate `RosterPlayerRef` (use `MatchResolveModal` L27).
+- [x] 6.2 (s6a) Implement `actaPrefill(result)` in `features/leagues/acta/actaState.ts` (MAW-9): map extended `scores` keys → wizard state; legacy rows partially prefilled (score + resolved-casualty identity + `mvp`).
+- [x] 6.3 (s6a) RED then GREEN `actaState.test.ts` (legacy vs extended snapshot) + `resultPrefill.test.ts`.
 - [ ] 6.4 (s6b) Add `acta.*` keys to `lib/i18n/dictionaries.ts` (ES + EN); reword `result.heldBall` → "Nunca tuvo el balón".
 - [ ] 6.5 (s6c) Delete `features/leagues/ResultModal.tsx`; update imports in `LeagueDetail.tsx` (L16), `resultPrefill.ts` (L2), `ResultModal.test.tsx` (retire). Deletion-atomic: do not fold with the e2e rewrites.
 - [ ] 6.6 (s6c) Update component tests: retire `ResultModal.test.tsx`; update `MatchCard.test.tsx`, `LeagueDetail.test.tsx`, `ForfeitModal.test.tsx` (entry point moved to overflow), `resultPrefill.test.ts`.
