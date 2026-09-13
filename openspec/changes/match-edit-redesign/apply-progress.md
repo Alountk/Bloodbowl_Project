@@ -991,6 +991,101 @@ the hint present when lines are dropped and absent when they are not.
 
 - None functional. E2E remains knowingly red on this chain (s6d/s6e); `pnpm test` is the s4c gate.
 
+## Slice s4c — corrective pass (post-verify): load-path prefill + submit error surface
+
+- **Branch**: `fix/match-edit-redesign-s4c-prefill` (stacked on s4c)
+- **Mode**: Strict TDD (RED → GREEN) — a failing test FIRST for BOTH defects.
+- **Scope**: two defects found by independent verification of s4c. No re-architecture; the CORRECT
+  path, `ResultModal`, `MatchResolveModal`, `ForfeitModal`, `ResetLiveMatchModal`, `lib/liveStore.ts`,
+  `lib/rules/*` and `features/leagues/api.ts` are untouched.
+
+### DEFECT 1 — the finished-live load-path prefill was dropped
+
+- The legacy `ResultModalFor` fetched `getMatchDetail(...)` and called `buildResultPrefill(match.live)`;
+  the new `MatchActaWizardFor` passed NO `initial` and never fetched, so a scheduled fixture whose live
+  match already finished opened the wizard EMPTY. The old load-path test had been repointed to the
+  correct path, so nothing guarded it.
+- **Fix**: `actaPrefill` in `features/leagues/acta/actaState.ts` (its ONLY home, design decision F2)
+  now accepts the `buildResultPrefill` draft pair and adapts `ResultTeamDraft → ActaState`;
+  `MatchActaWizardFor` fetches the fixture GET and passes
+  `initial={actaPrefill(buildResultPrefill(match.live))}` on the load path only. The persisted-snapshot
+  (correct-mode) prefill branch is left as the s6a skeleton.
+
+#### PREFILL_MAPPING (live source → `ActaState`)
+
+| `ActaState` field | Populated? | Source / reason |
+|---|---|---|
+| `home/away.score` | yes | `ResultTeamDraft.score` (the live `homeScore`/`awayScore`) |
+| `home/away.neverHeld` | yes | `!ResultTeamDraft.ballHeld` (`buildResultPrefill` sets `ballHeld: true`) |
+| `home/away.actions` | yes | per-player rows → `td` lines (plus completion/interception/foul/throwTeamMate/landedSafe when present) |
+| `home/away.mvpGrantee` | no — unset (`""`) | the live draft carries up to six MJP nominations, not the wizard's single direct grantee; no honest scalar source |
+| `home/away.ff` | no — unset | the live draft has no Factor Fan |
+| `home/away.inducements` | no — `0` | no source on the live draft |
+| `home/away.fanRoll` | no — `null` | no source |
+| `home/away.injuryRoll` / `permanentRoll` | no — `[]` | no source (rolls are correct-mode/snapshot data) |
+| `weather` | no — default `"Perfecto"` | the live match has no weather |
+| `duration` | no — unset | the live draft has no duration |
+| casualties | no — not mapped | the live draft's casualty count has no VICTIM binding and its victim list has no CAUSER attribution; inventing either would corrupt the payload |
+
+### DEFECT 2 — a rejected submit was swallowed
+
+- `MatchActaWizardFor` did `void onSubmitResult(...).then(...).catch(() => {})` and `MatchActaWizard`
+  had no error state, so on a 400/409 the dialog stayed open with ZERO feedback.
+- **Fix**: `MatchActaWizard` now catches a rejected `onSubmit`, renders a `role="alert"` (neutral
+  professional Spanish: "No se pudo guardar el acta. Inténtalo de nuevo."), keeps the dialog open, and
+  clears the message on the next attempt. `LeagueDetail.tsx` returns the submit promise (no `.catch`)
+  so the rejection reaches the wizard. No pending/disabled-while-submitting state (out of scope).
+
+### TDD Cycle Evidence (corrective)
+
+| Defect | Test File | Layer | RED (test written first) | GREEN | REFACTOR |
+|------|-----------|-------|--------------------------|-------|----------|
+| 1 — load-path prefill | `LeagueDetail.test.tsx` | Integration (jsdom) | ✅ `expected '0' to be '2'` (the wizard opened empty) | ✅ 31/31 passed | ✅ Clean |
+| 2 — rejected submit | `MatchActaWizard.test.tsx` | Component (jsdom) | ✅ `Unable to find role="alert"` (the rejection was swallowed) | ✅ 18/18 passed | ✅ Clean |
+
+### Files Changed (corrective)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/acta/actaState.ts` | Modified | `actaPrefill` gains the load-path `ResultTeamDraft → ActaState` adapter (union with the s6a snapshot skeleton) |
+| `features/leagues/LeagueDetail.tsx` | Modified | `MatchActaWizardFor` fetches the fixture GET and passes the prefill; the load-path `onSubmit` no longer swallows rejections |
+| `features/leagues/MatchActaWizard.tsx` | Modified | `submitError` state + `role="alert"`; `onSubmit` may return a promise |
+| `features/leagues/LeagueDetail.test.tsx` | Modified | Regression guard: a scheduled fixture with a finished live match opens PREFILLED |
+| `features/leagues/acta/MatchActaWizard.test.tsx` | Modified | A rejecting `onSubmit` shows the alert and keeps the dialog open |
+
+### REGRESSION_GUARD
+
+- `LeagueDetail.test.tsx` → "opens the acta wizard PREFILLED for a scheduled fixture whose live match
+  finished (s4c corrective)". It opens the wizard for a `scheduled` fixture whose `getMatchDetail`
+  returns a `finished` live match and asserts the Marcador inputs are `2`/`1` and the Acciones line for
+  `h1` carries quantity `2`. Dropping the load-path prefill again fails it with `expected '0' to be '2'`.
+
+### Work Unit Evidence (corrective)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta/MatchActaWizard.test.tsx features/leagues/LeagueDetail.test.tsx` → **49 passed** (RED before the fix: 2 failed) |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues` → **41 files, 631 passed** (jsdom render of the real wizard on the load path) |
+| Rollback boundary | Revert the three production files (`actaState.ts`, `LeagueDetail.tsx`, `MatchActaWizard.tsx`) and their two tests; no other slice artifact depends on the corrective change. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues` → **41 files, 631 passed**
+- `pnpm test` → **189 files, 2747 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s4c corrective)
+
+- Code only: `added=124 removed=29 total=153`; with tests: `added=230 removed=30 total=260` — under the
+  300-line corrective target.
+
+### Code commits (corrective)
+
+- `d2ed094` — `fix(leagues): restore acta load-path prefill and surface submit errors` (actaState.ts,
+  LeagueDetail.tsx, MatchActaWizard.tsx + their tests).
+
+
 
 
 
