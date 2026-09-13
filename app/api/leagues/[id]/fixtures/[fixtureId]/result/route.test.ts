@@ -1258,3 +1258,86 @@ describe("POST /api/.../[fixtureId]/result — additive wizard contract (S1)", (
     expect(prismaMock.matchResult.create.mock.calls[0][0].data.scores.mvp).toEqual({ home: "p1", away: "p5" });
   });
 });
+
+describe("POST /api/.../[fixtureId]/result — sparse roll payloads keep positions (s3b corrective)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubTransaction();
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
+    prismaMock.fixture.update.mockResolvedValue({ id: "f1" });
+    prismaMock.matchResult.create.mockResolvedValue({ id: "r1" });
+    prismaMock.league.findUnique.mockResolvedValue({ status: "started" });
+    prismaMock.fixture.findMany.mockResolvedValue([]);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.player.findMany.mockResolvedValue([]);
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    randomMock.rollD3.mockReset();
+    randomMock.rollD6.mockReset();
+    randomMock.rollD16.mockReset();
+  });
+
+  it("keeps a non-trailing 1D16 hole so a later client roll lands on its own victim", async () => {
+    // Home causes TWO casualties (av1, av2) and away causes one (hv1). The user
+    // filled ONLY the SECOND casualty's 1D16 → the wire payload is [null, 13].
+    // A hole at a non-trailing index MUST survive parsing, or 13 shifts down onto
+    // av1 (the wrong player) and av2 gets a server roll instead.
+    const body = wizardBody();
+    body.home.casualties = [
+      { team: "away", rosterPlayerId: "av1" },
+      { team: "away", rosterPlayerId: "av2" },
+    ];
+    body.away.casualties = [{ team: "home", rosterPlayerId: "hv1" }];
+    body.home.injuryRoll = [null, 13] as unknown as number[];
+    body.home.permanentRoll = [5];
+    // Server 1D16 fills the two unset slots, in victim order: home av1 then away hv1.
+    randomMock.rollD16.mockReturnValueOnce(2).mockReturnValueOnce(4);
+
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    const awayVictims = scores.away.casualties as {
+      rosterPlayerId: string;
+      outcome: { kind: string };
+    }[];
+    // The client 13 stays on the SECOND victim; index 0 keeps its server roll.
+    expect(awayVictims.find((c) => c.rosterPlayerId === "av1")!.outcome.kind).toBe("bruise");
+    expect(awayVictims.find((c) => c.rosterPlayerId === "av2")!.outcome.kind).toBe("permanent");
+    expect(scores.home.casualties[0].outcome.kind).toBe("bruise");
+    // Both server fallbacks ran (index 0 and the away slot); the client value did not.
+    expect(randomMock.rollD16).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a non-trailing 1D6 permanent hole so a later client roll lands on its own victim", async () => {
+    // Home causes TWO permanent casualties; the user filled ONLY the SECOND 1D6.
+    // The compressed permanent list is [null, 5] on the wire — a non-trailing hole.
+    const body = wizardBody();
+    body.home.casualties = [
+      { team: "away", rosterPlayerId: "av1" },
+      { team: "away", rosterPlayerId: "av2" },
+    ];
+    body.home.injuryRoll = [13, 13]; // both Permanente
+    body.home.permanentRoll = [null, 5] as unknown as number[];
+    // Only the first permanent victim needs a server 1D6 fallback → 3 → mv.
+    randomMock.rollD6.mockReturnValueOnce(3);
+
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    const awayVictims = scores.away.casualties as {
+      rosterPlayerId: string;
+      outcome: { kind: string; attribute?: string };
+    }[];
+    expect(awayVictims.find((c) => c.rosterPlayerId === "av1")!.outcome).toEqual({
+      kind: "permanent",
+      attribute: "mv",
+    });
+    expect(awayVictims.find((c) => c.rosterPlayerId === "av2")!.outcome).toEqual({
+      kind: "permanent",
+      attribute: "ag",
+    });
+    expect(randomMock.rollD6).toHaveBeenCalledTimes(1);
+  });
+});
