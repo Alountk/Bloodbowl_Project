@@ -1685,6 +1685,115 @@ data-loss warning.
   casualties are still not reconstructable (the causer↔victim link is not persisted), so re-entry is
   required — now explicit to the coach.
 
+## Slice s6b — `acta.*` i18n keys ES+EN (task 6.4)
+
+- **Branch**: `feat/match-edit-redesign-s6b`
+- **Mode**: Strict TDD (RED → GREEN). The slice is a mechanical copy extraction, so the cycle is:
+  confirm the existing suite pins the exact Spanish labels → add ONE new test proving the wizard
+  renders from the active locale (RED, because the copy was hardcoded) → move the copy → GREEN.
+- **Chain strategy**: `stacked-to-main`
+- **Boundary**: starts from `feat/match-edit-redesign-s6a`; ends with the wizard's copy sourced from
+  `lib/i18n/dictionaries.ts`. No payload/behaviour/visual change; `ResultModal` untouched (s6c).
+- **Rollback boundary**: revert `18d52cf` (keys) and/or `2314963` (wiring). Reverting both restores
+  the hardcoded Spanish literals; no payload, route, schema or a11y change is involved.
+
+### Completed Tasks
+
+- [x] 6.4 (s6b) Add `acta.*` keys to `lib/i18n/dictionaries.ts` (ES + EN) and wire the wizard + its
+  seven steps to `useI18n()`. **Deviation from the task text**: the task said to reword
+  `result.heldBall` → "Nunca tuvo el balón". That was NOT done — see `LEGACY_NOTE` below.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `lib/i18n/dictionaries.ts` | Modified | +87 `acta.*` keys per locale (ES + EN), 174 definitions |
+| `features/leagues/MatchActaWizard.tsx` | Modified | Step labels/titles/nav/buttons/submit-error via `t` |
+| `features/leagues/acta/StepContexto.tsx` | Modified | Weather/duration/FF/inducements/never-held labels via `t` |
+| `features/leagues/acta/StepAcciones.tsx` | Modified | Action kinds, line labels, tally, "uncounted" hint via `t` |
+| `features/leagues/acta/StepMvp.tsx` | Modified | MVP note + radio aria-labels via `t` |
+| `features/leagues/acta/StepBajas.tsx` | Modified | Band labels, warning, intro, rolls, "Baja sobre" via `t` |
+| `features/leagues/acta/StepFinal.tsx` | Modified | Intro/formula, breakdown labels, fan roll, gold unit via `t` |
+| `features/leagues/acta/StepRevisar.tsx` | Modified | Summary + validation; `validateActa` returns error keys, pure helpers take `t` |
+| `features/leagues/acta/MatchActaWizard.test.tsx` | Modified | +1 test: the wizard renders its copy from the active locale (s6b) |
+
+### KEY_INVENTORY
+
+87 keys per locale, grouped: `acta.title.*` (2), `acta.nav`/`acta.close`/`acta.back`/`acta.next`/
+`acta.save`/`acta.saveError`/`acta.gold` (7), `acta.step.*` (7), `acta.contexto.*` (6),
+`acta.neverHeld` (1), `acta.accion.*` (7), `acta.acciones.*` (11), `acta.mvp.*` (4), `acta.band.*` (5),
+`acta.bajas.*` (8), `acta.final.*` (9), `acta.revisar.*` (18), `acta.validate.*` (2).
+
+**Byte-identity**: every `es` value is copied verbatim from the literal it replaced (no wording
+changes). The existing component/e2e assertions that pin "Acta del partido", "Más acciones"→
+"Guardar acta", "Factor fan", "NUNCA tuvo el balón", the validation messages and the legacy-casualties
+warning all remain green (see Verification). The `en` values are new, neutral-professional English.
+
+**Pure-helper constraint honoured**: `validateActa` is hook-free, so it now returns structured
+`ActaValidationError { key, params }` and `StepRevisar` translates at render (no dictionary reach-in).
+`describeLine`/`describeCasualty` (StepRevisar) and `formatGold`/`formatWinnings` take the resolved
+translator / unit as parameters, matching the repo's `authorDisplay(proposal, t)` precedent.
+
+**Intentionally NOT keyed**: locale-invariant tokens — `vs` (StepMarcador separator, same convention as
+`negotiation.title`), `✕`, `★`, `Σ`, `→`, `×`, `—`, `1D16`, `1D6`, `M.O.`-grouping separator, and the
+`ACTA_WEATHER_OPTIONS` values (data, not copy). `StepMarcador.tsx` therefore needed no edit.
+
+### LEGACY_NOTE — `result.heldBall` is UNCHANGED
+
+`result.heldBall` remains **"Mantuvo el balón" (es) / "Held the ball" (en)**. The legacy
+`ResultModal.tsx` checkbox genuinely means "held the ball", so rewording that key would put inverted
+semantics on the legacy modal's label. The wizard's checkbox means the INVERSE ("NUNCA tuvo el balón")
+and owns the new `acta.neverHeld` key. **s6c MUST remove `result.heldBall` together with
+`ResultModal.tsx`** — do not reword it in place before the retirement.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 6.4 | `features/leagues/acta/MatchActaWizard.test.tsx` | Component (jsdom) | ✅ 41 files / 642 passed (baseline) | ✅ Written first: `aria-label` was `"Acta del partido"`, expected `"Match report"` under an `I18nProvider initialLocale="en"` | ✅ 41 files / 643 passed | ✅ Clean |
+
+- **RED evidence**: `MatchActaWizard shell > renders its copy from the active locale, not hardcoded
+  literals (s6b)` failed with `expected 'Acta del partido' to be 'Match report'` before the wiring.
+- The existing label-pinning suite (StepContexto/Marcador/Acciones/Mvp/Bajas/Final/Revisar tests) was
+  confirmed green BEFORE the move and again after — that is the byte-identity safety net.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta features/leagues/MatchActaWizard.test.tsx lib/i18n` → **12 files, 109 passed** (incl. the RED→GREEN s6b test and the es/en key-sync test) |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues` → **41 files, 643 passed** (jsdom: the wizard renders, steps navigate, submit block holds). E2E is knowingly red on this chain (s6d/s6e own it). |
+| Rollback boundary | Revert `18d52cf` (dictionary keys) and/or `2314963` (component wiring); the hardcoded Spanish literals return. No payload name, route, schema or a11y change. |
+
+### Verification (s6b — exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues` → **41 files, 643 passed**
+- `pnpm test` → **189 files, 2767 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s6b)
+
+- Keys `18d52cf`: `added=195 removed=0 total=195`.
+- Wiring `2314963`: `added=241 removed=171 total=412`.
+- **Total: `added=436 removed=171 total=607`** — **over the ~200 target** (the tasks.md slice
+  forecast was ~120; the real cost is 87 keys × 2 locales + 7 component wirings). This is a
+  `size:exception` recommendation: the dictionary keys and the wiring are separate commits so the
+  orchestrator can split the PR if needed. No diff was minified to hit a number.
+
+### Deviations from Design
+
+- Design says "Spanish copy via `acta.*` keys" and the task said to reword `result.heldBall`. The
+  reword is a design defect (it would invert the legacy modal's label); `acta.neverHeld` was added
+  instead and `result.heldBall` is left for s6c to delete. Recorded in `LEGACY_NOTE`.
+- `validateActa` now returns structured error keys instead of pre-rendered strings, so the pure
+  validator stays hook-free without reaching into the dictionary. The rendered output is identical.
+
+### Issues Found (s6b)
+
+- None functional. Note for s6c: `result.heldBall` is still referenced only by `ResultModal.tsx`;
+  delete both together.
+
 
 
 
