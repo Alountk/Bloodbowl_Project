@@ -14,6 +14,7 @@ import { NegotiationPanel } from "./NegotiationPanel";
 import { ForfeitModal } from "./ForfeitModal";
 import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
 import { ResultModal, type ResultTeamDraft } from "./ResultModal";
+import { MatchActaWizard } from "./MatchActaWizard";
 import { buildResultPrefill } from "./resultPrefill";
 import { getMatchDetail } from "./api";
 import { isOwnerEquivalent } from "./access";
@@ -474,8 +475,8 @@ function Jornadas({
   onForfeit: (fixtureId: string, winnerTeamId: string) => void;
   /** LMR-7: POSTs the fixture reset (owner/dev-admin only). */
   onReset: (fixtureId: string) => Promise<void>;
-  onSubmitResult: (fixtureId: string, payload: ResultPayload) => void;
-  onCorrectResult: (fixtureId: string, payload: ResultPayload) => void;
+  onSubmitResult: (fixtureId: string, payload: ResultPayload) => Promise<void>;
+  onCorrectResult: (fixtureId: string, payload: ResultPayload) => Promise<void>;
 }) {
   const teamNameById = useMemo(
     () => new Map(teams.map((team) => [team.id, team.name])),
@@ -683,24 +684,41 @@ function Jornadas({
         />
       ) : null}
 
-      {resultFixture ? (
+      {/* s4c: the LOAD path now opens the "Acta del partido" wizard; the legacy
+          ResultModal stays for the CORRECT path (retired in s6c). Each branch is
+          keyed per fixture so its initial state is read once. */}
+      {resultFixture && resultMode === "correct" ? (
         <ResultModalFor
-          key={resultMode === "correct" ? `c-${resultFixture.id}` : `l-${resultFixture.id}`}
+          key={`c-${resultFixture.id}`}
           fixture={resultFixture}
           teamNameById={teamNameById}
           rostersFor={rostersFor}
-          mode={resultMode}
+          mode="correct"
           onClose={() => setResultFixture(null)}
           onSubmit={async (payload) => {
-            const fixture = resultFixture;
-            if (resultMode === "correct") {
-              await onCorrectResult(fixture.id, payload);
-            } else {
-              await onSubmitResult(fixture.id, payload);
-            }
             // Only close on success: ResultModal surfaces rejections (e.g. a
             // 409 race) in its alert and keeps itself open.
+            await onCorrectResult(resultFixture.id, payload);
             setResultFixture(null);
+          }}
+        />
+      ) : null}
+
+      {resultFixture && resultMode === "load" ? (
+        <MatchActaWizardFor
+          key={`l-${resultFixture.id}`}
+          fixture={resultFixture}
+          teamNameById={teamNameById}
+          rostersFor={rostersFor}
+          onClose={() => setResultFixture(null)}
+          onSubmit={(payload) => {
+            // MAW-1/s4c: the load path submits through the SAME helper the legacy
+            // ResultModal used (`submit` → POST + league refresh). The wizard
+            // invokes `onSubmit` synchronously, so the async submit is fired here
+            // and the dialog closes once it resolves; a rejection keeps it open.
+            void onSubmitResult(resultFixture.id, payload)
+              .then(() => setResultFixture(null))
+              .catch(() => {});
           }}
         />
       ) : null}
@@ -764,6 +782,42 @@ function ResultModalFor({
       awayRoster={awayRoster}
       mode={mode}
       initial={prefill}
+      onSubmit={onSubmit}
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * Mounts the "Acta del partido" wizard for a fixture on the LOAD path (s4c),
+ * resolving its team names and home/away rosters exactly like `ResultModalFor`.
+ * Correct-mode prefill lands in s6a (`actaPrefill`); the load path opens empty.
+ */
+function MatchActaWizardFor({
+  fixture,
+  teamNameById,
+  rostersFor,
+  onSubmit,
+  onClose,
+}: {
+  fixture: FixtureDraft;
+  teamNameById: Map<string, string>;
+  rostersFor: (fixture: FixtureDraft) => readonly [
+    { id: string; name: string }[],
+    { id: string; name: string }[],
+  ];
+  onSubmit: (payload: ResultPayload) => void;
+  onClose: () => void;
+}) {
+  const [homeRoster, awayRoster] = rostersFor(fixture);
+  return (
+    <MatchActaWizard
+      open
+      mode="load"
+      homeName={teamNameById.get(fixture.homeTeamId) ?? ""}
+      awayName={teamNameById.get(fixture.awayTeamId) ?? ""}
+      homeRoster={homeRoster}
+      awayRoster={awayRoster}
       onSubmit={onSubmit}
       onClose={onClose}
     />
