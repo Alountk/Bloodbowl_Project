@@ -22,7 +22,7 @@ test.use({ locale: "es-ES" });
  *
  * Same idempotent pattern as league-matchday/match-report: unique users, teams,
  * and league per run; scheduling and forfeit are driven via the authenticated
- * `request` API, the result through the real ResultModal.
+ * `request` API, the result through the real "Acta del partido" wizard.
  */
 test.setTimeout(240_000);
 
@@ -181,25 +181,55 @@ async function waitForFixtureStatus(page: Page, leagueId: string, fixtureId: str
     .toBe(status);
 }
 
-/** Loads a score–0 win for the admin team through the real ResultModal. */
-async function loadResultViaModal(page: Page, adminTeamName: string, rivalTeamName: string, score: number) {
-  await page.getByRole("button", { name: "Cargar resultado" }).first().click();
-  const dialog = page.getByRole("dialog", { name: /Cargar resultado/ });
+/** Loads a `score`–0 win for the admin team through the "Acta del partido"
+ * wizard (the single entry point that replaced the legacy ResultModal). The
+ * wizard is driven step by step; BOTH teams get an MVP because the MAW-8
+ * save-block refuses to save unless Σ anotaciones == marcador AND both MVPs are
+ * selected. Labels are scoped by team NAME, so the shuffled side does not matter. */
+async function loadResultViaModal(
+  page: Page,
+  winnerTeamName: string,
+  loserTeamName: string,
+  score: number,
+) {
+  await page.getByRole("button", { name: "Acta del partido" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Acta del partido" });
   await expect(dialog).toBeVisible();
 
-  const adminSection = dialog.getByLabel(`Resultado ${adminTeamName}`);
-  const rivalSection = dialog.getByLabel(`Resultado ${rivalTeamName}`);
-  await adminSection.getByLabel(`Goles ${adminTeamName}`).fill(String(score));
-  await rivalSection.getByLabel(`Goles ${rivalTeamName}`).fill("0");
-  await adminSection.getByLabel("Anotaciones Player 1", { exact: true }).fill(String(score));
-  for (const section of [adminSection, rivalSection]) {
-    for (let i = 1; i <= 6; i++) {
-      await section
-        .getByLabel(`MVP ${i} ${section === adminSection ? adminTeamName : rivalTeamName}`)
-        .selectOption({ index: i });
-    }
-  }
-  await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+  // Step 0 · Contexto — defaults are valid.
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 1 · Marcador — winner `score`, loser 0.
+  await dialog.getByLabel(winnerTeamName, { exact: true }).fill(String(score));
+  await dialog.getByLabel(loserTeamName, { exact: true }).fill("0");
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 2 · Acciones — the winner's Player 1 takes every TD.
+  const winner = dialog.getByRole("region", { name: winnerTeamName, exact: true });
+  await winner
+    .getByRole("button", { name: `Añadir acción · ${winnerTeamName}`, exact: true })
+    .click();
+  await winner
+    .getByLabel(`Jugador 1 · ${winnerTeamName}`)
+    .selectOption({ label: "Player 1" });
+  await winner.getByLabel(`Cantidad 1 · ${winnerTeamName}`).fill(String(score));
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 3 · MVP — exactly one per team (MAW-8 save-block).
+  await dialog
+    .getByRole("radio", { name: `MVP · ${winnerTeamName} · Player 1`, exact: true })
+    .check();
+  await dialog
+    .getByRole("radio", { name: `MVP · ${loserTeamName} · Player 1`, exact: true })
+    .check();
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 4 · Bajas — none. Step 5 · Final — fan roll optional.
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 6 · Revisar — save.
+  await dialog.getByRole("button", { name: "Guardar acta" }).click();
   await expect(dialog).not.toBeVisible();
 }
 
@@ -277,9 +307,11 @@ test("match view: pending → scheduled date → played summary, and Ver partido
     await expect(admin.getByText(/Ganancias/)).toBeVisible();
     // The +4 PE MVP row renders (the MJP grantee badge).
     await expect(admin.getByText(/\+4 PE/).first()).toBeVisible();
-    // Weather is omit-if-empty: the ResultModal does not capture it, so the
-    // section stays hidden (never a placeholder) — covered by the unit mapper.
-    await expect(admin.getByText(/Clima/)).toBeHidden();
+    // The wizard ALWAYS captures weather (Step 0 defaults to "Perfecto"), so a
+    // wizard-saved result persists it and the section now renders — it used to
+    // stay hidden because the legacy ResultModal never sent a weather value.
+    await expect(admin.getByText(/Clima/)).toBeVisible();
+    await expect(admin.getByText("Perfecto")).toBeVisible();
     // No live/timeline shell placeholder.
     await expect(admin.locator("body")).not.toContainText(/turno|minuto|½/i);
   } finally {

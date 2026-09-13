@@ -9,25 +9,27 @@ test.use({ locale: "es-ES" });
  *
  *  1. result + progression (match-result, player-progression): a started
  *     2-member league's single fixture is scheduled, the league OWNER (a
- *     fixture participant) loads a 2–0 win through the ResultModal, the
+ *     fixture participant) loads a 2–0 win through the "Acta del partido"
+ *     wizard (the single entry point that replaced the legacy ResultModal), the
  *     MatchCard shows the score and the round becomes "Jornada completa"; the
  *     same owner then visits their own team detail and spends the scorer's PE on
  *     an élite skill (Block) through the rulebook roster's improve modal (row
  *     click), seeing the élite ◆ diamond and the recalculated value.
  *  2. correction (match-result R5): a 3-member, 2-jornada league's round-1
  *     fixture is played, and the league owner (admin) corrects that result
- *     through the modal while the season is STILL started (round 2 unplayed) →
- *     the MatchCard score updates. Since RAU-40, loading the LAST fixture of a
- *     season closes the league, so a correction must be exercised before the
- *     season finishes.
+ *     through the wizard (opened from the `···` overflow) while the season is
+ *     STILL started (round 2 unplayed) → the MatchCard score updates. Since
+ *     RAU-40, loading the LAST fixture of a season closes the league, so a
+ *     correction must be exercised before the season finishes.
  *  3. finished season (RAU-40): loading the single result of a 2-member league
- *     closes it — the participant captain sees the champion panel, the
- *     correction control disappears, and a correction PUT is rejected (409).
+ *     closes it — the participant captain sees the champion panel, the whole
+ *     `···` overflow (which now hosts the correction) disappears, and a
+ *     correction PUT is rejected (409).
  *
  * The 2-member league yields exactly one fixture (no round-robin byes), so the
  * pairing and the "Jornada completa" assertion are deterministic. The fixture's
- * home/away sides are shuffled at start, so every modal interaction is scoped by
- * the TEAM NAME (the ResultModal labels each section and its inputs with the
+ * home/away sides are shuffled at start, so every wizard interaction is scoped by
+ * the TEAM NAME (the wizard labels each section and its inputs with the
  * team name, not "home"/"away").
  *
  * NOTE (auth cold-start race): the FIRST auth-suite run after a fresh boot can
@@ -156,7 +158,7 @@ async function buildTwoMemberStartedLeague(
 
 /** Schedules the single fixture via API: rival B proposes a date, admin A (a
  * fixture participant) accepts. Avoids the negotiation-modal flake already
- * covered by league-matchday; the RESULT is loaded through the real modal. */
+ * covered by league-matchday; the RESULT is loaded through the real wizard. */
 async function scheduleFixture(league: TwoMemberLeague) {
   const { admin, rival, leagueId } = league;
   const detail = await admin.request.get(`/api/leagues/${leagueId}`);
@@ -258,7 +260,7 @@ async function buildThreeMemberStartedLeague(
 }
 
 /** Resolves the round-1 pairing of a 3-member league (shuffled at start) into
- * the fixture id and the two TEAM NAMES — the ResultModal labels are name-based. */
+ * the fixture id and the two TEAM NAMES — the wizard labels are name-based. */
 async function roundOnePairing(league: ThreeMemberLeague) {
   const detail = await league.admin.request.get(`/api/leagues/${league.leagueId}`);
   expect(detail.status()).toBe(200);
@@ -314,7 +316,7 @@ async function scheduleFixtureById(league: ThreeMemberLeague, fixtureId: string)
   return fixtureId;
 }
 
-/** Polls the league detail until the given fixture reaches a status. The modal's
+/** Polls the league detail until the given fixture reaches a status. The wizard's
  * async POST resolves in the background after the dialog closes; this emulates
  * the UI refresh without racing the commit. */
 async function waitForFixtureStatus(
@@ -336,40 +338,61 @@ async function waitForFixtureStatus(
     .toBe(status);
 }
 
-/** Loads a result through the ResultModal: the ADMIN team (`adminTeamName`)
- * wins `score`–0 (its Player 1 scoring both TDs → 6 PE for the élite spent),
- * and six DIFFERENT MJP nominations are picked per team (the route REQUIRES
- * exactly six). Every label is scoped by team NAME — the modal labels each
- * section and its inputs with the team name, never "home"/"away", so the
- * shuffled fixture side does not matter. */
+/** Loads a result through the "Acta del partido" wizard (the single entry point
+ * that replaced the legacy ResultModal in s4b/s6c): the ADMIN team
+ * (`winnerTeamName`) wins `score`–0, with its first roster player ("Player 1")
+ * credited every TD → the PE the élite purchase later spends. The wizard is
+ * driven step by step — Contexto → Marcador → Acciones → MVP → Bajas → Final →
+ * Revisar — and BOTH teams get an MVP, because the MAW-8 save-block refuses to
+ * save unless Σ anotaciones == marcador AND both MVPs are selected. Every label
+ * is scoped by team NAME (the wizard labels each section and its inputs with the
+ * team name, never "home"/"away"), so the shuffled fixture side does not matter. */
 async function loadResultViaModal(
   page: Page,
-  adminTeamName: string,
-  rivalTeamName: string,
+  winnerTeamName: string,
+  loserTeamName: string,
   score: number,
 ) {
-  await page.getByRole("button", { name: "Cargar resultado" }).first().click();
-  const dialog = page.getByRole("dialog", { name: /Cargar resultado/ });
+  await page.getByRole("button", { name: "Acta del partido" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Acta del partido" });
   await expect(dialog).toBeVisible();
 
-  const adminSection = dialog.getByLabel(`Resultado ${adminTeamName}`);
-  const rivalSection = dialog.getByLabel(`Resultado ${rivalTeamName}`);
-  await adminSection.getByLabel(`Goles ${adminTeamName}`).fill(String(score));
-  await rivalSection.getByLabel(`Goles ${rivalTeamName}`).fill("0");
-  await adminSection
-    .getByLabel("Anotaciones Player 1", { exact: true })
-    .fill(String(score));
+  // Step 0 · Contexto — the defaults are valid (Perfecto weather, no FF).
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
 
-  // Exactly six DIFFERENT MJP nominations per team (option index i = player i).
-  for (const section of [adminSection, rivalSection]) {
-    for (let i = 1; i <= 6; i++) {
-      await section
-        .getByLabel(`MVP ${i} ${section === adminSection ? adminTeamName : rivalTeamName}`)
-        .selectOption({ index: i });
-    }
-  }
+  // Step 1 · Marcador — winner scores `score`, loser 0.
+  await dialog.getByLabel(winnerTeamName, { exact: true }).fill(String(score));
+  await dialog.getByLabel(loserTeamName, { exact: true }).fill("0");
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
 
-  await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+  // Step 2 · Acciones — the winner's Player 1 takes every TD in one line; the
+  // loser records nothing (its marcador is 0, so Σ anotaciones must be 0).
+  const winner = dialog.getByRole("region", { name: winnerTeamName, exact: true });
+  await winner
+    .getByRole("button", { name: `Añadir acción · ${winnerTeamName}`, exact: true })
+    .click();
+  await winner
+    .getByLabel(`Jugador 1 · ${winnerTeamName}`)
+    .selectOption({ label: "Player 1" });
+  await winner.getByLabel(`Cantidad 1 · ${winnerTeamName}`).fill(String(score));
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 3 · MVP — exactly one per team (the MAW-8 save-block requires both).
+  await dialog
+    .getByRole("radio", { name: `MVP · ${winnerTeamName} · Player 1`, exact: true })
+    .check();
+  await dialog
+    .getByRole("radio", { name: `MVP · ${loserTeamName} · Player 1`, exact: true })
+    .check();
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 4 · Bajas — no casualties recorded, advance.
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  // Step 5 · Final — the fan 1D6 is optional, advance.
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+  // Step 6 · Revisar — the acta validates, save.
+  await dialog.getByRole("button", { name: "Guardar acta" }).click();
   await expect(dialog).not.toBeVisible();
 }
 
@@ -452,28 +475,52 @@ test("correction: admin corrects a played result → the MatchCard score updates
     await waitForFixtureStatus(league.admin, league.leagueId, fixtureId, "played");
 
     // The league is NOT finished (a second-round fixture remains unplayed), so
-    // the admin can still correct the played result through the modal. The
-    // jornadas default to the first INCOMPLETE round (round 2), so switch to
-    // Jornada 1 where the played fixture lives.
+    // the admin can still correct the played result through the wizard. The
+    // correction now lives in the `···` overflow (MAW-1). The jornadas default
+    // to the first INCOMPLETE round (round 2), so switch to Jornada 1 where the
+    // played fixture lives.
     await league.admin.reload();
     await league.admin.getByRole("tab", { name: "Jornada 1" }).click();
-    await league.admin.getByRole("button", { name: "Corregir resultado" }).first().click();
-    const dialog = league.admin.getByRole("dialog", { name: /Corregir resultado/ });
+    await league.admin.getByRole("button", { name: "Más acciones" }).first().click();
+    await league.admin.getByRole("menuitem", { name: "Corregir resultado" }).click();
+    const dialog = league.admin.getByRole("dialog", { name: "Corregir acta del partido" });
     await expect(dialog).toBeVisible();
-    const homeSection = dialog.getByLabel(`Resultado ${homeName}`);
-    const awaySection = dialog.getByLabel(`Resultado ${awayName}`);
-    await homeSection.getByLabel(`Goles ${homeName}`).fill("1");
-    await awaySection.getByLabel(`Goles ${awayName}`).fill("1");
-    await homeSection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
-    await awaySection.getByLabel("Anotaciones Player 1", { exact: true }).fill("1");
-    for (const section of [homeSection, awaySection]) {
-      for (let i = 1; i <= 6; i++) {
-        await section
-          .getByLabel(`MVP ${i} ${section === homeSection ? homeName : awayName}`)
-          .selectOption({ index: i });
-      }
-    }
-    await dialog.getByRole("button", { name: "Corregir resultado" }).click();
+
+    // Step 0 · Contexto — the prefill (MAW-9) carries the loaded result, advance.
+    await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+    // Step 1 · Marcador — correct the 2–0 load to a 1–1 draw.
+    await dialog.getByLabel(homeName, { exact: true }).fill("1");
+    await dialog.getByLabel(awayName, { exact: true }).fill("1");
+    await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+    // Step 2 · Acciones — the prefill credits home Player 1 with the two loaded
+    // TDs; drop it to one and add the away TD so Σ anotaciones == 1 per side.
+    const homeRegion = dialog.getByRole("region", { name: homeName, exact: true });
+    const awayRegion = dialog.getByRole("region", { name: awayName, exact: true });
+    await homeRegion.getByLabel(`Cantidad 1 · ${homeName}`).fill("1");
+    await awayRegion
+      .getByRole("button", { name: `Añadir acción · ${awayName}`, exact: true })
+      .click();
+    await awayRegion.getByLabel(`Jugador 1 · ${awayName}`).selectOption({ label: "Player 1" });
+    await awayRegion.getByLabel(`Cantidad 1 · ${awayName}`).fill("1");
+    await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+    // Step 3 · MVP — the prefill already carries both grantees; confirm them.
+    await dialog
+      .getByRole("radio", { name: `MVP · ${homeName} · Player 1`, exact: true })
+      .check();
+    await dialog
+      .getByRole("radio", { name: `MVP · ${awayName} · Player 1`, exact: true })
+      .check();
+    await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+    // Step 4 · Bajas — none; advance. Step 5 · Final — advance.
+    await dialog.getByRole("button", { name: "Siguiente" }).click();
+    await dialog.getByRole("button", { name: "Siguiente" }).click();
+
+    // Step 6 · Revisar — save the corrected acta.
+    await dialog.getByRole("button", { name: "Guardar acta" }).click();
     await expect(dialog).not.toBeVisible();
 
     // Poll until the corrected score commits, then verify the card shows it.
@@ -518,12 +565,16 @@ test("correction: a finished league rejects a captain's correction and shows the
 
     // The result was the season's LAST fixture → the league finished. The rival
     // (a participant captain) sees the champion panel and the Finalizada badge,
-    // and the correction affordance is gone (the champion is definitive).
+    // and the correction affordance is gone: it now lives in the `···` overflow
+    // (MAW-1), and a finished league hides the whole overflow.
     await league.rival.reload();
     await expect(league.rival.getByText("Finalizada", { exact: true })).toBeVisible();
     await expect(league.rival.getByTestId("champion-panel")).toBeVisible();
     await expect(
-      league.rival.getByRole("button", { name: "Corregir resultado" }),
+      league.rival.getByRole("button", { name: "Más acciones" }),
+    ).toHaveCount(0);
+    await expect(
+      league.rival.getByRole("menuitem", { name: "Corregir resultado" }),
     ).toHaveCount(0);
 
     // A captain's correction PUT is rejected (409) before any body validation.
