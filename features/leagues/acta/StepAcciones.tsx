@@ -1,7 +1,12 @@
 "use client";
 
 import type { RosterPlayerRef } from "../MatchResolveModal";
-import type { ActaActionKind, ActaActionLine, ActaState } from "./actaState";
+import {
+  aggregateActions,
+  type ActaActionKind,
+  type ActaActionLine,
+  type ActaState,
+} from "./actaState";
 
 /** The action-kind choices offered on each Acciones line (MAW-4). */
 const ACTION_OPTIONS: { value: ActaActionKind; label: string }[] = [
@@ -92,12 +97,23 @@ function TeamActions({
     onChange(draft.actions.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   };
 
-  const tds = draft.actions
-    .filter((line) => line.kind === "td")
-    .reduce((total, line) => total + Math.max(0, line.quantity), 0);
-  const casualties = draft.actions.filter(
+  // The counters mirror the payload exactly: they sum `aggregateActions` — the
+  // same function `buildActaPayload` uses to build the transmitted rows — so the
+  // display can never drift from what will be submitted. The raw totals below
+  // only detect lines the payload drops (a line with no player) and drive the
+  // "not counted" hint.
+  const aggregated = aggregateActions(draft.actions);
+  const tds = aggregated.reduce((total, row) => total + row.tds, 0);
+  const casualties = aggregated.reduce((total, row) => total + row.casualties, 0);
+
+  const rawTds = draft.actions.reduce(
+    (total, line) => (line.kind === "td" ? total + Math.max(0, line.quantity) : total),
+    0,
+  );
+  const rawCasualties = draft.actions.filter(
     (line) => line.kind === "casualty" && line.victimRosterPlayerId,
   ).length;
+  const hasUncountedLines = rawTds > tds || rawCasualties > casualties;
 
   const fieldClass = "mt-1 w-full border border-border bg-background px-2 py-1 text-sm text-ink";
   const labelClass = "block text-[10px] font-bold uppercase tracking-[0.06em] text-slate";
@@ -226,6 +242,11 @@ function TeamActions({
         Σ anotaciones <b className="text-ink">{tds}</b> · bajas causadas{" "}
         <b className="text-ink">{casualties}</b> → paso 4
       </p>
+      {hasUncountedLines ? (
+        <p className="mt-1 text-[11px] text-slate">
+          Las acciones sin jugador no se contabilizan.
+        </p>
+      ) : null}
     </section>
   );
 }
