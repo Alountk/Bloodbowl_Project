@@ -1794,6 +1794,105 @@ and owns the new `acta.neverHeld` key. **s6c MUST remove `result.heldBall` toget
 - None functional. Note for s6c: `result.heldBall` is still referenced only by `ResultModal.tsx`;
   delete both together.
 
+## Slice s6b — corrective pass (post-verify)
+
+Independent verification FAILED s6b with ONE blocking defect: the weather LABELS were left hardcoded
+Spanish. Under an English locale, `StepContexto` rendered the option labels from the
+`ACTA_WEATHER_OPTIONS` values verbatim (`Perfecto`, `Calor asfixiante`, `Muy soleado`, `Lluvioso`,
+`Ventisca`) and `StepRevisar` rendered `{state.weather}` raw — even though the shell, the `Clima` /
+`Weather` label and every other string already resolved through `useI18n()`. The repo already solved
+this for the summary: `lib/i18n/dictionaries.ts` carries `match.weather.perfect|heat|sunny|rain|
+blizzard` in both locales and `features/leagues/matchSummary.ts` exports `weatherLabel(kind, fn)`.
+The wizard was the outlier.
+
+### FIXES_APPLIED
+
+| File | Line | Change |
+|------|------|--------|
+| `features/leagues/acta/actaState.ts` | 103 | Add `WEATHER_KIND_BY_VALUE`: canonical persisted value → BB2025 kind (`Perfecto→perfect`, `Calor asfixiante→heat`, `Muy soleado→sunny`, `Lluvioso→rain`, `Ventisca→blizzard`). |
+| `features/leagues/acta/actaState.ts` | 118 | Add `weatherOptionLabel(value, t)`: boundary adapter — looks up the kind and delegates to the EXISTING `weatherLabel(kind, t)`; an unknown/legacy value passes through unchanged (mirrors `weatherLabel`'s default). |
+| `features/leagues/acta/StepContexto.tsx` | 56 | Render `{weatherOptionLabel(weather, t)}` as the option LABEL. The `<option value={weather}>` (L55) is unchanged. |
+| `features/leagues/acta/StepRevisar.tsx` | 218 | Render `{weatherOptionLabel(state.weather, t)}` instead of the raw `{state.weather}`. |
+| `features/leagues/MatchActaWizard.tsx` | 58–59 | Fix the stale comment that called the dialog "the Spanish 'Acta del partido' shell" — its copy is localized through `useI18n()`. |
+| `features/leagues/acta/StepContexto.test.tsx` | new | Step-level locale test (RED → GREEN): the weather option labels follow the active locale while the option VALUES stay canonical. |
+| `features/leagues/acta/StepRevisar.test.tsx` | new case | English-provider assertion that the Revisar weather label is `Perfect`, never `Perfecto`. |
+
+**Approach chosen (boundary mapping, not a re-canonicalization)**: the wizard's option values and the
+`MatchResult.weather` column are the canonical Spanish strings, while `weatherLabel` expects the
+locale-independent `WeatherKind` codes (`heat|sunny|perfect|rain|blizzard`). Rather than translate the
+stored value or change either side's canonical vocabulary, a small value→kind map lives in
+`actaState.ts` (the single wizard-state home) and `weatherOptionLabel` adapts at render time.
+
+### VALUE_VS_LABEL — the persisted value is unchanged
+
+- `ACTA_WEATHER_OPTIONS` still holds the canonical Spanish strings (`actaState.ts` L87–93) and is
+  untouched.
+- `buildActaPayload` still emits `weather: state.weather` (`actaState.ts` L238) — the raw canonical
+  value, byte-for-byte.
+- `StepContexto`'s `<option value={weather}>` is unchanged (`StepContexto.tsx` L55): only the option
+  *text* is localized.
+- The route persists the received string verbatim (`app/api/.../result/route.ts` L581/L895,
+  `weather: typeof raw.weather === "string" ? raw.weather : null`) and was NOT modified.
+- New test proof: under BOTH locales the assertion
+  `expect(optionValues(select)).toEqual([...ACTA_WEATHER_OPTIONS])` passes — the values stay
+  `Perfecto · Calor asfixiante · Muy soleado · Lluvioso · Ventisca` while the labels become
+  `Perfect · Scorching heat · Very sunny · Rainy · Blizzard` (en) / the canonical Spanish (es).
+
+### TDD Cycle Evidence (s6b corrective)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 6.4a | `features/leagues/acta/StepContexto.test.tsx` | Component (jsdom) | ✅ 41 files / 643 passed (pre-fix baseline) | ✅ Written FIRST: under `I18nProvider initialLocale="en"` the option texts were `['Perfecto', 'Calor asfixiante', 'Muy soleado', 'Lluvioso', 'Ventisca']`, expected `['Perfect', 'Scorching heat', 'Very sunny', 'Rainy', 'Blizzard']` | ✅ 10 files / 78 passed (`features/leagues/acta`) | ✅ Clean |
+| 6.4b | `features/leagues/acta/StepRevisar.test.tsx` (new case) | Component (jsdom) | ✅ same baseline | ✅ Same defect class at the Revisar render site (raw `{state.weather}`) | ✅ 10 files / 78 passed | ✅ Clean |
+
+- **RED_PROOF (exact assertion)**: `StepContexto — weather locale (s6b corrective) > renders the
+  English weather labels under an English provider, keeping the persisted values` failed with
+  `expected [ Array(5) ] to deeply equal [ 'Perfect', 'Scorching heat', …(3) ]`; the received array
+  was `['Perfecto', 'Calor asfixiante', 'Muy soleado', 'Lluvioso', 'Ventisca']`. The `Weather` label
+  itself already resolved English (s6b wiring), which is exactly why the hardcoded option labels were
+  the outlier.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta` → **10 files, 78 passed** |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues` → **42 files, 646 passed** (jsdom: the wizard renders the Contexto select and the Revisar summary end-to-end). E2E is knowingly red on this chain (s6d/s6e own it). |
+| Rollback boundary | Revert `1ce1e09` (or the four production files + two test files): the hardcoded Spanish labels return. No payload name, route, schema, persisted value or a11y change. |
+
+### Verification (s6b corrective — exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **10 files, 78 passed**
+- `pnpm exec vitest run features/leagues` → **42 files, 646 passed**
+- `pnpm test` → **190 files, 2770 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Commits (s6b corrective)
+
+- Code: `1ce1e09` — `fix(leagues): localize the acta wizard weather labels`
+- Bookkeeping: `docs(match-edit-redesign): record s6b corrective pass` (this file + `tasks.md`)
+
+### Changed Lines (s6b corrective)
+
+- Code-only (production): **43** (`added=39 removed=4`) — `actaState.ts` 28, `StepContexto.tsx` 9,
+  `StepRevisar.tsx` 3, `MatchActaWizard.tsx` 3.
+- Tests: **86** (`added=86 removed=0`) — `StepContexto.test.tsx` 67, `StepRevisar.test.tsx` 19.
+- **Total: `added=125 removed=4 total=129`** — well under the 400-line review budget.
+
+### Deviations from Design
+
+- None. The fix reuses the existing `weatherLabel` helper + `match.weather.*` keys exactly as the
+  verifier prescribed; the canonical value vocabulary on both sides is unchanged.
+
+### Issues Found (s6b corrective)
+
+- `matchSummary.buildWeather` calls `weatherLabel(result.weather)` with the RAW persisted value. For a
+  wizard-saved match the persisted value is the Spanish canonical string (e.g. `Perfecto`), which
+  `weatherLabel` does not recognize as a kind and returns verbatim — so the match SUMMARY weather may
+  also render Spanish under an English locale. Out of this corrective's scope (the defect was the
+  wizard labels); recorded here for the orchestrator to route.
+
 
 
 
