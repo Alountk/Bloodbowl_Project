@@ -805,10 +805,10 @@ describe("LeagueDetail — STARTED league", () => {
     expect((within(homeActions).getByLabelText("Cantidad 1 · Reavers") as HTMLInputElement).value).toBe("2");
   });
 
-  it("prefills the correction modal scores and per-scorer TDs from a finished live match (LM-9)", async () => {
-    // s4c: the legacy ResultModal stays on the CORRECT path, so the finished-live
-    // prefill is exercised there (s6a moves correct-mode prefill to the persisted
-    // snapshot). A played fixture exposes "Corregir resultado" in the ··· overflow.
+  it("opens the acta wizard PREFILLED from the persisted snapshot on correct (s6a)", async () => {
+    // s6a: the CORRECT path now opens the MatchActaWizard, prefilled from the
+    // persisted `MatchResult.scores` snapshot (MAW-9). A played fixture exposes
+    // "Corregir resultado" in the ··· overflow.
     const playedStarted = {
       ...startedLeague,
       ownerId: "u2",
@@ -848,28 +848,24 @@ describe("LeagueDetail — STARTED league", () => {
           json: () =>
             Promise.resolve({
               fixture: playedStarted.fixtures[0],
-              result: null,
+              result: {
+                id: "r1",
+                fixtureId: "fs",
+                weather: "Lluvioso",
+                pettyCash: 0,
+                loadedBy: "u8",
+                createdAt: "2026-03-01T00:00:00.000Z",
+                scores: {
+                  home: { score: 2, casualties: [], pe: [], ff: 5, neverHeld: false, fanRoll: 4, inducements: { budget: 0, cards: [] } },
+                  away: { score: 1, casualties: [], pe: [], ff: 3, neverHeld: false, fanRoll: 2, inducements: { budget: 0, cards: [] } },
+                  winnerId: "t1",
+                  mvp: { home: "h1", away: "a2" },
+                  duration: 130,
+                },
+              },
               homeTeam: { id: "t1", roster: [] },
               awayTeam: { id: "t2", roster: [] },
-              live: {
-                seq: 12,
-                status: "finished",
-                half: 2,
-                turnNumber: 8,
-                activeSide: "away",
-                turnClockEnabled: true,
-                homeClock: 0,
-                awayClock: 0,
-                homeScore: 2,
-                awayScore: 1,
-                paused: false,
-                finishedAt: 5000,
-                events: [
-                  { seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 2, payload: {}, at: 2000 },
-                  { seq: 3, kind: "td", side: "home", playerRosterId: "h1", half: 2, turnNumber: 1, payload: {}, at: 3000 },
-                  { seq: 4, kind: "td", side: "away", playerRosterId: "a2", half: 2, turnNumber: 6, payload: {}, at: 4000 },
-                ],
-              },
+              live: null,
             }),
         });
       }
@@ -882,15 +878,22 @@ describe("LeagueDetail — STARTED league", () => {
     fireEvent.click(screen.getByRole("button", { name: "Más acciones" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Corregir resultado" }));
 
-    await waitFor(() => expect(screen.getByRole("dialog", { name: /Corregir resultado/ })).toBeTruthy());
-    const dialog = screen.getByRole("dialog", { name: /Corregir resultado/ });
+    // The wizard opens in correct mode (NOT the legacy ResultModal).
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Corregir acta del partido" })).toBeTruthy());
+    const dialog = screen.getByRole("dialog", { name: "Corregir acta del partido" });
 
-    // Scores prefilled from the finished live scoreboard.
-    expect((within(dialog).getByLabelText(/Goles Reavers/) as HTMLInputElement).value).toBe("2");
-    expect((within(dialog).getByLabelText(/Goles Orcs/) as HTMLInputElement).value).toBe("1");
-    // Per-scorer TDs: H1 scored twice, A2 once.
-    expect((within(dialog).getByLabelText(/Anotaciones H1/) as HTMLInputElement).value).toBe("2");
-    expect((within(dialog).getByLabelText(/Anotaciones A2/) as HTMLInputElement).value).toBe("1");
+    // Step 0 Contexto: FF prefilled from the snapshot.
+    expect((within(dialog).getByLabelText("Factor fan · Reavers") as HTMLInputElement).value).toBe("5");
+    expect((within(dialog).getByLabelText("Factor fan · Orcs") as HTMLInputElement).value).toBe("3");
+
+    // FIX-A (s6a corrective): the persisted MatchResult weather rides into the
+    // wizard, so a correction without touching Clima keeps "Lluvioso".
+    expect((within(dialog).getByLabelText("Clima") as HTMLSelectElement).value).toBe("Lluvioso");
+
+    // Step 1 Marcador: scores prefilled from the snapshot.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Siguiente" }));
+    expect((within(dialog).getByLabelText("Reavers") as HTMLInputElement).value).toBe("2");
+    expect((within(dialog).getByLabelText("Orcs") as HTMLInputElement).value).toBe("1");
   });
 
   it("renders the not-found page for a foreign non-member started league (404)", async () => {

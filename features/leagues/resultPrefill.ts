@@ -1,5 +1,4 @@
 import type { LiveMatchView, LiveMatchEventDto } from "./api";
-import type { ResultTeamDraft } from "./ResultModal";
 
 /**
  * Result prefill (LM-9/D8): maps a finished `LiveMatchView` into the result
@@ -9,7 +8,41 @@ import type { ResultTeamDraft } from "./ResultModal";
  * the existing result POST validates (Σ TD == score, exactly 6 MJP nominations,
  * server-side 1D6/1D16 rolls) and stays the single authority. No dice logic, no
  * parallel result path.
+ *
+ * This module is also the home of the legacy `ResultModal` draft types (s6a/RAU-122
+ * design F7): they were moved out of `ResultModal.tsx` so the wizard's prefill
+ * (`acta/actaState.ts`) and the load path can share them without importing a
+ * component.
  */
+
+/** The numeric PE action credits collected for one player in the result form. */
+export interface ResultPlayerDraft {
+  tds: number;
+  casualties: number;
+  completions: number;
+  interceptions: number;
+  fouls: number;
+  throwTeamMates: number;
+  landedSafe: number;
+}
+
+/** A casualty victim targeted by this team (victim's team + roster player id). */
+export interface ResultCasualtyDraft {
+  team: "home" | "away";
+  rosterPlayerId: string;
+}
+
+/** One team's in-progress result form state. */
+export interface ResultTeamDraft {
+  score: number;
+  ballHeld: boolean;
+  /** Per-player actions keyed by rosterPlayerId (every roster player present). */
+  players: Record<string, ResultPlayerDraft>;
+  /** Selected MJP nominations (≤ 6 unique roster player ids). */
+  mvpNominations: string[];
+  /** Casualty victims collected when any player on this team caused casualties. */
+  casualties: ResultCasualtyDraft[];
+}
 
 /** The zeroed action row used for a scorer (only `tds` is set by the prefill). */
 const EMPTY_ACTIONS = {

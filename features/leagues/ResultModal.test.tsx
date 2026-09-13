@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import {
-  ResultModal,
-  buildResultPayload,
-  type RosterPlayerRef,
-  type ResultTeamDraft,
-} from "./ResultModal";
+import { ResultModal, buildResultPayload } from "./ResultModal";
+import type { ResultTeamDraft } from "./resultPrefill";
+import type { RosterPlayerRef } from "./MatchResolveModal";
 import type { FixtureDraft, ResultPayload } from "./api";
 
 /**

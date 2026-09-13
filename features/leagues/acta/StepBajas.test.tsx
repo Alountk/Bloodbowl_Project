@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { RosterPlayerRef } from "../MatchResolveModal";
-import { buildActaPayload, type ActaActionLine, type ActaState, type ActaTeamDraft } from "./actaState";
+import type { MatchScoreboard, ResultPlayerAction } from "../api";
+import {
+  actaPrefill,
+  buildActaPayload,
+  type ActaActionLine,
+  type ActaState,
+  type ActaTeamDraft,
+} from "./actaState";
 import { StepBajas } from "./StepBajas";
 
 /**
@@ -53,6 +60,28 @@ function draft(overrides: Partial<ActaTeamDraft> = {}): ActaTeamDraft {
 
 function state(overrides: Partial<ActaState> = {}): ActaState {
   return { weather: "Perfecto", home: draft(), away: draft(), ...overrides };
+}
+
+/** One side of a persisted `MatchResult.scores` snapshot. */
+function scoreboardSide(
+  overrides: Partial<MatchScoreboard["home"]> = {},
+): MatchScoreboard["home"] {
+  return { score: 0, casualties: [], pe: [], ...overrides };
+}
+
+/** One aggregated per-player action row as the snapshot stores it. */
+function actionRow(overrides: Partial<ResultPlayerAction> = {}): ResultPlayerAction {
+  return {
+    rosterPlayerId: "p1",
+    tds: 0,
+    casualties: 0,
+    completions: 0,
+    interceptions: 0,
+    fouls: 0,
+    throwTeamMates: 0,
+    landedSafe: 0,
+    ...overrides,
+  };
 }
 
 /** Both teams cause one casualty each (victim's team differs from causing team). */
@@ -256,5 +285,44 @@ describe("StepBajas — sections", () => {
     render(<Harness initial={state({ home: draft({ actions: [casualtyLine()] }) })} />);
     const away = screen.getByRole("region", { name: awayName });
     expect(within(away).getByText(/sin bajas causadas/i)).toBeTruthy();
+  });
+});
+
+describe("StepBajas — legacy-casualties warning (s6a corrective)", () => {
+  it("warns that a legacy acta has no stored actions and that saving clears the casualties", () => {
+    // FIX-B: the persisted victims exist, but the snapshot has no `actions` to
+    // attribute them to, so the derived list is empty. The warning is
+    // informational (role="status") and MUST NOT block the save.
+    const legacy = actaPrefill({
+      home: scoreboardSide({
+        casualties: [
+          { team: "away", rosterPlayerId: "a1", outcome: { kind: "dead" } },
+        ],
+      }),
+      away: scoreboardSide(),
+      winnerId: null,
+    });
+    render(<Harness initial={legacy} />);
+
+    const warning = screen.getByRole("alert");
+    expect(warning.textContent).toMatch(/acciones guardadas/i);
+    expect(warning.textContent).toMatch(/borrarán las bajas/i);
+  });
+
+  it("does not warn for a normal extended acta whose actions attribute the casualties", () => {
+    const extended = actaPrefill({
+      home: scoreboardSide({
+        actions: [actionRow({ rosterPlayerId: "h1", casualties: 1 })],
+      }),
+      away: scoreboardSide({
+        casualties: [
+          { team: "away", rosterPlayerId: "a2", outcome: { kind: "permanent" } },
+        ],
+      }),
+      winnerId: null,
+    });
+    render(<Harness initial={extended} />);
+
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

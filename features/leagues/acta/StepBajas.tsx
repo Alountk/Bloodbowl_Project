@@ -59,6 +59,15 @@ export function StepBajas({
 
   return (
     <div className="space-y-4">
+      {state.casualtiesUnrecoverable ? (
+        <p
+          role="alert"
+          className="border border-border bg-panel px-3 py-2 text-[11px] font-semibold text-red"
+        >
+          Este acta no tiene acciones guardadas. Si guardas sin volver a introducir las
+          bajas, se borrarán las bajas registradas.
+        </p>
+      ) : null}
       <p className="text-[11px] text-slate">
         Bajas derivadas del paso 2. Solo se introducen las tiradas.
       </p>
