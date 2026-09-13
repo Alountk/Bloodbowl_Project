@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MatchActaWizard } from "../MatchActaWizard";
 import type { RosterPlayerRef } from "../MatchResolveModal";
 import type { ResultPayload } from "../api";
@@ -332,6 +332,23 @@ describe("MatchActaWizard submit (s4a)", () => {
 
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/anotaciones/i);
+  });
+
+  it("shows an alert and keeps the dialog open when onSubmit rejects (s4c corrective)", async () => {
+    // A 400/409 rejection must not be swallowed: the shell surfaces it in a
+    // visible role="alert" and keeps the acta open so the captain can retry.
+    const onSubmit = vi.fn(() => Promise.reject(new Error("rejected")));
+    renderWizard({ initial: validActa(), onSubmit });
+    goToRevisar();
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardar acta" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /No se pudo guardar el acta/,
+      ),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
   });
 });
 

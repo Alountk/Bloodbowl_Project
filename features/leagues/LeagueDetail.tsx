@@ -15,6 +15,7 @@ import { ForfeitModal } from "./ForfeitModal";
 import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
 import { ResultModal, type ResultTeamDraft } from "./ResultModal";
 import { MatchActaWizard } from "./MatchActaWizard";
+import { actaPrefill, type ActaState } from "./acta/actaState";
 import { buildResultPrefill } from "./resultPrefill";
 import { getMatchDetail } from "./api";
 import { isOwnerEquivalent } from "./access";
@@ -711,15 +712,13 @@ function Jornadas({
           teamNameById={teamNameById}
           rostersFor={rostersFor}
           onClose={() => setResultFixture(null)}
-          onSubmit={(payload) => {
-            // MAW-1/s4c: the load path submits through the SAME helper the legacy
-            // ResultModal used (`submit` → POST + league refresh). The wizard
-            // invokes `onSubmit` synchronously, so the async submit is fired here
-            // and the dialog closes once it resolves; a rejection keeps it open.
-            void onSubmitResult(resultFixture.id, payload)
-              .then(() => setResultFixture(null))
-              .catch(() => {});
-          }}
+          onSubmit={(payload) =>
+            // s4c corrective: do NOT swallow a rejection — return the promise so
+            // the wizard surfaces the server error (400/409) and stays open.
+            onSubmitResult(resultFixture.id, payload).then(() =>
+              setResultFixture(null),
+            )
+          }
         />
       ) : null}
     </div>
@@ -791,7 +790,9 @@ function ResultModalFor({
 /**
  * Mounts the "Acta del partido" wizard for a fixture on the LOAD path (s4c),
  * resolving its team names and home/away rosters exactly like `ResultModalFor`.
- * Correct-mode prefill lands in s6a (`actaPrefill`); the load path opens empty.
+ * A scheduled fixture whose live match already finished opens PREFILLED (scores
+ * + per-scorer TDs) via `actaPrefill(buildResultPrefill(...))`; correct-mode
+ * prefill from the persisted snapshot lands in s6a.
  */
 function MatchActaWizardFor({
   fixture,
@@ -806,10 +807,35 @@ function MatchActaWizardFor({
     { id: string; name: string }[],
     { id: string; name: string }[],
   ];
-  onSubmit: (payload: ResultPayload) => void;
+  onSubmit: (payload: ResultPayload) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [homeRoster, awayRoster] = rostersFor(fixture);
+  // Resolve the finished-live-match prefill from the fixture GET before mounting
+  // the wizard, so it reads `initial` ONCE (the parent keys it per fixture).
+  const [initial, setInitial] = useState<ActaState | undefined>(undefined);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMatchDetail(fixture.leagueId, fixture.id)
+      .then((match) => {
+        if (cancelled) return;
+        if (match.live && match.live.status === "finished") {
+          setInitial(actaPrefill(buildResultPrefill(match.live)));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fixture.leagueId, fixture.id]);
+
+  if (!ready) return null;
+
   return (
     <MatchActaWizard
       open
@@ -818,6 +844,7 @@ function MatchActaWizardFor({
       awayName={teamNameById.get(fixture.awayTeamId) ?? ""}
       homeRoster={homeRoster}
       awayRoster={awayRoster}
+      initial={initial}
       onSubmit={onSubmit}
       onClose={onClose}
     />

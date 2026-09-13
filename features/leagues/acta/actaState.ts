@@ -1,4 +1,5 @@
 import type { MatchScoreboard, ResultPayload, ResultPlayerAction } from "../api";
+import type { ResultTeamDraft } from "../ResultModal";
 import { casualtiesFromActions } from "./deriveCasualties";
 
 /**
@@ -198,32 +199,83 @@ export function buildActaPayload(state: ActaState): ResultPayload {
 }
 
 /**
- * Correct-mode prefill skeleton (MAW-9). Maps the scalar Contexto/Marcador/MVP
- * fields present in the persisted `MatchResult.scores` snapshot; the full
- * action-line + roll reconstruction is completed in the prefill slice (S6).
- * Legacy rows lacking the extended keys open partially prefilled.
+ * The SINGLE prefill home (design decision F2). Accepts either the persisted
+ * `MatchResult.scores` snapshot (correct mode, MAW-9 — the scalar fields are
+ * mapped here; the full action-line + roll reconstruction lands in S6) or the
+ * finished-live `buildResultPrefill` draft (load path, s4c corrective). Legacy
+ * snapshot rows lacking the extended keys open partially prefilled.
  */
 export function actaPrefill(
-  snapshot: MatchScoreboard | null | undefined,
+  source: MatchScoreboard | ActaLoadPrefill | null | undefined,
 ): ActaState {
   const base = emptyActaState();
-  if (!snapshot) return base;
+  if (!source) return base;
+  if (isLoadPrefill(source)) {
+    return {
+      ...base,
+      home: teamFromResultDraft(source.home),
+      away: teamFromResultDraft(source.away),
+    };
+  }
   return {
     ...base,
-    duration: snapshot.duration ?? base.duration,
+    duration: source.duration ?? base.duration,
     home: {
       ...base.home,
-      score: snapshot.home.score,
-      ff: snapshot.home.ff ?? base.home.ff,
-      neverHeld: snapshot.home.neverHeld ?? base.home.neverHeld,
-      mvpGrantee: snapshot.mvp?.home ?? base.home.mvpGrantee,
+      score: source.home.score,
+      ff: source.home.ff ?? base.home.ff,
+      neverHeld: source.home.neverHeld ?? base.home.neverHeld,
+      mvpGrantee: source.mvp?.home ?? base.home.mvpGrantee,
     },
     away: {
       ...base.away,
-      score: snapshot.away.score,
-      ff: snapshot.away.ff ?? base.away.ff,
-      neverHeld: snapshot.away.neverHeld ?? base.away.neverHeld,
-      mvpGrantee: snapshot.mvp?.away ?? base.away.mvpGrantee,
+      score: source.away.score,
+      ff: source.away.ff ?? base.away.ff,
+      neverHeld: source.away.neverHeld ?? base.away.neverHeld,
+      mvpGrantee: source.mvp?.away ?? base.away.mvpGrantee,
     },
+  };
+}
+
+/** The finished-live draft `buildResultPrefill` returns for the load path. */
+type ActaLoadPrefill = { home: ResultTeamDraft; away: ResultTeamDraft };
+
+/** Distinguishes the live draft pair from the persisted `MatchScoreboard`. */
+function isLoadPrefill(
+  source: MatchScoreboard | ActaLoadPrefill,
+): source is ActaLoadPrefill {
+  return "players" in source.home;
+}
+
+/**
+ * Rebuilds the free-form Acciones lines from a `ResultTeamDraft`'s per-player
+ * rows. Only directly-sourced counts are mapped: the live draft carries no
+ * casualty VICTIM, so a `casualties` count cannot be turned into the wizard's
+ * victim-bound casualty line and is deliberately left for manual re-entry
+ * rather than invented.
+ */
+function actionsFromResultPlayers(
+  players: ResultTeamDraft["players"],
+): ActaActionLine[] {
+  const lines: ActaActionLine[] = [];
+  for (const [rosterPlayerId, row] of Object.entries(players)) {
+    for (const kind of Object.keys(ACTION_FIELD) as ActaActionKind[]) {
+      if (kind === "casualty") continue;
+      const quantity = row[ACTION_FIELD[kind]];
+      if (quantity > 0) {
+        lines.push({ id: `${rosterPlayerId}:${kind}`, rosterPlayerId, kind, quantity });
+      }
+    }
+  }
+  return lines;
+}
+
+/** Maps one finished-live `ResultTeamDraft` into the wizard's team draft. */
+function teamFromResultDraft(draft: ResultTeamDraft): ActaTeamDraft {
+  return {
+    ...emptyTeamDraft(),
+    score: draft.score,
+    neverHeld: !draft.ballHeld,
+    actions: actionsFromResultPlayers(draft.players),
   };
 }

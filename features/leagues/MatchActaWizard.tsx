@@ -47,9 +47,10 @@ export interface MatchActaWizardProps {
   /**
    * Invoked by the Step-6 "Guardar acta" button with the assembled payload. The
    * shell calls it only when the acta validates (Σ anotaciones == marcador and
-   * both MVPs selected); the app wiring lands in s4c.
+   * both MVPs selected); the app wiring lands in s4c. A rejected promise is
+   * surfaced in the dialog's `role="alert"` and the acta stays open.
    */
-  onSubmit?: (payload: ResultPayload) => void;
+  onSubmit?: (payload: ResultPayload) => void | Promise<void>;
 }
 
 /**
@@ -74,6 +75,9 @@ export function MatchActaWizard({
 }: MatchActaWizardProps) {
   const [step, setStep] = useState(0);
   const [state, setState] = useState<ActaState>(() => initial ?? emptyActaState());
+  // A rejected submit (400/409) must never be swallowed: it is surfaced in the
+  // alert below and cleared on the next attempt.
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   // The active step body; focus moves here whenever the active step changes so
   // the new step is announced and its controls are the next Tab stop.
@@ -282,6 +286,15 @@ export function MatchActaWizard({
           {body}
         </div>
 
+        {submitError ? (
+          <p
+            role="alert"
+            className="border-t border-border bg-panel px-4 py-2 text-sm font-semibold text-red"
+          >
+            {submitError}
+          </p>
+        ) : null}
+
         <footer className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
           <button
             type="button"
@@ -296,7 +309,10 @@ export function MatchActaWizard({
               type="button"
               onClick={() => {
                 if (!validation.ok) return;
-                onSubmit?.(buildActaPayload(state));
+                setSubmitError(null);
+                Promise.resolve(onSubmit?.(buildActaPayload(state))).catch(() =>
+                  setSubmitError("No se pudo guardar el acta. Inténtalo de nuevo."),
+                );
               }}
               disabled={!validation.ok}
               className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-50"

@@ -717,6 +717,94 @@ describe("LeagueDetail — STARTED league", () => {
     });
   });
 
+  it("opens the acta wizard PREFILLED for a scheduled fixture whose live match finished (s4c corrective)", async () => {
+    // Regression guard: the load path MUST prefill a scheduled fixture whose
+    // live match already finished (scores + per-scorer TDs), never open empty.
+    const scheduledLiveFinished = {
+      ...startedLeague,
+      ownerId: "u2",
+      ownerName: "Coach B",
+      teams: [
+        { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: me, roster: Array.from({ length: 6 }, (_, i) => ({ id: `h${i + 1}`, name: `H${i + 1}` })) },
+        { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u8", roster: Array.from({ length: 6 }, (_, i) => ({ id: `a${i + 1}`, name: `A${i + 1}` })) },
+      ],
+      rounds: [{ round: 1, fixtures: ["fs"], complete: false }],
+      fixtures: [
+        {
+          id: "fs",
+          leagueId: "l3",
+          round: 1,
+          homeTeamId: "t1",
+          awayTeamId: "t2",
+          createdAt: "2026-02-01",
+          scheduledAt: "2026-03-01T10:00:00.000Z",
+          winnerId: null,
+          status: "scheduled",
+          homeOwner: { id: me, name: "Coach Me" },
+          awayOwner: { id: "u8", name: "Coach B" },
+          proposals: [],
+        },
+      ],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      if (url === "/api/leagues/l3") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(scheduledLiveFinished) });
+      if (url === "/api/leagues/l3/fixtures/fs") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              fixture: scheduledLiveFinished.fixtures[0],
+              result: null,
+              homeTeam: { id: "t1", roster: [] },
+              awayTeam: { id: "t2", roster: [] },
+              live: {
+                seq: 12,
+                status: "finished",
+                half: 2,
+                turnNumber: 8,
+                activeSide: "away",
+                turnClockEnabled: true,
+                homeClock: 0,
+                awayClock: 0,
+                homeScore: 2,
+                awayScore: 1,
+                paused: false,
+                finishedAt: 5000,
+                events: [
+                  { seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 2, payload: {}, at: 2000 },
+                  { seq: 3, kind: "td", side: "home", playerRosterId: "h1", half: 2, turnNumber: 1, payload: {}, at: 3000 },
+                  { seq: 4, kind: "td", side: "away", playerRosterId: "a2", half: 2, turnNumber: 6, payload: {}, at: 4000 },
+                ],
+              },
+            }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Acta del partido" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Acta del partido" }));
+
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Acta del partido" })).toBeTruthy());
+    const dialog = screen.getByRole("dialog", { name: "Acta del partido" });
+
+    // Marcador opens with the finished live score (not the empty 0:0 default).
+    fireEvent.click(within(dialog).getByRole("button", { name: "Siguiente" }));
+    expect((within(dialog).getByLabelText("Reavers") as HTMLInputElement).value).toBe("2");
+    expect((within(dialog).getByLabelText("Orcs") as HTMLInputElement).value).toBe("1");
+
+    // Acciones carries the per-scorer TD lines derived from the live feed.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Siguiente" }));
+    const homeActions = within(dialog).getByRole("region", { name: "Reavers" });
+    expect((within(homeActions).getByLabelText("Jugador 1 · Reavers") as HTMLSelectElement).value).toBe("h1");
+    expect((within(homeActions).getByLabelText("Cantidad 1 · Reavers") as HTMLInputElement).value).toBe("2");
+  });
+
   it("prefills the correction modal scores and per-scorer TDs from a finished live match (LM-9)", async () => {
     // s4c: the legacy ResultModal stays on the CORRECT path, so the finished-live
     // prefill is exercised there (s6a moves correct-mode prefill to the persisted
