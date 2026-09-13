@@ -774,6 +774,113 @@ the hint present when lines are dropped and absent when they are not.
 - Tests (`StepAcciones.test.tsx`): `+111`.
 - Overall: `added=137 removed=5 total=142` (under the 400-line budget and the 150-line fix target).
 
+## Slice s4b — `MatchCard` single entry + `···` overflow (MAW-1)
+
+- **Branch**: `feat/match-edit-redesign-s4b`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main` (slice 4b of the re-forecast 13-slice plan; stacked on s4a)
+- **Boundary**: starts from the s4a wizard (Steps 0–6 real, submit gated) and the four legacy
+  `MatchCard` header buttons; ends with ONE primary "Acta del partido" (`canLoadResult` guard) plus a
+  keyboard-accessible `···` overflow holding Otorgar victoria / Corregir resultado / Reiniciar
+  partido. `LeagueDetail` wiring, the modals and the wizard remain untouched (s4c).
+- **Rollback boundary**: revert `features/leagues/MatchCard.tsx`, `MatchCard.test.tsx` and the
+  entry-point assertions in `LeagueDetail.test.tsx`. The `onLoadResult`/`onCorrectResult`/
+  `onForfeit`/`onReset` props are unchanged, so `LeagueDetail.tsx` needs no revert.
+
+### Code commit
+
+- `c9a4955` — `feat(leagues): collapse match card actions into one acta entry point`.
+
+### Completed Tasks
+
+- [x] 4.2 (s4b) `features/leagues/MatchCard.tsx`: ONE primary "Acta del partido" (`canLoadResult`)
+  + `···` overflow (Otorgar victoria / Corregir resultado / Reiniciar partido); every guard
+  preserved 1:1. `MatchCard.test.tsx` repointed; `LeagueDetail.test.tsx` entry-point assertions
+  repointed (test-only — `LeagueDetail.tsx` untouched).
+- [ ] 4.4 (s4b–s4c) — the s4b half is done (single action on scheduled + overflow gates); the s4c
+  half (save-block on invalid state, budget-only inducements round-trip) stays open with s4c.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/MatchCard.tsx` | Modified | Primary action + accessible `···` menu; four guards preserved 1:1 |
+| `features/leagues/MatchCard.test.tsx` | Modified | Repointed every guard assertion; new MAW-1 entry-point + overflow a11y tests |
+| `features/leagues/LeagueDetail.test.tsx` | Modified | Test-only entry-point repoint (open overflow for forfeit; "Acta del partido" for load) |
+
+### GUARD_MAP (preserved 1:1)
+
+| Guard | OLD condition | NEW location | Test |
+|---|---|---|---|
+| Result load | `!leagueFinished && status === "scheduled" && !liveActive && (isParticipant \|\| isLeagueOwner)` | primary "Acta del partido" | "renders exactly ONE primary 'Acta del partido'…"; "hides the primary action from a non-participant spectator"; "restores the load-result path once the live match is finished" |
+| Correct | `!leagueFinished && (isLeagueOwner \|\| isParticipant) && status === "played"` | `···` → "Corregir resultado" | "shows 'Corregir resultado' to a participant captain…"; admin case; "hides 'Corregir resultado' on a non-played…" |
+| Forfeit | `!leagueFinished && isLeagueOwner && status !== "played"` | `···` → "Otorgar victoria" | "gates 'Otorgar victoria' to the league admin…"; "shows 'Otorgar victoria' to the admin in the overflow"; "keeps the forfeit action admin-only…" |
+| Reset | `showReset = !leagueFinished && canResetLive && live != null && live.status !== "finished"` | `···` → "Reiniciar partido" | reset describe (6 cases) |
+| `leagueFinished` hides all | every guard begins `!leagueFinished` | no primary, no `···` trigger | finished-league describe (2 cases) |
+| Live-active hides load | `!liveActive` inside `canLoadResult` | no primary | "shows the pulsing EN VIVO badge…" |
+
+### Accessibility (the overflow is not a click-only div)
+
+- Trigger: `<button aria-haspopup="menu" aria-expanded={menuOpen} aria-label="Más acciones">`.
+- Menu: `role="menu" aria-label="Más acciones"`; items are native `<button role="menuitem">`.
+- Focus moves to the first item on open; ArrowDown/ArrowUp rove with wrap; Home/End jump.
+- Escape closes and restores focus to the trigger; outside `mousedown` closes.
+- Tests: `aria-haspopup`/`aria-expanded` toggle; Escape + focus restore; outside-click close;
+  Arrow roving over two items.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 4.2 | `MatchCard.test.tsx` | Component (jsdom) | ✅ 38/38 | ✅ Written first (`Unable to find button "Más acciones"`; 15 failed \| 35 passed) | ✅ 50/50 passed | ✅ 15 new/updated cases (entry point, each guard, a11y) | ✅ Clean |
+| 4.2 (consumer) | `LeagueDetail.test.tsx` | Integration (jsdom) | ✅ 30/30 | ✅ Covered by the entry-point repoint | ✅ 30/30 passed | ✅ forfeit open-overflow + load primary | ✅ Clean |
+
+- **Total tests written/changed**: 15 MatchCard cases + 5 LeagueDetail assertion groups; all passing.
+- **Layers used**: Component/jsdom (MatchCard), Integration/jsdom (LeagueDetail), E2E (0 — out of s4b).
+- **Pure functions created**: none — the slice is a structural refactor of existing guards; the
+  guards are asserted, not extracted.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/MatchCard.test.tsx` → **1 file, 50 tests passed** |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues` → **41 files, 629 tests passed** (jsdom render of the real overflow in the LeagueDetail flow) |
+| Rollback boundary | Revert `MatchCard.tsx` + `MatchCard.test.tsx` + the entry-point assertions in `LeagueDetail.test.tsx`; props unchanged so `LeagueDetail.tsx` is untouched. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/MatchCard.test.tsx` → **1 file, 50 passed**
+- `pnpm exec vitest run features/leagues` → **41 files, 629 passed**
+- `pnpm test` → **189 files, 2743 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s4b)
+
+- Code only (`MatchCard.tsx`): `added=113 removed=29 total=142` (well under the ≈245 estimate).
+- Tests: `MatchCard.test.tsx` `+191/−25`; `LeagueDetail.test.tsx` `+33/−13`.
+- Overall: `added=337 removed=67 total=404` — **4 lines over the 400 budget** → `size:exception`.
+  The overage is test-side (the mandated a11y coverage + the forced cross-file repoint); the
+  production diff is 142 lines. The diff was NOT minified.
+
+### Deviations from Design
+
+- The primary label "Acta del partido" is literal neutral Spanish, matching the
+  `MatchActaWizard` precedent; the `acta.*` i18n keys land in s6b (task 6.4).
+- `LeagueDetail.test.tsx` was repointed (test-only) because its entry-point assertions
+  (`getByRole("button", { name: "Cargar resultado" / "Otorgar victoria" })`) encode the OLD header
+  buttons and `pnpm exec vitest run features/leagues` is a mandatory s4b gate. No production
+  `LeagueDetail.tsx` change was made.
+- Outside-click close does not force focus back to the trigger (the user's new focus target wins,
+  per the APG menu-button pattern); the keyboard close path (Escape) does restore focus.
+
+### Issues Found (s4b)
+
+- None functional. `size:exception` recorded above (404 vs 400; 142 production lines).
+- The `LeagueDetail.tsx` wizard wiring (mode load/correct, retiring `ResultModal`) remains s4c, so
+  the primary action still opens the existing `ResultModal` until then.
+
 
 
 

@@ -89,7 +89,7 @@ A step slice therefore costs step + test + shell branch + shell test, and the re
 ## Phase 4 (s4a–s4c): Step 6 + MatchCard single entry + LeagueDetail wiring
 
 - [x] 4.1 (s4a) Create `features/leagues/acta/StepRevisar.tsx` (MAW-8): summary + validations; block save unless Σ anotaciones == marcador AND both MVPs selected; wire the shell submit.
-- [ ] 4.2 (s4b) Modify `features/leagues/MatchCard.tsx` (L200–235): ONE primary "Acta del partido" (`canLoadResult` guard) + `···` overflow with Otorgar victoria (`isLeagueOwner && !played`), Corregir resultado (`played`, participant/admin), Reset (`showReset`) — preserve every guard 1:1 (Guard Map).
+- [x] 4.2 (s4b) Modify `features/leagues/MatchCard.tsx` (L200–235): ONE primary "Acta del partido" (`canLoadResult` guard) + `···` overflow with Otorgar victoria (`isLeagueOwner && !played`), Corregir resultado (`played`, participant/admin), Reset (`showReset`) — preserve every guard 1:1 (Guard Map).
 - [ ] 4.3 (s4c) Modify `features/leagues/LeagueDetail.tsx` (L530, `ResultModalFor` L712): wire wizard (mode `load`/`correct`) replacing `ResultModal`; keep `buildResultPrefill` for load path. Also implement the inducement shape (task 5.4): `buildActaPayload` emits a **budget-only** snapshot for a non-live acta (`budget` = money spent, `cards` may be empty), and `parseInducements` stops returning `null` when a budget is present but `cards` is empty — live path unchanged.
 - [ ] 4.4 (s4b–s4c) RED then GREEN `MatchCard.test.tsx` + `LeagueDetail.test.tsx`: single action on scheduled; overflow gates (forfeit/correct/reset); save-block on invalid state; budget-only inducements survive a round-trip.
 
