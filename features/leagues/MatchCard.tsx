@@ -82,9 +82,9 @@ export interface MatchCardProps {
   canResetLive?: boolean;
   /** Opens the reset confirmation modal for this fixture (owner/dev-admin only). */
   onReset?: (fixture: FixtureDraft) => void;
-  /** Opens the ResultModal to load a result (participant/admin on a scheduled fixture). */
+  /** Opens the "Acta del partido" wizard to load a result (participant/admin on a scheduled fixture). */
   onLoadResult?: (fixture: FixtureDraft) => void;
-  /** Opens the ResultModal to correct a result (admin only on a played fixture). */
+  /** Opens the "Acta del partido" wizard to correct a result (participant/admin on a played fixture). */
   onCorrectResult?: (fixture: FixtureDraft) => void;
 }
 

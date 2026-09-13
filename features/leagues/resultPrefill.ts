@@ -9,10 +9,10 @@ import type { LiveMatchView, LiveMatchEventDto } from "./api";
  * server-side 1D6/1D16 rolls) and stays the single authority. No dice logic, no
  * parallel result path.
  *
- * This module is also the home of the legacy `ResultModal` draft types (s6a/RAU-122
- * design F7): they were moved out of `ResultModal.tsx` so the wizard's prefill
- * (`acta/actaState.ts`) and the load path can share them without importing a
- * component.
+ * This module is also the home of the wizard draft types (s6a/RAU-122 design
+ * F7): they were moved out of the legacy `ResultModal` (retired in s6c) so the
+ * wizard's prefill (`acta/actaState.ts`) and the load path can share them
+ * without importing a component.
  */
 
 /** The numeric PE action credits collected for one player in the result form. */

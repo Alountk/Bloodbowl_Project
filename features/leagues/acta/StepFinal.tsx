@@ -1,6 +1,7 @@
 "use client";
 
 import { computeWinnings } from "@/lib/rules/winnings";
+import { useI18n } from "@/lib/i18n";
 import { aggregateActions, type ActaState, type ActaTeamDraft } from "./actaState";
 
 export interface StepFinalProps {
@@ -10,9 +11,9 @@ export interface StepFinalProps {
   awayName: string;
 }
 
-/** Spanish thousands grouping ("65.000"), deterministic across environments. */
-function formatGold(amount: number): string {
-  return `${amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} M.O.`;
+/** Thousands grouping ("65.000") plus the resolved currency unit. */
+function formatGold(amount: number, unit: string): string {
+  return `${amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")} ${unit}`;
 }
 
 /** The FF term can be a half: (FF_home + FF_away)/2 (e.g. 3,5). */
@@ -37,16 +38,14 @@ function parseFanRoll(raw: string): number | null {
  * (fans won/lost) is derived server-side and is not invented here.
  */
 export function StepFinal({ state, onChange, homeName, awayName }: StepFinalProps) {
+  const { t } = useI18n();
   const setFanRoll = (side: "home" | "away", fanRoll: number | null) => {
     onChange({ ...state, [side]: { ...state[side], fanRoll } });
   };
 
   return (
     <div className="space-y-4">
-      <p className="text-[11px] text-slate">
-        Las ganancias se calculan solas y no son editables: se muestran con su
-        desglose para poder verificarlas. Solo se introduce la tirada de afición.
-      </p>
+      <p className="text-[11px] text-slate">{t("acta.final.intro")}</p>
       <TeamFinal
         name={homeName}
         draft={state.home}
@@ -59,10 +58,7 @@ export function StepFinal({ state, onChange, homeName, awayName }: StepFinalProp
         rivalDraft={state.home}
         onFanRoll={(roll) => setFanRoll("away", roll)}
       />
-      <p className="text-[11px] text-slate">
-        Las ganancias se calculan solas: ((FF local + FF visitante)/2 +
-        anotaciones + 1 si nunca tuvo el balón) × 10.000. Son de solo lectura.
-      </p>
+      <p className="text-[11px] text-slate">{t("acta.final.formula")}</p>
     </div>
   );
 }
@@ -78,6 +74,7 @@ function TeamFinal({
   rivalDraft: ActaTeamDraft;
   onFanRoll: (roll: number | null) => void;
 }) {
+  const { t } = useI18n();
   const ownTds = aggregateActions(draft.actions).reduce(
     (total, row) => total + row.tds,
     0,
@@ -101,7 +98,7 @@ function TeamFinal({
   const lineClass = "flex items-center justify-between gap-2";
   const autoChip = (
     <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase text-slate">
-      auto
+      {t("acta.final.auto")}
     </span>
   );
 
@@ -110,33 +107,36 @@ function TeamFinal({
       <h3 className="font-display text-sm font-bold text-navy">{name}</h3>
       <div className="mt-2 space-y-1 text-sm text-ink">
         <div className={lineClass}>
-          <span className="flex items-center gap-1.5">Anotaciones {autoChip}</span>
+          <span className="flex items-center gap-1.5">
+            {t("acta.final.anotaciones")} {autoChip}
+          </span>
           <b>{ownTds}</b>
         </div>
         <div className={lineClass}>
           <span>
-            · (FF {canCompute ? ownFf : "—"} + {canCompute ? rivalFf : "—"})/2
+            {t("acta.final.ffTerm", {
+              own: canCompute ? ownFf : "—",
+              rival: canCompute ? rivalFf : "—",
+            })}
           </span>
           <span>{ffTerm == null ? "—" : formatUnits(ffTerm)}</span>
         </div>
         <div className={lineClass}>
-          <span>· nunca tuvo el balón</span>
+          <span>{t("acta.final.neverHeld")}</span>
           <span>+{bonus}</span>
         </div>
         <div className={`${lineClass} border-t border-border pt-1`}>
           <span className="flex items-center gap-1.5 font-bold">
-            Ganancias {autoChip}
+            {t("acta.final.winnings")} {autoChip}
           </span>
-          <b>{total == null ? "—" : formatGold(total)}</b>
+          <b>{total == null ? "—" : formatGold(total, t("acta.gold"))}</b>
         </div>
       </div>
       {!canCompute ? (
-        <p className="mt-2 text-[11px] text-slate">
-          Introduce el Factor fan de ambos equipos (paso 0) para ver el desglose.
-        </p>
+        <p className="mt-2 text-[11px] text-slate">{t("acta.final.ffHint")}</p>
       ) : null}
       <label className={`${labelClass} mt-3`}>
-        Afición · tirada 1D6 · {name}
+        {t("acta.final.fanRoll", { team: name })}
         <input
           type="number"
           min={1}

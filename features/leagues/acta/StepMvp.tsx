@@ -1,6 +1,7 @@
 "use client";
 
 import { PE_MVP } from "@/lib/rules";
+import { useI18n } from "@/lib/i18n";
 import type { RosterPlayerRef } from "../MatchResolveModal";
 import type { ActaState, ActaTeamDraft } from "./actaState";
 
@@ -29,6 +30,7 @@ export function StepMvp({
   homeRoster,
   awayRoster,
 }: StepMvpProps) {
+  const { t } = useI18n();
   return (
     <div className="space-y-4">
       <TeamMvp
@@ -50,7 +52,7 @@ export function StepMvp({
         }
       />
       <p className="text-[11px] text-slate">
-        El MVP elegido recibe sus <b className="text-ink">★{PE_MVP} PE</b>.
+        {t("acta.mvp.noteLead")} <b className="text-ink">★{PE_MVP} PE</b>.
       </p>
     </div>
   );
@@ -69,6 +71,7 @@ function TeamMvp({
   roster: RosterPlayerRef[];
   onChange: (rosterPlayerId: string) => void;
 }) {
+  const { t } = useI18n();
   // One radio group per side: a different `name` per team keeps the two
   // selections independent while still enforcing exactly one per team.
   const groupName = `acta-mvp-${side}`;
@@ -88,10 +91,10 @@ function TeamMvp({
             value=""
             checked={draft.mvpGrantee === ""}
             onChange={() => onChange("")}
-            aria-label={`Sin MVP · ${name}`}
+            aria-label={t("acta.mvp.noneAria", { team: name })}
             className="accent-navy"
           />
-          <span className="text-slate">— Sin MVP</span>
+          <span className="text-slate">{t("acta.mvp.none")}</span>
         </label>
         {roster.map((player) => (
           <label key={player.id} className={optionClass}>
@@ -101,7 +104,7 @@ function TeamMvp({
               value={player.id}
               checked={draft.mvpGrantee === player.id}
               onChange={() => onChange(player.id)}
-              aria-label={`MVP · ${name} · ${player.name}`}
+              aria-label={t("acta.mvp.optionAria", { team: name, player: player.name })}
               className="accent-navy"
             />
             <span className="truncate">{player.name}</span>
