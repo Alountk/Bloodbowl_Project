@@ -517,5 +517,96 @@ public API and the `injuryRoll`/`permanentRoll` field names are unchanged.
 - Tests: `route.test.ts` `+83`; `StepBajas.test.tsx` `+48`.
 - Overall: `added=144 removed=5 total=149` (under the 400-line budget).
 
+## Slice s3c — `StepFinal` + shell branch (MAW-7)
+
+- **Branch**: `feat/match-edit-redesign-s3c`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main` (slice 3c of the re-forecast 13-slice plan; stacked on s3b)
+- **Boundary**: starts from the s3b wizard (Steps 0–4 real); ends with Step 5 (Final) rendering the
+  read-only winnings preview + the fan 1D6 inputs. Step 6 stays a placeholder (s4a).
+- **Rollback boundary**: revert `features/leagues/acta/StepFinal.tsx` (+ test) and the `step === 5`
+  branch + import in `MatchActaWizard.tsx` (+ the shell test case). Steps 0–4 and 6 unaffected; no
+  protected file touched.
+
+### Code commits
+
+- `7abda13` — `feat(leagues): add read-only winnings preview to acta final step` (step + test).
+- `b9a7c10` — `feat(leagues): wire the Final step into the acta wizard` (shell + shell test).
+
+### Completed Tasks
+
+- [x] 3.3 (s3c) `features/leagues/acta/StepFinal.tsx` (MAW-7): READ-ONLY winnings breakdown with the
+  visible `(FF_home + FF_away)/2` term, the team's own TDs and the "nunca tuvo el balón" bonus,
+  computed with the SAME pure `computeWinnings`; fan-factor 1D6 input per team → `fanRoll`; shell
+  branch + shell test.
+- [x] 3.4 (s3a–s3c) winnings preview + fan roll covered by `StepFinal.test.tsx` (the s3a/s3b parts
+  landed in their own slices).
+
+### THE recorded decision — how it is honoured
+
+- The winnings breakdown is a **client PREVIEW** only: Step 5 precedes submit, so no server value
+  exists to fetch. `computeWinnings` (`lib/rules/winnings.ts`) is reused **as-is** — no formula is
+  re-implemented.
+- The **client transmits NO amount**: `buildActaPayload` was NOT changed and carries no `winnings`
+  field. The server stays authoritative on submit.
+- **No new API surface** was added.
+- The ONLY manual input is the **fan-factor 1D6 per team**, written to `ActaTeamDraft.fanRoll`, which
+  `buildActaPayload` already emits as `fanRoll`.
+- **FAN_DELTA_DECISION**: the derived fan delta (fans won/lost) is NOT rendered. The wizard props are
+  `homeName`/`awayName`/`homeRoster`/`awayRoster` (roster entries are `{ id, name }` only) — the
+  teams' dedicated-fans value is **not available to the wizard**, and the design forbids inventing it
+  or adding a fetch. The preview therefore shows only the read-only winnings breakdown and the fan
+  roll input; the delta stays server-side.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 3.3/3.4 | `StepFinal.test.tsx` | Component (jsdom) | ✅ 45 acta tests | ✅ Written first (`Failed to resolve import "./StepFinal"`) | ✅ 5/5 passed | ✅ Clean |
+| 3.3 (shell) | `MatchActaWizard.test.tsx` | Component (jsdom) | ✅ 13 shell tests | ✅ Covered by the new step-5 case | ✅ 14/14 passed | ✅ Clean |
+
+- **Total tests written**: 6 (5 step + 1 shell); **passing**: 6/6 in the focused files.
+- **Layers used**: Component/jsdom (6), E2E (0 — out of s3c scope).
+- **Pure functions created**: none (reuses `computeWinnings` and `aggregateActions`; the step adds
+  only local `formatGold`/`formatUnits`/`parseFanRoll` presentation helpers).
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta` → **7 files, 52 tests passed** |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues/acta/MatchActaWizard.test.tsx` → **14 passed (jsdom render of the real step 5)** |
+| Rollback boundary | Revert `acta/StepFinal.tsx` (+ test) and the `step === 5` branch + import in `MatchActaWizard.tsx`; steps 0–4/6 unaffected. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **7 files, 52 passed**
+- `pnpm test` → **187 files, 2721 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s3c)
+
+- Step + test commit (`7abda13`): `added=323 removed=0 total=323` (≈370 estimate).
+- Shell wiring commit (`b9a7c10`): `added=23 removed=1 total=24` (≈40 estimate).
+- Combined: `added=346 removed=1 total=347` — under the 400-line budget.
+
+### Deviations from Design
+
+- None. The design's Step-5 decision (client preview via the SAME `computeWinnings`, no amount in
+  the payload, no new API surface) is implemented exactly.
+- The preview needs BOTH teams' FF; when one is still unset the server falls back to its own rolled
+  FF, so the step renders "—" plus a hint ("Introduce el Factor fan de ambos equipos (paso 0)…")
+  instead of inventing a value. The fan-roll input and the read-only breakdown structure stay
+  visible regardless.
+- Spanish copy is literal in the step (like S2/s3a/s3b); the `acta.*` i18n keys land in s6b.
+
+### Issues Found (s3c)
+
+- None functional. The derived fan delta cannot be shown because the wizard does not receive the
+  teams' dedicated-fans value (recorded above as FAN_DELTA_DECISION); this is a known product
+  limitation, not a defect.
+- Step 6 remains a "se completa en una porción posterior" placeholder (s4a) — intentional.
+
 
 
