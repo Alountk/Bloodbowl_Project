@@ -512,41 +512,17 @@ const es: Dict = {
   "negotiation.acceptError": "No se pudo aceptar la fecha.",
   "negotiation.acceptErrorWithMsg": "No se pudo aceptar la fecha. {message}",
 
-  "result.loadTitle": "Cargar resultado",
-  "result.correctTitle": "Corregir resultado",
-  "result.loadAction": "Cargar resultado",
-  "result.saveAction": "Guardar resultado",
+  // Retired `ResultModal` (s6c): only `result.correctAction` (the MatchCard
+  // overflow entry point) and the server-error messages survive; every other
+  // legacy result.* key was removed with the modal.
   "result.correctAction": "Corregir resultado",
-  "result.header": "{title} · {home} vs {away}",
-  "result.close": "Cerrar",
-  "result.local": "Local",
-  "result.visitor": "Visitante",
-  "result.sumMismatch": "La suma de anotaciones de cada equipo debe coincidir con su marcador final.",
-  "result.mvpExactlySix": "Cada equipo debe nominar exactamente 6 jugadores para el MVP.",
-  "result.section": "Resultado {name}",
-  "result.goals": "Goles {name}",
-  "result.heldBall": "Mantuvo el balón",
-  "result.mvpSlot": "MVP {n} {name}",
-  "result.mvpNote": "Mejor jugador: el servidor lanza 1D6 entre las 6 nominaciones.",
-  "result.victims": "Víctimas",
-  "result.victimSlot": "Víctima {n}",
-  "result.homeTeam": "local",
-  "result.awayTeam": "visitante",
-  "result.action.tds": "Anotaciones",
-  "result.action.casualties": "Bajas causadas",
-  "result.action.completions": "Pases completos",
-  "result.action.interceptions": "Intercepciones",
-  "result.action.fouls": "Faltas",
-  "result.action.throwTeamMates": "Lanzar compañero",
-  "result.action.landedSafe": "Aterrizar sano",
   "result.server.alreadyPlayed": "Ya hay un resultado cargado para este partido.",
   "result.server.forbidden": "No tenés permisos para esta acción.",
   "result.server.saveError": "No se pudo guardar el resultado.",
 
   // RAU-122 s6b — "Acta del partido" wizard (match result entry). NOTE: the
-  // wizard's "NUNCA tuvo el balón" checkbox is the INVERSE of the legacy
-  // `result.heldBall` ("Mantuvo el balón") and therefore owns its own key;
-  // `result.heldBall` stays untouched until ResultModal retires (s6c).
+  // wizard's "NUNCA tuvo el balón" checkbox is the INVERSE of the retired
+  // `result.heldBall` ("Mantuvo el balón") and therefore owns its own key.
   "acta.title.load": "Acta del partido",
   "acta.title.correct": "Corregir acta del partido",
   "acta.nav": "Acta del partido",
@@ -1435,40 +1411,17 @@ const en: Dict = {
   "negotiation.acceptError": "Could not accept the date.",
   "negotiation.acceptErrorWithMsg": "Could not accept the date. {message}",
 
-  "result.loadTitle": "Load result",
-  "result.correctTitle": "Correct result",
-  "result.loadAction": "Load result",
-  "result.saveAction": "Save result",
+  // Retired `ResultModal` (s6c): only `result.correctAction` (the MatchCard
+  // overflow entry point) and the server-error messages survive; every other
+  // legacy result.* key was removed with the modal.
   "result.correctAction": "Correct result",
-  "result.header": "{title} · {home} vs {away}",
-  "result.close": "Close",
-  "result.local": "Home",
-  "result.visitor": "Away",
-  "result.sumMismatch": "The sum of each team's touchdowns must match its final score.",
-  "result.mvpExactlySix": "Each team must nominate exactly 6 players for the MVP.",
-  "result.section": "Result {name}",
-  "result.goals": "Goals {name}",
-  "result.heldBall": "Held the ball",
-  "result.mvpSlot": "MVP {n} {name}",
-  "result.mvpNote": "Best player: the server rolls 1D6 among the 6 nominations.",
-  "result.victims": "Victims",
-  "result.victimSlot": "Victim {n}",
-  "result.homeTeam": "home",
-  "result.awayTeam": "away",
-  "result.action.tds": "Touchdowns",
-  "result.action.casualties": "Casualties caused",
-  "result.action.completions": "Completions",
-  "result.action.interceptions": "Interceptions",
-  "result.action.fouls": "Fouls",
-  "result.action.throwTeamMates": "Throw team-mate",
-  "result.action.landedSafe": "Landed safely",
   "result.server.alreadyPlayed": "A result is already loaded for this match.",
   "result.server.forbidden": "You don't have permission for this action.",
   "result.server.saveError": "Could not save the result.",
 
   // RAU-122 s6b — "Acta del partido" wizard (match result entry). The wizard's
-  // "NEVER had the ball" checkbox is the INVERSE of the legacy `result.heldBall`
-  // ("Held the ball"), so it owns its own key; `result.heldBall` is untouched.
+  // "NEVER had the ball" checkbox is the INVERSE of the retired `result.heldBall`
+  // ("Held the ball"), so it owns its own key.
   "acta.title.load": "Match report",
   "acta.title.correct": "Correct match report",
   "acta.nav": "Match report",
