@@ -1572,6 +1572,119 @@ orchestrator split the PR (prefill = `f5e1f62`+`20a690f`; types+wiring = `6ea5e0
   compiling without an unused-symbol lint error (s6c deletes it). `pnpm lint` stays clean.
 - The e2e suite is knowingly red on this chain (s6d/s6e own it); `pnpm test` is the gate and is green.
 
+## Slice s6a — corrective pass (post-verify, bounded)
+
+Independent verification PASSED s6a but flagged two issues; this bounded pass fixes exactly those two.
+No re-architecture: `ResultModal.tsx` stays untouched (s6c retires it), the result route,
+`MatchResolveModal.tsx`, `ForfeitModal.tsx`, `ResetLiveMatchModal.tsx`, `lib/liveStore.ts` and
+`lib/rules/*` are untouched, no payload field name changed, and the wizard's dialog a11y / save-block /
+submit-error surface are preserved.
+
+- **Branch**: `feat/match-edit-redesign-s6a`
+- **Mode**: Strict TDD (RED → GREEN) — a failing test FIRST for BOTH fixes.
+- **Code commits**: `ad8c3ff` (FIX-A), `cb90805` (FIX-B).
+
+### FIX-A (medium) — `weather` is prefilled on correction
+
+- **Defect**: `actaPrefill` received only `match.result.scores`, which carries no weather, so
+  `emptyActaState()`'s "Perfecto" default survived. `buildActaPayload` ALWAYS sends `weather` and the
+  PUT ALWAYS writes it, so correcting a "Lluvioso" match without touching the Clima select silently
+  rewrote the persisted weather to the default.
+- **Fix**: `actaPrefill` gains an optional second parameter `weather?: string | null`; the snapshot
+  branch populates `ActaState.weather` from it (`weather ?? base.weather`). The correct-mode call site
+  passes `match.result.weather`. The load-path branch and every existing caller are unchanged.
+- **Files**: `features/leagues/acta/actaState.ts` (signature + doc), `features/leagues/LeagueDetail.tsx`
+  (call site).
+- **Tests**: `actaState.test.ts` "prefills the persisted result weather…"; `LeagueDetail.test.tsx`
+  correct-path test now asserts the `Clima` select value is "Lluvioso".
+
+### SIGNATURE_CHOICE (FIX-A)
+
+I extended `actaPrefill` with an **optional second positional parameter** rather than widening the
+source union (e.g. a `{ scores, weather }` wrapper). Why: `weather` is a `MatchResult` COLUMN living
+next to `scores`, not inside it, and the source union (`MatchScoreboard | ActaLoadPrefill`) is the
+load-path contract. A wrapper would have changed the shape for BOTH callers and every test, while an
+optional second argument leaves the existing signature contract byte-for-byte compatible (all current
+callers compile untouched), keeps the load path free of a field it cannot supply, and needs one call
+site edit. Least invasive, no double meaning.
+
+### FIX-B (data-loss guard, maintainer-approved) — warn when a legacy acta's casualties cannot be rebuilt
+
+- **Defect**: a legacy result row persists `casualties` but no `actions`. The wizard's model needs a
+  causer per casualty line, so `actaPrefill` cannot reconstruct them and the Bajas step opened EMPTY.
+  Saving without re-entering them sends `casualties: []`, clearing the persisted casualties and — via
+  `persistCasualtyOutcomes` and the clear-then-reflag suspensions block — silently clearing served
+  suspensions without re-flagging the original lasting victims.
+- **Fix (maintainer chose: visible warning, do NOT block saving)**:
+  1. `ActaState` gains an explicit, documented, display-only marker `casualtiesUnrecoverable?: boolean`
+     (NOT an overload of an existing field). It is absent/false for a normal extended snapshot and is
+     never sent in the payload.
+  2. `hasUnrecoverableCasualties(own, opponent)` detects it: the opponent side carries victims but the
+     causing side's `actions` has no row crediting a casualty. `actaPrefill` sets the marker from both
+     sides.
+  3. `StepBajas` renders a visible `role="alert"` in neutral professional Spanish when the marker is
+     set; it does not disable or block the save button.
+- **Files**: `features/leagues/acta/actaState.ts` (marker + detection), `features/leagues/acta/StepBajas.tsx`
+  (warning).
+- **Tests**: see WARNING_PROOF below.
+
+### WARNING_PROOF (FIX-B)
+
+| Assertion | Test | Exact result |
+|---|---|---|
+| Marker set for a legacy snapshot with victims and no `actions` | `actaState.test.ts` "flags unreconstructable casualties…" | `prefill.casualtiesUnrecoverable === true` |
+| Marker clear for an extended snapshot whose actions attribute every casualty | `actaState.test.ts` "does not flag an extended snapshot…" | `false` |
+| Marker clear with no persisted casualties | `actaState.test.ts` "does not flag a snapshot with no persisted casualties" | `false` |
+| Warning renders for the legacy snapshot (via `actaPrefill`) | `StepBajas.test.tsx` "warns that a legacy acta has no stored actions…" | `role="alert"` text matches `/acciones guardadas/i` and `/borrarán las bajas/i` |
+| Warning ABSENT for a normal extended snapshot | `StepBajas.test.tsx` "does not warn for a normal extended acta…" | `queryByRole("alert") === null` |
+| Saving still possible with the warning present | `MatchActaWizard.test.tsx` "keeps the save enabled when the legacy-casualties warning is present" | step 4 shows the warning, step 6 "Guardar acta" `disabled === false` and `onSubmit` fires |
+
+The warning uses `role="alert"` (the brief allowed `role="status"` or `role="alert"`); `role="status"`
+collided with the test Harness's implicit `role="status"` `<output>` and is a weaker association for a
+data-loss warning.
+
+### TDD Cycle Evidence (s6a corrective)
+
+| Fix | Test File | Layer | RED (test written first) | GREEN |
+|-----|-----------|-------|--------------------------|-------|
+| FIX-A | `actaState.test.ts`, `LeagueDetail.test.tsx` | Unit + Integration (jsdom) | ✅ `expected 'Perfecto' to be 'Lluvioso'` (2 failed / 43 passed) | ✅ 45/45 passed |
+| FIX-B | `actaState.test.ts`, `StepBajas.test.tsx`, `MatchActaWizard.test.tsx` | Unit + Component (jsdom) | ✅ 5 failed / 40 passed — marker `undefined`, warning `Unable to find role "alert"` | ✅ 45/45 passed |
+
+### Work Unit Evidence (s6a corrective)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/acta` → **9 files, 74 passed**; `pnpm exec vitest run features/leagues` → **41 files, 642 passed** |
+| Runtime harness command/scenario and exact result | `pnpm test` → **189 files, 2766 passed** (jsdom: the wizard opens the correct-mode Clima select and Step 4 renders the warning) |
+| Rollback boundary | Revert `ad8c3ff` (weather prefill) and/or `cb90805` (legacy-casualties warning); the s6a commits are restored. No route/schema/payload-name change. |
+
+### Verification (s6a corrective — exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **9 files, 74 passed**
+- `pnpm exec vitest run features/leagues` → **41 files, 642 passed**
+- `pnpm test` → **189 files, 2766 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s6a corrective)
+
+- FIX-A (`ad8c3ff`): `added=28 removed=2 total=30`.
+- FIX-B (`cb90805`): `added=169 removed=1 total=170`.
+- **Total: `added=197 removed=3 total=200`** — under the 400-line budget.
+
+### Deviations from Design
+
+- None material. FIX-B adds one display-only `ActaState` marker (the design did not specify a warning;
+  the maintainer approved it in this bounded pass). FIX-A threads the `MatchResult.weather` column that
+  the s6a "Issues Found" note had recorded as a follow-up.
+
+### Issues Found (s6a corrective)
+
+- The s6a "Issues Found" note said the legacy casualty identity was "not renderable" and left the
+  data-loss path silent. FIX-B closes the silent data loss with a visible, non-blocking warning; the
+  casualties are still not reconstructable (the causer↔victim link is not persisted), so re-entry is
+  required — now explicit to the coach.
+
 
 
 
