@@ -881,6 +881,116 @@ the hint present when lines are dropped and absent when they are not.
 - The `LeagueDetail.tsx` wizard wiring (mode load/correct, retiring `ResultModal`) remains s4c, so
   the primary action still opens the existing `ResultModal` until then.
 
+## Slice s4c — `LeagueDetail` wizard wiring + budget-only inducement shape (task 5.4)
+
+- **Branch**: `feat/match-edit-redesign-s4c`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Chain strategy**: `stacked-to-main` (slice 4c of the re-forecast 13-slice plan; stacked on s4b)
+- **Boundary**: starts from the s4b single "Acta del partido" entry point (still opening the legacy
+  `ResultModal`) and the S2 `buildActaPayload` budget-only snapshot; ends with the LOAD path opening
+  `MatchActaWizard` (submitting through the SAME `submit` helper) and the route persisting a
+  non-live budget-only inducement snapshot. The CORRECT path keeps `ResultModalFor`/`ResultModal`
+  unchanged (retired in s6c; correct-mode prefill is s6a).
+- **Rollback boundary**: revert `features/leagues/LeagueDetail.tsx` (+ test) and the
+  `parseInducements` change in the result route (+ its test). `MatchActaWizard`, `ResultModal`,
+  `MatchResolveModal`, `lib/liveStore.ts` and `lib/rules/*` are untouched.
+
+### Code commits
+
+- `b1b2153` — `fix(leagues): persist budget-only inducements for non-live acta results` (route + route test).
+- `02e3755` — `feat(leagues): open the acta wizard on the result load path` (LeagueDetail + test).
+
+### Completed Tasks
+
+- [x] 4.3 (s4c) `LeagueDetail.tsx`: new `MatchActaWizardFor` mounts `MatchActaWizard` (`mode="load"`)
+  with the fixture's team names + home/away rosters built exactly like `ResultModalFor`; its
+  `onSubmit` calls the existing `submit` helper (`onSubmitResult` → POST + league refresh) and closes
+  on success. The `resultFixture` render branches by `resultMode`: `correct` → `ResultModalFor`
+  (unchanged), `load` → `MatchActaWizardFor`. `Jornadas`' `onSubmitResult`/`onCorrectResult` props
+  are now typed `Promise<void>` so the wizard can await the real submit.
+- [x] 4.4 (s4b–s4c) RED → GREEN `LeagueDetail.test.tsx`: the load-path test now drives the wizard
+  (dialog "Acta del partido") through Contexto inducements + one MVP per team to the gated
+  "Guardar acta" and asserts the POST body (`mvp.grantee` + the budget-only `inducements` snapshot).
+  The LM-9 finished-live prefill test was repointed to the CORRECT path (where `ResultModal` lives).
+- [x] 5.4 (s4c) `parseInducements` in the result route no longer returns `null` when a budget is
+  present but `cards` is empty; the non-live POST persists the payload's `{ budget, cards: [] }` per
+  side. `buildActaPayload` already emitted the budget-only snapshot (S2) — no `actaState.ts` change.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/LeagueDetail.tsx` | Modified | Load path → `MatchActaWizardFor`; correct path unchanged; submit props typed `Promise<void>` |
+| `features/leagues/LeagueDetail.test.tsx` | Modified | Load-path test rewritten to the wizard; LM-9 prefill test moved to the correct path |
+| `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.ts` | Modified | `parseInducements` accepts a present budget with empty `cards` |
+| `app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts` | Modified | Budget-only round-trip + absent-inducements no-key cases |
+
+### INDUCEMENT_SHAPE (task 5.4)
+
+- **Payload a non-live acta sends**: `inducements: { home: { budget: <money spent>, cards: [] },
+  away: { budget: <money spent>, cards: [] } }` — emitted by `buildActaPayload` (S2, unchanged).
+- **Route behaviour**:
+  - budget present + empty `cards` → `{ budget, cards: [] }` PERSISTS into
+    `scores.home|away.inducements` (round-trips).
+  - genuinely absent (`inducements` key missing / not an object / neither side present) → `null` →
+    no key invented (legacy rows untouched).
+  - malformed side (non-number budget / non-array cards) → `null` for that side.
+  - live path (fixture has a `liveMatch`) → `buildInducementSnapshot` cart snapshot, UNCHANGED.
+
+### CORRECT_PATH (unchanged)
+
+- `ResultModalFor`/`ResultModal` are untouched and still mounted for `resultMode === "correct"`.
+  The correct-mode PUT flow, its guards, and its prefill behaviour are exactly as before; only the
+  LOAD branch changed. `ResultModal.tsx` was not edited.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 5.4 (route) | `route.test.ts` | Route integration (vitest) | ✅ 52 route tests | ✅ `expected undefined to deeply equal { budget: 50000, cards: [] }` | ✅ 54/54 passed | ✅ Clean |
+| 4.3/4.4 (wiring) | `LeagueDetail.test.tsx` | Integration (jsdom) | ✅ 30 LeagueDetail tests | ✅ `Unable to find role "dialog" name "Acta del partido"` (load path still opened ResultModal) | ✅ 30/30 passed | ✅ Clean |
+
+- **Total tests added/rewritten**: 2 route + 2 LeagueDetail (one rewritten, one repointed); all passing.
+- **Layers used**: Route integration (2), Integration/jsdom (2), E2E (0 — knowingly red on the chain).
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues/LeagueDetail.test.tsx` → **30 passed**; `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **54 passed** |
+| Runtime harness command/scenario and exact result | `pnpm exec vitest run features/leagues` → **41 files, 629 passed** (jsdom render of the real wizard in the LeagueDetail flow) |
+| Rollback boundary | Revert `LeagueDetail.tsx` + `LeagueDetail.test.tsx` and the `parseInducements` change in `route.ts` + its test; the wizard, modals and live store are untouched. |
+
+### Verification (exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues` → **41 files, 629 passed**
+- `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **54 passed**
+- `pnpm test` → **189 files, 2745 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s4c)
+
+- Code only: `added=159 removed=47 total=206` (≈310 estimate) — under the 400-line budget.
+  - `b1b2153`: `added=41 removed=2`.
+  - `02e3755`: `added=118 removed=45`.
+
+### Deviations from Design
+
+- **Load-only wizard (prompt-scoped)**: tasks.md 4.3 says "wire wizard (mode `load`/`correct`)" but the
+  s4c prompt scopes the wizard to the LOAD path and keeps `ResultModal` for CORRECT (retired in s6c,
+  prefill in s6a). Implemented as scoped; the task line carries the note.
+- `MatchActaWizardFor` opens with NO `initial` prefill: the wizard's `initial` is `ActaState` and the
+  finished-live `buildResultPrefill` returns `ResultTeamDraft`; the bridge (`actaPrefill`) is s6a.
+  The LM-9 prefill coverage moved with `ResultModal` to the correct path.
+- `actaState.ts` was NOT touched: `buildActaPayload` already emitted the budget-only snapshot since S2.
+- A failed load-path submit keeps the wizard open but is not surfaced in the dialog (the wizard has
+  no error prop; error UI is not in s4c scope).
+
+### Issues Found (s4c)
+
+- None functional. E2E remains knowingly red on this chain (s6d/s6e); `pnpm test` is the s4c gate.
+
 
 
 
