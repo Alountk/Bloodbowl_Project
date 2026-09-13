@@ -75,6 +75,7 @@ A step slice therefore costs step + test + shell branch + shell test, and the re
 - [x] 2.5 Create `features/leagues/acta/StepContexto.tsx` (MAW-2): weather, duration, per-team FF, inducements, "NUNCA tuvo el balón" checkbox.
 - [x] 2.6 Create `features/leagues/acta/StepMarcador.tsx` (MAW-3): home/away score inputs.
 - [x] 2.7 Create `features/leagues/acta/StepAcciones.tsx` (MAW-4): free-form player + action + quantity lines; casualties feed `deriveCasualtyEntries`.
+  - [x] 2.7a (corrective, post-verify) Derive the displayed Σ anotaciones / bajas causadas from `aggregateActions` so the Step-2 tally equals the submitted payload, and add the "acciones sin jugador" hint; add `StepAcciones.test.tsx` (RED → GREEN). Commit `3b0de74`. See the "Actions tally parity fix" section in `apply-progress.md`.
 - [x] 2.8 RED then GREEN `features/leagues/acta/MatchActaWizard.test.tsx`: step gating + Contexto/Marcador/Acciones capture.
 
 ## Phase 3 (s3a–s3c): Steps 3–5

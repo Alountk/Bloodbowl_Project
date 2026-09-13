@@ -719,6 +719,61 @@ public API and the `injuryRoll`/`permanentRoll` field names are unchanged.
   line thus shows a Step-2 sum the save-block rejects. Fixing the Step-2 display is out of s4a scope
   and would change `StepAcciones.tsx` + its test; recorded for a later slice.
 
+## Actions tally parity fix (post-verify corrective, bounded)
+
+Independent verification of s4a found the Step-2 display could lie about what the payload would
+submit (the s4a "Issues Found" entry above recorded it, unfixed). This bounded pass makes the
+display provably equal to the payload. No protected file (`MatchCard`/`LeagueDetail`/`ResultModal`/
+`MatchResolveModal`/`lib/liveStore.ts`/the API route/`lib/rules/*`) was touched, and
+`aggregateActions`, `casualtiesFromActions`, `deriveCasualtyEntries`, `bajasPlan`, `buildActaPayload`,
+`validateActa` and every payload field are unchanged — the payload is the source of truth and the
+display now conforms to it.
+
+- **Mode**: Strict TDD (RED → GREEN), code commit `3b0de74` —
+  `fix(leagues): align acta acciones tally with submitted payload`.
+
+### Defect
+
+`StepAcciones` computed the displayed Σ anotaciones / bajas causadas with its own `filter`/`reduce`
+rules: it summed EVERY `td` line's `Math.max(0, quantity)` and counted EVERY `casualty` line with a
+victim, both IGNORING `rosterPlayerId`. `aggregateActions` (the function `buildActaPayload` uses)
+skips any line with no `rosterPlayerId`. A playerless `td` line therefore inflated the Step-2 sum
+while contributing nothing to the payload, so `validateActa` (which mirrors the payload) blocked a
+save the display had implied was valid. The same class of defect affected the displayed bajas.
+
+### What
+
+`features/leagues/acta/StepAcciones.tsx` now derives BOTH counters by summing the `tds` and
+`casualties` fields of `aggregateActions(draft.actions)` — the same function that builds the
+transmitted rows — so display/payload drift is impossible by construction. It adds a one-sentence
+hint ("Las acciones sin jugador no se contabilizan.") rendered only when the raw line totals exceed
+the counted totals, so a dropped line is never a silent mystery. UI copy is neutral Spanish; code and
+comments are English.
+
+### Tests
+
+New `features/leagues/acta/StepAcciones.test.tsx` (component/jsdom): a fixture with a playerless `td`
+line (qty 3) and a playerless `casualty` line (victim set) alongside valid lines, asserting the
+displayed counters equal `aggregateActions(...)` totals (2 tds / 1 casualty, NOT the raw 5 / 2), plus
+the hint present when lines are dropped and absent when they are not.
+
+- **RED** (against the old display logic, `87a41e7`): `2 failed` —
+  `expected { tds: 5, casualties: 2 } to deeply equal { tds: 2, casualties: 1 }` and
+  `expected '...' to match /sin jugador/i`. **GREEN**: `2 passed`.
+
+### Verification (actions tally parity fix — exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues/acta` → **9 files, 62 passed**
+- `pnpm test` → **189 files, 2731 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (actions tally parity fix)
+
+- Code only (`StepAcciones.tsx`): `added=26 removed=5 total=31`.
+- Tests (`StepAcciones.test.tsx`): `+111`.
+- Overall: `added=137 removed=5 total=142` (under the 400-line budget and the 150-line fix target).
+
 
 
 
