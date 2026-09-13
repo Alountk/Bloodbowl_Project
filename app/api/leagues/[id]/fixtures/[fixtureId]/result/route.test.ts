@@ -1471,6 +1471,28 @@ describe("POST /api/.../[fixtureId]/result — additive wizard contract (S1)", (
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it("returns 400 when no grantee is supplied and the home nomination count is not six", async () => {
+    // RAU-122: an absent `mvp.grantee` falls back to the legacy path, which
+    // requires exactly six nominations — any other count is rejected before the
+    // transaction (nothing persisted). `validBody` (same payload, six
+    // nominations) is proven to return 200, so the count is the only difference.
+    const body = structuredClone(validBody);
+    body.home.mvp.nominations = ["p1", "p2", "p3", "p4", "p5"]; // five, not six
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(400);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.matchResult.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when no grantee is supplied and the away nomination count is not six", async () => {
+    const body = structuredClone(validBody);
+    body.away.mvp.nominations = ["p3", "p4", "p5", "p6", "p7", "p8", "p9"]; // seven, not six
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(400);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.matchResult.create).not.toHaveBeenCalled();
+  });
+
   it("computes winnings from the input FF (no 1D3) and applies the never-held-ball bonus", async () => {
     const res = await callRoute("POST", wizardBody());
     expect(res.status).toBe(200);
