@@ -812,6 +812,40 @@ describe("POST /api/.../[fixtureId]/result — MVP live-event write (LM-mvp, D20
     expect(scores.home).not.toHaveProperty("inducements");
     expect(scores.away).not.toHaveProperty("inducements");
   });
+
+  it("RAU-122/s4c: persists a non-live BUDGET-ONLY inducement snapshot (empty cards round-trip)", async () => {
+    // The non-live acta has no cart lines: `budget` is the money spent and
+    // `cards` is empty. The payload's snapshot must persist (and re-read) as-is.
+    authMock.mockResolvedValue({ user: { id: "user-1" } }); // home captain
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // no liveMatch
+    stubFixedRolls();
+
+    const res = await callRoute("POST", {
+      ...validBody,
+      inducements: {
+        home: { budget: 50_000, cards: [] },
+        away: { budget: 25_000, cards: [] },
+      },
+    });
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    expect(scores.home.inducements).toEqual({ budget: 50_000, cards: [] });
+    expect(scores.away.inducements).toEqual({ budget: 25_000, cards: [] });
+  });
+
+  it("RAU-122/s4c: a non-live payload with NO inducements persists no key (legacy untouched)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } }); // home captain
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture()); // no liveMatch
+    stubFixedRolls();
+
+    const res = await callRoute("POST", validBody); // no inducements key
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    expect(scores.home).not.toHaveProperty("inducements");
+    expect(scores.away).not.toHaveProperty("inducements");
+  });
 });
 
 describe("PUT /api/.../[fixtureId]/result (correction)", () => {

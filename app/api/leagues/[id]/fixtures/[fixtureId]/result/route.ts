@@ -74,7 +74,7 @@ function numberArrayOrNull(value: unknown): (number | undefined)[] | null {
   );
 }
 
-/** Parses one side's inducement snapshot ({ budget, cards }); null when empty/malformed. */
+/** Parses one side's inducement snapshot ({ budget, cards }); null when absent/malformed. */
 function parseInducements(raw: unknown): InducementSnapshot | null {
   if (typeof raw !== "object" || raw === null) return null;
   const value = raw as { home?: unknown; away?: unknown };
@@ -84,8 +84,13 @@ function parseInducements(raw: unknown): InducementSnapshot | null {
     if (!candidate || typeof candidate.budget !== "number" || !Array.isArray(candidate.cards)) {
       return null;
     }
+    // RAU-122/s4c: a NON-LIVE acta sends a budget-only snapshot — the money spent
+    // per team with no cart lines to name (`cards: []`). A present budget is the
+    // signal that inducements were recorded, so it persists even when empty; the
+    // live cart path (real cards) is unchanged. Only a genuinely absent/malformed
+    // side stays null, so legacy rows invent no key.
     const cards = candidate.cards.filter((card) => card?.name && card.count > 0);
-    return cards.length > 0 ? { budget: candidate.budget, cards } : null;
+    return { budget: candidate.budget, cards };
   };
   return { home: side(value.home), away: side(value.away) };
 }
