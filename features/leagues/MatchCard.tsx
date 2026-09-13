@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { DEFAULT_LOCALE, t as translate } from "@/lib/i18n/dictionaries";
 import { useI18n } from "@/lib/i18n";
@@ -125,6 +126,13 @@ export function MatchCard({
   const score = formatMatchScore(fixture.homeScore, fixture.awayScore);
   const liveActive = fixture.live?.status === "live";
 
+  // MAW-1: the `···` overflow state. The trigger and its menu share `menuRef`
+  // so an outside pointer-down closes the menu without racing the trigger click.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
   const openNegotiation = () => {
     if (leagueFinished) return; // finished league: no negotiation affordance
     onNegotiate(fixture);
@@ -166,6 +174,67 @@ export function MatchCard({
     fixture.live != null &&
     fixture.live.status !== "finished";
 
+  // MAW-1: the four legacy header controls collapse into ONE primary action
+  // ("Acta del partido") plus a `···` overflow menu. Every guard is preserved
+  // 1:1 (design Guard Map): `canLoadResult` still gates the primary; the two
+  // guards below gate the overflow items; `leagueFinished` still hides both.
+  const canCorrect = !leagueFinished && (isLeagueOwner || isParticipant) && played;
+  const canForfeit = !leagueFinished && isLeagueOwner && fixture.status !== "played";
+
+  const overflowItems: Array<{ key: string; label: string; onSelect: () => void }> = [];
+  if (canForfeit) overflowItems.push({ key: "forfeit", label: t("forfeit.title"), onSelect: openForfeit });
+  if (canCorrect) overflowItems.push({ key: "correct", label: t("result.correctAction"), onSelect: openCorrectResult });
+  if (showReset) overflowItems.push({ key: "reset", label: t("reset.action"), onSelect: openReset });
+
+  // APG menu-button: move focus to the first item as soon as the menu opens.
+  useEffect(() => {
+    if (menuOpen) itemRefs.current[0]?.focus();
+  }, [menuOpen]);
+
+  // Outside pointer-down closes the menu; Escape closes it and restores focus
+  // to the trigger (the keyboard path users need).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  // Roving focus across the menu items (ArrowUp/Down wrap; Home/End jump).
+  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = itemRefs.current.filter((node): node is HTMLButtonElement => node != null);
+    if (items.length === 0) return;
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      items[(index + 1 + items.length) % items.length].focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      items[(index - 1 + items.length) % items.length].focus();
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      items[0].focus();
+    } else if (event.key === "End") {
+      event.preventDefault();
+      items[items.length - 1].focus();
+    }
+  };
+
   // The negotiation affordance (Design B) lives in the card body center while a
   // participant can still agree a date: pending or scheduled-but-unplayed
   // (re-negotiation, "rejornar"). Mirrors NegotiationPanel's `negotiationOpen`.
@@ -196,41 +265,56 @@ export function MatchCard({
             </span>
           ) : null}
         </h3>
-        <span className="flex flex-wrap gap-2">
+        <span className="flex flex-wrap items-center gap-2">
+          {overflowItems.length > 0 ? (
+            <div ref={menuRef} className="relative">
+              <button
+                ref={triggerRef}
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-label="Más acciones"
+                onClick={() => setMenuOpen((open) => !open)}
+                className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case leading-none text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
+              >
+                ···
+              </button>
+              {menuOpen ? (
+                <div
+                  role="menu"
+                  aria-label="Más acciones"
+                  onKeyDown={onMenuKeyDown}
+                  className="absolute right-0 top-full z-20 mt-1 flex min-w-[11rem] flex-col border border-border bg-panel py-1 text-left shadow-card-hover"
+                >
+                  {overflowItems.map((item, index) => (
+                    <button
+                      key={item.key}
+                      ref={(node) => {
+                        itemRefs.current[index] = node;
+                      }}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        item.onSelect();
+                      }}
+                      className="min-h-6 px-3 py-1.5 text-left text-[11px] font-semibold normal-case text-ink hover:bg-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {canLoadResult ? (
             <button
               type="button"
               onClick={openLoadResult}
               className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
             >
-              {t("result.loadAction")}
-            </button>
-          ) : null}
-          {!leagueFinished && (isLeagueOwner || isParticipant) && fixture.status === "played" ? (
-            <button
-              type="button"
-              onClick={openCorrectResult}
-              className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
-            >
-              {t("result.correctAction")}
-            </button>
-          ) : null}
-          {!leagueFinished && isLeagueOwner && fixture.status !== "played" ? (
-            <button
-              type="button"
-              onClick={openForfeit}
-              className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
-            >
-              {t("forfeit.title")}
-            </button>
-          ) : null}
-          {showReset ? (
-            <button
-              type="button"
-              onClick={openReset}
-              className="min-h-6 rounded-sm border border-white/40 px-2.5 py-1 text-[11px] font-semibold normal-case text-white hover:border-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-white"
-            >
-              {t("reset.action")}
+              {/* Copy is literal Spanish like MatchActaWizard; `acta.*` i18n keys land in s6b. */}
+              Acta del partido
             </button>
           ) : null}
         </span>
