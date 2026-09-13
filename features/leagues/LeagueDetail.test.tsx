@@ -623,8 +623,8 @@ describe("LeagueDetail — STARTED league", () => {
     });
   });
 
-  it("lets a participant open the ResultModal on a scheduled fixture and submit the result", async () => {
-    // me owns t1 (home) of a scheduled fixture → the Cargar resultado affordance.
+  it("lets a participant open the acta wizard on a scheduled fixture and submit the result (s4c)", async () => {
+    // me owns t1 (home) of a scheduled fixture → the "Acta del partido" affordance.
     const scheduledStarted = {
       ...startedLeague,
       ownerId: "u2",
@@ -663,7 +663,7 @@ describe("LeagueDetail — STARTED league", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: () => Promise.resolve({ fixtureId: "fs", status: "played", homeScore: 1, awayScore: 0, winnerId: "t1" }),
+          json: () => Promise.resolve({ fixtureId: "fs", status: "played", homeScore: 0, awayScore: 0, winnerId: null }),
         });
       }
       return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
@@ -674,20 +674,27 @@ describe("LeagueDetail — STARTED league", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Acta del partido" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Acta del partido" }));
 
-    // The ResultModal resolves the fixture's live prefill before it opens; a
-    // fixture detail GET with no live match yields an empty draft (LM-9).
-    await waitFor(() => expect(screen.getByRole("dialog", { name: /Cargar resultado/ })).toBeTruthy());
-    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
-    // Score 1 for Reavers, Hugo scores 1 TD → match. Score 0 for Orcs.
-    fireEvent.change(within(dialog).getByLabelText(/Goles Reavers/), { target: { value: "1" } });
-    fireEvent.change(within(dialog).getByLabelText(/Anotaciones H1/), { target: { value: "1" } });
-    fireEvent.change(within(dialog).getByLabelText(/Goles Orcs/), { target: { value: "0" } });
-    // Fill the exact-6 MVP contract for both teams before submitting.
-    for (let i = 1; i <= 6; i++) {
-      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Reavers`), { target: { value: `h${i}` } });
-      fireEvent.change(within(dialog).getByLabelText(`MVP ${i} Orcs`), { target: { value: `a${i}` } });
+    // s4c: the LOAD path opens the MatchActaWizard; the legacy ResultModal is
+    // kept for corrections only.
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Acta del partido" })).toBeTruthy());
+    const dialog = screen.getByRole("dialog", { name: "Acta del partido" });
+
+    // Contexto: record each side's inducement spend (budget-only snapshot).
+    fireEvent.change(within(dialog).getByLabelText("Incentivos · Reavers"), { target: { value: "50000" } });
+    fireEvent.change(within(dialog).getByLabelText("Incentivos · Orcs"), { target: { value: "25000" } });
+
+    // Marcador → Acciones → MVP: pick exactly one MVP per team (score stays 0:0).
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Siguiente" }));
     }
-    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar resultado" }));
+    fireEvent.click(within(dialog).getByRole("radio", { name: "MVP · Reavers · H1" }));
+    fireEvent.click(within(dialog).getByRole("radio", { name: "MVP · Orcs · A1" }));
+
+    // Bajas → Final → Revisar → save.
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Siguiente" }));
+    }
+    fireEvent.click(within(dialog).getByRole("button", { name: "Guardar acta" }));
 
     // POSTs the assembled payload to the result route (then refreshes).
     await waitFor(() => {
@@ -700,15 +707,20 @@ describe("LeagueDetail — STARTED league", () => {
       const body = JSON.parse(
         ((call as unknown as { 1: { body: string } })[1] as { body: string }).body,
       ) as ResultPayloadTestShape;
-      expect(body.home.score).toBe(1);
-      expect(body.home.players[0].tds).toBe(1);
+      expect(body.home.mvp.grantee).toBe("h1");
+      expect(body.away.mvp.grantee).toBe("a1");
+      // The non-live acta sends the budget-only snapshot (empty cards).
+      expect(body.inducements).toEqual({
+        home: { budget: 50_000, cards: [] },
+        away: { budget: 25_000, cards: [] },
+      });
     });
   });
 
-  it("prefills the result modal scores and per-scorer TDs from a finished live match (LM-9)", async () => {
-    // A scheduled fixture that had a live match (finished): opening the result
-    // modal fetches its live DTO and prefills scores + TD counts.
-    const scheduledStarted = {
+  it("opens the acta wizard PREFILLED for a scheduled fixture whose live match finished (s4c corrective)", async () => {
+    // Regression guard: the load path MUST prefill a scheduled fixture whose
+    // live match already finished (scores + per-scorer TDs), never open empty.
+    const scheduledLiveFinished = {
       ...startedLeague,
       ownerId: "u2",
       ownerName: "Coach B",
@@ -725,10 +737,8 @@ describe("LeagueDetail — STARTED league", () => {
           homeTeamId: "t1",
           awayTeamId: "t2",
           createdAt: "2026-02-01",
-          scheduledAt: "2026-03-01",
+          scheduledAt: "2026-03-01T10:00:00.000Z",
           winnerId: null,
-          homeScore: null,
-          awayScore: null,
           status: "scheduled",
           homeOwner: { id: me, name: "Coach Me" },
           awayOwner: { id: "u8", name: "Coach B" },
@@ -739,14 +749,14 @@ describe("LeagueDetail — STARTED league", () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/teams") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
-      if (url === `/api/leagues/l3`) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(scheduledStarted) });
+      if (url === "/api/leagues/l3") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(scheduledLiveFinished) });
       if (url === "/api/leagues/l3/fixtures/fs") {
         return Promise.resolve({
           ok: true,
           status: 200,
           json: () =>
             Promise.resolve({
-              fixture: scheduledStarted.fixtures[0],
+              fixture: scheduledLiveFinished.fixtures[0],
               result: null,
               homeTeam: { id: "t1", roster: [] },
               awayTeam: { id: "t2", roster: [] },
@@ -780,8 +790,100 @@ describe("LeagueDetail — STARTED league", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Acta del partido" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Acta del partido" }));
 
-    await waitFor(() => expect(screen.getByRole("dialog", { name: /Cargar resultado/ })).toBeTruthy());
-    const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "Acta del partido" })).toBeTruthy());
+    const dialog = screen.getByRole("dialog", { name: "Acta del partido" });
+
+    // Marcador opens with the finished live score (not the empty 0:0 default).
+    fireEvent.click(within(dialog).getByRole("button", { name: "Siguiente" }));
+    expect((within(dialog).getByLabelText("Reavers") as HTMLInputElement).value).toBe("2");
+    expect((within(dialog).getByLabelText("Orcs") as HTMLInputElement).value).toBe("1");
+
+    // Acciones carries the per-scorer TD lines derived from the live feed.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Siguiente" }));
+    const homeActions = within(dialog).getByRole("region", { name: "Reavers" });
+    expect((within(homeActions).getByLabelText("Jugador 1 · Reavers") as HTMLSelectElement).value).toBe("h1");
+    expect((within(homeActions).getByLabelText("Cantidad 1 · Reavers") as HTMLInputElement).value).toBe("2");
+  });
+
+  it("prefills the correction modal scores and per-scorer TDs from a finished live match (LM-9)", async () => {
+    // s4c: the legacy ResultModal stays on the CORRECT path, so the finished-live
+    // prefill is exercised there (s6a moves correct-mode prefill to the persisted
+    // snapshot). A played fixture exposes "Corregir resultado" in the ··· overflow.
+    const playedStarted = {
+      ...startedLeague,
+      ownerId: "u2",
+      ownerName: "Coach B",
+      teams: [
+        { id: "t1", name: "Reavers", raceId: "human", leagueId: "l3", userId: me, roster: Array.from({ length: 6 }, (_, i) => ({ id: `h${i + 1}`, name: `H${i + 1}` })) },
+        { id: "t2", name: "Orcs", raceId: "orc", leagueId: "l3", userId: "u8", roster: Array.from({ length: 6 }, (_, i) => ({ id: `a${i + 1}`, name: `A${i + 1}` })) },
+      ],
+      rounds: [{ round: 1, fixtures: ["fs"], complete: true }],
+      fixtures: [
+        {
+          id: "fs",
+          leagueId: "l3",
+          round: 1,
+          homeTeamId: "t1",
+          awayTeamId: "t2",
+          createdAt: "2026-02-01",
+          scheduledAt: "2026-03-01",
+          winnerId: "t1",
+          homeScore: 2,
+          awayScore: 1,
+          status: "played",
+          homeOwner: { id: me, name: "Coach Me" },
+          awayOwner: { id: "u8", name: "Coach B" },
+          proposals: [],
+        },
+      ],
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/teams") return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      if (url === `/api/leagues/l3`) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(playedStarted) });
+      if (url === "/api/leagues/l3/fixtures/fs") {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              fixture: playedStarted.fixtures[0],
+              result: null,
+              homeTeam: { id: "t1", roster: [] },
+              awayTeam: { id: "t2", roster: [] },
+              live: {
+                seq: 12,
+                status: "finished",
+                half: 2,
+                turnNumber: 8,
+                activeSide: "away",
+                turnClockEnabled: true,
+                homeClock: 0,
+                awayClock: 0,
+                homeScore: 2,
+                awayScore: 1,
+                paused: false,
+                finishedAt: 5000,
+                events: [
+                  { seq: 2, kind: "td", side: "home", playerRosterId: "h1", half: 1, turnNumber: 2, payload: {}, at: 2000 },
+                  { seq: 3, kind: "td", side: "home", playerRosterId: "h1", half: 2, turnNumber: 1, payload: {}, at: 3000 },
+                  { seq: 4, kind: "td", side: "away", playerRosterId: "a2", half: 2, turnNumber: 6, payload: {}, at: 4000 },
+                ],
+              },
+            }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LeagueDetail leagueId="l3" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Más acciones" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Corregir resultado" }));
+
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Corregir resultado/ })).toBeTruthy());
+    const dialog = screen.getByRole("dialog", { name: /Corregir resultado/ });
 
     // Scores prefilled from the finished live scoreboard.
     expect((within(dialog).getByLabelText(/Goles Reavers/) as HTMLInputElement).value).toBe("2");
@@ -936,5 +1038,10 @@ describe("LeagueDetail — LAC-5 owner-equivalent controls", () => {
 });
 
 interface ResultPayloadTestShape {
-  home: { score: number; players: { tds: number }[] };
+  home: { score: number; players: { tds: number }[]; mvp: { grantee: string | null } };
+  away: { mvp: { grantee: string | null } };
+  inducements: {
+    home: { budget: number; cards: unknown[] };
+    away: { budget: number; cards: unknown[] };
+  };
 }
