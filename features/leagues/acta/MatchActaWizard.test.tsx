@@ -184,6 +184,18 @@ describe("MatchActaWizard capture", () => {
     expect(bajas.textContent).not.toContain("porción posterior");
   });
 
+  it("renders the real Final step at step 5 with a fan roll input per team", () => {
+    renderWizard();
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    }
+    expect(activeStepLabel()).toContain("Final");
+    const final = screen.getByRole("group", { name: "Final" });
+    expect(final.textContent).not.toContain("porción posterior");
+    expect(screen.getByLabelText(`Afición · tirada 1D6 · ${homeName}`)).toBeTruthy();
+    expect(screen.getByLabelText(`Afición · tirada 1D6 · ${awayName}`)).toBeTruthy();
+  });
+
   it("captures an Acciones casualty line and surfaces it as a derived victim", () => {
     renderWizard();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
