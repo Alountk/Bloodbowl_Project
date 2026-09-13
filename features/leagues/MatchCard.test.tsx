@@ -45,6 +45,8 @@ function renderCard(props: Partial<MatchCardProps> = {}) {
   const onNegotiate = vi.fn();
   const onForfeit = vi.fn();
   const onReset = vi.fn();
+  const onLoadResult = vi.fn();
+  const onCorrectResult = vi.fn();
   render(
     <MatchCard
       fixture={fixture()}
@@ -55,10 +57,17 @@ function renderCard(props: Partial<MatchCardProps> = {}) {
       onNegotiate={onNegotiate}
       onForfeit={onForfeit}
       onReset={onReset}
+      onLoadResult={onLoadResult}
+      onCorrectResult={onCorrectResult}
       {...props}
     />,
   );
-  return { onNegotiate, onForfeit, onReset };
+  return { onNegotiate, onForfeit, onReset, onLoadResult, onCorrectResult };
+}
+
+/** MAW-1: opens the `···` overflow menu on the (single) rendered card. */
+function openOverflow() {
+  fireEvent.click(screen.getByRole("button", { name: "Más acciones" }));
 }
 
 describe("matchStatusLabel", () => {
@@ -220,8 +229,8 @@ describe("MatchCard", () => {
     });
     expect(screen.getAllByText("EN VIVO").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByTestId("match-card-score").textContent).toMatch(/1 : 0/);
-    // The live match owns its scoreboard → no result-load control.
-    expect(screen.queryByRole("button", { name: /Cargar resultado/ })).toBeNull();
+    // The live match owns its scoreboard → no primary "Acta del partido" action.
+    expect(screen.queryByRole("button", { name: /Acta del partido/ })).toBeNull();
   });
 
   it("restores the load-result path once the live match is finished", () => {
@@ -235,7 +244,7 @@ describe("MatchCard", () => {
       currentUserId: "u1",
     });
     expect(screen.queryByText("EN VIVO")).toBeNull();
-    expect(screen.getByRole("button", { name: /Cargar resultado/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Acta del partido/ })).toBeTruthy();
   });
 
   it("links each team's name to its scouting page '/teams/[id]'", () => {
@@ -260,6 +269,153 @@ describe("MatchCard", () => {
     const { onNegotiate } = renderCard();
     fireEvent.click(screen.getByRole("button", { name: "Acordar fecha" }));
     expect(onNegotiate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MatchCard — single entry point (MAW-1)", () => {
+  it("renders exactly ONE primary 'Acta del partido' on a scheduled fixture for a participant", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      currentUserId: "u1", // home team owner (participant)
+      isLeagueOwner: false,
+    });
+    // The old per-action labels are gone; a single primary action remains.
+    expect(screen.getByRole("button", { name: "Acta del partido" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Cargar resultado/ })).toBeNull();
+  });
+
+  it("hides the primary action from a non-participant spectator", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      currentUserId: "u3", // neither home nor away owner
+      isLeagueOwner: false,
+    });
+    expect(screen.queryByRole("button", { name: "Acta del partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+  });
+
+  it("fires onLoadResult with the fixture when the primary action is clicked", () => {
+    const { onLoadResult } = renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      currentUserId: "u1",
+      isLeagueOwner: false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Acta del partido" }));
+    expect(onLoadResult).toHaveBeenCalledTimes(1);
+    expect(onLoadResult.mock.calls[0][0]).toMatchObject({ id: "f1" });
+  });
+});
+
+describe("MatchCard — ··· overflow menu (MAW-1)", () => {
+  it("exposes a labelled menu trigger with aria-haspopup and a toggling aria-expanded", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      isLeagueOwner: true,
+    });
+    const trigger = screen.getByRole("button", { name: "Más acciones" });
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("menu", { name: "Más acciones" })).toBeTruthy();
+  });
+
+  it("renders no overflow trigger when no gated action applies", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      currentUserId: "u1",
+      isLeagueOwner: false,
+      canResetLive: false,
+    });
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+  });
+
+  it("gates 'Corregir resultado' to participant/admin on a played fixture", () => {
+    renderCard({
+      fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }),
+      currentUserId: "u1", // participant captain
+      isLeagueOwner: false,
+    });
+    openOverflow();
+    expect(screen.getByRole("menuitem", { name: "Corregir resultado" })).toBeTruthy();
+    // Forfeit (admin-only) and Reset (reset-rights-only) stay hidden.
+    expect(screen.queryByRole("menuitem", { name: "Otorgar victoria" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reiniciar partido" })).toBeNull();
+  });
+
+  it("gates 'Otorgar victoria' to the league admin and hides it from participants", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      currentUserId: "u1", // participant, not admin
+      isLeagueOwner: false,
+    });
+    // No overflow at all for a participant with no gated action.
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Otorgar victoria" })).toBeNull();
+  });
+
+  it("shows 'Otorgar victoria' to the admin in the overflow", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      isLeagueOwner: true,
+    });
+    openOverflow();
+    expect(screen.getByRole("menuitem", { name: "Otorgar victoria" })).toBeTruthy();
+  });
+
+  it("fires onForfeit when the overflow item is activated and closes the menu", () => {
+    const { onForfeit } = renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      isLeagueOwner: true,
+    });
+    openOverflow();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Otorgar victoria" }));
+    expect(onForfeit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("closes the menu on Escape and returns focus to the trigger", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      isLeagueOwner: true,
+    });
+    const trigger = screen.getByRole("button", { name: "Más acciones" });
+    openOverflow();
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("closes the menu when clicking outside it", () => {
+    renderCard({
+      fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
+      isLeagueOwner: true,
+    });
+    openOverflow();
+    expect(screen.getByRole("menu")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("moves focus between menu items with ArrowDown/ArrowUp", () => {
+    renderCard({
+      fixture: fixture({
+        status: "scheduled",
+        scheduledAt: "2026-03-01T10:00:00.000Z",
+        live: { status: "live", homeScore: 0, awayScore: 0, half: 1, turnNumber: 1 },
+      }),
+      isLeagueOwner: true,
+      canResetLive: true,
+    });
+    openOverflow();
+    const items = screen.getAllByRole("menuitem");
+    expect(items).toHaveLength(2); // Otorgar victoria + Reiniciar partido
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowUp" });
+    expect(document.activeElement).toBe(items[0]);
   });
 });
 
@@ -363,9 +519,9 @@ describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () =
       fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }),
       currentUserId: "u1", // home team owner (participant captain)
       isLeagueOwner: false,
-      onCorrectResult: vi.fn(),
     });
-    expect(screen.getByRole("button", { name: /Corregir resultado/ })).toBeTruthy();
+    openOverflow();
+    expect(screen.getByRole("menuitem", { name: /Corregir resultado/ })).toBeTruthy();
   });
 
   it("shows 'Corregir resultado' to the league admin on a played fixture", () => {
@@ -373,19 +529,20 @@ describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () =
       fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }),
       currentUserId: "u3",
       isLeagueOwner: true,
-      onCorrectResult: vi.fn(),
     });
-    expect(screen.getByRole("button", { name: /Corregir resultado/ })).toBeTruthy();
+    openOverflow();
+    expect(screen.getByRole("menuitem", { name: /Corregir resultado/ })).toBeTruthy();
   });
 
-  it("keeps the forfeit button admin-only (a participant captain does NOT see 'Otorgar victoria')", () => {
+  it("keeps the forfeit action admin-only (a participant captain does NOT see 'Otorgar victoria')", () => {
     renderCard({
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T18:00:00.000Z" }),
       currentUserId: "u1", // participant, not admin
       isLeagueOwner: false,
     });
-    expect(screen.queryByRole("button", { name: /Otorgar victoria/ })).toBeNull();
-    // The admin DOES see it.
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Otorgar victoria/ })).toBeNull();
+    // The admin DOES see it, behind the overflow.
     const { unmount } = render(
       <MatchCard
         fixture={fixture({ status: "scheduled", scheduledAt: "2026-03-01T18:00:00.000Z" })}
@@ -397,7 +554,8 @@ describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () =
         onForfeit={vi.fn()}
       />,
     );
-    expect(screen.getAllByRole("button", { name: /Otorgar victoria/ }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones" }));
+    expect(screen.getAllByRole("menuitem", { name: /Otorgar victoria/ }).length).toBeGreaterThan(0);
     unmount();
   });
 
@@ -406,9 +564,10 @@ describe("MatchCard — correction + forfeit visibility (PR 4 correction)", () =
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T18:00:00.000Z" }),
       currentUserId: "u1",
       isLeagueOwner: false,
-      onCorrectResult: vi.fn(),
     });
-    expect(screen.queryByRole("button", { name: /Corregir resultado/ })).toBeNull();
+    // No overflow exists at all (no gated action applies), so no correction item.
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Corregir resultado/ })).toBeNull();
   });
 });
 
@@ -422,9 +581,10 @@ describe("MatchCard — finished league (RAU-40)", () => {
       onLoadResult: vi.fn(),
       onCorrectResult: vi.fn(),
     });
-    // The admin would normally see Cargar resultado + Otorgar victoria.
-    expect(screen.queryByRole("button", { name: /Cargar resultado/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Otorgar victoria/ })).toBeNull();
+    // The admin would normally see the primary action + the overflow.
+    expect(screen.queryByRole("button", { name: /Acta del partido/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Otorgar victoria/ })).toBeNull();
     // Clicking the card does NOT open the negotiation panel.
     fireEvent.click(screen.getByTestId("match-card-score"));
     expect(onNegotiate).not.toHaveBeenCalled();
@@ -437,9 +597,9 @@ describe("MatchCard — finished league (RAU-40)", () => {
       isLeagueOwner: true,
       currentUserId: "u1",
       fixture: fixture({ status: "played", winnerId: "th", homeScore: 2, awayScore: 1 }),
-      onCorrectResult: vi.fn(),
     });
-    expect(screen.queryByRole("button", { name: /Corregir resultado/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Corregir resultado/ })).toBeNull();
   });
 });
 
@@ -470,7 +630,8 @@ describe("MatchCard — reset live match (LMR-7)", () => {
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
       canResetLive: true,
     });
-    expect(screen.getByRole("button", { name: "Reiniciar partido" })).toBeTruthy();
+    openOverflow();
+    expect(screen.getByRole("menuitem", { name: "Reiniciar partido" })).toBeTruthy();
   });
 
   it("hides the reset control from a participant/spectator without reset rights", () => {
@@ -478,7 +639,8 @@ describe("MatchCard — reset live match (LMR-7)", () => {
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
       canResetLive: false,
     });
-    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reiniciar partido" })).toBeNull();
   });
 
   it("hides the reset control on a finished league even for a resettable live match", () => {
@@ -487,7 +649,8 @@ describe("MatchCard — reset live match (LMR-7)", () => {
       leagueFinished: true,
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
     });
-    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reiniciar partido" })).toBeNull();
   });
 
   it("hides the reset control when the live match is already finished (wizard territory)", () => {
@@ -499,7 +662,8 @@ describe("MatchCard — reset live match (LMR-7)", () => {
         live: { ...runningLive, status: "finished" },
       }),
     });
-    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reiniciar partido" })).toBeNull();
   });
 
   it("hides the reset control when the fixture has no live match", () => {
@@ -507,7 +671,8 @@ describe("MatchCard — reset live match (LMR-7)", () => {
       canResetLive: true,
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z" }),
     });
-    expect(screen.queryByRole("button", { name: "Reiniciar partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Reiniciar partido" })).toBeNull();
   });
 
   it("fires onReset when the reset control is clicked", () => {
@@ -515,7 +680,8 @@ describe("MatchCard — reset live match (LMR-7)", () => {
       canResetLive: true,
       fixture: fixture({ status: "scheduled", scheduledAt: "2026-03-01T10:00:00.000Z", live: runningLive }),
     });
-    fireEvent.click(screen.getByRole("button", { name: "Reiniciar partido" }));
+    openOverflow();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reiniciar partido" }));
     expect(onReset).toHaveBeenCalledTimes(1);
   });
 });

@@ -604,9 +604,11 @@ describe("LeagueDetail — STARTED league", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Otorgar victoria" })).toBeTruthy(),
+      expect(screen.getByRole("button", { name: "Más acciones" })).toBeTruthy(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Otorgar victoria" }));
+    // MAW-1: the forfeit entry point now lives in the `···` overflow.
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Otorgar victoria" }));
 
     expect(screen.getByRole("dialog", { name: /Otorgar victoria/ })).toBeTruthy();
     // Admin picks the home team and confirms → the forfeit POST fires.
@@ -669,8 +671,8 @@ describe("LeagueDetail — STARTED league", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<LeagueDetail leagueId="l3" />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Cargar resultado" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Cargar resultado" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Acta del partido" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Acta del partido" }));
 
     // The ResultModal resolves the fixture's live prefill before it opens; a
     // fixture detail GET with no live match yields an empty draft (LM-9).
@@ -775,8 +777,8 @@ describe("LeagueDetail — STARTED league", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<LeagueDetail leagueId="l3" />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Cargar resultado" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Cargar resultado" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Acta del partido" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Acta del partido" }));
 
     await waitFor(() => expect(screen.getByRole("dialog", { name: /Cargar resultado/ })).toBeTruthy());
     const dialog = screen.getByRole("dialog", { name: /Cargar resultado/ });
@@ -839,10 +841,10 @@ describe("LeagueDetail — FINISHED league (RAU-40)", () => {
     render(<LeagueDetail leagueId="l4" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    // No result load / correct / forfeit buttons.
-    expect(screen.queryByRole("button", { name: "Cargar resultado" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Corregir resultado" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Otorgar victoria" })).toBeNull();
+    // No result-load primary / overflow trigger / gated overflow items.
+    expect(screen.queryByRole("button", { name: "Acta del partido" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Más acciones" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Otorgar victoria" })).toBeNull();
     // Clicking a card does NOT open the negotiation panel (no affordance).
     fireEvent.click(within(screen.getByRole("region", { name: "Jornada 1" })).getByTestId("match-card-score"));
     expect(screen.queryByRole("dialog", { name: /Acordar fecha/ })).toBeNull();
@@ -874,7 +876,13 @@ describe("LeagueDetail — LAC-5 owner-equivalent controls", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    expect(screen.getByRole("button", { name: "Otorgar victoria" })).toBeTruthy();
+    // MAW-1: the forfeit entry point lives in the `···` overflow of the jornada card.
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Jornada 1" })).getByRole("button", {
+        name: "Más acciones",
+      }),
+    );
+    expect(screen.getByRole("menuitem", { name: "Otorgar victoria" })).toBeTruthy();
   });
 
   it("renders owner controls from the server canManage flag (plain session)", async () => {
@@ -882,7 +890,13 @@ describe("LeagueDetail — LAC-5 owner-equivalent controls", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    expect(screen.getByRole("button", { name: "Otorgar victoria" })).toBeTruthy();
+    // MAW-1: the forfeit entry point lives in the `···` overflow of the jornada card.
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Jornada 1" })).getByRole("button", {
+        name: "Más acciones",
+      }),
+    );
+    expect(screen.getByRole("menuitem", { name: "Otorgar victoria" })).toBeTruthy();
   });
 
   it("keeps owner controls hidden from a plain user on a foreign STARTED league", async () => {
@@ -891,7 +905,13 @@ describe("LeagueDetail — LAC-5 owner-equivalent controls", () => {
     render(<LeagueDetail leagueId="l3" />);
 
     await waitFor(() => expect(screen.getByRole("region", { name: "Jornada 1" })).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "Otorgar victoria" })).toBeNull();
+    // No admin → no overflow trigger on the pending fixture, and no forfeit item.
+    expect(
+      within(screen.getByRole("region", { name: "Jornada 1" })).queryByRole("button", {
+        name: "Más acciones",
+      }),
+    ).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Otorgar victoria" })).toBeNull();
   });
 
   it("shows expel + start controls to a developer on a foreign OPEN league", async () => {
