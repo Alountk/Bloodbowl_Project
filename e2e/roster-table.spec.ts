@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Locator, type Page } from "@playwright/test";
+import { test, expect, type Browser, type Page } from "@playwright/test";
 test.use({ locale: "es-ES" });
 
 /**
@@ -21,10 +21,10 @@ test.use({ locale: "es-ES" });
  *
  * Every test builds its own fresh 2-member league (unique emails/names so the
  * persisted Postgres never collides) and loads a result through the real
- * ResultModal; PE amounts are asserted by range/option presence, never by
- * brittle absolute values (the server's 1D6 MJP grant may add +4 PE). NOTE
- * (auth cold-start race): the first auth-suite run after a fresh boot can time
- * out on /signup; a re-run is green.
+ * "Acta del partido" wizard; PE amounts are asserted by range/option presence,
+ * never by brittle absolute values (the direct MVP adds +4 PE). NOTE (auth
+ * cold-start race): the first auth-suite run after a fresh boot can time out on
+ * /signup; a re-run is green.
  */
 test.setTimeout(240_000);
 
@@ -209,33 +209,10 @@ interface PlayerAction {
   interceptions?: number;
 }
 
-/** Fills one team section of the open ResultModal (labels are scoped by team
- * name) with the given score and per-player actions, then the 6 MJP picks. */
-async function fillResultSection(
-  section: Locator,
-  teamName: string,
-  score: number,
-  actions: PlayerAction[],
-) {
-  await section.getByLabel(`Goles ${teamName}`).fill(String(score));
-  for (const action of actions) {
-    if (action.tds) {
-      await section.getByLabel(`Anotaciones ${action.name}`, { exact: true }).fill(String(action.tds));
-    }
-    if (action.completions) {
-      await section.getByLabel(`Pases completos ${action.name}`, { exact: true }).fill(String(action.completions));
-    }
-    if (action.interceptions) {
-      await section.getByLabel(`Intercepciones ${action.name}`, { exact: true }).fill(String(action.interceptions));
-    }
-  }
-  for (let i = 1; i <= 6; i++) {
-    await section.getByLabel(`MVP ${i} ${teamName}`).selectOption({ index: i });
-  }
-}
-
-/** Loads a `score`–0 win for the admin's team through the real ResultModal,
- * crediting the given per-player actions (the ΣTD must equal `score`). */
+/** Loads a `score`–0 win for the admin's team through the real "Acta del partido"
+ * wizard, crediting the given per-player actions (ΣTD must equal `score`). Every
+ * locator is scoped by team NAME, so a shuffled home/away side does not matter,
+ * and both teams pick an MVP because the MAW-8 save-block requires it. */
 async function loadResult(
   page: Page,
   teamAName: string,
@@ -243,12 +220,55 @@ async function loadResult(
   score: number,
   actions: PlayerAction[],
 ) {
-  await page.getByRole("button", { name: "Cargar resultado" }).first().click();
-  const dialog = page.getByRole("dialog", { name: /Cargar resultado/ });
+  await page.getByRole("button", { name: "Acta del partido" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Acta del partido" });
   await expect(dialog).toBeVisible();
-  await fillResultSection(dialog.getByLabel(`Resultado ${teamAName}`), teamAName, score, actions);
-  await fillResultSection(dialog.getByLabel(`Resultado ${teamBName}`), teamBName, 0, []);
-  await dialog.getByRole("button", { name: "Guardar resultado" }).click();
+
+  // Step 0 · Contexto — defaults are valid (Perfecto weather, no FF).
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  // Step 1 · Marcador — the admin's team scores `score`, the rival 0.
+  await dialog.getByLabel(teamAName, { exact: true }).fill(String(score));
+  await dialog.getByLabel(teamBName, { exact: true }).fill("0");
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  // Step 2 · Acciones — one free-form line per credited action (slot increments
+  // per team; Σ anotaciones must equal the marcador).
+  const team = dialog.getByRole("region", { name: teamAName, exact: true });
+  let slot = 0;
+  const addLine = async (kind: string, player: string, quantity: number) => {
+    slot += 1;
+    await team
+      .getByRole("button", { name: `Añadir acción · ${teamAName}`, exact: true })
+      .click();
+    // The Acciones line labels WRAP their <select>, so an exact match would
+    // include the option text; the " · " separator already prevents collisions.
+    await team.getByLabel(`Jugador ${slot} · ${teamAName}`).selectOption({ label: player });
+    // "Acción N" also appears in the remove button's aria-label ("Eliminar
+    // acción N"), so scope the kind select to the combobox role.
+    await team
+      .getByRole("combobox", { name: `Acción ${slot} · ${teamAName}` })
+      .selectOption(kind);
+    await team.getByLabel(`Cantidad ${slot} · ${teamAName}`).fill(String(quantity));
+  };
+  for (const action of actions) {
+    if (action.tds) await addLine("td", action.name, action.tds);
+    if (action.completions) await addLine("completion", action.name, action.completions);
+    if (action.interceptions) await addLine("interception", action.name, action.interceptions);
+  }
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  // Step 3 · MVP — exactly one per team (MAW-8 requires both).
+  await dialog
+    .getByRole("radio", { name: `MVP · ${teamAName} · Player 1`, exact: true })
+    .check();
+  await dialog
+    .getByRole("radio", { name: `MVP · ${teamBName} · Player 1`, exact: true })
+    .check();
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  // Step 4 · Bajas — no casualties recorded, advance.
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  // Step 5 · Final — the fan 1D6 is optional, advance.
+  await dialog.getByRole("button", { name: "Siguiente" }).click();
+  // Step 6 · Revisar — the acta validates, save.
+  await dialog.getByRole("button", { name: "Guardar acta" }).click();
   await expect(dialog).not.toBeVisible();
 }
 
@@ -317,9 +337,9 @@ test("a player with no PE opens only the rename note — no upgrade select", asy
     await waitForFixtureStatus(league.admin, league.leagueId, fixtureId, "played");
 
     const { teamId, roster } = await adminTeamRoster(league);
-    // Player 7 (roster index 6) is outside the six MJP nominations and scored
-    // nothing → its PE is deterministically 0. Wait for the progression row to
-    // load (the SPP cell only renders once it has) before clicking.
+    // Player 7 (roster index 6) is not the MVP and scored nothing → its PE is
+    // deterministically 0. Wait for the progression row to load (the SPP cell
+    // only renders once it has) before clicking.
     const p7Id = roster[6].id;
     await league.admin.goto(`/teams/${teamId}`);
     await expect(league.admin.getByTestId(`spp-pe-${p7Id}`)).toBeVisible();
