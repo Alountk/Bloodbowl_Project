@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  permanentAttribute,
-  type InjuryOutcomeKind,
-} from "@/lib/rules/injuries";
+import { permanentAttribute } from "@/lib/rules/injuries";
+import { useI18n } from "@/lib/i18n";
 import type { RosterPlayerRef } from "../MatchResolveModal";
 import type { ActaState } from "./actaState";
 import {
@@ -13,16 +11,6 @@ import {
   type ActaSide,
   type BajasCasualty,
 } from "./bajasPlan";
-
-/** Spanish rulebook labels for the 1D16 injury bands (presentation only — the
- *  band itself is resolved by `resolveInjury`, never re-implemented here). */
-const BAND_LABELS: Record<InjuryOutcomeKind, string> = {
-  bruise: "Magullado",
-  apaleado: "Apaleado",
-  grave: "Herida grave",
-  permanent: "Permanente",
-  dead: "Muerto",
-};
 
 export interface StepBajasProps {
   state: ActaState;
@@ -48,6 +36,7 @@ export function StepBajas({
   homeRoster,
   awayRoster,
 }: StepBajasProps) {
+  const { t } = useI18n();
   const plan = planBajas(state);
   const nameOf = (roster: RosterPlayerRef[], id: string) =>
     roster.find((player) => player.id === id)?.name ?? id;
@@ -64,18 +53,15 @@ export function StepBajas({
           role="alert"
           className="border border-border bg-panel px-3 py-2 text-[11px] font-semibold text-red"
         >
-          Este acta no tiene acciones guardadas. Si guardas sin volver a introducir las
-          bajas, se borrarán las bajas registradas.
+          {t("acta.bajas.unrecoverable")}
         </p>
       ) : null}
-      <p className="text-[11px] text-slate">
-        Bajas derivadas del paso 2. Solo se introducen las tiradas.
-      </p>
+      <p className="text-[11px] text-slate">{t("acta.bajas.intro")}</p>
       {sections.map(({ side, name, casualties }) => (
         <section key={side} aria-label={name} className="border border-border p-3">
           <h3 className="font-display text-sm font-bold text-navy">{name}</h3>
           {casualties.length === 0 ? (
-            <p className="mt-2 text-[11px] text-slate">Sin bajas causadas.</p>
+            <p className="mt-2 text-[11px] text-slate">{t("acta.bajas.none")}</p>
           ) : (
             <div className="mt-2 space-y-3">
               {casualties.map((casualty) => (
@@ -125,8 +111,9 @@ function CasualtyRow({
   onInjuryRoll: (roll: number | null) => void;
   onPermanentRoll: (roll: number | null) => void;
 }) {
+  const { t } = useI18n();
   const slot = casualty.index + 1;
-  const bandLabel = casualty.band ? BAND_LABELS[casualty.band] : null;
+  const bandLabel = casualty.band ? t(`acta.band.${casualty.band}`) : null;
   const attribute =
     casualty.permanentRoll == null ? null : permanentAttribute(casualty.permanentRoll);
 
@@ -138,12 +125,12 @@ function CasualtyRow({
   return (
     <div className="border-b border-dashed border-border pb-3">
       <p className="text-sm text-ink">
-        Baja sobre <b>{victimName}</b>{" "}
+        {t("acta.bajas.over")} <b>{victimName}</b>{" "}
         <span className="text-slate">({victimTeamName})</span>
       </p>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
         <label className={labelClass}>
-          Tirada 1D16 {slot} · {victimName}
+          {t("acta.bajas.injuryRoll", { slot, victim: victimName })}
           <input
             type="number"
             min={1}
@@ -156,7 +143,7 @@ function CasualtyRow({
         </label>
         {casualty.permanent ? (
           <label className={labelClass}>
-            Tirada 1D6 {slot} · {victimName}
+            {t("acta.bajas.permanentRoll", { slot, victim: victimName })}
             <input
               type="number"
               min={1}
@@ -171,10 +158,11 @@ function CasualtyRow({
       </div>
       {bandLabel ? (
         <p className="mt-1 text-[11px] text-slate">
-          Banda: <b className="text-ink">{bandLabel}</b>
+          {t("acta.bajas.band")} <b className="text-ink">{bandLabel}</b>
           {attribute ? (
             <>
-              {" · atributo "}
+              {" "}
+              {t("acta.bajas.attribute")}{" "}
               <b className="text-ink">−{attribute.toUpperCase()}</b>
             </>
           ) : null}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "@/lib/i18n";
 import type { RosterPlayerRef } from "../MatchResolveModal";
 import {
   aggregateActions,
@@ -9,14 +10,14 @@ import {
 } from "./actaState";
 
 /** The action-kind choices offered on each Acciones line (MAW-4). */
-const ACTION_OPTIONS: { value: ActaActionKind; label: string }[] = [
-  { value: "td", label: "Anotación" },
-  { value: "casualty", label: "Baja causada" },
-  { value: "completion", label: "Pase completo" },
-  { value: "interception", label: "Intercepción" },
-  { value: "foul", label: "Falta" },
-  { value: "throwTeamMate", label: "Lanzar compañero" },
-  { value: "landedSafe", label: "Aterrizar sano" },
+const ACTION_OPTIONS: { value: ActaActionKind; labelKey: string }[] = [
+  { value: "td", labelKey: "acta.accion.td" },
+  { value: "casualty", labelKey: "acta.accion.casualty" },
+  { value: "completion", labelKey: "acta.accion.completion" },
+  { value: "interception", labelKey: "acta.accion.interception" },
+  { value: "foul", labelKey: "acta.accion.foul" },
+  { value: "throwTeamMate", labelKey: "acta.accion.throwTeamMate" },
+  { value: "landedSafe", labelKey: "acta.accion.landedSafe" },
 ];
 
 // Stable, deterministic line ids so React keys never collide and the markup
@@ -91,6 +92,7 @@ function TeamActions({
   rivalRoster: RosterPlayerRef[];
   onChange: (actions: ActaActionLine[]) => void;
 }) {
+  const { t } = useI18n();
   const rivalSide: "home" | "away" = side === "home" ? "away" : "home";
 
   const updateLine = (index: number, patch: Partial<ActaActionLine>) => {
@@ -135,7 +137,7 @@ function TeamActions({
               className="grid gap-2 border-b border-dashed border-border pb-3 sm:grid-cols-[1fr_1fr_5rem_1fr_auto] sm:items-end"
             >
               <label className={labelClass}>
-                Jugador {slot} · {name}
+                {t("acta.acciones.player", { slot, team: name })}
                 <select
                   value={action.rosterPlayerId}
                   onChange={(event) =>
@@ -153,7 +155,7 @@ function TeamActions({
               </label>
 
               <label className={labelClass}>
-                Acción {slot} · {name}
+                {t("acta.acciones.action", { slot, team: name })}
                 <select
                   value={action.kind}
                   onChange={(event) =>
@@ -163,7 +165,7 @@ function TeamActions({
                 >
                   {ACTION_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label}
+                      {t(option.labelKey)}
                     </option>
                   ))}
                 </select>
@@ -175,7 +177,7 @@ function TeamActions({
                 <span />
               ) : (
                 <label className={labelClass}>
-                  Cantidad {slot} · {name}
+                  {t("acta.acciones.quantity", { slot, team: name })}
                   <input
                     type="number"
                     min={0}
@@ -190,7 +192,7 @@ function TeamActions({
 
               {action.kind === "casualty" ? (
                 <label className={labelClass}>
-                  Víctima {slot} · {name}
+                  {t("acta.acciones.victim", { slot, team: name })}
                   <select
                     value={victimValue}
                     onChange={(event) => {
@@ -216,7 +218,7 @@ function TeamActions({
 
               <button
                 type="button"
-                aria-label={`Eliminar acción ${slot} · ${name}`}
+                aria-label={t("acta.acciones.removeLine", { slot, team: name })}
                 onClick={() =>
                   onChange(draft.actions.filter((_, i) => i !== index))
                 }
@@ -231,20 +233,23 @@ function TeamActions({
 
       <button
         type="button"
-        aria-label={`Añadir acción · ${name}`}
+        aria-label={t("acta.acciones.addLine", { team: name })}
         onClick={() => onChange([...draft.actions, newLine()])}
         className="mt-3 border border-border bg-panel px-3 py-1.5 text-xs font-bold text-navy"
       >
-        + Añadir acción
+        {t("acta.acciones.addAction")}
       </button>
 
       <p className="mt-2 text-[11px] text-slate">
-        Σ anotaciones <b className="text-ink">{tds}</b> · bajas causadas{" "}
-        <b className="text-ink">{casualties}</b> → paso 4
+        {t("acta.acciones.tallyTds")}{" "}
+        <b className="text-ink">{tds}</b>{" "}
+        {t("acta.acciones.tallyCasualties")}{" "}
+        <b className="text-ink">{casualties}</b>{" "}
+        {t("acta.acciones.tallyStep")}
       </p>
       {hasUncountedLines ? (
         <p className="mt-1 text-[11px] text-slate">
-          Las acciones sin jugador no se contabilizan.
+          {t("acta.acciones.uncounted")}
         </p>
       ) : null}
     </section>
