@@ -2131,6 +2131,125 @@ genuinely changed:
 - `tasks.md` 6.7 was split into 6.7a (s6d, done) and 6.7b (s6e, pending) so the s6d checkbox is
   honest; s6e owns the remaining three specs.
 
+## Slice s6e — e2e rewrites (full-league-flow + league-matchday + profile + roster-table) (task 6.7b)
+
+- **Branch**: `feat/match-edit-redesign-s6e`
+- **Mode**: driver rewrite (no product change). The wizard replaced the legacy `ResultModal` (s4b/s6c),
+  so every e2e spec that still drove the old flat modal was red; this slice rewrites the DRIVERS only
+  and keeps every product assertion's intent.
+- **Chain strategy**: `stacked-to-main` (s6e stacked on s6d)
+- **Boundary**: starts from `feat/match-edit-redesign-s6d`; ends with the four remaining specs driving
+  the wizard / `···` overflow. No component, route, dictionary or already-green spec touched.
+- **Rollback boundary**: revert commit `4663863` — the four specs return to the legacy
+  `Cargar resultado`/`ResultModal` drivers.
+
+### The RED baseline (measured)
+
+The first full run of the four specs after rewriting the drivers was **7 failed / 14 passed (24.9m)**,
+all seven timing out at the Acciones step. Two locator defects in the new helpers, both found from the
+Playwright trace:
+
+1. `getByLabel('Jugador N · {team}', { exact: true })` never matched: the Acciones line labels WRAP
+   their `<select>`, so the label's text content includes the option text and an exact match fails.
+   Fixed by dropping `exact` (the reference s6d driver already did this; the ` · ` separator prevents
+   slot collisions).
+2. `getByLabel('Acción N · {team}')` matched 2 elements (strict-mode violation): the remove button's
+   `aria-label` is "Eliminar acción N · {team}", which contains "acción N · {team}". Fixed by scoping
+   the kind select to `getByRole("combobox", { name: ... })`.
+
+After both fixes: **21 passed (1.2m)**.
+
+### Label / flow mapping applied (verified against the real components)
+
+| Legacy driver | New driver |
+|---|---|
+| `Cargar resultado` button | `Acta del partido` primary (`MatchCard.tsx` L317) |
+| `Cargar resultado` dialog | `role="dialog"` name `Acta del partido` (`MatchActaWizard` L146) |
+| `Corregir resultado` button | `···` trigger `Más acciones` → `menuitem` `Corregir resultado` |
+| `Guardar resultado` | `Guardar acta` (`acta.save`) |
+| `Otorgar victoria` button | `···` overflow item (`forfeit.title`) |
+| Legacy `ResultModal` sections (`Resultado {team}`, `Goles`, `Anotaciones`, `MVP i`) | Wizard steps Contexto → Marcador → Acciones → MVP → Bajas → Final → Revisar |
+
+### DRIVER_REWRITE — how each spec reaches the new flow
+
+- **`full-league-flow.spec.ts`** (the big one): new shared helpers `openActaWizard`, `nextStep`,
+  `addActionLine`, `selectMvp`; `loadResultViaModal` and the Journey-1 inline load walk the seven
+  steps. Journey 1 keeps the casualty victim (Acciones `casualty` line with the
+  `${victimSide}:${playerId}` value) and the per-player action mix that earns Player 1 its 7 PE.
+  Journey 8 is retargeted to the MAW-8 save-block (missing MVP → `role="alert"` + disabled
+  `Guardar acta`, nothing persisted). Journeys 3/5 assert the primary action is gone once played;
+  Journeys 1/5 assert the overflow is gone once the league finishes; Journey 4 drives the forfeit
+  through the overflow.
+- **`league-matchday.spec.ts`** / **`profile.spec.ts`**: the forfeit entry moves to `Más acciones` →
+  `menuitem` `Otorgar victoria`; the forfeit modal itself is unchanged.
+- **`roster-table.spec.ts`**: `loadResult` drives the wizard; `PlayerAction[]` maps to free-form
+  Acciones lines (td/completion/interception). The Player-7-no-PE determinism still holds because the
+  wizard's direct MVP grantee is Player 1 (no random MJP among the roster).
+
+### ASSERTIONS_CHANGED
+
+Two assertions were retargeted because the PRODUCT genuinely changed; no assertion was weakened:
+
+1. `full-league-flow.spec.ts` Journey 8 — the legacy "fewer than six MJP nominations is blocked
+   client-side with an alert" (legacy `ResultModal` exact-6 contract) became "an acta without an MVP
+   is blocked client-side with an alert". The wizard uses a direct single MVP and always sends
+   `mvp.grantee`, so the legacy six-nomination client block no longer exists; the new assertion proves
+   the SAME product outcome ("an invalid acta is refused client-side with a visible alert and nothing
+   is persisted") against MAW-8 (missing-MVP `role="alert"` + disabled save). Required by MAW-8/MAW-5.
+2. `full-league-flow.spec.ts` Journeys 1/5 + Journey 3 — `getByRole("button", { name: "Corregir
+   resultado" })` count 0 became the meaningful `getByRole("button", { name: "Más acciones" })` count 0
+   **plus** `getByRole("menuitem", { name: "Corregir resultado" })` count 0 (the correction lives in
+   the overflow, and a finished league hides the whole overflow — MAW-1). Same product outcome, new UI.
+
+All other product assertions are unchanged in intent (scores, VICTORIA, Jornada completa, PE/value
+progression, champion panel, 409/400/404/401 statuses).
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec playwright test --config playwright.config.auth.ts e2e/full-league-flow.spec.ts e2e/league-matchday.spec.ts e2e/profile.spec.ts e2e/roster-table.spec.ts --reporter=line` → **21 passed (1.2m)** |
+| Runtime harness command/scenario and exact result | Playwright on real Postgres + `next dev` (AUTH_MODE=auth): wizard load (with casualty + multi-action), correction, forfeit via overflow, missing-MVP block, PE progression, finished-league close — all exercised end-to-end. |
+| Rollback boundary | Revert `4663863`: the four specs return to the legacy `Cargar resultado`/`ResultModal` drivers. No production code is involved. |
+
+### Verification (s6e — exact commands / observed results)
+
+- `pnpm exec playwright test --config playwright.config.auth.ts e2e/full-league-flow.spec.ts e2e/league-matchday.spec.ts e2e/profile.spec.ts e2e/roster-table.spec.ts --reporter=line` → **21 passed (1.2m)**
+- `pnpm exec playwright test --config playwright.config.auth.ts --reporter=line` (full auth gate) → **68 passed, 2 flaky (retry-green), 1 failed** — the single failure is `e2e/inducement-purchase.spec.ts:147` (live ready-phase inducement purchase), PROVEN pre-existing: it also fails on the committed base (`69cb69d`) with the s6e diff stashed, and it exercises no file this slice touches.
+- `AUTH_MODE=local pnpm exec playwright test` → **22 passed (10.1s)**
+- `pnpm test` → **189 files, 2754 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Commits (s6e)
+
+- Code: `4663863` — `test(e2e): drive the acta wizard in the league and roster specs`
+- Bookkeeping: `docs(match-edit-redesign): record s6e progress` (this file + `tasks.md`)
+
+### Changed Lines (s6e)
+
+- Code-only (the four specs): **`added=261 removed=157 total=418`** — OVER the 400-line review budget
+  (s6e forecast ≈250). Per-file: `full-league-flow.spec.ts` +196/−111, `roster-table.spec.ts` +60/−40,
+  `league-matchday.spec.ts` +3/−5, `profile.spec.ts` +2/−1.
+- **`size:exception` recommendation**: the overage is honest test-driver work, not padding — the shared
+  wizard helpers (~110 lines), the Journey-1 inline wizard walk with a casualty line (~55), and the
+  Journey-8 MAW-8 retarget (~40) are all required to drive the replaced UI. Nothing was minified (no
+  stripped comments, blank lines, docs or tests). If a split is required, `full-league-flow.spec.ts`
+  (307) could land alone ahead of the three smaller specs (65 combined).
+
+### Deviations from Design
+
+- None functional. `roster-table.spec.ts` is added to the slice per the apply brief (tasks.md's s6e row
+  named only three specs); the design's "e2e: `loadResultViaModal` helpers rewritten to wizard;
+  correction prefilled; overflow entry points" is executed as written.
+
+### Issues Found (s6e)
+
+- `e2e/inducement-purchase.spec.ts` is red on the chain but is NOT caused by this change: it fails
+  identically on the committed base with the s6e diff stashed. It is a pre-existing live-path failure
+  to be triaged separately (report-only, outside the four specs in scope).
+- The `s6e` slice is 418 changed lines (>400); see the `size:exception` recommendation above.
+
 
 
 

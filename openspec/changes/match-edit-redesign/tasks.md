@@ -113,8 +113,8 @@ A step slice therefore costs step + test + shell branch + shell test, and the re
 - [x] 6.5 (s6c) Delete `features/leagues/ResultModal.tsx`; update imports in `LeagueDetail.tsx` (L16), `resultPrefill.ts` (L2), `ResultModal.test.tsx` (retire). Deletion-atomic: do not fold with the e2e rewrites.
 - [x] 6.6 (s6c) Update component tests: retire `ResultModal.test.tsx`; update `MatchCard.test.tsx`, `LeagueDetail.test.tsx`, `ForfeitModal.test.tsx` (entry point moved to overflow), `resultPrefill.test.ts`.
 - [x] 6.7a (s6d) Rewrite the `loadResultViaModal` helpers in `e2e/match-report.spec.ts` + `e2e/match-view.spec.ts` to drive the acta wizard (Contexto → Marcador → Acciones → MVP → Bajas → Final → Revisar), and drive the `Otorgar victoria`/`Corregir resultado`/`Reset` entry from the `···` overflow. E2E 5/5 green. See the "Slice s6d" section in `apply-progress.md`.
-- [ ] 6.7b (s6e) Rewrite the e2e helpers/entries in `e2e/full-league-flow.spec.ts` + `e2e/league-matchday.spec.ts` + `e2e/profile.spec.ts`.
-- [ ] 6.8 Full gate at parity: `pnpm test`, `pnpm lint`, `npx tsc --noEmit`, `AUTH_MODE=local pnpm exec playwright test`; confirm `designLock.test.tsx`, `lib/rules/winnings.test.ts`, `lib/rules/fanFactor.test.ts` untouched and green.
+- [x] 6.7b (s6e) Rewrite the e2e helpers/entries in `e2e/full-league-flow.spec.ts` + `e2e/league-matchday.spec.ts` + `e2e/profile.spec.ts` (plus `e2e/roster-table.spec.ts`, added to the slice by the apply brief). All four drive the acta wizard / `···` overflow and are green (21 passed).
+- [x] 6.8 Full gate at parity: `pnpm test`, `pnpm lint`, `npx tsc --noEmit`, `AUTH_MODE=local pnpm exec playwright test`; confirm `designLock.test.tsx`, `lib/rules/winnings.test.ts`, `lib/rules/fanFactor.test.ts` untouched and green. Full auth suite also run: 68 passed / 2 flaky (retry-green) / 1 pre-existing failure (`inducement-purchase.spec.ts`, proven failing on the committed base with the s6e diff stashed).
 
 Threat matrix: N/A — no RED tasks (no shell/subprocess/VCS-automation boundary).
 
