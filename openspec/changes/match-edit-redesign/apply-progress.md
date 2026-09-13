@@ -1195,6 +1195,131 @@ The dedicated test asserts every one of `ff`, `neverHeld`, `fanRoll`, `injuryRol
   winnings from a blank FF. This is the documented legacy limitation ("legacy rows read as blank FF")
   and is asserted explicitly rather than silently copied forward.
 
+## Slice s5a — corrective pass (post-verify, bounded)
+
+The independent verify FAILED s5a with a money-moving regression. This bounded pass fixes exactly the
+four reported defects; no re-architecture, no inducement change (s5b stays byte-for-byte untouched),
+and no file outside `route.ts` + `route.test.ts` touched.
+
+- **Branch**: `feat/match-edit-redesign-s5a`
+- **Mode**: Strict TDD (RED → GREEN)
+- **Code commit**: `6a5db85` — `fix(leagues): guard correction winnings delta against unknown baselines`.
+- **Governing principle**: never move money against an unknown baseline. A treasury delta is applied
+  ONLY when BOTH the old and the new winnings are trustworthy; a missing input keeps the previously
+  persisted value and applies a ZERO delta — never a guess.
+
+### FIX-1 (HIGH) · legacy corrections must not recompute from FF 0
+
+- **Defect**: `homeFf = home.ff ?? prevScores?.home?.ff ?? 0` recomputed winnings from FF 0 whenever
+  neither the payload nor the snapshot carried an FF. The only correct-mode UI wired today is the
+  legacy `ResultModal`, which sends no `ff`, and production snapshots persist per-side `winnings` but
+  no `ff` — so a correction for an unrelated change applied `newWinnings(FF 0) − prevWinnings(real)`.
+  Concrete: `winnings: 60000`, no `ff` → new 20000 → delta **−40000**.
+- **Fix**: `route.ts` resolves `homeFf = home.ff ?? prevScores?.home?.ff` (away mirror) with **no 0
+  fallback** (L789–790). `computeWinnings` couples both sides, so when EITHER side's FF is unknown
+  neither side is recomputed: the side keeps `prevScores.*.winnings` (L792–797) and the in-tx delta
+  is ZERO.
+- **Test**: `s5a FIX-1: a legacy correction (winnings present, ff absent) keeps the winnings and never
+  moves treasury` — prior 60k/50k, no FF anywhere, legacy body → snapshot stays 60k/50k and no
+  treasury increment is non-zero.
+- **RED**: winnings became 20k/10k and treasury moved −40k/−40k. **GREEN**: passes.
+
+### FIX-2 (MEDIUM) · no windfall when the old winnings are unknown
+
+- **Defect**: the delta defaulted `old` to 0, so a row with no persisted per-side `winnings` was paid
+  the ENTIRE recomputed winnings again (POST already incremented treasury by winnings).
+- **Fix**: the in-tx delta is applied only when `freshScores.*.winnings != null` (L868–875); otherwise
+  it is 0. The recomputed winnings still persist to the snapshot; the treasury does not move.
+- **Test**: `s5a FIX-2: no persisted prior winnings → ZERO delta even when the corrected FF is known
+  (no windfall)` — prior has no `winnings`, corrected FF 5/3 → snapshot 60k/50k, no treasury movement.
+  The old `PUT recomputes winnings for a legacy row from a blank FF (0)` test (which ENSHRINED the
+  windfall by asserting +20k/+10k) was **rewritten** to this no-movement assertion.
+- **RED**: treasury gained the full 60k/50k. **GREEN**: passes.
+
+### FIX-3 (LOW) · omitted wizard-input keys are preserved, not nulled
+
+- **Defect**: the PUT rebuilt `scores` from the payload, so an omitted extended key (`fanRoll`,
+  top-level `duration`, rolls, actions) was written as `null`/absent, clobbering a persisted value.
+- **Fix**: the COMPUTED fields (`score`, `winnings`, `postFf`, `casualties`, `pe`) are replaced by the
+  correction; the wizard-INPUT keys MERGE over the prior snapshot (L820–852): `fanRoll` and `duration`
+  fall back to the prior value when omitted, `injuryRoll`/`permanentRoll` keep the prior rolls only
+  when the correction resolves NONE (rolls are grouped by the VICTIM's team via `mergeRolls`), and
+  `actions` falls back when the payload omits `players`. `neverHeld` is always derived from the
+  mandatory ball-held input, so it is never omitted.
+- **Test**: `s5a FIX-3: a correction that omits fanRoll/duration preserves the prior snapshot values`
+  — prior `fanRoll` 4/2 + `duration` 240, legacy body → all three survive.
+- **RED**: `fanRoll`/`duration` were null. **GREEN**: passes.
+
+### FIX-4 (concurrency) · read the previous snapshot inside the transaction
+
+- **Defect**: `prevScores` was read OUTSIDE `$transaction`, so two in-flight corrections could both
+  read the same baseline and both apply the same delta.
+- **Fix**: the PUT re-reads the snapshot inside the correction transaction via
+  `tx.fixture.findFirst({ where: { id: fixtureId }, include: { result: true } })` (L859–863) and
+  computes BOTH deltas from that in-tx baseline; the audit `before` is that same in-tx snapshot.
+- **Test**: `s5a FIX-4: reads the previous snapshot inside the transaction and computes the delta
+  from it` — outer read winnings 60k/50k, in-tx read 10k/0, corrected FF 5/3 → delta 50k/50k (the
+  in-tx baseline), and `before` records 10k.
+- **RED**: one `findFirst` call, delta vs the stale outer baseline, `before` = outer. **GREEN**: passes.
+
+### CONCURRENCY — what is actually achieved, and the residual risk
+
+- **Achieved**: the baseline read and the treasury write now share ONE transaction; the delta is no
+  longer computed from a snapshot read before the tx.
+- **NOT fully solved**: Prisma's typed API exposes no `SELECT … FOR UPDATE` row lock, and the default
+  Read Committed isolation does not lock the row on read — two concurrent corrections can still both
+  read the same baseline and both commit their (identical) delta. This is recorded as residual risk,
+  NOT claimed as resolved. A true close requires Serializable isolation (surfacing a P2034 conflict)
+  or a raw `FOR UPDATE` lock, both deliberately out of this bounded pass's scope.
+
+### TDD Cycle Evidence (s5a corrective)
+
+| Task | Test File | Layer | Safety Net | RED | GREEN |
+|------|-----------|-------|------------|-----|-------|
+| FIX-1 | `route.test.ts` | Route/Integration | ✅ 56/60 existing | ✅ winnings 20k/10k + treasury −40k | ✅ |
+| FIX-2 | `route.test.ts` | Route/Integration | ✅ 56/60 existing | ✅ treasury +60k/+50k windfall | ✅ |
+| FIX-3 | `route.test.ts` | Route/Integration | ✅ 56/60 existing | ✅ fanRoll/duration null | ✅ |
+| FIX-4 | `route.test.ts` | Route/Integration | ✅ 56/60 existing | ✅ 1 findFirst call, stale baseline | ✅ |
+
+- **RED**: `pnpm exec vitest run "…/route.test.ts"` → **4 failed | 56 passed (60)** (exactly the four
+  new tests). **GREEN**: **60 passed (60)**.
+
+### Work Unit Evidence (s5a corrective)
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **1 file, 60 passed** |
+| Runtime harness command/scenario and exact result | `pnpm test` → **189 files, 2753 passed** (route exercised against a mocked Prisma `$transaction`; no live server boundary for this slice) |
+| Rollback boundary | Revert the s5a corrective commit `6a5db85`; the s5a commit `54ac960` is restored. No other file depends on the change. |
+
+### Verification (s5a corrective — exact commands / observed results)
+
+- `pnpm exec vitest run "app/api/leagues/[id]/fixtures/[fixtureId]/result/route.test.ts"` → **60 passed (60)**
+- `pnpm test` → **189 files, 2753 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Changed Lines (s5a corrective)
+
+- Code only (`route.ts` + `route.test.ts`): `added=185 removed=58 total=243` — under the 400 budget.
+
+### MONEY_SAFETY (the rule the code now follows)
+
+A treasury delta is applied ONLY when BOTH the newly recomputed winnings AND the previously persisted
+winnings are trustworthy; otherwise the persisted value is kept and the delta is ZERO. In code:
+`canRecomputeWinnings = homeFf != null && awayFf != null`, and
+`delta = canRecomputeWinnings && freshScores.*.winnings != null ? new − old : 0`. The proving test is
+`s5a FIX-1: a legacy correction (winnings present, ff absent) keeps the winnings and never moves
+treasury` (a production legacy row: `winnings` present, `ff` absent → winnings unchanged, treasury
+does not move).
+
+### Issues Found (s5a corrective)
+
+- The prior s5a "Issues Found" note described the FF-0 fallback and the delta-vs-0 default as a
+  "documented legacy limitation". That framing was WRONG: both silently moved money on production
+  rows. This corrective pass supersedes it — the guards above replace both behaviours.
+- Inducement handling was NOT touched (s5b owns it); the copy-forward tests still pass unchanged.
+
 
 
 
