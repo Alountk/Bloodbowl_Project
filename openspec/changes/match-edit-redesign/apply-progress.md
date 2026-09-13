@@ -1893,6 +1893,136 @@ stored value or change either side's canonical vocabulary, a small value→kind 
   also render Spanish under an English locale. Out of this corrective's scope (the defect was the
   wizard labels); recorded here for the orchestrator to route.
 
+## Slice s6c — retire the legacy result modal (tasks 6.5/6.6)
+
+- **Branch**: `feat/match-edit-redesign-s6c`
+- **Mode**: Strict TDD, deletion variant. The slice removes dead code, so the cycle is: establish the
+  green baseline → delete → prove the suite is STILL green (and delete the test whose only subject was
+  `ResultModal`). There is no meaningful RED for a deletion: no new behaviour is introduced, and
+  fabricating a failing test would be dishonest. The pre-deletion green run is the baseline.
+- **Chain strategy**: `stacked-to-main` (s6c stacked on s6b)
+- **Boundary**: starts from `feat/match-edit-redesign-s6b`; ends with `ResultModal.tsx` +
+  `ResultModal.test.tsx` deleted, `ResultModalFor` removed from `LeagueDetail.tsx`, the dead
+  `result.*` keys removed from BOTH locales, and every importer repointed/retired. e2e untouched.
+- **Rollback boundary**: revert commit `7ba269c` — restores `ResultModal.tsx`, `ResultModal.test.tsx`,
+  the `ResultModalFor` export, the `ResultModal` import and the deleted dictionary keys. No payload,
+  route, schema, a11y or wizard behaviour is involved, so the rollback cannot remove unrelated work.
+
+### Completed Tasks
+
+- [x] 6.5 (s6c) Delete `features/leagues/ResultModal.tsx` + `ResultModal.test.tsx`; remove the
+  `ResultModalFor` export and every reference from `LeagueDetail.tsx` (import + dead state type).
+- [x] 6.6 (s6c) Retire `ResultModal.test.tsx` (16 tests) with the component; the sibling component
+  tests (`MatchCard`, `LeagueDetail`, `ForfeitModal`, `resultPrefill`) already moved to the wizard in
+  s4b/s4c and stay green unchanged.
+
+### Files Changed
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `features/leagues/ResultModal.tsx` | Deleted | 426 lines — the legacy modal + `buildResultPayload`/`sumDraftedTds`/`ResultModalProps` |
+| `features/leagues/ResultModal.test.tsx` | Deleted | 363 lines — the only test whose subject was `ResultModal` |
+| `features/leagues/LeagueDetail.tsx` | Modified | Removed the `ResultModal` import, the `ResultTeamDraft` type import, and the dead exported `ResultModalFor`; refreshed stale comments |
+| `features/leagues/MatchCard.tsx` | Modified | Comments only: `onLoadResult`/`onCorrectResult` now name the acta wizard |
+| `features/leagues/resultPrefill.ts` | Modified | Comment only: the moved draft types no longer claim a live `ResultModal.tsx` |
+| `lib/i18n/dictionaries.ts` | Modified | Removed 26 dead `result.*` keys from ES + EN (52 definitions); kept `result.correctAction` + the 3 server-error keys |
+
+### KEYS_REMOVED (26 keys, both locales)
+
+Deleted only after `rg -l "result.<key>" features app components lib e2e stories` returned **0 files**
+outside `lib/i18n/dictionaries.ts` and the deleted `ResultModal.*` (the only pre-deletion consumer).
+
+`result.loadTitle`, `result.correctTitle`, `result.loadAction`, `result.saveAction`, `result.header`,
+`result.close`, `result.local`, `result.visitor`, `result.sumMismatch`, `result.mvpExactlySix`,
+`result.section`, `result.goals`, **`result.heldBall`**, `result.mvpSlot`, `result.mvpNote`,
+`result.victims`, `result.victimSlot`, `result.homeTeam`, `result.awayTeam`, `result.action.tds`,
+`result.action.casualties`, `result.action.completions`, `result.action.interceptions`,
+`result.action.fouls`, `result.action.throwTeamMates`, `result.action.landedSafe`.
+
+- **`result.heldBall`** was deleted (never reworded), per task 6.5 and the s6b `LEGACY_NOTE`. Its only
+  consumer was `ResultModal.tsx`; the wizard owns `acta.neverHeld`. Grep evidence:
+  `rg -l "result\.heldBall" features app components lib e2e stories` → only
+  `lib/i18n/dictionaries.ts` + the deleted `ResultModal.tsx` → **0 remaining consumers**.
+- `result.local` / `result.header` per-key greps are false-positive-safe: the raw `rg "result\.local"`
+  also matches `result.locale`, and `rg "result\.header"` matches `result.headers` — both checked and
+  excluded (the real keys had no consumer).
+
+### KEYS_KEPT
+
+| Key | Consumer | Evidence |
+|-----|----------|----------|
+| `result.correctAction` | `features/leagues/MatchCard.tsx:186` | The `···` overflow "Corregir resultado" item — the "action label still used elsewhere" the brief warns about. |
+| `result.server.alreadyPlayed` | *(none found)* | The brief explicitly says the server-error keys MUST stay, so they are kept. Evidence: the only pre-deletion consumer was `ResultModal.tsx:72-74`; the wizard surfaces submit failures through `acta.saveError` (`MatchActaWizard.tsx:320`), so after retirement these three keys have **zero remaining consumers**. Flagged: the brief's premise ("still used elsewhere") does not hold for them. |
+| `result.server.forbidden` | *(none found)* | same as above |
+| `result.server.saveError` | *(none found)* | same as above |
+
+### IMPORTERS
+
+- `features/leagues/LeagueDetail.tsx` — removed `import { ResultModal } from "./ResultModal"`, dropped
+  the now-unused `type ResultTeamDraft` import (kept `buildResultPrefill`, still used by
+  `MatchActaWizardFor`), and deleted the exported `ResultModalFor` wrapper (its only callers were the
+  two branches that s6a had already moved onto `MatchActaWizardFor`).
+- `features/leagues/resultPrefill.ts` — confirmed it imports only `./api`; it never imported
+  `ResultModal`. Its `ResultTeamDraft`/`ResultPlayerDraft`/`ResultCasualtyDraft` remain and are still
+  consumed by `resultPrefill.ts` itself + `acta/actaState.ts`.
+- `features/leagues/MatchCard.tsx` — did not import `ResultModal`; only comments referenced it (updated).
+- `features/leagues/api.ts` — never imported `ResultModal`; untouched.
+- `stories/` — no story referenced `ResultModal`; untouched.
+- **`rg -n "ResultModal" features app components lib e2e stories`** after the change returns only:
+  e2e spec comments (untouched by instruction), two historical `LeagueDetail.test.tsx` /
+  `route.test.ts` comments, and the new dictionary comments. **No code imports `ResultModal` any more.**
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | REFACTOR |
+|------|-----------|-------|------------|-----|-------|----------|
+| 6.5/6.6 | `ResultModal.test.tsx` (deleted) | Component (jsdom) | ✅ 190 files / 2770 passed (pre-deletion baseline) | N/A — deletion slice; no new behaviour to drive RED. The pre-deletion green run is the baseline. | ✅ 189 files / 2754 passed (exactly `ResultModal.test.tsx` = 1 file / 16 tests removed) | ✅ Clean |
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec vitest run features/leagues` → **41 files, 630 passed**; `pnpm exec vitest run lib/i18n` → **3 files, 34 passed** (es/en key parity) |
+| Runtime harness command/scenario and exact result | `pnpm test` → **189 files, 2754 passed** (the wizard render/nav/submit-block integration suite in jsdom). E2E is knowingly red on this chain (s6d/s6e own it); not run. |
+| Rollback boundary | Revert `7ba269c`: `ResultModal.tsx` + `ResultModal.test.tsx` return, `ResultModalFor`/import return, the 26×2 keys return. Nothing else in the chain depends on the deletion. |
+
+### Verification (s6c — exact commands / observed results)
+
+- `pnpm exec vitest run features/leagues` → **41 files, 630 passed**
+- `pnpm exec vitest run lib/i18n` → **3 files, 34 passed**
+- `pnpm test` → **189 files, 2754 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+- `git diff HEAD --stat` (code commit) → **6 files changed, 28 insertions(+), 928 deletions(-)**
+
+### Commits (s6c)
+
+- Code: `7ba269c` — `refactor(leagues): retire the legacy result modal`
+- Bookkeeping: `docs(match-edit-redesign): record s6c progress` (this file + `tasks.md`)
+
+### Changed Lines (s6c)
+
+- **Code: `added=28 removed=928 total=956`** — deletion-dominated, as forecast (~865). Per-file:
+  `ResultModal.tsx` −426, `ResultModal.test.tsx` −363, `dictionaries.ts` −52 key lines + comment edits,
+  `LeagueDetail.tsx` −84 net, `MatchCard.tsx` +2/−2, `resultPrefill.ts` +4/−4.
+- **`size:exception` accepted by the plan** (tasks.md s6c row + design Slice Plan): the deletion is
+  atomic and must not be folded with the s6d/s6e e2e rewrites. No diff was minified.
+
+### Deviations from Design
+
+- None functional. The design's S6 sequence ("retire `ResultModal` last once parity holds") is
+  executed here as designed; the moved draft types stay in `resultPrefill.ts` (s6a) and are untouched.
+- The `result.server.*` keys were kept despite having no consumer, because the apply brief explicitly
+  marks them MUST-stay. Recorded in `KEYS_KEPT` for the verifier to confirm.
+
+### Issues Found (s6c)
+
+- The brief's premise that the `result.server.*` keys are "still used elsewhere" is **not supported by
+  evidence** (grep: 0 consumers after `ResultModal` removal). They are now dead keys; kept only to
+  honour the explicit MUST-stay instruction. The orchestrator may remove them in a follow-up if the
+  instruction was an error.
+- No other issues. e2e remains knowingly red on this chain (s6d/s6e).
+
 
 
 
