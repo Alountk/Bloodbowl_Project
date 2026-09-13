@@ -2023,6 +2023,114 @@ outside `lib/i18n/dictionaries.ts` and the deleted `ResultModal.*` (the only pre
   instruction was an error.
 - No other issues. e2e remains knowingly red on this chain (s6d/s6e).
 
+## Slice s6d — e2e rewrites (match-report + match-view) (task 6.7a)
+
+- **Branch**: `feat/match-edit-redesign-s6d`
+- **Mode**: driver rewrite (no product change). The wizard replaced the legacy `ResultModal`
+  (s4b/s6c), so the e2e specs that still drove the old flat modal were red; this slice rewrites the
+  DRIVER only and keeps every product assertion's intent.
+- **Chain strategy**: `stacked-to-main` (s6d stacked on s6c)
+- **Boundary**: starts from `feat/match-edit-redesign-s6c`; ends with `e2e/match-report.spec.ts` +
+  `e2e/match-view.spec.ts` driving the wizard. No component, route, dictionary or other spec touched.
+- **Rollback boundary**: revert commit `69cb69d` — the two specs return to the legacy modal drivers.
+
+### The RED baseline (measured)
+
+`pnpm exec playwright test --config playwright.config.auth.ts e2e/match-report.spec.ts` → **3 failed**,
+all on `waiting for getByRole('button', { name: 'Cargar resultado' }).first()` at
+`loadResultViaModal` (`e2e/match-report.spec.ts:351`): s4b replaced the four header buttons with ONE
+"Acta del partido" primary + a `···` overflow, and s6c deleted `ResultModal`, so the helpers drove a UI
+that no longer exists.
+
+### Completed Tasks
+
+- [x] 6.7a (s6d) Rewrite `loadResultViaModal` in both specs to walk the wizard; drive the correction
+  through the `···` overflow.
+
+### Label / flow mapping applied (verified against the real components)
+
+| Legacy driver | New driver |
+|---|---|
+| `Cargar resultado` button | `Acta del partido` primary (`MatchCard.tsx` L310) |
+| `Cargar resultado` dialog | `role="dialog"` name `Acta del partido` (`MatchActaWizard` L146) |
+| `Corregir resultado` button | `···` trigger `Más acciones` → `menuitem` `Corregir resultado` (`MatchCard.tsx` L186/L276) |
+| `Corregir resultado` dialog | `role="dialog"` name `Corregir acta del partido` |
+| `Guardar resultado` | `Guardar acta` (`acta.save`, shell L326) |
+| `Otorgar victoria` / `Reiniciar partido` | `···` overflow items (`forfeit.title` / `reset.action`) |
+
+### DRIVER_REWRITE — how `loadResultViaModal` drives the wizard
+
+1. Click the primary `Acta del partido`; wait for the `Acta del partido` dialog.
+2. **Contexto** → `Siguiente` (defaults are valid: Perfecto weather, no FF).
+3. **Marcador** → fill the winner's score input (`getByLabel(winnerTeamName, { exact: true })`) and 0
+   for the loser.
+4. **Acciones** → inside the winner's `role="region"` (`aria-label` = team name): `Añadir acción ·
+   {team}`, select `Jugador 1` = "Player 1", `Cantidad 1` = score. The loser records nothing (0 TDs).
+5. **MVP** → `check()` the `MVP · {team} · Player 1` radio for BOTH teams. This is the MVP save-block
+   fix: MAW-8 refuses to save unless Σ anotaciones == marcador AND both teams have an MVP, and the
+   wizard's `mvp` payload is a single scalar `grantee` (no legacy six-nomination fallback), so a team
+   left without an MVP would make the POST 400.
+6. **Bajas** → `Siguiente` (no casualties). **Final** → `Siguiente` (fan 1D6 optional).
+7. **Revisar** → `Guardar acta`; assert the dialog closes (the shell keeps it open until the async
+   POST/PUT resolves).
+
+The correction path (inline in test 2) opens `Más acciones` → `Corregir resultado`, then edits the
+PREFILLED wizard (MAW-9): Marcador 1–1; Acciones — drop the home prefill line's `Cantidad 1` from 2 to
+1 and add the away Player 1 TD so Σ anotaciones == 1 per side; re-confirm both MVP radios; save.
+
+### ASSERTIONS_KEPT
+
+All product assertions are unchanged in intent. One assertion was inverted because the PRODUCT
+genuinely changed:
+
+- `e2e/match-view.spec.ts` — `await expect(admin.getByText(/Clima/)).toBeHidden()` → **`toBeVisible()`**
+  (+ `getByText("Perfecto")` visible). The legacy `ResultModal` never sent a weather value, so the
+  section was hidden; the wizard's Step 0 ALWAYS persists weather (default "Perfecto"), so a
+  wizard-saved result now renders it. This is required by MAW-2, not a weakened assertion.
+- `e2e/match-report.spec.ts` — the finished-league check
+  `getByRole("button", { name: "Corregir resultado" }).toHaveCount(0)` became the meaningful
+  `getByRole("button", { name: "Más acciones" }).toHaveCount(0)` + `getByRole("menuitem", { name:
+  "Corregir resultado" }).toHaveCount(0)`: the correction now lives in the overflow, and a finished
+  league hides the whole overflow (MAW-1), so this asserts the SAME product outcome ("no correction
+  affordance") against the new UI.
+
+### Work Unit Evidence
+
+| Evidence | Value |
+|---|---|
+| Focused test command and exact result | `pnpm exec playwright test --config playwright.config.auth.ts e2e/match-report.spec.ts e2e/match-view.spec.ts --reporter=line` → **5 passed (28.2s)**; confirmation re-run → **5 passed (26.4s)** |
+| Runtime harness command/scenario and exact result | Playwright on real Postgres + `next dev` (AUTH_MODE=auth): load, correction, finished-season, match view and walkover all exercised end-to-end. |
+| Rollback boundary | Revert `69cb69d`: the two specs return to the legacy `Cargar resultado`/`ResultModal` drivers. No production code is involved. |
+
+### Verification (s6d — exact commands / observed results)
+
+- `pnpm exec playwright test --config playwright.config.auth.ts e2e/match-report.spec.ts e2e/match-view.spec.ts --reporter=line` → **5 passed (28.2s)** (re-run **5 passed (26.4s)**)
+- `pnpm test` → **189 files, 2754 passed**
+- `pnpm lint` → **clean (exit 0, no output)**
+- `npx tsc --noEmit` → **clean (exit 0, no output)**
+
+### Commits (s6d)
+
+- Code: `69cb69d` — `test(e2e): drive the acta wizard in the match-report and match-view specs`
+- Bookkeeping: `docs(match-edit-redesign): record s6d progress` (this file + `tasks.md`)
+
+### Changed Lines (s6d)
+
+- Code-only (the two specs): **`added=164 removed=81 total=245`** — under the 400-line review budget.
+  `match-report.spec.ts` +111/−60, `match-view.spec.ts` +53/−21.
+
+### Deviations from Design
+
+- None. The design's "e2e: `loadResultViaModal` helpers rewritten to wizard; correction prefilled;
+  overflow entry points" is executed as written.
+
+### Issues Found (s6d)
+
+- `match-view.spec.ts` asserts `Clima` is now VISIBLE (see ASSERTIONS_KEPT) — the weather capture is a
+  deliberate product change from MAW-2, not a regression.
+- `tasks.md` 6.7 was split into 6.7a (s6d, done) and 6.7b (s6e, pending) so the s6d checkbox is
+  honest; s6e owns the remaining three specs.
+
 
 
 
