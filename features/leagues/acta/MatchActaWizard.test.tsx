@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MatchActaWizard } from "../MatchActaWizard";
 import type { RosterPlayerRef } from "../MatchResolveModal";
+import type { ResultPayload } from "../api";
+import type { ActaActionLine, ActaState, ActaTeamDraft } from "./actaState";
 
 /**
  * S2 (RAU-122) — the MatchActaWizard shell (MAW-1 entry, MAW-2 Contexto,
@@ -22,6 +24,43 @@ const awayRoster: RosterPlayerRef[] = [
   { id: "a1", name: "Grishnak Mordaz" },
   { id: "a2", name: "Durburz Puño de Hierro" },
 ];
+
+function actaDraft(overrides: Partial<ActaTeamDraft> = {}): ActaTeamDraft {
+  return {
+    neverHeld: false,
+    inducements: 0,
+    score: 0,
+    mvpGrantee: "",
+    actions: [],
+    fanRoll: null,
+    injuryRoll: [],
+    permanentRoll: [],
+    ...overrides,
+  };
+}
+
+function tdLine(id: string, rosterPlayerId: string, quantity: number): ActaActionLine {
+  return { id, rosterPlayerId, kind: "td", quantity };
+}
+
+/** A valid acta: Σ anotaciones == marcador and one MVP per team. */
+function validActa(): ActaState {
+  return {
+    weather: "Perfecto",
+    home: actaDraft({
+      ff: 4,
+      score: 2,
+      mvpGrantee: "h1",
+      actions: [tdLine("h", "h1", 2)],
+    }),
+    away: actaDraft({
+      ff: 3,
+      score: 1,
+      mvpGrantee: "a1",
+      actions: [tdLine("a", "a1", 1)],
+    }),
+  };
+}
 
 function renderWizard(props: Partial<Parameters<typeof MatchActaWizard>[0]> = {}) {
   const onClose = vi.fn();
@@ -234,3 +273,65 @@ describe("MatchActaWizard capture", () => {
     expect(within(home).queryByLabelText(`Cantidad 1 · ${homeName}`)).toBeNull();
   });
 });
+
+describe("MatchActaWizard submit (s4a)", () => {
+  function goToRevisar() {
+    for (let i = 0; i < 6; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    }
+  }
+
+  it("renders the real Revisar step at step 6 and submits the built payload", () => {
+    const onSubmit = vi.fn<(payload: ResultPayload) => void>();
+    renderWizard({ initial: validActa(), onSubmit });
+    goToRevisar();
+
+    expect(activeStepLabel()).toContain("Revisar");
+    const revisar = screen.getByRole("group", { name: "Revisar" });
+    expect(revisar.textContent).not.toContain("porción posterior");
+    expect(screen.getByRole("region", { name: "Resumen del acta" })).toBeTruthy();
+
+    const save = screen.getByRole("button", { name: "Guardar acta" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const payload = onSubmit.mock.calls[0][0];
+    expect(payload.home.score).toBe(2);
+    expect(payload.home.mvp.grantee).toBe("h1");
+    expect(payload.away.mvp.grantee).toBe("a1");
+  });
+
+  it("blocks submit while a team has no MVP selected", () => {
+    const onSubmit = vi.fn<(payload: ResultPayload) => void>();
+    const state = validActa();
+    state.home.mvpGrantee = "";
+    renderWizard({ initial: state, onSubmit });
+    goToRevisar();
+
+    const save = screen.getByRole("button", { name: "Guardar acta" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toMatch(/MVP/);
+    expect(alert.textContent).toContain(homeName);
+  });
+
+  it("blocks submit when Σ anotaciones differs from the marcador", () => {
+    const onSubmit = vi.fn<(payload: ResultPayload) => void>();
+    const state = validActa();
+    state.away.score = 3;
+    renderWizard({ initial: state, onSubmit });
+    goToRevisar();
+
+    const save = screen.getByRole("button", { name: "Guardar acta" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toMatch(/anotaciones/i);
+  });
+});
+

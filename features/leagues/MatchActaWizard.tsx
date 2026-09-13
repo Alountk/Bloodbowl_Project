@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { emptyActaState, type ActaState } from "./acta/actaState";
+import {
+  buildActaPayload,
+  emptyActaState,
+  type ActaState,
+} from "./acta/actaState";
 import { StepContexto } from "./acta/StepContexto";
 import { StepMarcador } from "./acta/StepMarcador";
 import { StepAcciones } from "./acta/StepAcciones";
 import { StepMvp } from "./acta/StepMvp";
 import { StepBajas } from "./acta/StepBajas";
 import { StepFinal } from "./acta/StepFinal";
+import { StepRevisar, validateActa } from "./acta/StepRevisar";
+import type { ResultPayload } from "./api";
 import type { RosterPlayerRef } from "./MatchResolveModal";
 
 /** The seven acta steps in order (MAW-2 … MAW-8). */
@@ -38,6 +44,12 @@ export interface MatchActaWizardProps {
   onClose: () => void;
   /** Correct-mode prefill (S6 wires `actaPrefill`); read once at mount. */
   initial?: ActaState;
+  /**
+   * Invoked by the Step-6 "Guardar acta" button with the assembled payload. The
+   * shell calls it only when the acta validates (Σ anotaciones == marcador and
+   * both MVPs selected); the app wiring lands in s4c.
+   */
+  onSubmit?: (payload: ResultPayload) => void;
 }
 
 /**
@@ -46,7 +58,8 @@ export interface MatchActaWizardProps {
  * contract: `role="dialog" aria-modal="true"`, `aria-current="step"` on the
  * active step, a Tab focus trap, Escape-to-close, and focus restore on close.
  * The step bodies live under `features/leagues/acta/`; this slice ships Steps
- * 0–5 (S2 + s3a + s3b + s3c) and leaves 6 for the following slice.
+ * 0–6 (S2 + s3a + s3b + s3c + s4a). The Step-6 footer button is gated by the
+ * pure `validateActa` save-block (MAW-8).
  */
 export function MatchActaWizard({
   open,
@@ -57,6 +70,7 @@ export function MatchActaWizard({
   awayRoster,
   onClose,
   initial,
+  onSubmit,
 }: MatchActaWizardProps) {
   const [step, setStep] = useState(0);
   const [state, setState] = useState<ActaState>(() => initial ?? emptyActaState());
@@ -186,11 +200,19 @@ export function MatchActaWizard({
     );
   } else {
     body = (
-      <p className="text-sm text-slate">
-        {STEP_LABELS[step]} se completa en una porción posterior.
-      </p>
+      <StepRevisar
+        state={state}
+        homeName={homeName}
+        awayName={awayName}
+        homeRoster={homeRoster}
+        awayRoster={awayRoster}
+      />
     );
   }
+
+  // The Step-6 save block: the same pure validation the step renders gates the
+  // footer button, so an invalid acta can never reach `onSubmit` (MAW-8).
+  const validation = validateActa(state, homeName, awayName);
 
   return (
     <div
@@ -269,14 +291,28 @@ export function MatchActaWizard({
           >
             Atrás
           </button>
-          <button
-            type="button"
-            onClick={() => setStep((current) => Math.min(LAST_STEP, current + 1))}
-            disabled={step === LAST_STEP}
-            className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-          >
-            Siguiente
-          </button>
+          {step === LAST_STEP ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!validation.ok) return;
+                onSubmit?.(buildActaPayload(state));
+              }}
+              disabled={!validation.ok}
+              className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+            >
+              Guardar acta
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setStep((current) => Math.min(LAST_STEP, current + 1))}
+              disabled={step === LAST_STEP}
+              className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+            >
+              Siguiente
+            </button>
+          )}
         </footer>
       </div>
     </div>
