@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ActaActionLine, ActaState, ActaTeamDraft } from "./actaState";
-import { planBajas, setInjuryRoll, setPermanentRoll } from "./bajasPlan";
+import {
+  planBajas,
+  reconcileRolls,
+  setInjuryRoll,
+  setPermanentRoll,
+} from "./bajasPlan";
 
 /**
  * s3b (RAU-122) — the pure Bajas planner (MAW-6). The payload's `injuryRoll` /
@@ -173,5 +178,133 @@ describe("setPermanentRoll", () => {
     const after = setPermanentRoll(before, "away", 0, 6);
     expect(after.away.permanentRoll[0]).toBe(6);
     expect(after.home.permanentRoll).toEqual([]);
+  });
+});
+
+/**
+ * s3d corrective — `reconcileRolls` keeps every recorded roll bound to its
+ * VICTIM when the Step-2 action lines change. The persisted arrays stay
+ * positional, so the wizard re-aligns them by victim identity (plus occurrence)
+ * the moment a line is deleted, inserted, or reordered.
+ */
+describe("reconcileRolls", () => {
+  it("keeps a later roll with its victim when an EARLIER casualty line is deleted", () => {
+    const previous = draft({
+      actions: [
+        casualtyLine({ id: "l1", victimRosterPlayerId: "a1" }),
+        casualtyLine({ id: "l2", victimRosterPlayerId: "a2" }),
+      ],
+      // a1 is apaleado (9); a2 is permanent (13) with its compressed 1D6 (5).
+      injuryRoll: [9, 13],
+      permanentRoll: [5],
+    });
+
+    const next = reconcileRolls(previous, [previous.actions[1]]);
+
+    expect(next.injuryRoll).toEqual([13]);
+    expect(next.permanentRoll).toEqual([5]);
+  });
+
+  it("leaves an inserted middle casualty UNSET without disturbing its neighbours", () => {
+    const previous = draft({
+      actions: [
+        casualtyLine({ id: "l1", victimRosterPlayerId: "a1" }),
+        casualtyLine({ id: "l2", victimRosterPlayerId: "a2" }),
+      ],
+      injuryRoll: [9, 12],
+    });
+    const inserted = casualtyLine({ id: "l3", victimRosterPlayerId: "a3" });
+
+    const next = reconcileRolls(previous, [
+      previous.actions[0],
+      inserted,
+      previous.actions[1],
+    ]);
+
+    expect(next.injuryRoll[0]).toBe(9);
+    expect(next.injuryRoll[1]).toBeUndefined();
+    expect(next.injuryRoll[2]).toBe(12);
+    expect(next.permanentRoll).toEqual([]);
+  });
+
+  it("follows the victim across a reorder and rebuilds the compressed permanent list", () => {
+    const previous = draft({
+      actions: [
+        casualtyLine({ id: "l1", victimRosterPlayerId: "a1" }),
+        casualtyLine({ id: "l2", victimRosterPlayerId: "a2" }),
+      ],
+      // Both permanent: a1 → 1D6 5, a2 → 1D6 2.
+      injuryRoll: [13, 14],
+      permanentRoll: [5, 2],
+    });
+
+    const next = reconcileRolls(previous, [
+      previous.actions[1],
+      previous.actions[0],
+    ]);
+
+    expect(next.injuryRoll).toEqual([14, 13]);
+    expect(next.permanentRoll).toEqual([2, 5]);
+  });
+
+  it("drops the roll when the victim's own line is removed and trims the cleared side", () => {
+    const previous = draft({
+      actions: [
+        casualtyLine({ id: "l1", victimRosterPlayerId: "a1" }),
+        casualtyLine({ id: "l2", victimRosterPlayerId: "a2" }),
+      ],
+      injuryRoll: [9, 13],
+      permanentRoll: [5],
+    });
+
+    const kept = reconcileRolls(previous, [previous.actions[0]]);
+    expect(kept.injuryRoll).toEqual([9]);
+    expect(kept.permanentRoll).toEqual([]);
+
+    const cleared = reconcileRolls(previous, []);
+    expect(cleared.injuryRoll).toEqual([]);
+    expect(cleared.permanentRoll).toEqual([]);
+  });
+
+  it("keys a duplicated victim by occurrence so each injury keeps its own roll", () => {
+    const previous = draft({
+      actions: [
+        casualtyLine({ id: "l1", victimRosterPlayerId: "a1" }),
+        casualtyLine({ id: "l2", victimRosterPlayerId: "a2" }),
+        casualtyLine({ id: "l3", victimRosterPlayerId: "a2" }),
+      ],
+      // a2 is injured twice: occurrence 0 is grave (12), occurrence 1 permanent (13).
+      injuryRoll: [9, 12, 13],
+      permanentRoll: [5],
+    });
+
+    const next = reconcileRolls(previous, [
+      previous.actions[1],
+      previous.actions[2],
+    ]);
+
+    expect(next.injuryRoll).toEqual([12, 13]);
+    expect(next.permanentRoll).toEqual([5]);
+  });
+
+  it("carries a permanent victim's compressed roll when an earlier permanent line is deleted", () => {
+    const previous = draft({
+      actions: [
+        casualtyLine({ id: "l1", victimRosterPlayerId: "a1" }),
+        casualtyLine({ id: "l2", victimRosterPlayerId: "a2" }),
+        casualtyLine({ id: "l3", victimRosterPlayerId: "a3" }),
+      ],
+      // a1 permanent (1D6 5), a2 grave, a3 permanent (1D6 2).
+      injuryRoll: [13, 9, 14],
+      permanentRoll: [5, 2],
+    });
+
+    const next = reconcileRolls(previous, [
+      previous.actions[1],
+      previous.actions[2],
+    ]);
+
+    expect(next.injuryRoll).toEqual([9, 14]);
+    expect(next.permanentRoll).toEqual([2]);
   });
 });

@@ -1,6 +1,6 @@
 import { resolveInjury, type InjuryOutcomeKind } from "@/lib/rules/injuries";
-import type { ActaState, ActaTeamDraft } from "./actaState";
-import { casualtiesFromActions } from "./deriveCasualties";
+import type { ActaActionLine, ActaState, ActaTeamDraft } from "./actaState";
+import { casualtiesFromActions, type ActaCasualtyEntry } from "./deriveCasualties";
 
 /**
  * s3b (RAU-122) — the pure Bajas planner (MAW-6).
@@ -128,18 +128,97 @@ export function setPermanentRoll(
 }
 
 /**
+ * Pure: re-aligns the positional `injuryRoll` / `permanentRoll` arrays when the
+ * Step-2 action lines change (s3d corrective). A recorded roll FOLLOWS its
+ * VICTIM by identity — victim team + roster id + occurrence — instead of keeping
+ * its array position, so deleting, inserting, or reordering a casualty line can
+ * never rebind a roll to a different player.
+ *
+ * `permanentRoll` is COMPRESSED to the permanent-band victims, so it is rebuilt
+ * from the re-aligned 1D16 list: each permanent victim carries its own 1D6 by
+ * the same identity key. Victims with no previous match start UNSET (an
+ * `undefined` hole, so the route's `?? rollD16()` fallback applies); victims that
+ * disappeared have their rolls dropped. Trailing holes are trimmed, so a fully
+ * cleared side serializes to `[]`.
+ */
+export function reconcileRolls(
+  previous: Pick<ActaTeamDraft, "actions" | "injuryRoll" | "permanentRoll">,
+  nextActions: readonly ActaActionLine[],
+): Pick<ActaTeamDraft, "injuryRoll" | "permanentRoll"> {
+  const previousKeys = victimIdentityKeys(casualtiesFromActions(previous.actions));
+
+  const injuryByKey = new Map<string, number>();
+  previousKeys.forEach((key, index) => {
+    const roll = previous.injuryRoll[index];
+    if (roll != null) injuryByKey.set(key, roll);
+  });
+
+  // The 1D6 list is compressed: walk the previous victims in order and bind each
+  // permanent victim's roll to its identity key, advancing the cursor only on a
+  // permanent band (mirrors `planSide`).
+  const permanentByKey = new Map<string, number>();
+  let previousPermanentIndex = 0;
+  previousKeys.forEach((key, index) => {
+    const roll = previous.injuryRoll[index];
+    if (roll == null || resolveInjury(roll, 0).kind !== "permanent") return;
+    const permanentRoll = previous.permanentRoll[previousPermanentIndex];
+    if (permanentRoll != null) permanentByKey.set(key, permanentRoll);
+    previousPermanentIndex += 1;
+  });
+
+  const nextKeys = victimIdentityKeys(casualtiesFromActions(nextActions));
+  const injuryRoll = nextKeys.map((key) => injuryByKey.get(key));
+  const permanentRoll: (number | undefined)[] = [];
+  nextKeys.forEach((key, index) => {
+    const roll = injuryRoll[index];
+    if (roll == null || resolveInjury(roll, 0).kind !== "permanent") return;
+    permanentRoll.push(permanentByKey.get(key));
+  });
+
+  return {
+    injuryRoll: trimTrailingHoles(injuryRoll),
+    permanentRoll: trimTrailingHoles(permanentRoll),
+  };
+}
+
+/**
+ * Pure: the victim-identity key for each casualty, combining the victim's team
+ * and roster id with its OCCURRENCE among that victim's casualties (the 1st,
+ * 2nd, … injury). Occurrence disambiguates a player injured twice, so each roll
+ * stays on its own casualty instead of collapsing onto the victim id.
+ */
+function victimIdentityKeys(victims: readonly ActaCasualtyEntry[]): string[] {
+  const seen = new Map<string, number>();
+  return victims.map((victim) => {
+    const base = `${victim.team}:${victim.rosterPlayerId}`;
+    const occurrence = seen.get(base) ?? 0;
+    seen.set(base, occurrence + 1);
+    return `${base}#${occurrence}`;
+  });
+}
+
+/**
  * Immutably sets one slot, using an `undefined` hole to mean "unset" so the
  * route's `?? rollD16()` fallback rolls it instead of reading a false 0.
  * Trailing holes are trimmed, so clearing every roll leaves a clean `[]`.
  */
 function withIndex(values: readonly number[], index: number, value: number | null): number[] {
-  const next = [...values];
+  const next: (number | undefined)[] = [...values];
   if (value == null) {
-    if (index >= next.length) return next;
-    next[index] = undefined as unknown as number;
+    if (index < next.length) next[index] = undefined;
   } else {
     next[index] = value;
   }
+  return trimTrailingHoles(next);
+}
+
+/**
+ * Pure: drops trailing unset slots so a side with no recorded rolls serializes
+ * to a clean `[]`. Holes in the middle are preserved so the route's
+ * `?? rollD16()` fallback still rolls them.
+ */
+function trimTrailingHoles(values: readonly (number | undefined)[]): number[] {
+  const next = [...values];
   while (next.length > 0 && next[next.length - 1] == null) next.pop();
-  return next;
+  return next as number[];
 }
