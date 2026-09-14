@@ -8,14 +8,14 @@ Adds a read-only GET `/api/teams/[id]` so a participant can scout a rival team b
 
 ### Requirement: Get Team Scouting Endpoint
 
-The system MUST expose `GET /api/teams/[id]` that returns a team's `id`, `name`, `raceId`, `roster`, `coaching`, `leagueId`, and nullable `emblem` for an authorized caller. The route MUST require a session (401 unauthenticated). Archived teams (`archivedAt != null`) MUST NOT be returned (404). The response MUST contain no mutation affordances.
-(Previously: the response carried no `emblem` field.)
+The system MUST expose `GET /api/teams/[id]` that returns a team's `id`, `name`, `raceId`, `roster`, `coaching`, `leagueId`, `treasury`, and nullable `emblem` for an authorized caller. The route MUST require a session (401 unauthenticated). Archived teams (`archivedAt != null`) MUST NOT be returned (404). The response MUST contain no mutation affordances.
+(Previously: the response carried no `emblem` field, and the requirement did not declare `treasury` even though the route already returned it.)
 
 #### Scenario: Owner fetches own team
 
 - GIVEN the session user owns the team
 - WHEN they GET `/api/teams/[id]`
-- THEN it returns 200 with name, raceId, roster, coaching, leagueId, and emblem (null or set)
+- THEN it returns 200 with name, raceId, roster, coaching, leagueId, treasury, and emblem (null or set)
 
 #### Scenario: Unauthenticated scouting rejected
 
@@ -34,6 +34,12 @@ The system MUST expose `GET /api/teams/[id]` that returns a team's `id`, `name`,
 - GIVEN a team with a stored `emblem`
 - WHEN an authorized caller GETs it
 - THEN the response `emblem` equals the stored adapter value (null when unset)
+
+#### Scenario: Treasury present in scouted payload
+
+- GIVEN a team with a persisted treasury balance
+- WHEN an authorized caller GETs it
+- THEN the response `treasury` equals the team's stored balance
 
 ### Requirement: Scouting Visibility Gate
 
