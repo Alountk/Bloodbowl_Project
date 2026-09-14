@@ -122,9 +122,11 @@ class ControlledStore implements TeamStore {
 describe("TeamList", () => {
   it("renders team name, race name and roster summary", async () => {
     renderWithStore();
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Equipos" })).toBeTruthy());
+    // The heading renders synchronously, but the team rows only appear after
+    // the async store hydration. Await the CONTENT, not the heading: asserting
+    // the list right after the heading races hydration and flakes under load.
+    expect(await screen.findByText("Reikland Reavers")).toBeTruthy();
 
-    expect(screen.getByText("Reikland Reavers")).toBeTruthy();
     expect(screen.getByText("Human")).toBeTruthy();
     expect(screen.getByText("11 jugadores · 7x Human Lineman · 4x Human Blitzer")).toBeTruthy();
     expect(screen.getByText("Da Krumpaz")).toBeTruthy();

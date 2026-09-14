@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ProfilePanel } from "./ProfilePanel";
 import { I18nProvider } from "@/lib/i18n";
@@ -24,11 +24,21 @@ vi.mock("./api", () => ({
   patchMe: (...args: unknown[]) => patchMeMock(...args),
 }));
 
-afterEach(() => {
+// Reset the mocks AND install safe defaults before every test. Resetting in
+// `afterEach` left them bare while a late passive effect could still call
+// `getMe()` — the panel re-runs its fetch effect whenever the locale changes,
+// because that effect depends on the translated error strings — so `getMe()`
+// returned `undefined` and threw on `.then`. Defaults make an unconfigured call
+// resolve instead of crashing, and resetting up front keeps tests isolated.
+beforeEach(() => {
   getMeMock.mockReset();
   getStatsMock.mockReset();
   changePasswordMock.mockReset();
   patchMeMock.mockReset();
+  getMeMock.mockResolvedValue(profile());
+  getStatsMock.mockResolvedValue(zeroStats());
+  patchMeMock.mockResolvedValue(profile());
+  changePasswordMock.mockResolvedValue(undefined);
 });
 
 function profile(
