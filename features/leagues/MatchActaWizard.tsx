@@ -6,7 +6,9 @@ import {
   buildActaPayload,
   emptyActaState,
   type ActaState,
+  type ActaTeamDraft,
 } from "./acta/actaState";
+import { reconcileRolls } from "./acta/bajasPlan";
 import { StepContexto } from "./acta/StepContexto";
 import { StepMarcador } from "./acta/StepMarcador";
 import { StepAcciones } from "./acta/StepAcciones";
@@ -33,6 +35,19 @@ const LAST_STEP = STEP_KEYS.length - 1;
 /** The focusable descendants the Tab trap cycles through. */
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Re-aligns one team's positional roll arrays when its Step-2 action lines
+ * change: a roll follows its VICTIM by identity (see `reconcileRolls`), so
+ * deleting, inserting, or reordering a casualty line can never rebind a
+ * recorded roll to a different player (s3d corrective). A side whose actions are
+ * untouched is returned unchanged.
+ */
+function reconcileDraftRolls(prev: ActaTeamDraft, next: ActaTeamDraft): ActaTeamDraft {
+  if (prev.actions === next.actions) return next;
+  const { injuryRoll, permanentRoll } = reconcileRolls(prev, next.actions);
+  return { ...next, injuryRoll, permanentRoll };
+}
 
 export interface MatchActaWizardProps {
   open: boolean;
@@ -81,6 +96,14 @@ export function MatchActaWizard({
   // A rejected submit (400/409) must never be swallowed: it is surfaced in the
   // alert below and cleared on the next attempt.
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Step 2 edits the action lines; the wizard re-aligns each side's positional
+  // rolls at that moment so a recorded roll stays bound to its victim (s3d).
+  const handleActionsChange = (next: ActaState) =>
+    setState((prev) => ({
+      ...next,
+      home: reconcileDraftRolls(prev.home, next.home),
+      away: reconcileDraftRolls(prev.away, next.away),
+    }));
   const dialogRef = useRef<HTMLDivElement>(null);
   // The active step body; focus moves here whenever the active step changes so
   // the new step is announced and its controls are the next Tab stop.
@@ -169,7 +192,7 @@ export function MatchActaWizard({
     body = (
       <StepAcciones
         state={state}
-        onChange={setState}
+        onChange={handleActionsChange}
         homeName={homeName}
         awayName={awayName}
         homeRoster={homeRoster}

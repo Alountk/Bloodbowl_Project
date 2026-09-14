@@ -297,6 +297,72 @@ describe("MatchActaWizard capture", () => {
   });
 });
 
+describe("MatchActaWizard roll/victim reconciliation (s3d corrective)", () => {
+  const next = (times: number) => {
+    for (let i = 0; i < times; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    }
+  };
+  const back = (times: number) => {
+    for (let i = 0; i < times; i += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
+    }
+  };
+  const addCasualty = (slot: number, victim: string) => {
+    const home = screen.getByRole("region", { name: homeName });
+    fireEvent.change(within(home).getByLabelText(`Jugador ${slot} · ${homeName}`), {
+      target: { value: "h1" },
+    });
+    fireEvent.change(within(home).getByLabelText(`Acción ${slot} · ${homeName}`), {
+      target: { value: "casualty" },
+    });
+    fireEvent.change(within(home).getByLabelText(`Víctima ${slot} · ${homeName}`), {
+      target: { value: victim },
+    });
+  };
+
+  it("keeps a later roll on its own victim when an earlier casualty line is deleted", () => {
+    renderWizard();
+    next(2);
+    const home = screen.getByRole("region", { name: homeName });
+    fireEvent.click(within(home).getByRole("button", { name: `Añadir acción · ${homeName}` }));
+    addCasualty(1, "away:a1");
+    fireEvent.click(within(home).getByRole("button", { name: `Añadir acción · ${homeName}` }));
+    addCasualty(2, "away:a2");
+
+    // Record the rolls: a1 apaleado (9), a2 permanent (13) with its 1D6 (5).
+    next(2);
+    fireEvent.change(screen.getByLabelText("Tirada 1D16 1 · Grishnak Mordaz"), {
+      target: { value: "9" },
+    });
+    fireEvent.change(screen.getByLabelText("Tirada 1D16 2 · Durburz Puño de Hierro"), {
+      target: { value: "13" },
+    });
+    fireEvent.change(screen.getByLabelText("Tirada 1D6 2 · Durburz Puño de Hierro"), {
+      target: { value: "5" },
+    });
+
+    // Back to Step 2 and delete the EARLIER casualty line.
+    back(2);
+    const acciones = screen.getByRole("region", { name: homeName });
+    fireEvent.click(
+      within(acciones).getByRole("button", { name: `Eliminar acción 1 · ${homeName}` }),
+    );
+
+    // Back on Bajas the surviving victim keeps ITS roll (13), not the deleted 9.
+    next(2);
+    expect(
+      (screen.getByLabelText("Tirada 1D16 1 · Durburz Puño de Hierro") as HTMLInputElement)
+        .value,
+    ).toBe("13");
+    expect(
+      (screen.getByLabelText("Tirada 1D6 1 · Durburz Puño de Hierro") as HTMLInputElement)
+        .value,
+    ).toBe("5");
+    expect(screen.queryByText(/Grishnak Mordaz/)).toBeNull();
+  });
+});
+
 describe("MatchActaWizard submit (s4a)", () => {
   function goToRevisar() {
     for (let i = 0; i < 6; i += 1) {
