@@ -2,6 +2,10 @@
 
 import { useI18n } from "@/lib/i18n";
 import {
+  MAX_ATTENDANCE_FAN_FACTOR,
+  MIN_ATTENDANCE_FAN_FACTOR,
+} from "@/lib/rules";
+import {
   ACTA_WEATHER_OPTIONS,
   weatherOptionLabel,
   type ActaState,
@@ -79,11 +83,13 @@ export function StepContexto({
           {t("acta.contexto.ff", { team: homeName })}
           <input
             type="number"
-            min={0}
+            min={MIN_ATTENDANCE_FAN_FACTOR}
+            max={MAX_ATTENDANCE_FAN_FACTOR}
             value={state.home.ff ?? ""}
             onChange={(event) => {
               // Empty/0 means "not entered" — omit it so the route falls back
-              // to its server-rolled FF (BB minimum is 1).
+              // to its server-rolled FF. The legal attendance factor is
+              // 1D3 + dedicated fans (2..10).
               const ff = Number(event.target.value);
               setTeam("home", { ff: ff > 0 ? ff : undefined });
             }}
@@ -95,7 +101,8 @@ export function StepContexto({
           {t("acta.contexto.ff", { team: awayName })}
           <input
             type="number"
-            min={0}
+            min={MIN_ATTENDANCE_FAN_FACTOR}
+            max={MAX_ATTENDANCE_FAN_FACTOR}
             value={state.away.ff ?? ""}
             onChange={(event) => {
               const ff = Number(event.target.value);

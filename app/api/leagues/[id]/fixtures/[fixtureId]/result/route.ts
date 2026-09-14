@@ -8,6 +8,8 @@ import {
   rollPostMatchFanFactor,
   resolveInjury,
   computeWinnings,
+  MIN_ATTENDANCE_FAN_FACTOR,
+  MAX_ATTENDANCE_FAN_FACTOR,
   type MatchOutcome,
 } from "@/lib/rules";
 import {
@@ -58,6 +60,20 @@ interface TeamResultBody {
 /** Reads a finite number, else null (malformed payloads degrade, never throw). */
 function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Reads a finite pre-match ATTENDANCE fan factor (`1D3 + dedicated fans`,
+ * 2..10), else null. An out-of-range value — missing, non-numeric, 0, negative
+ * or absurd — is treated as ABSENT so the caller falls back to its own rolled
+ * value (POST) or persisted snapshot (PUT). An impossible attendance factor is
+ * never trusted: on a correction it would otherwise recompute winnings from a
+ * value the rules can never produce.
+ */
+function attendanceFfOrNull(value: unknown): number | null {
+  const ff = numberOrNull(value);
+  if (ff === null) return null;
+  return ff >= MIN_ATTENDANCE_FAN_FACTOR && ff <= MAX_ATTENDANCE_FAN_FACTOR ? ff : null;
 }
 
 /**
@@ -184,7 +200,7 @@ function parseTeamResult(raw: unknown): TeamResultBody | null {
     grantee,
     nominations,
     casualties: parseCasualties(team.casualties),
-    ff: numberOrNull(team.ff),
+    ff: attendanceFfOrNull(team.ff),
     fanRoll: numberOrNull(team.fanRoll),
     injuryRoll: numberArrayOrNull(team.injuryRoll),
     permanentRoll: numberArrayOrNull(team.permanentRoll),

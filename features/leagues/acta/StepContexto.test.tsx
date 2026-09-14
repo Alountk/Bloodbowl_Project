@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "@/lib/i18n";
 import { StepContexto } from "./StepContexto";
-import { ACTA_WEATHER_OPTIONS, emptyActaState } from "./actaState";
+import { ACTA_WEATHER_OPTIONS, emptyActaState, type ActaState } from "./actaState";
 
 /**
  * s6b corrective — the Contexto step must render its weather option LABELS from
@@ -63,5 +63,39 @@ describe("StepContexto — weather locale (s6b corrective)", () => {
     const select = weatherSelect();
     expect(optionTexts(select)).toEqual([...ACTA_WEATHER_OPTIONS]);
     expect(optionValues(select)).toEqual([...ACTA_WEATHER_OPTIONS]);
+  });
+});
+
+describe("StepContexto — attendance FF range", () => {
+  function ffInput(teamName: string): HTMLInputElement {
+    return screen.getByLabelText(`Factor fan · ${teamName}`) as HTMLInputElement;
+  }
+
+  it("constrains both Factor fan inputs to the legal attendance range 2..10", () => {
+    renderStep("es");
+
+    for (const input of [ffInput(homeName), ffInput(awayName)]) {
+      expect(input.getAttribute("min")).toBe("2");
+      expect(input.getAttribute("max")).toBe("10");
+    }
+  });
+
+  it("keeps the unset-omitted behaviour: clearing a Factor fan input yields undefined, not 0", () => {
+    let next: ActaState | undefined;
+    render(
+      <I18nProvider initialLocale="es">
+        <StepContexto
+          state={emptyActaState()}
+          onChange={(state) => {
+            next = state;
+          }}
+          homeName={homeName}
+          awayName={awayName}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(ffInput(homeName), { target: { value: "0" } });
+    expect(next?.home.ff).toBeUndefined();
   });
 });

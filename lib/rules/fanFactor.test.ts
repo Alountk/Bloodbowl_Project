@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_ATTENDANCE_FAN_FACTOR,
+  MAX_FAN_FACTOR,
+  MIN_ATTENDANCE_FAN_FACTOR,
+  MIN_FAN_FACTOR,
   postMatchFanFactor,
   preMatchFanFactor,
   rollPostMatchFanFactor,
@@ -47,6 +51,24 @@ describe("post-match fan factor (bb2025-rules R4, rulebook p. 103)", () => {
   it("computes pre-match attendance FF as 1D3 + dedicated fans (winnings/kickoff only)", () => {
     expect(preMatchFanFactor({ roll3: 2, dedicatedFans: 1 })).toBe(3);
     expect(preMatchFanFactor({ roll3: 3, dedicatedFans: 2 })).toBe(5);
+  });
+});
+
+describe("attendance fan-factor bounds (1D3 + dedicated fans, NOT the attribute)", () => {
+  it("exposes the legal attendance range as 2..10", () => {
+    expect(MIN_ATTENDANCE_FAN_FACTOR).toBe(2);
+    expect(MAX_ATTENDANCE_FAN_FACTOR).toBe(10);
+  });
+
+  it("spans exactly the values preMatchFanFactor can produce", () => {
+    const produced: number[] = [];
+    for (let roll3 = 1; roll3 <= 3; roll3 += 1) {
+      for (let fans = MIN_FAN_FACTOR; fans <= MAX_FAN_FACTOR; fans += 1) {
+        produced.push(preMatchFanFactor({ roll3, dedicatedFans: fans }));
+      }
+    }
+    expect(Math.min(...produced)).toBe(MIN_ATTENDANCE_FAN_FACTOR);
+    expect(Math.max(...produced)).toBe(MAX_ATTENDANCE_FAN_FACTOR);
   });
 });
 
