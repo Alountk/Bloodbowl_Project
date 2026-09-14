@@ -446,6 +446,39 @@ describe("MatchActaWizard submit (s4a)", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/anotaciones/i);
   });
 
+  it("disables the save button while an async submit is in flight (double-click guard)", async () => {
+    let resolveSubmit: (() => void) | undefined;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    renderWizard({ initial: validActa(), onSubmit });
+    goToRevisar();
+
+    fireEvent.click(screen.getByRole("button", { name: "Guardar acta" }));
+
+    // In flight → the button is disabled, so a second click cannot fire a second PUT.
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Guardar acta" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Guardar acta" }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    resolveSubmit?.();
+    // Settled → the button is usable again for a genuine retry.
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Guardar acta" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+  });
+
   it("shows an alert and keeps the dialog open when onSubmit rejects (s4c corrective)", async () => {
     // A 400/409 rejection must not be swallowed: the shell surfaces it in a
     // visible role="alert" and keeps the acta open so the captain can retry.
