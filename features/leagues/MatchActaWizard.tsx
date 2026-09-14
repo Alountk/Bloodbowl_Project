@@ -96,6 +96,9 @@ export function MatchActaWizard({
   // A rejected submit (400/409) must never be swallowed: it is surfaced in the
   // alert below and cleared on the next attempt.
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Pending state: while an async submit is in flight the save button is
+  // disabled, so a double-click can never fire two overlapping PUTs.
+  const [submitting, setSubmitting] = useState(false);
   // Step 2 edits the action lines; the wizard re-aligns each side's positional
   // rolls at that moment so a recorded roll stays bound to its victim (s3d).
   const handleActionsChange = (next: ActaState) =>
@@ -337,13 +340,20 @@ export function MatchActaWizard({
             <button
               type="button"
               onClick={() => {
-                if (!validation.ok) return;
+                if (!validation.ok || submitting) return;
                 setSubmitError(null);
-                Promise.resolve(onSubmit?.(buildActaPayload(state))).catch(() =>
-                  setSubmitError(t("acta.saveError")),
-                );
+                const maybe = onSubmit?.(buildActaPayload(state));
+                // Only a thenable submit has an in-flight window; a synchronous
+                // handler has nothing to guard, so it never toggles the pending
+                // state. The button re-enables on settle for a genuine retry.
+                if (maybe instanceof Promise) {
+                  setSubmitting(true);
+                  maybe
+                    .catch(() => setSubmitError(t("acta.saveError")))
+                    .finally(() => setSubmitting(false));
+                }
               }}
-              disabled={!validation.ok}
+              disabled={!validation.ok || submitting}
               className="rounded-sm bg-navy px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
             >
               {t("acta.save")}
