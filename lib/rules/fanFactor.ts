@@ -70,6 +70,17 @@ export interface PreMatchFanFactorInput {
   dedicatedFans: number;
 }
 
+/**
+ * The legal range of the pre-match ATTENDANCE fan factor produced by
+ * `preMatchFanFactor` = 1D3 + dedicated fans. The 1D3 roll spans 1..3 and the
+ * dedicated-fans attribute spans `MIN_FAN_FACTOR..MAX_FAN_FACTOR` (1..7), so the
+ * attendance factor spans 2..10. These bound the ATTENDANCE factor ONLY — they
+ * are NOT the dedicated-fans attribute bounds (`MIN_FAN_FACTOR`/`MAX_FAN_FACTOR`),
+ * which stay 1..7.
+ */
+export const MIN_ATTENDANCE_FAN_FACTOR = MIN_FAN_FACTOR + 1;
+export const MAX_ATTENDANCE_FAN_FACTOR = MAX_FAN_FACTOR + 3;
+
 export function preMatchFanFactor(input: PreMatchFanFactorInput): number {
   return input.roll3 + input.dedicatedFans;
 }

@@ -1130,19 +1130,22 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
 
     const body = wizardBody();
-    body.home.ff = 1;
-    body.away.ff = 1;
+    // The lowest LEGAL attendance FF is 2 (1D3 + dedicated fans ≥ 2); the delta
+    // is negative and MUST be applied verbatim (Team.treasury is a signed
+    // accumulator).
+    body.home.ff = 2;
+    body.away.ff = 2;
     const res = await callRoute("PUT", body);
     expect(res.status).toBe(200);
 
-    // home: ((1+1)/2 + 2)*10k = 30k → 30k−90k = −60k; away: ((1+1)/2 + 1)*10k
-    // = 20k → 20k−80k = −60k.
+    // home: ((2+2)/2 + 2)*10k = 40k → 40k−90k = −50k; away: ((2+2)/2 + 1)*10k
+    // = 30k → 30k−80k = −50k.
     const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
-    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment === -60_000)).toBe(true);
-    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment === -60_000)).toBe(true);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment === -50_000)).toBe(true);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment === -50_000)).toBe(true);
     // No clamp to zero anywhere in the treasury writes.
     const increments = treasury.map((c) => c.data.treasury.increment);
-    expect(increments).toContain(-60_000);
+    expect(increments).toContain(-50_000);
   });
 
   it("PUT recomputes the never-held-ball winnings bonus from neverHeld (s5a)", async () => {
@@ -1421,6 +1424,98 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
     expect(await res.json()).toEqual({ error: "League is finished" });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
+
+  it("treats an out-of-range ff (0) as absent — no winnings recompute, no treasury movement", async () => {
+    // An impossible attendance FF is not trustworthy: the correction must fall
+    // back to the persisted baseline (none here) and move ZERO money instead of
+    // recomputing from FF 0 against a KNOWN baseline.
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.home.winnings = 60_000;
+    played.result.scores.away.winnings = 50_000;
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const body = structuredClone(validBody) as unknown as ResultPayload;
+    body.home.ff = 0;
+    body.away.ff = 0;
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    expect(updateArg.data.scores.home.winnings).toBe(60_000);
+    expect(updateArg.data.scores.away.winnings).toBe(50_000);
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment !== 0)).toBe(false);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment !== 0)).toBe(false);
+  });
+
+  it("an out-of-range ff on ONE side blocks the recompute for BOTH (computeWinnings couples them)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.home.winnings = 60_000;
+    played.result.scores.away.winnings = 50_000;
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const body = structuredClone(validBody) as unknown as ResultPayload;
+    body.home.ff = 0; // impossible — treated as absent
+    body.away.ff = 5; // valid on its own
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    expect(updateArg.data.scores.home.winnings).toBe(60_000);
+    expect(updateArg.data.scores.away.winnings).toBe(50_000);
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.data.treasury.increment !== 0)).toBe(false);
+  });
+
+  it("treats the out-of-range attendance FFs 1 and 11 as absent (no recompute, no movement)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.home.winnings = 60_000;
+    played.result.scores.away.winnings = 50_000;
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const body = structuredClone(validBody) as unknown as ResultPayload;
+    body.home.ff = 1; // below the 2 minimum
+    body.away.ff = 11; // above the 10 maximum
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    const updateArg = prismaMock.matchResult.update.mock.calls[0][0];
+    expect(updateArg.data.scores.home.winnings).toBe(60_000);
+    expect(updateArg.data.scores.away.winnings).toBe(50_000);
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.data.treasury.increment !== 0)).toBe(false);
+  });
+
+  it("accepts the boundary attendance FFs 2 and 10 and recomputes exactly", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const played = playedFixture();
+    played.result.scores.home.winnings = 10_000;
+    played.result.scores.away.winnings = 10_000;
+    prismaMock.fixture.findFirst.mockResolvedValue(played);
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const body = wizardBody();
+    body.home.ff = 2;
+    body.away.ff = 10;
+    const res = await callRoute("PUT", body);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.update.mock.calls[0][0].data.scores;
+    // home: ((2+10)/2 + 2)*10k = 80k; away: ((10+2)/2 + 1)*10k = 70k.
+    expect(scores.home.ff).toBe(2);
+    expect(scores.away.ff).toBe(10);
+    expect(scores.home.winnings).toBe(80_000);
+    expect(scores.away.winnings).toBe(70_000);
+  });
 });
 
 /** The extended wizard payload: additive fields over the legacy body (S1). */
@@ -1548,6 +1643,25 @@ describe("POST /api/.../[fixtureId]/result — additive wizard contract (S1)", (
     const res = await callRoute("POST", validBody);
     expect(res.status).toBe(200);
     expect(prismaMock.matchResult.create.mock.calls[0][0].data.scores.mvp).toEqual({ home: "p1", away: "p5" });
+  });
+
+  it("treats an out-of-range ff (0) as absent and falls back to the server-rolled attendance FF", async () => {
+    // The legal attendance FF is 1D3 + dedicated fans (2..10). A crafted `ff: 0`
+    // must NOT be honoured: the route falls back to its own roll exactly as if
+    // the field were omitted.
+    stubFixedRolls();
+    const body = structuredClone(validBody) as unknown as ResultPayload;
+    body.home.ff = 0;
+    body.away.ff = 0;
+    const res = await callRoute("POST", body);
+    expect(res.status).toBe(200);
+    const scores = prismaMock.matchResult.create.mock.calls[0][0].data.scores;
+    // roll3 home 2 + dedicatedFans 1 = 3; roll3 away 1 + dedicatedFans 1 = 2.
+    expect(scores.home.ff).toBe(3);
+    expect(scores.away.ff).toBe(2);
+    // The server rolled its own pre-match FF rather than trusting 0.
+    expect(randomMock.rollD3).toHaveBeenCalledTimes(2);
+    expect(scores.home.winnings).toBe(45_000);
   });
 });
 
