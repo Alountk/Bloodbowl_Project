@@ -264,6 +264,40 @@ describe("StepBajas — roll binding", () => {
     expect(p.away.permanentRoll).toEqual([]);
   });
 
+  it("clears a stale 1D6 when a band edit makes a DIFFERENT victim permanent", () => {
+    render(
+      <Harness
+        initial={state({
+          home: draft({
+            actions: [
+              casualtyLine({ id: "l1", victimRosterPlayerId: "a1" }),
+              casualtyLine({ id: "l2", victimRosterPlayerId: "a2" }),
+            ],
+            // a1 permanent (13) with its 1D6 (5); a2 apaleado (9).
+            injuryRoll: [13, 9],
+            permanentRoll: [5],
+          }),
+        })}
+      />,
+    );
+
+    // Make a2 permanent (13), then heal a1 to apaleado (9).
+    fireEvent.change(screen.getByLabelText(injuryLabel(2, "Durburz Puño de Hierro")), {
+      target: { value: "13" },
+    });
+    fireEvent.change(screen.getByLabelText(injuryLabel(1, "Grishnak Mordaz")), {
+      target: { value: "9" },
+    });
+
+    // a2 is now the sole permanent victim but its 1D6 was never entered: its
+    // input must stay empty and the payload must NOT carry a1's stale 5.
+    expect(
+      (screen.getByLabelText(permanentLabel(2, "Durburz Puño de Hierro")) as HTMLInputElement)
+        .value,
+    ).toBe("");
+    expect(payload().home.permanentRoll).toEqual([]);
+  });
+
   it("ignores out-of-range roll input instead of recording a false 0", () => {
     render(
       <Harness
