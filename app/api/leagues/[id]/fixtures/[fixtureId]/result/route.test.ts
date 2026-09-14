@@ -876,8 +876,8 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
           home: { score: 2, postFf: 4, casualties: 0, pe: [{ rosterPlayerId: "p1", pe: 3 + PE_MVP }] },
           away: { score: 1, postFf: 2, casualties: 0, pe: [{ rosterPlayerId: "p3", pe: 3 }] },
         } as {
-          home: { score: number; postFf: number; casualties: number; winnings?: number; fanRoll?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
-          away: { score: number; postFf: number; casualties: number; winnings?: number; fanRoll?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
+          home: { score: number; postFf: number; casualties: number; winnings?: number; ff?: number; fanRoll?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
+          away: { score: number; postFf: number; casualties: number; winnings?: number; ff?: number; fanRoll?: number; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } };
           mvp?: { home: string; away: string };
           duration?: number;
         },
@@ -1303,6 +1303,96 @@ describe("PUT /api/.../[fixtureId]/result (correction)", () => {
         }),
       }),
     );
+  });
+
+  it("s5c: runs the correction transaction at Serializable isolation", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(playedFixture());
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", validBody);
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: "Serializable",
+    });
+  });
+
+  it("s5c: retries the WHOLE transaction when Postgres aborts it (P2034) and then succeeds", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    let reads = 0;
+    prismaMock.fixture.findFirst.mockImplementation(async () => {
+      reads += 1;
+      // read 1 = pre-validation; read 2 = first in-tx attempt → abort; read 3 = retry.
+      if (reads === 2) {
+        throw Object.assign(new Error("could not serialize access"), { code: "P2034" });
+      }
+      return playedFixture();
+    });
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", wizardBody());
+
+    expect(res.status).toBe(200);
+    // The aborted attempt did not count: the transaction ran again and committed once.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(2);
+    expect(prismaMock.matchResultCorrection.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("s5c: surfaces a 409 when every serializable attempt conflicts — no partial write", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    let reads = 0;
+    prismaMock.fixture.findFirst.mockImplementation(async () => {
+      reads += 1;
+      // read 1 = pre-validation succeeds; every in-tx attempt aborts.
+      if (reads >= 2) {
+        throw Object.assign(new Error("could not serialize access"), { code: "P2034" });
+      }
+      return playedFixture();
+    });
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await callRoute("PUT", wizardBody());
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Concurrent correction conflict" });
+    // Bounded retry: three attempts total, then a clear failure.
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(3);
+    // Nothing persisted: no audit row and no money moved.
+    expect(prismaMock.matchResultCorrection.create).not.toHaveBeenCalled();
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+  });
+
+  it("s5c: resolves the FF baseline from the IN-TX snapshot, not the stale outer read", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    const outer = playedFixture();
+    outer.result.scores.home.ff = 5;
+    outer.result.scores.away.ff = 3;
+    const fresh = playedFixture();
+    fresh.result.scores.home.ff = 2;
+    fresh.result.scores.away.ff = 2;
+    fresh.result.scores.home.winnings = 10_000;
+    fresh.result.scores.away.winnings = 5_000;
+    let findFirstCall = 0;
+    prismaMock.fixture.findFirst.mockImplementation(async () =>
+      findFirstCall++ === 0 ? outer : fresh,
+    );
+    stubMvpRolls();
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+
+    // validBody omits `ff` → the FF MUST fall back to the IN-TX snapshot (2/2),
+    // never the stale outer read (5/3).
+    const res = await callRoute("PUT", validBody);
+    expect(res.status).toBe(200);
+
+    const scores = prismaMock.matchResult.update.mock.calls[0][0].data.scores;
+    expect(scores.home.winnings).toBe(40_000); // ((2+2)/2 + 2) * 10k
+    expect(scores.away.winnings).toBe(30_000); // ((2+2)/2 + 1) * 10k
+    // The delta is measured against the in-tx baseline (10k/5k), not the outer one.
+    const treasury = prismaMock.team.update.mock.calls.map((c) => c[0]);
+    expect(treasury.some((c) => c.where.id === "t1" && c.data.treasury.increment === 30_000)).toBe(true);
+    expect(treasury.some((c) => c.where.id === "t2" && c.data.treasury.increment === 25_000)).toBe(true);
   });
 
   it("RAU-122/s5b: PUT persists the wizard-INPUT inducements — input wins over the prior snapshot", async () => {

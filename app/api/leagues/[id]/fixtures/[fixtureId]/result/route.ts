@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/devGuard";
@@ -670,6 +671,63 @@ export async function POST(
   });
 }
 
+/** One side of a persisted correction snapshot (the merge/guard baseline). */
+interface CorrectionSnapshotSide {
+  score: number;
+  postFf?: number;
+  winnings?: number;
+  ff?: number;
+  fanRoll?: number;
+  injuryRoll?: number[];
+  permanentRoll?: number[];
+  actions?: ResultPlayerAction[];
+  casualties?: ResolvedCasualty[];
+  pe: { rosterPlayerId: string; pe: number }[];
+  inducements?: { budget: number; cards: { name: string; count: number }[] } | null;
+}
+
+/** The persisted `MatchResult.scores` snapshot the correction reads as baseline. */
+interface CorrectionSnapshot {
+  home: CorrectionSnapshotSide;
+  away: CorrectionSnapshotSide;
+  mvp?: { home: string; away: string };
+  duration?: number;
+}
+
+/** Bounded retry budget: one initial attempt plus two retries, never a loop. */
+const MAX_TRANSACTION_ATTEMPTS = 3;
+
+/** True when Postgres aborted a transaction on a serialization conflict. */
+function isSerializationConflict(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "P2034";
+}
+
+/**
+ * Runs `run` in a Serializable transaction, retrying the WHOLE transaction when
+ * Postgres aborts it on a write conflict (Prisma P2034). Under Serializable two
+ * overlapping corrections can no longer both read the same baseline and apply
+ * the same delta; the loser is aborted and re-runs against the winner's
+ * committed state. The retry is BOUNDED (`MAX_TRANSACTION_ATTEMPTS`) — no
+ * unbounded loop and no sleep — and returns `{ ok: false }` when every attempt
+ * conflicts, so the caller surfaces a clear failure instead of a silent partial
+ * result. Non-conflict errors propagate unchanged.
+ */
+async function runSerializableTransaction<T>(
+  run: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false }> {
+  for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      const value = await prisma.$transaction(run, {
+        isolationLevel: "Serializable",
+      });
+      return { ok: true, value };
+    } catch (error) {
+      if (!isSerializationConflict(error)) throw error;
+    }
+  }
+  return { ok: false };
+}
+
 /**
  * PUT /api/leagues/[id]/fixtures/[fixtureId]/result
  * Correction of a played fixture, accepted from the league admin, a
@@ -780,37 +838,16 @@ export async function PUT(
   const winnerId = deriveWinnerId(home.score, away.score, homeTeamId, awayTeamId);
 
   // Correction re-runs the PE rules; the previous awards live in the snapshot.
-  const prevScores = (fixture.result.scores ?? {}) as unknown as {
-    home: { score: number; postFf?: number; winnings?: number; ff?: number; fanRoll?: number; injuryRoll?: number[]; permanentRoll?: number[]; actions?: ResultPlayerAction[]; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
-    away: { score: number; postFf?: number; winnings?: number; ff?: number; fanRoll?: number; injuryRoll?: number[]; permanentRoll?: number[]; actions?: ResultPlayerAction[]; casualties?: ResolvedCasualty[]; pe: { rosterPlayerId: string; pe: number }[]; inducements?: { budget: number; cards: { name: string; count: number }[] } | null };
-    mvp?: { home: string; away: string };
-    duration?: number;
-  };
+  // Everything BASELINE-dependent (FF fallback, previous winnings, previous PE,
+  // the merged snapshot, and the treasury delta) is resolved from the
+  // IN-TRANSACTION snapshot below, so the money-safety guard's inputs are read
+  // atomically together under Serializable isolation.
   const homeMvp = home.grantee ?? computeMvpGrantee(home.nominations, rollD6());
   const awayMvp = away.grantee ?? computeMvpGrantee(away.nominations, rollD6());
   const homeAwards = computeTeamPeAwards(home.players, homeMvp);
   const awayAwards = computeTeamPeAwards(away.players, awayMvp);
   const sumAwards = (list: { rosterPlayerId: string; pe: number }[]) =>
     new Map(list.map((a) => [a.rosterPlayerId, a.pe]));
-  const prevHomePe = sumAwards(prevScores?.home?.pe ?? []);
-  const prevAwayPe = sumAwards(prevScores?.away?.pe ?? []);
-
-  // RAU-122/s5a FIX-1: a correction RECOMPUTES winnings from the corrected data
-  // — the input FF as-is (no 1D3), the team's own TDs, and never-held-ball —
-  // instead of copying the prior report forward. The FF resolves from the
-  // payload, then the persisted snapshot. NEVER fall back to FF 0: if EITHER
-  // side's FF is unknown, `computeWinnings` (which couples both sides) cannot be
-  // trusted, so BOTH sides keep their previously persisted winnings and move NO
-  // money (the delta is computed inside the transaction below).
-  const homeFf = home.ff ?? prevScores?.home?.ff;
-  const awayFf = away.ff ?? prevScores?.away?.ff;
-  const canRecomputeWinnings = homeFf != null && awayFf != null;
-  const homeWinnings = canRecomputeWinnings
-    ? computeWinnings({ ffHome: homeFf, ffAway: awayFf, ownTds: home.score, heldBall: home.heldBall })
-    : prevScores?.home?.winnings;
-  const awayWinnings = canRecomputeWinnings
-    ? computeWinnings({ ffHome: awayFf, ffAway: homeFf, ownTds: away.score, heldBall: away.heldBall })
-    : prevScores?.away?.winnings;
 
   // The correction re-resolves the reported victims (client 1D16/permanent 1D6
   // when supplied, server rolls otherwise).
@@ -819,15 +856,6 @@ export async function PUT(
   const homeTeamVictims = resolvedCasualties.filter((c) => c.team === "home");
   const awayTeamVictims = resolvedCasualties.filter((c) => c.team === "away");
 
-  // D4/RAU-122/s5a: the correction recomputes the MJP grantee (mirrors the PE
-  // re-run) and RECOMPUTES winnings from the corrected payload — never the
-  // prior report's copy. FIX-3: the COMPUTED fields (`score`, `winnings`,
-  // `postFf`, `casualties`, `pe`) are replaced by the correction, while the
-  // wizard-INPUT keys (`ff`, `neverHeld`, `fanRoll`, `injuryRoll`,
-  // `permanentRoll`, `actions`, `duration`) MERGE over the prior snapshot: a key
-  // the payload omits preserves the previously persisted value instead of
-  // nulling it. `neverHeld` is always derived from the mandatory ball-held input
-  // (`heldBall`/`ballHeld`/`neverHeld`), so it is never omitted.
   // RAU-122/s5b F1: inducement precedence on correction — the wizard INPUT
   // (prefilled from the snapshot) wins; a payload that omits it falls back to
   // the previously persisted per-side snapshot (a correction must never DROP a
@@ -836,60 +864,90 @@ export async function PUT(
   const ind = parseInducements(raw.inducements);
   const rawHome = (raw.home ?? {}) as Record<string, unknown>;
   const rawAway = (raw.away ?? {}) as Record<string, unknown>;
-  const scoreboard = {
-    home: {
-      score: home.score,
-      postFf: prevScores?.home?.postFf ?? 0,
-      ...(homeWinnings != null ? { winnings: homeWinnings } : {}),
-      ff: homeFf,
-      neverHeld: !home.heldBall,
-      fanRoll: home.fanRoll != null ? home.fanRoll : prevScores?.home?.fanRoll,
-      injuryRoll: mergeRolls(homeRolls.injuryRoll, prevScores?.home?.injuryRoll),
-      permanentRoll: mergeRolls(homeRolls.permanentRoll, prevScores?.home?.permanentRoll),
-      actions: Array.isArray(rawHome.players) ? home.players : prevScores?.home?.actions,
-      ...(ind?.home != null
-        ? { inducements: ind.home }
-        : prevScores?.home?.inducements != null
-          ? { inducements: prevScores.home.inducements }
-          : {}),
-      casualties: homeTeamVictims,
-      pe: homeAwards,
-    },
-    away: {
-      score: away.score,
-      postFf: prevScores?.away?.postFf ?? 0,
-      ...(awayWinnings != null ? { winnings: awayWinnings } : {}),
-      ff: awayFf,
-      neverHeld: !away.heldBall,
-      fanRoll: away.fanRoll != null ? away.fanRoll : prevScores?.away?.fanRoll,
-      injuryRoll: mergeRolls(awayRolls.injuryRoll, prevScores?.away?.injuryRoll),
-      permanentRoll: mergeRolls(awayRolls.permanentRoll, prevScores?.away?.permanentRoll),
-      actions: Array.isArray(rawAway.players) ? away.players : prevScores?.away?.actions,
-      ...(ind?.away != null
-        ? { inducements: ind.away }
-        : prevScores?.away?.inducements != null
-          ? { inducements: prevScores.away.inducements }
-          : {}),
-      casualties: awayTeamVictims,
-      pe: awayAwards,
-    },
-    winnerId,
-    mvp: { home: homeMvp, away: awayMvp },
-    duration: numberOrNull(raw.duration) ?? prevScores?.duration,
-  };
 
-  await prisma.$transaction(async (tx) => {
-    // RAU-122/s5a FIX-4: read the previous snapshot INSIDE the transaction so the
-    // baseline read and the treasury write share one transaction (the read is no
-    // longer taken outside the tx and reused). This NARROWS the double-adjustment
-    // window but does NOT fully close it: Prisma's typed API exposes no row lock,
-    // and under Read Committed two concurrent corrections can still both read the
-    // same baseline. Residual risk is recorded in apply-progress.md (s5a).
+  const outcome = await runSerializableTransaction(async (tx) => {
+    // RAU-122/s5a FIX-4 + Serializable close: read the ENTIRE baseline INSIDE the
+    // transaction. Under Serializable, Postgres aborts a conflicting correction
+    // (P2034) instead of letting two overlapping corrections read the same
+    // baseline; `runSerializableTransaction` re-runs this callback against the
+    // winner's committed state, so the guard's inputs stay consistent.
     const fresh = await tx.fixture.findFirst({
       where: { id: fixtureId },
       include: { result: true },
     });
-    const freshScores = (fresh?.result?.scores ?? {}) as unknown as typeof prevScores;
+    const freshScores = (fresh?.result?.scores ?? {}) as unknown as CorrectionSnapshot;
+    const freshResultId = fresh?.result?.id ?? resultId;
+    const prevHomePe = sumAwards(freshScores?.home?.pe ?? []);
+    const prevAwayPe = sumAwards(freshScores?.away?.pe ?? []);
+
+    // RAU-122/s5a FIX-1: a correction RECOMPUTES winnings from the corrected data
+    // — the input FF as-is (no 1D3), the team's own TDs, and never-held-ball —
+    // instead of copying the prior report forward. The FF resolves from the
+    // payload, then the IN-TX snapshot. NEVER fall back to FF 0: if EITHER side's
+    // FF is unknown, `computeWinnings` (which couples both sides) cannot be
+    // trusted, so BOTH sides keep their previously persisted winnings and move
+    // NO money.
+    const homeFf = home.ff ?? freshScores?.home?.ff;
+    const awayFf = away.ff ?? freshScores?.away?.ff;
+    const canRecomputeWinnings = homeFf != null && awayFf != null;
+    const homeWinnings = canRecomputeWinnings
+      ? computeWinnings({ ffHome: homeFf, ffAway: awayFf, ownTds: home.score, heldBall: home.heldBall })
+      : freshScores?.home?.winnings;
+    const awayWinnings = canRecomputeWinnings
+      ? computeWinnings({ ffHome: awayFf, ffAway: homeFf, ownTds: away.score, heldBall: away.heldBall })
+      : freshScores?.away?.winnings;
+
+    // D4/RAU-122/s5a: the correction recomputes the MJP grantee (mirrors the PE
+    // re-run) and RECOMPUTES winnings from the corrected payload — never the
+    // prior report's copy. FIX-3: the COMPUTED fields (`score`, `winnings`,
+    // `postFf`, `casualties`, `pe`) are replaced by the correction, while the
+    // wizard-INPUT keys (`ff`, `neverHeld`, `fanRoll`, `injuryRoll`,
+    // `permanentRoll`, `actions`, `duration`) MERGE over the IN-TX snapshot: a
+    // key the payload omits preserves the previously persisted value instead of
+    // nulling it. `neverHeld` is always derived from the mandatory ball-held input
+    // (`heldBall`/`ballHeld`/`neverHeld`), so it is never omitted.
+    const scoreboard = {
+      home: {
+        score: home.score,
+        postFf: freshScores?.home?.postFf ?? 0,
+        ...(homeWinnings != null ? { winnings: homeWinnings } : {}),
+        ff: homeFf,
+        neverHeld: !home.heldBall,
+        fanRoll: home.fanRoll != null ? home.fanRoll : freshScores?.home?.fanRoll,
+        injuryRoll: mergeRolls(homeRolls.injuryRoll, freshScores?.home?.injuryRoll),
+        permanentRoll: mergeRolls(homeRolls.permanentRoll, freshScores?.home?.permanentRoll),
+        actions: Array.isArray(rawHome.players) ? home.players : freshScores?.home?.actions,
+        ...(ind?.home != null
+          ? { inducements: ind.home }
+          : freshScores?.home?.inducements != null
+            ? { inducements: freshScores.home.inducements }
+            : {}),
+        casualties: homeTeamVictims,
+        pe: homeAwards,
+      },
+      away: {
+        score: away.score,
+        postFf: freshScores?.away?.postFf ?? 0,
+        ...(awayWinnings != null ? { winnings: awayWinnings } : {}),
+        ff: awayFf,
+        neverHeld: !away.heldBall,
+        fanRoll: away.fanRoll != null ? away.fanRoll : freshScores?.away?.fanRoll,
+        injuryRoll: mergeRolls(awayRolls.injuryRoll, freshScores?.away?.injuryRoll),
+        permanentRoll: mergeRolls(awayRolls.permanentRoll, freshScores?.away?.permanentRoll),
+        actions: Array.isArray(rawAway.players) ? away.players : freshScores?.away?.actions,
+        ...(ind?.away != null
+          ? { inducements: ind.away }
+          : freshScores?.away?.inducements != null
+            ? { inducements: freshScores.away.inducements }
+            : {}),
+        casualties: awayTeamVictims,
+        pe: awayAwards,
+      },
+      winnerId,
+      mvp: { home: homeMvp, away: awayMvp },
+      duration: numberOrNull(raw.duration) ?? freshScores?.duration,
+    };
+
     // FIX-1/FIX-2: apply a delta ONLY when BOTH the newly recomputed winnings AND
     // the previously persisted winnings are trustworthy; otherwise move ZERO.
     // A negative delta is allowed (`Team.treasury` is a signed accumulator) and
@@ -907,12 +965,12 @@ export async function PUT(
       data: { homeScore: home.score, awayScore: away.score, winnerId },
     });
     await tx.matchResult.update({
-      where: { id: resultId },
+      where: { id: freshResultId },
       data: { scores: scoreboard as never, weather: typeof raw.weather === "string" ? raw.weather : null },
     });
     await tx.matchResultCorrection.create({
       data: {
-        resultId,
+        resultId: freshResultId,
         correctedBy: userId,
         correctedAt: new Date(),
         before: freshScores as never,
@@ -960,7 +1018,17 @@ export async function PUT(
       (role) => (role === "home" ? homeTeamId : awayTeamId),
       resolvedCasualties,
     );
+    return true;
   });
+
+  if (!outcome.ok) {
+    // Every Serializable attempt conflicted: surface a clear failure instead of
+    // returning a silently unapplied correction (mirrors the POST concurrency 409).
+    return NextResponse.json(
+      { error: "Concurrent correction conflict" },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json({
     fixtureId,
