@@ -29,6 +29,10 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm test
       - run: pnpm lint
+      # `pnpm build` is the ONLY gate that runs the production type-check —
+      # neither `pnpm test` nor `pnpm lint` invoke tsc. Without this step a
+      # broken build can merge behind a green Test check (it happened once).
+      - run: pnpm build
 
   docker:
     name: Docker Image
