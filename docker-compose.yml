@@ -30,6 +30,16 @@ services:
       AUTH_TRUST_HOST: "true"
       # `auth` enforces login + Postgres persistence. Production MUST stay `auth`.
       AUTH_MODE: ${AUTH_MODE:-auth}
+      # Structured logging level (lib/logger.ts): debug | info | warn | error.
+      # Logs are JSON lines on stdout, queryable with `docker logs <c> | jq`.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Public base URL, used to build absolute links inside notification emails.
+      APP_URL: ${APP_URL:-}
+      # Email delivery (Resend HTTP API). When either is unset the app falls back
+      # to a console transport that logs the message instead of sending it, so a
+      # missing credential degrades to "no email", never to a broken request.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     # Persist locally-stored avatars across container recreation. The local
     # driver writes under `public/uploads`; a named volume keeps those files out
     # of the ephemeral container layer (and survives the image being replaced).
