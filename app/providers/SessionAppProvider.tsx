@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
+import { hardNavigate } from "@/lib/navigation";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
 import { useTeamMigration } from "@/features/migration/useTeamMigration";
 import { MigrationReloadContext } from "./MigrationReloadContext";
@@ -35,7 +36,6 @@ function isShellExempt(pathname: string): boolean {
 
 export function SessionAppProvider({ children }: { children: ReactNode }) {
   const { status } = useSession();
-  const router = useRouter();
   const pathname = usePathname();
   // Stable ApiTeamStore instance across re-renders.
   const [apiStore] = useState(() => new ApiTeamStore());
@@ -77,15 +77,13 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
       store={authenticated ? apiStore : undefined}
       authenticated={authenticated}
       onLogout={async () => {
-        // Use router.push (the lint-approved navigation for event handlers).
-        // Passing redirectTo to signOut makes Auth.js build the URL from the
-        // server's own host (HOSTNAME=0.0.0.0 in the container), which produced
-        // "0.0.0.0:3444/login" in production. We AWAIT the sign-out POST so
-        // the session cookie is cleared before navigating — otherwise the
-        // proxy still sees an authenticated user and bounces the landing back
-        // to the dashboard.
+        // AWAIT the sign-out POST so the session cookie is cleared before we
+        // leave — otherwise the proxy still sees an authenticated user and
+        // bounces the landing back to the dashboard. Then a FULL reload, since a
+        // client-side push can be served from the Router Cache (see
+        // `hardNavigate`).
         await signOut({ redirect: false });
-        router.push("/");
+        hardNavigate("/");
       }}
       reloadVersion={migrationReload}
     >
