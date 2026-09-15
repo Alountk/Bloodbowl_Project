@@ -17,6 +17,10 @@ vi.mock("@/lib/devGuard", () => ({
   requirePermission: requirePermissionMock,
 }));
 
+// Mail is best-effort: the route must return the proposal even when it fails.
+const notifyMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/mail/notify", () => ({ notifyDateProposed: notifyMock }));
+
 import { POST } from "./route";
 
 /** A started-league fixture whose home team belongs to the session participant. */
@@ -29,9 +33,9 @@ function buildFixture(overrides: Record<string, unknown> = {}) {
     awayTeamId: "t2",
     scheduledAt: null,
     winnerId: null,
-    league: { id: "l1", status: "started" },
-    homeTeam: { id: "t1", userId: "user-1" },
-    awayTeam: { id: "t2", userId: "user-2" },
+    league: { id: "l1", name: "Liga de Prueba", status: "started" },
+    homeTeam: { id: "t1", userId: "user-1", name: "Halcones" },
+    awayTeam: { id: "t2", userId: "user-2", name: "Orcos" },
     ...overrides,
   };
 }
@@ -67,6 +71,7 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/propose", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stubTransaction();
+    notifyMock.mockResolvedValue(undefined);
     // Default: a plain `user` is not privileged (the privileged tests override).
     requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
   });
@@ -241,5 +246,58 @@ describe("POST /api/leagues/[id]/fixtures/[fixtureId]/propose", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "League is finished" });
     expect(prismaMock.scheduleProposal.create).not.toHaveBeenCalled();
+  });
+
+  it("notifies the counterpart after the proposal commits", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    prismaMock.scheduleProposal.findFirst.mockResolvedValue(null);
+    prismaMock.scheduleProposal.create.mockResolvedValue({
+      id: "p_new",
+      fixtureId: "f1",
+      userId: "user-1",
+      date: new Date("2026-03-01T10:00:00.000Z"),
+      createdAt: new Date("2026-02-02T10:00:00.000Z"),
+      acceptedAt: null,
+      closedAt: null,
+    });
+
+    const res = await propose({ date: "2026-03-01T10:00:00.000Z" });
+
+    expect(res.status).toBe(200);
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        leagueName: "Liga de Prueba",
+        homeTeam: { name: "Halcones", userId: "user-1" },
+        awayTeam: { name: "Orcos", userId: "user-2" },
+        proposerUserId: "user-1",
+        leagueId: "l1",
+        fixtureId: "f1",
+      }),
+    );
+  });
+
+  it("returns 200 and the proposal even when the mail notification rejects", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(buildFixture());
+    prismaMock.scheduleProposal.findFirst.mockResolvedValue(null);
+    prismaMock.scheduleProposal.create.mockResolvedValue({
+      id: "p_new",
+      fixtureId: "f1",
+      userId: "user-1",
+      date: new Date("2026-03-01T10:00:00.000Z"),
+      createdAt: new Date("2026-02-02T10:00:00.000Z"),
+      acceptedAt: null,
+      closedAt: null,
+    });
+    notifyMock.mockRejectedValue(new Error("mail provider down"));
+    // The route logs the swallowed failure; silence the expected stderr line.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await propose({ date: "2026-03-01T10:00:00.000Z" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: "p_new", fixtureId: "f1" });
+    errorSpy.mockRestore();
   });
 });

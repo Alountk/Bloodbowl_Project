@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/devGuard";
+import { logError } from "@/lib/logger";
+import { notifyDateProposed } from "@/lib/mail/notify";
 
 /**
  * POST /api/leagues/[id]/fixtures/[fixtureId]/propose
@@ -41,8 +43,8 @@ export async function POST(
     where: { id: fixtureId },
     include: {
       league: true,
-      homeTeam: { select: { id: true, userId: true } },
-      awayTeam: { select: { id: true, userId: true } },
+      homeTeam: { select: { id: true, userId: true, name: true } },
+      awayTeam: { select: { id: true, userId: true, name: true } },
     },
   });
   if (!fixture || fixture.leagueId !== id) {
@@ -114,6 +116,23 @@ export async function POST(
       data: { fixtureId, userId, date },
     });
   });
+
+  // Best-effort notification AFTER the proposal is committed: the negotiation
+  // already succeeded, so a mail failure must not change the response. The
+  // extra guard also covers an unexpected throw from the notifier itself.
+  try {
+    await notifyDateProposed({
+      leagueName: fixture.league.name,
+      homeTeam: { name: fixture.homeTeam.name, userId: fixture.homeTeam.userId },
+      awayTeam: { name: fixture.awayTeam.name, userId: fixture.awayTeam.userId },
+      proposerUserId: userId,
+      date,
+      leagueId: id,
+      fixtureId,
+    });
+  } catch (error) {
+    logError("mail.dateProposed.failed", error, { fixtureId });
+  }
 
   return NextResponse.json(proposal);
 }
