@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_LOCALE, dictionaries, t } from "./dictionaries";
 import { I18nProvider, useI18n } from "./index";
 
@@ -189,7 +189,7 @@ describe("I18nProvider", () => {
     expect(screen.getByTestId("nav-teams").textContent).toBe("Equipos");
   });
 
-  it("switches locale and persists the choice to the cookie (never localStorage)", () => {
+  it("switches locale and persists the choice to the cookie (never localStorage)", async () => {
     // No cookie + a non-English browser language → the default (es) start.
     stubNavigatorLanguage("fr-FR");
     render(
@@ -203,8 +203,9 @@ describe("I18nProvider", () => {
 
     expect(screen.getByTestId("locale").textContent).toBe("en");
     expect(screen.getByTestId("nav-teams").textContent).toBe("Teams");
-    // The cookie is the only persisted source of truth now.
-    expect(document.cookie).toContain("bb-locale=en");
+    // The cookie is the only persisted source of truth now. The provider writes
+    // it from an effect, so await it instead of racing that flush.
+    await waitFor(() => expect(document.cookie).toContain("bb-locale=en"));
     expect(window.localStorage.getItem("bb-locale")).toBeNull();
   });
 });
