@@ -6,14 +6,19 @@ import { __resetMigrationGuardForTests } from "@/features/migration/useTeamMigra
 const useSessionMock = vi.hoisted(() => vi.fn());
 const signOutMock = vi.hoisted(() => vi.fn());
 
-const pushMock = vi.hoisted(() => vi.fn());
+const navigateMock = vi.hoisted(() => vi.fn());
 // Non-root by default: the shell behaviors below only apply off the home route
 // (on "/" the provider passes children through, since the page owns its shell).
 const nav = { pathname: "/teams" };
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
   usePathname: () => nav.pathname,
+}));
+
+// The logout does a FULL document load (not a client-side push) so the Router
+// Cache cannot replay the signed-in payload; see `lib/navigation`.
+vi.mock("@/lib/navigation", () => ({
+  hardNavigate: navigateMock,
 }));
 
 vi.mock("next-auth/react", () => ({
@@ -65,9 +70,10 @@ describe("SessionAppProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "Menú de usuario" }));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
     await waitFor(() => expect(signOutMock).toHaveBeenCalledWith({ redirect: false }));
-    // Event-handler router.push (lint-approved) to the landing "/", and only
-    // after the sign-out POST completes (session cookie cleared).
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    // A FULL document load to the landing "/", and only after the sign-out POST
+    // completes (session cookie cleared) — a client-side push would be served
+    // from the Router Cache and leave the dashboard on screen.
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/"));
   });
 
   it("passes children through without the app shell on the home route", () => {
