@@ -4,7 +4,7 @@ import { SessionAppProvider } from "./SessionAppProvider";
 import { __resetMigrationGuardForTests } from "@/features/migration/useTeamMigration";
 
 const useSessionMock = vi.hoisted(() => vi.fn());
-const signOutMock = vi.hoisted(() => vi.fn());
+const logoutMock = vi.hoisted(() => vi.fn());
 
 const navigateMock = vi.hoisted(() => vi.fn());
 // Non-root by default: the shell behaviors below only apply off the home route
@@ -15,15 +15,19 @@ vi.mock("next/navigation", () => ({
   usePathname: () => nav.pathname,
 }));
 
-// The logout does a FULL document load (not a client-side push) so the Router
-// Cache cannot replay the signed-in payload; see `lib/navigation`.
+// `lib/auth/logout` owns the whole logout (server-side clear + full document
+// load) and is covered by its own test; here we only pin that the user menu is
+// wired to it.
+vi.mock("@/lib/auth/logout", () => ({
+  logout: logoutMock,
+}));
+
 vi.mock("@/lib/navigation", () => ({
   hardNavigate: navigateMock,
 }));
 
 vi.mock("next-auth/react", () => ({
   useSession: () => useSessionMock(),
-  signOut: signOutMock,
 }));
 
 // The ApiTeamStore talks to fetch; we assert on the fetch calls to prove an
@@ -59,21 +63,18 @@ describe("SessionAppProvider", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("signs the user out when auth is active", async () => {
+  it("wires the user menu's logout to the logout helper", async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify([])));
     useSessionMock.mockReturnValue({ status: "authenticated" });
 
     render(<SessionAppProvider>content</SessionAppProvider>);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    // Logout now lives in the user menu: open the avatar menu, then log out.
+    // Logout lives in the user menu: open the avatar menu, then log out.
     fireEvent.click(screen.getByRole("button", { name: "Menú de usuario" }));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
-    await waitFor(() => expect(signOutMock).toHaveBeenCalledWith({ redirect: false }));
-    // A FULL document load to the landing "/", and only after the sign-out POST
-    // completes (session cookie cleared) — a client-side push would be served
-    // from the Router Cache and leave the dashboard on screen.
-    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/"));
+
+    await waitFor(() => expect(logoutMock).toHaveBeenCalled());
   });
 
   it("passes children through without the app shell on the home route", () => {

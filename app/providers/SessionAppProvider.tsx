@@ -2,9 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
-import { hardNavigate } from "@/lib/navigation";
+import { logout } from "@/lib/auth/logout";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
 import { useTeamMigration } from "@/features/migration/useTeamMigration";
 import { MigrationReloadContext } from "./MigrationReloadContext";
@@ -76,15 +76,7 @@ export function SessionAppProvider({ children }: { children: ReactNode }) {
     <AppShell
       store={authenticated ? apiStore : undefined}
       authenticated={authenticated}
-      onLogout={async () => {
-        // AWAIT the sign-out POST so the session cookie is cleared before we
-        // leave — otherwise the proxy still sees an authenticated user and
-        // bounces the landing back to the dashboard. Then a FULL reload, since a
-        // client-side push can be served from the Router Cache (see
-        // `hardNavigate`).
-        await signOut({ redirect: false });
-        hardNavigate("/");
-      }}
+      onLogout={logout}
       reloadVersion={migrationReload}
     >
       {children}
