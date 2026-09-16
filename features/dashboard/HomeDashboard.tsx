@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { signOut } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
-import { hardNavigate } from "@/lib/navigation";
+import { logout } from "@/lib/auth/logout";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
 import { useMigrationReload } from "@/app/providers/MigrationReloadContext";
 import { Dashboard } from "./Dashboard";
@@ -33,14 +32,7 @@ export function HomeDashboard({ authenticated, userName }: HomeDashboardProps) {
     <AppShell
       store={authenticated ? apiStore : undefined}
       authenticated={authenticated}
-      onLogout={async () => {
-        // Await the sign-out POST so the session cookie is cleared before we
-        // leave, then do a FULL reload: a client-side push to "/" is answered
-        // from the Router Cache, leaving the signed-in dashboard on screen with
-        // the session already gone. See `hardNavigate`.
-        await signOut({ redirect: false });
-        hardNavigate("/");
-      }}
+      onLogout={logout}
       reloadVersion={migrationReload}
     >
       <Dashboard authenticated={authenticated} userName={userName} />
