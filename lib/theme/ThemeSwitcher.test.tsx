@@ -81,10 +81,12 @@ describe("ThemeSwitcher (AS-8 auth-aware)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tablón americano" }));
 
     await waitFor(() => expect(patchMeMock).toHaveBeenCalledWith({ theme: "scoreboard" }));
-    await waitFor(() => expect(esGroup()).toBeTruthy());
     expect(esScoreboardPressed()).toBe("true");
     expect(esVintagePressed()).toBe("false");
-    expect(document.cookie).toContain("bb-theme=scoreboard");
+    // The provider writes the cookie from an effect, so it lands one flush after
+    // the render that already flipped `aria-pressed`. Await it — asserting it
+    // synchronously raced that effect and flaked under load.
+    await waitFor(() => expect(document.cookie).toContain("bb-theme=scoreboard"));
   });
 
   it("authenticated: a failed PATCH keeps the current theme and surfaces the inline error", async () => {

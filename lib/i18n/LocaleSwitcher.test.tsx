@@ -87,10 +87,12 @@ describe("LocaleSwitcher (RAU-59 auth-aware)", () => {
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
 
     await waitFor(() => expect(patchMeMock).toHaveBeenCalledWith({ locale: "en" }));
-    await waitFor(() => expect(enGroup()).toBeTruthy());
     expect(enPressed()).toBe("true");
     expect(esPressed()).toBe("false");
-    expect(document.cookie).toContain("bb-locale=en");
+    // The provider writes the cookie from an effect, one flush after the render
+    // that already flipped `aria-pressed`. Await it — asserting it synchronously
+    // raced that effect and flaked under load (same shape as ThemeSwitcher).
+    await waitFor(() => expect(document.cookie).toContain("bb-locale=en"));
   });
 
   it("authenticated: a failed PATCH keeps the current locale and surfaces the inline error", async () => {
