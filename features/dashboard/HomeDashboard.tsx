@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { AppShell } from "@/components/AppShell";
+import { hardNavigate } from "@/lib/navigation";
 import { ApiTeamStore } from "@/features/teams/store/ApiTeamStore";
 import { useMigrationReload } from "@/app/providers/MigrationReloadContext";
 import { Dashboard } from "./Dashboard";
@@ -25,7 +25,6 @@ interface HomeDashboardProps {
  * `useMigrationReload`. Logout returns to "/" (the landing).
  */
 export function HomeDashboard({ authenticated, userName }: HomeDashboardProps) {
-  const router = useRouter();
   // Stable ApiTeamStore instance across re-renders.
   const [apiStore] = useState(() => new ApiTeamStore());
   const migrationReload = useMigrationReload();
@@ -35,10 +34,12 @@ export function HomeDashboard({ authenticated, userName }: HomeDashboardProps) {
       store={authenticated ? apiStore : undefined}
       authenticated={authenticated}
       onLogout={async () => {
-        // Await the sign-out POST so the session cookie is cleared before
-        // navigating; "/" then renders the landing for the anonymous visitor.
+        // Await the sign-out POST so the session cookie is cleared before we
+        // leave, then do a FULL reload: a client-side push to "/" is answered
+        // from the Router Cache, leaving the signed-in dashboard on screen with
+        // the session already gone. See `hardNavigate`.
         await signOut({ redirect: false });
-        router.push("/");
+        hardNavigate("/");
       }}
       reloadVersion={migrationReload}
     >
