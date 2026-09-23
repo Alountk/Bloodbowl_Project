@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAuthEnabled, resolveAuthGate } from "./auth-mode";
+import { isApiPath, isAuthEnabled, isPublicApiPath, resolveAuthGate } from "./auth-mode";
 
 describe("isAuthEnabled", () => {
   it("is disabled by default when no auth mode env var is set", () => {
@@ -19,9 +19,33 @@ describe("isAuthEnabled", () => {
   });
 });
 
+describe("isApiPath / isPublicApiPath", () => {
+  it("classifies /api paths", () => {
+    expect(isApiPath("/api")).toBe(true);
+    expect(isApiPath("/api/teams")).toBe(true);
+    expect(isApiPath("/apiary")).toBe(false);
+    expect(isApiPath("/teams")).toBe(false);
+  });
+
+  it("keeps Auth.js, share reads, and logout public", () => {
+    expect(isPublicApiPath("/api/auth/session")).toBe(true);
+    expect(isPublicApiPath("/api/auth")).toBe(true);
+    expect(isPublicApiPath("/api/watch/tok")).toBe(true);
+    expect(isPublicApiPath("/api/logout")).toBe(true);
+    expect(isPublicApiPath("/api/teams")).toBe(false);
+    expect(isPublicApiPath("/api/authenticate")).toBe(false);
+  });
+});
+
 describe("resolveAuthGate", () => {
   it("allows every route when auth mode is disabled", () => {
     expect(resolveAuthGate({ auth: null, pathname: "/teams/create", authEnabled: false })).toBe(
+      "allow",
+    );
+  });
+
+  it("allows protected API paths when auth mode is disabled", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/api/teams", authEnabled: false })).toBe(
       "allow",
     );
   });
@@ -30,6 +54,37 @@ describe("resolveAuthGate", () => {
     expect(
       resolveAuthGate({ auth: null, pathname: "/teams/create", authEnabled: true }),
     ).toBe("redirect-login");
+  });
+
+  it("denies an unauthenticated protected API path with deny-api (401 JSON)", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/api/teams", authEnabled: true })).toBe(
+      "deny-api",
+    );
+    expect(resolveAuthGate({ auth: null, pathname: "/api/leagues/l1", authEnabled: true })).toBe(
+      "deny-api",
+    );
+  });
+
+  it("allows an authenticated user on a protected API path", () => {
+    expect(
+      resolveAuthGate({
+        auth: { user: { id: "u1" } } as never,
+        pathname: "/api/teams",
+        authEnabled: true,
+      }),
+    ).toBe("allow");
+  });
+
+  it("allows the public API prefixes even for anonymous callers", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/api/auth/session", authEnabled: true })).toBe(
+      "allow",
+    );
+    expect(resolveAuthGate({ auth: null, pathname: "/api/watch/tok", authEnabled: true })).toBe(
+      "allow",
+    );
+    expect(resolveAuthGate({ auth: null, pathname: "/api/logout", authEnabled: true })).toBe(
+      "allow",
+    );
   });
 
   it("allows an authenticated user on a protected route", () => {
