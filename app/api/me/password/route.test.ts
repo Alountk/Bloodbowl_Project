@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
+  MAX_PASSWORD_LENGTH,
   WRONG_CURRENT_PASSWORD_CODE,
   WEAK_NEW_PASSWORD_CODE,
 } from "@/lib/password";
@@ -120,8 +121,27 @@ describe("PATCH /api/me/password", () => {
     expect(bcryptMock.hash).toHaveBeenCalledWith("new-password-9", 10);
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
-      data: { passwordHash: "hashed-new-password" },
+      data: {
+        passwordHash: "hashed-new-password",
+        // Bumping the version invalidates every previously issued JWT.
+        sessionVersion: { increment: 1 },
+      },
     });
+  });
+
+  it("rejects a new password longer than the shared max", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue(storedUser());
+    bcryptMock.compare.mockResolvedValue(true);
+
+    const res = await patchRequest({
+      currentPassword: "old-password",
+      newPassword: "a".repeat(MAX_PASSWORD_LENGTH + 1),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe(WEAK_NEW_PASSWORD_CODE);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });
 

@@ -184,7 +184,7 @@ describe("ProfilePanel — change password", () => {
     expect(screen.getByLabelText("Contraseña actual")).toBeTruthy();
     expect(screen.getByLabelText("Nueva contraseña")).toBeTruthy();
     expect(screen.getByLabelText("Confirmar nueva contraseña")).toBeTruthy();
-    expect(screen.getByText("Mínimo 8 caracteres.")).toBeTruthy();
+    expect(screen.getByText("Entre 8 y 128 caracteres.")).toBeTruthy();
   });
 
   it("rejects a mismatched confirmation client-side without calling the API", async () => {
@@ -217,7 +217,7 @@ describe("ProfilePanel — change password", () => {
     });
   });
 
-  it("shows the weak-new error with the shared minimum length", async () => {
+  it("shows the weak-new error with the shared length bounds", async () => {
     getMeMock.mockResolvedValue(profile());
     getStatsMock.mockResolvedValue(zeroStats());
     const err = new Error("too short") as Error & { code?: string };
@@ -228,7 +228,10 @@ describe("ProfilePanel — change password", () => {
     await screen.findByRole("heading", { name: "Cambiar contraseña" });
     fillPasswordForm("old-password", "short", "short");
 
-    hasText(await screen.findByRole("alert"), "La contraseña debe tener al menos 8 caracteres.");
+    hasText(
+      await screen.findByRole("alert"),
+      "La contraseña debe tener entre 8 y 128 caracteres.",
+    );
   });
 
   it("clears the form and shows the success status on a successful change", async () => {

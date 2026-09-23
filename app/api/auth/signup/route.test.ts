@@ -17,6 +17,7 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("bcryptjs", () => bcryptMock);
 
 import { POST } from "./route";
+import { MAX_PASSWORD_LENGTH } from "@/lib/password";
 
 describe("POST /api/auth/signup", () => {
   beforeEach(() => {
@@ -169,5 +170,37 @@ describe("POST /api/auth/signup", () => {
 
     const body = await res.json();
     expect(body.error).toBe("An account with this email already exists");
+  });
+
+  it("returns 400 when the password is longer than the shared max", async () => {
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "coach@example.com",
+        password: "a".repeat(MAX_PASSWORD_LENGTH + 1),
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(bcryptMock.hash).not.toHaveBeenCalled();
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when the display name exceeds 50 characters", async () => {
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({
+        email: "coach@example.com",
+        password: "SuperSecret123!",
+        name: "n".repeat(51),
+      }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
   });
 });
