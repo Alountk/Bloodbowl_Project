@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/email";
 import { isPasswordLongEnough, PASSWORD_SALT_ROUNDS } from "@/lib/password";
 import { isLocale } from "@/lib/i18n/serverLocale";
+import {
+  AUTH_RATE_LIMITS,
+  clientIp,
+  rateLimit,
+  tooManyRequests,
+} from "@/lib/rateLimit";
 
 /** Simple email validation (RFC-loose: something @ something . something). */
 function isValidEmail(email: string): boolean {
@@ -47,6 +53,16 @@ export async function POST(req: Request) {
   const password = body.password ?? "";
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const locale = readSignupLocale(req);
+
+  // Abuse control: burst signups from one IP before any bcrypt work.
+  const gate = rateLimit(
+    `signup:${clientIp(req)}`,
+    AUTH_RATE_LIMITS.signup.limit,
+    AUTH_RATE_LIMITS.signup.windowMs,
+  );
+  if (!gate.ok) {
+    return tooManyRequests(gate.retryAfterMs);
+  }
 
   if (!isValidEmail(email) || !isPasswordLongEnough(password)) {
     return NextResponse.json(
