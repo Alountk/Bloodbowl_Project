@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import type { Team } from "@/features/teams/types";
 import { DEFAULT_COACHING, isCoachingStaff } from "@/features/teams/types";
 import { getRaceById } from "@/features/teams/data/races";
+import { validateRosterPayload } from "@/lib/rosterPayload";
 import {
   MAX_PLAYERS,
   MIN_PLAYERS,
@@ -73,6 +74,14 @@ export async function POST(req: Request) {
     );
   }
 
+  // Deep-validate the roster JSON before any league/rulebook math runs — a
+  // direct POST must never persist arbitrary blobs under Team.roster.
+  const rosterCheck = validateRosterPayload(body.roster);
+  if (!rosterCheck.ok) {
+    return NextResponse.json({ error: rosterCheck.error }, { status: 400 });
+  }
+  const roster = rosterCheck.roster;
+
   // RAU-56: resolve the league + ruleset before validating the roster.
   const rawLeagueId = typeof body.leagueId === "string" ? body.leagueId.trim() : "";
   const leagueId = rawLeagueId || null;
@@ -134,7 +143,6 @@ export async function POST(req: Request) {
   // Server-side roster bounds: the league ruleset's min/max when the team joins
   // a ruleset league; the BB2025 global bounds otherwise. A direct POST must
   // never create an out-of-bounds team.
-  const roster = Array.isArray(body.roster) ? body.roster : [];
   if (roster.length < minPlayers || roster.length > maxPlayers) {
     return NextResponse.json(
       { error: `A team needs between ${minPlayers} and ${maxPlayers} players` },

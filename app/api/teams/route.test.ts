@@ -158,6 +158,46 @@ describe("POST /api/teams", () => {
     expect(prismaMock.team.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a roster entry with a non-string id or overlong name with 400", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const badId = await POST(
+      new Request("http://localhost:3000/api/teams", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Bad Roster",
+          raceId: "human",
+          roster: Array.from({ length: 11 }, (_, i) => ({
+            id: i === 0 ? "" : `p${i + 1}`,
+            name: `Player ${i + 1}`,
+            positionalKey: "lineman",
+          })),
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(badId.status).toBe(400);
+    expect((await badId.json()).error).toContain("id");
+    expect(prismaMock.team.create).not.toHaveBeenCalled();
+
+    const longName = await POST(
+      new Request("http://localhost:3000/api/teams", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Long Names",
+          raceId: "human",
+          roster: Array.from({ length: 11 }, (_, i) => ({
+            id: `p${i + 1}`,
+            name: i === 0 ? "n".repeat(51) : `Player ${i + 1}`,
+            positionalKey: "lineman",
+          })),
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(longName.status).toBe(400);
+    expect(prismaMock.team.create).not.toHaveBeenCalled();
+  });
+
   it("rejects a roster below the 11-player minimum with 400", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     const res = await POST(
