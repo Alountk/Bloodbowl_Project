@@ -10,6 +10,7 @@ import {
   WRONG_CURRENT_PASSWORD_CODE,
   WEAK_NEW_PASSWORD_CODE,
 } from "@/lib/password";
+import { AUTH_RATE_LIMITS, rateLimit, tooManyRequests } from "@/lib/rateLimit";
 
 /**
  * PATCH /api/me/password
@@ -30,6 +31,16 @@ export async function PATCH(req: Request) {
   const userId = session?.user?.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Stop a stolen session from grinding the current-password check.
+  const gate = rateLimit(
+    `password:${userId}`,
+    AUTH_RATE_LIMITS.passwordChange.limit,
+    AUTH_RATE_LIMITS.passwordChange.windowMs,
+  );
+  if (!gate.ok) {
+    return tooManyRequests(gate.retryAfterMs);
   }
 
   let body: { currentPassword?: unknown; newPassword?: unknown };

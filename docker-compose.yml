@@ -25,9 +25,11 @@ services:
       # postgres on the published port when DATABASE_URL is unset.
       DATABASE_URL: ${DATABASE_URL:-postgresql://bloodbowl:bloodbowl@host.docker.internal:5433/bloodbowl?schema=public}
       # Required for Auth.js on a LAN/HTTP host. Override in production with the
-      # real session secret; do NOT commit a production value.
-      AUTH_SECRET: ${AUTH_SECRET:-}
-      AUTH_TRUST_HOST: "true"
+      # real session secret; the `:?` makes compose fail fast without it.
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — generate with `openssl rand -base64 32`}
+      # Env-driven so production can set "false" behind HTTPS; default "true"
+      # preserves the LAN/HTTP Arcane deploy.
+      AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
       # `auth` enforces login + Postgres persistence. Production MUST stay `auth`.
       AUTH_MODE: ${AUTH_MODE:-auth}
       # Structured logging level (lib/logger.ts): debug | info | warn | error.
@@ -53,13 +55,17 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      # Set a strong password in .env on any shared host (defaults are for the
+      # local stack only). The published port is loopback-bound above.
       POSTGRES_USER: ${POSTGRES_USER:-bloodbowl}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bloodbowl}
       POSTGRES_DB: ${POSTGRES_DB:-bloodbowl}
     ports:
       # Published port is configurable; the default 5433 avoids the common 5432
-      # clash with other Postgres instances on the same host.
-      - "${POSTGRES_PORT:-5433}:5432"
+      # clash with other Postgres instances on the same host. Bound to
+      # loopback so a LAN peer cannot reach Postgres with the default creds —
+      # the web service still reaches it via host.docker.internal:5432.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - bloodbowl_postgres_data:/var/lib/postgresql/data
     healthcheck:

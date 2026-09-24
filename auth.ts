@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { authConfig } from "@/auth.config";
 import { normalizeEmail } from "@/lib/email";
 import { isPasswordAcceptable } from "@/lib/password";
+import { AUTH_RATE_LIMITS, rateLimit } from "@/lib/rateLimit";
 
 /**
  * A fixed bcrypt hash used to equalize login timing when the email does not
@@ -85,6 +86,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Bound the bcrypt work: signup/change-password share this rule, and
         // authorize must not become a CPU sink for a multi-MB payload.
         if (!isPasswordAcceptable(password)) return null;
+
+        // Brute-force control: reject BEFORE the DB lookup/bcrypt so a flood
+        // of wrong passwords never pays hashing cost. Auth.js maps `null` to
+        // the generic credentials error (no oracle for "rate limited" vs
+        // "wrong password").
+        const gate = rateLimit(
+          `login:${email}`,
+          AUTH_RATE_LIMITS.login.limit,
+          AUTH_RATE_LIMITS.login.windowMs,
+        );
+        if (!gate.ok) return null;
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) {

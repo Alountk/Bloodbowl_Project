@@ -18,10 +18,12 @@ vi.mock("bcryptjs", () => bcryptMock);
 
 import { POST } from "./route";
 import { MAX_PASSWORD_LENGTH } from "@/lib/password";
+import { AUTH_RATE_LIMITS, resetRateLimits } from "@/lib/rateLimit";
 
 describe("POST /api/auth/signup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRateLimits();
   });
 
   it("creates a user and returns 201 with the created user when credentials are valid", async () => {
@@ -202,5 +204,33 @@ describe("POST /api/auth/signup", () => {
     const res = await POST(req);
     expect(res.status).toBe(400);
     expect(prismaMock.user.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 with Retry-After after the per-IP signup limit", async () => {
+    bcryptMock.hash.mockResolvedValue("hashed-password");
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "burst@example.com",
+      name: null,
+    });
+
+    const make = () =>
+      new Request("http://localhost:3000/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ email: "burst@example.com", password: "SuperSecret123!" }),
+        headers: { "content-type": "application/json" },
+      });
+
+    for (let i = 0; i < AUTH_RATE_LIMITS.signup.limit; i++) {
+      const ok = await POST(make());
+      expect(ok.status).toBe(201);
+    }
+
+    const denied = await POST(make());
+    expect(denied.status).toBe(429);
+    expect(Number(denied.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+    expect((await denied.json()).error).toBe("Too many requests");
+    // The denied attempt never reaches bcrypt/Prisma.
+    expect(prismaMock.user.create).toHaveBeenCalledTimes(AUTH_RATE_LIMITS.signup.limit);
   });
 });
