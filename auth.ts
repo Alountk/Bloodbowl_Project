@@ -4,6 +4,7 @@ import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { authConfig } from "@/auth.config";
 import { normalizeEmail } from "@/lib/email";
+import { AUTH_RATE_LIMITS, rateLimit } from "@/lib/rateLimit";
 
 /**
  * Node-runtime Auth.js configuration.
@@ -32,6 +33,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Emails are stored lowercased (see lib/email normalizeEmail). Normalize
         // here so a mixed-case login matches the stored user.
         const email = normalizeEmail(rawEmail);
+
+        // Brute-force control: reject BEFORE the DB lookup/bcrypt so a flood
+        // of wrong passwords never pays hashing cost. Auth.js maps `null` to
+        // the generic credentials error (no oracle for "rate limited" vs
+        // "wrong password").
+        const gate = rateLimit(
+          `login:${email}`,
+          AUTH_RATE_LIMITS.login.limit,
+          AUTH_RATE_LIMITS.login.windowMs,
+        );
+        if (!gate.ok) return null;
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) return null;
