@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/email";
-import { isPasswordLongEnough, PASSWORD_SALT_ROUNDS } from "@/lib/password";
+import { isPasswordAcceptable, PASSWORD_SALT_ROUNDS } from "@/lib/password";
 import { isLocale } from "@/lib/i18n/serverLocale";
+import {
+  AUTH_RATE_LIMITS,
+  clientIp,
+  rateLimit,
+  tooManyRequests,
+} from "@/lib/rateLimit";
+
+/** Same bound the player-rename route uses — names stay display-sized. */
+const MAX_NAME_LENGTH = 50;
 
 /** Simple email validation (RFC-loose: something @ something . something). */
 function isValidEmail(email: string): boolean {
@@ -48,9 +57,26 @@ export async function POST(req: Request) {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const locale = readSignupLocale(req);
 
-  if (!isValidEmail(email) || !isPasswordLongEnough(password)) {
+  // Abuse control: burst signups from one IP before any bcrypt work.
+  const gate = rateLimit(
+    `signup:${clientIp(req)}`,
+    AUTH_RATE_LIMITS.signup.limit,
+    AUTH_RATE_LIMITS.signup.windowMs,
+  );
+  if (!gate.ok) {
+    return tooManyRequests(gate.retryAfterMs);
+  }
+
+  if (
+    !isValidEmail(email) ||
+    !isPasswordAcceptable(password) ||
+    name.length > MAX_NAME_LENGTH
+  ) {
     return NextResponse.json(
-      { error: "A valid email and a password of at least 8 characters are required" },
+      {
+        error:
+          "A valid email, a password of 8-128 characters, and a name of at most 50 characters are required",
+      },
       { status: 400 },
     );
   }

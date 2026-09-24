@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
+  MAX_PASSWORD_LENGTH,
   WRONG_CURRENT_PASSWORD_CODE,
   WEAK_NEW_PASSWORD_CODE,
 } from "@/lib/password";
+import { AUTH_RATE_LIMITS, resetRateLimits } from "@/lib/rateLimit";
 
 const authMock = vi.hoisted(() => vi.fn());
 const prismaMock = vi.hoisted(() => ({
@@ -48,6 +50,7 @@ function storedUser() {
 describe("PATCH /api/me/password", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetRateLimits();
     bcryptMock.hash.mockResolvedValue("hashed-new-password");
   });
 
@@ -120,13 +123,57 @@ describe("PATCH /api/me/password", () => {
     expect(bcryptMock.hash).toHaveBeenCalledWith("new-password-9", 10);
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
-      data: { passwordHash: "hashed-new-password" },
+      data: {
+        passwordHash: "hashed-new-password",
+        // Bumping the version invalidates every previously issued JWT.
+        sessionVersion: { increment: 1 },
+      },
     });
+  });
+
+  it("rejects a new password longer than the shared max", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue(storedUser());
+    bcryptMock.compare.mockResolvedValue(true);
+
+    const res = await patchRequest({
+      currentPassword: "old-password",
+      newPassword: "a".repeat(MAX_PASSWORD_LENGTH + 1),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe(WEAK_NEW_PASSWORD_CODE);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 with Retry-After once the per-user change limit is hit", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    prismaMock.user.findUnique.mockResolvedValue(storedUser());
+    bcryptMock.compare.mockResolvedValue(false);
+
+    for (let i = 0; i < AUTH_RATE_LIMITS.passwordChange.limit; i++) {
+      const res = await patchRequest({ currentPassword: "nope", newPassword: "whatever-long-enough" });
+      // Wrong current password still consumes a gate slot (checked first).
+      expect(res.status).toBe(400);
+    }
+
+    const denied = await patchRequest({ currentPassword: "nope", newPassword: "whatever-long-enough" });
+    expect(denied.status).toBe(429);
+    expect(Number(denied.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
+    expect((await denied.json()).error).toBe("Too many requests");
+    // Rate limit fires before the user lookup.
+    prismaMock.user.findUnique.mockClear();
+    const afterClear = await patchRequest({ currentPassword: "nope", newPassword: "whatever-long-enough" });
+    expect(afterClear.status).toBe(429);
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
   });
 });
 
 describe("PATCH /api/me/password — real bcrypt round-trip", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetRateLimits();
+  });
 
   it("the persisted hash accepts the NEW password and rejects the old one", async () => {
     // vi.importActual bypasses the module mock so the round-trip runs REAL bcrypt.

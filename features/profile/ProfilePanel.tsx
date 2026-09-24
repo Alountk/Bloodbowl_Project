@@ -18,6 +18,7 @@ import type { Locale } from "@/lib/i18n/dictionaries";
 import { useTheme } from "@/lib/theme";
 import { THEME_OPTIONS, type Theme } from "@/lib/theme/theme";
 import {
+  MAX_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
   WRONG_CURRENT_PASSWORD_CODE,
   WEAK_NEW_PASSWORD_CODE,
@@ -126,7 +127,9 @@ export function ProfilePanel() {
       if (code === WRONG_CURRENT_PASSWORD_CODE) {
         setPasswordError(t("profile.password.wrongCurrent"));
       } else if (code === WEAK_NEW_PASSWORD_CODE) {
-        setPasswordError(t("profile.password.weak", { min: MIN_PASSWORD_LENGTH }));
+        setPasswordError(
+          t("profile.password.weak", { min: MIN_PASSWORD_LENGTH, max: MAX_PASSWORD_LENGTH }),
+        );
       } else {
         setPasswordError(t("profile.password.error"));
       }
@@ -380,7 +383,9 @@ export function ProfilePanel() {
               className="rounded-sm border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-navy focus:outline-none"
             />
           </label>
-          <p className="text-xs text-slate-500">{t("profile.password.hint", { min: MIN_PASSWORD_LENGTH })}</p>
+          <p className="text-xs text-slate-500">
+            {t("profile.password.hint", { min: MIN_PASSWORD_LENGTH, max: MAX_PASSWORD_LENGTH })}
+          </p>
           {passwordError ? (
             <p role="alert" className="text-sm text-red">
               {passwordError}

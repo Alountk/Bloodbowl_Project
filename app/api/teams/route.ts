@@ -65,6 +65,14 @@ export async function POST(req: Request) {
   if (!body.name || !body.raceId) {
     return NextResponse.json({ error: "Team name and race are required" }, { status: 400 });
   }
+  // Display-sized names only — mirrors the player-rename cap.
+  const teamName = typeof body.name === "string" ? body.name.trim() : "";
+  if (teamName.length === 0 || teamName.length > 50) {
+    return NextResponse.json(
+      { error: "Team name must be between 1 and 50 characters" },
+      { status: 400 },
+    );
+  }
 
   // Deep-validate the roster JSON before any league/rulebook math runs — a
   // direct POST must never persist arbitrary blobs under Team.roster.
@@ -162,7 +170,7 @@ export async function POST(req: Request) {
   const team = await prisma.team.create({
     data: {
       userId,
-      name: body.name,
+      name: teamName,
       raceId: body.raceId,
       leagueId,
       roster: roster as object,

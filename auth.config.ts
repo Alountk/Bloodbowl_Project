@@ -61,6 +61,11 @@ export const authConfig = {
         authEnabled: isAuthEnabled(),
       });
 
+      // Protected /api/*: answer JSON 401 so fetch clients (and forgotten
+      // route guards) never see a HTML login redirect.
+      if (action === "deny-api") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
       if (action === "redirect-login") {
         return NextResponse.redirect(new URL("/login", request.nextUrl));
       }

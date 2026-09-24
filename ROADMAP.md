@@ -89,6 +89,10 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Seed de playground (campo de pruebas dev) en `prisma/seed.mjs` | #158 |
 | Storybook como design system versionado: galería de tokens + componentes live-match (PR #177) y expansión de stories (MatchCard, StandingsTable, MatchTimelineBar, UserAvatar + glob `components/**`) | #177, #178 |
 | Skills de UI/UX versionados en `.opencode/skills` (frontend-design, accessibility, design-system) | #176 |
+| **Logging estructurado cero-dependencias** + captura de errores de servidor (eventos JSON, `server.boot`, 500s registrados) | #272 |
+| **Capa de email cero-dependencias** (Resend por `fetch`, fallback a consola) + notificación de **propuesta de fecha** al rival | #273 |
+| Env de logging y mail propagado por el compose de deploy | #274 |
+| Flakes restantes de la suite unit estabilizados (headroom de timeout + carreras de efectos) | #275 |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -114,6 +118,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | La propuesta de fecha no salía para el proponente hasta el OK del rival | El panel ya NO se cierra al proponer: el proponente ve su card con "⏳ Esperando confirmación" y luego "✓ Validado por {rival}"; el fixture del panel se deriva por id desde datos refrescados (#155) |
 | Keys duplicadas de React por víctimas de lesión repetidas en la resolución en vivo | Dedup de `casualtyVictimsFromEvents` por (equipo, jugador) con la banda más severa (#139) |
 | Flaky del locator de live-match (filter ambiguo → strict violation cuando el SSE era rápido) | Locator por víctima + línea del causante, resuelve a una sola card (#140) |
+| El logout no volvía a la landing y a veces **no deslogueaba** (dos causas: el Router Cache reproducía la página logueada, y una lectura de sesión en vuelo re-emitía la cookie ya borrada) | Navegación de documento completo + borrado server-side con drenaje y verificación (#276, #277; issue #269) |
 
 ## Pendiente / Roadmap futuro
 
@@ -122,7 +127,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 |---|---|
 | **Histórico completo con replay / taxonomía amplia** | El modo en vivo (SSE, turnos, relojes, timeline), kickoff (#100–#102), la resolución por lado (#133/#134) y el registro player-first (#161–#163) ya están en Completado; lo que queda es replay de partidos, taxonomía completa de eventos (intercepciones, skills, clima, resto de la tabla de kickoff), filtros y visualización pública. |
 | **Historial en My Profile** | El perfil muestra estadísticas de carrera (RAU-57); falta el historial de temporadas y equipos pasados. |
-| **Notificaciones** (al recibir propuesta de fecha, al iniciar liga, etc.) | Falta decidir canal (in-app, email). |
+| **Notificaciones** (al iniciar liga, al resolver resultado, etc.) | Canal decidido: **email** (capa cero-dependencias, #273). La **propuesta de fecha ya notifica** al rival; faltan el resto de eventos y decidir si además hace falta in-app. |
 | **Emblemas reales + dorsal/jersey reales** | El dorsal es hoy un pseudo-número por índice de roster; falta asignar números de jersey reales y emblemas de equipo/raza. |
 | **Jugadores prestados fuera de novatos** | Los Journeymen cubren el mínimo (RAU-13/14); falta el préstamo temporal de jugadores de otros equipos. |
 
@@ -130,9 +135,9 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Tema | Detalle |
 |---|---|
 | **Coverage tooling** | No hay `@vitest/coverage` instalado; añadir para gatear ramas. |
-| **CI hardening** | El e2e auth sufre cold-start race (primer run puede dar timeout; re-run verde). |
+| **CI hardening** | CI corre `pnpm test` + `lint` + `build`, pero **el e2e (Playwright) no está conectado** (#271): ninguna regresión de flujo la cubre CI. Además el e2e auth sufre cold-start race (primer run puede dar timeout; re-run verde), así que hay que estabilizarlo **antes** de conectarlo. |
 | **Dependabot / renovate** | No configurado aún. |
-| **Observabilidad** | No hay logging/errores centralizados (sentry opcional). |
+| **Observabilidad** | Ya hay logger estructurado + captura de 500s (#272) y envío de email (#273). Falta centralización externa (Sentry opcional) y alertas. |
 | **QA mobile manual** | La iteración mobile quedó con una tarea de QA manual (375px) pendiente de verificación en dispositivo real. |
 | **Refactor `enrichFixture`** | Deuda técnica de live-match (D7): la ruta GET de fixture importa `enrichFixture` desde `app/api/leagues/[id]/route.ts` (cast estructural porque `FixtureWithMatchday` no se exporta). Extraer a `lib/fixtures.ts` y exportar el tipo — refactor no bloqueante, verificado en verify-report. |
 

@@ -30,10 +30,19 @@ export function register(): void {
 
   // AUTH_MODE=auth without a secret boots fine and then fails every session
   // read at runtime; say so once, at boot, instead of leaving it to a 500.
+  // In production this is fatal: an unauthenticated-but-signed-looking session
+  // is worse than a failed deploy.
   if (process.env.AUTH_MODE === "auth" && !process.env.AUTH_SECRET) {
-    logger.warn("server.misconfigured", {
+    const misconfig = {
       reason: "AUTH_MODE=auth without AUTH_SECRET",
-    });
+    };
+    if (process.env.NODE_ENV === "production") {
+      logger.error("server.misconfigured", misconfig);
+      throw new Error(
+        "AUTH_MODE=auth requires AUTH_SECRET in production (refusing to boot)",
+      );
+    }
+    logger.warn("server.misconfigured", misconfig);
   }
 }
 

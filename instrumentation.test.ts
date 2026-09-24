@@ -59,13 +59,24 @@ describe("register", () => {
     expect(line.runtime).toBe("nodejs");
   });
 
-  it("warns once when AUTH_MODE=auth has no AUTH_SECRET", () => {
+  it("warns once when AUTH_MODE=auth has no AUTH_SECRET outside production", () => {
     vi.stubEnv("AUTH_MODE", "auth");
     vi.stubEnv("AUTH_SECRET", "");
+    vi.stubEnv("NODE_ENV", "development");
 
     register();
 
     expect(parse(streams.err)[0].event).toBe("server.misconfigured");
+  });
+
+  it("throws in production when AUTH_MODE=auth has no AUTH_SECRET", () => {
+    vi.stubEnv("AUTH_MODE", "auth");
+    vi.stubEnv("AUTH_SECRET", "");
+    vi.stubEnv("NODE_ENV", "production");
+
+    expect(() => register()).toThrow(/AUTH_SECRET/);
+    expect(parse(streams.err)[0].event).toBe("server.misconfigured");
+    expect(parse(streams.err)[0].level).toBe("error");
   });
 
   it("does not warn when the auth secret is present", () => {
