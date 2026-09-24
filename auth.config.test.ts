@@ -91,6 +91,43 @@ describe("auth config route gate", () => {
     expect(result).toBe(true);
     vi.unstubAllEnvs();
   });
+
+  it("answers 401 JSON for an unauthenticated protected API path", async () => {
+    const authorized = authConfig.callbacks?.authorized;
+    vi.stubEnv("AUTH_MODE", "auth");
+    const result = (await authorized?.({
+      auth: null,
+      request: makeRequest("/api/teams"),
+    })) as Response;
+    expect(result.status).toBe(401);
+    expect(result.headers.get("content-type")).toContain("application/json");
+    expect(await result.json()).toEqual({ error: "Unauthorized" });
+    vi.unstubAllEnvs();
+  });
+
+  it("allows an authenticated caller through a protected API path", async () => {
+    const authorized = authConfig.callbacks?.authorized;
+    vi.stubEnv("AUTH_MODE", "auth");
+    const result = await authorized?.({
+      auth: { user: { id: "u1" } } as never,
+      request: makeRequest("/api/teams"),
+    });
+    expect(result).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
+  it("allows the public Auth.js and watch API prefixes without a session", async () => {
+    const authorized = authConfig.callbacks?.authorized;
+    vi.stubEnv("AUTH_MODE", "auth");
+    for (const pathname of ["/api/auth/session", "/api/watch/tok", "/api/logout"]) {
+      const result = await authorized?.({
+        auth: null,
+        request: makeRequest(pathname),
+      });
+      expect(result).toBe(true);
+    }
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("auth config session user id propagation", () => {
