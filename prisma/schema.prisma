@@ -37,6 +37,10 @@ model User {
   /// RAU-52 billing tier — no payment logic yet, just the field + checks so
   /// feature flags can gate by plan later: "free" (default) · "club" · "premium".
   plan              String             @default("free")
+  /// Incremented on every password change. The JWT carries a snapshot from
+  /// sign-in; a mismatch on a later session read invalidates the cookie so a
+  /// stolen session dies when the password is rotated.
+  sessionVersion    Int                @default(0)
   teams             Team[]
   leagues           League[]
   scheduleProposals ScheduleProposal[]

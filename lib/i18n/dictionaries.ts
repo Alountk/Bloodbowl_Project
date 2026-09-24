@@ -314,11 +314,11 @@ const es: Dict = {
   "profile.password.new": "Nueva contraseña",
   "profile.password.confirm": "Confirmar nueva contraseña",
   "profile.password.submit": "Cambiar contraseña",
-  "profile.password.hint": "Mínimo {min} caracteres.",
+  "profile.password.hint": "Entre {min} y {max} caracteres.",
   "profile.password.success": "Contraseña actualizada.",
   "profile.password.mismatch": "Las contraseñas no coinciden.",
   "profile.password.wrongCurrent": "La contraseña actual no es correcta.",
-  "profile.password.weak": "La contraseña debe tener al menos {min} caracteres.",
+  "profile.password.weak": "La contraseña debe tener entre {min} y {max} caracteres.",
   "profile.password.error": "No se pudo cambiar la contraseña.",
 
   // Batch D — Leagues list / detail
@@ -1213,11 +1213,11 @@ const en: Dict = {
   "profile.password.new": "New password",
   "profile.password.confirm": "Confirm new password",
   "profile.password.submit": "Change password",
-  "profile.password.hint": "At least {min} characters.",
+  "profile.password.hint": "Between {min} and {max} characters.",
   "profile.password.success": "Password updated.",
   "profile.password.mismatch": "Passwords do not match.",
   "profile.password.wrongCurrent": "The current password is incorrect.",
-  "profile.password.weak": "The password must be at least {min} characters.",
+  "profile.password.weak": "The password must be between {min} and {max} characters.",
   "profile.password.error": "Could not change the password.",
 
   // Batch D — Leagues list / detail

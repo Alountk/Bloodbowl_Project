@@ -137,6 +137,27 @@ describe("POST /api/teams", () => {
     expect(prismaMock.team.create).not.toHaveBeenCalled();
   });
 
+  it("rejects a team name longer than 50 characters with 400", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1" } });
+    const res = await POST(
+      new Request("http://localhost:3000/api/teams", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "n".repeat(51),
+          raceId: "human",
+          roster: Array.from({ length: 11 }, (_, i) => ({
+            id: `p${i + 1}`,
+            name: `Player ${i + 1}`,
+            positionalKey: "lineman",
+          })),
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(prismaMock.team.create).not.toHaveBeenCalled();
+  });
+
   it("rejects a roster below the 11-player minimum with 400", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1" } });
     const res = await POST(

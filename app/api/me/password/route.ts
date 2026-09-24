@@ -3,7 +3,9 @@ import { compare, hash } from "bcryptjs";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import {
-  isPasswordLongEnough,
+  isPasswordAcceptable,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
   PASSWORD_SALT_ROUNDS,
   WRONG_CURRENT_PASSWORD_CODE,
   WEAK_NEW_PASSWORD_CODE,
@@ -14,14 +16,15 @@ import { AUTH_RATE_LIMITS, rateLimit, tooManyRequests } from "@/lib/rateLimit";
  * PATCH /api/me/password
  * Self-service password change. Body `{ currentPassword, newPassword }`:
  * verifies the CURRENT password with bcrypt, validates the NEW one against the
- * same rule signup uses (shared `lib/password`), then re-hashes and persists
- * it. The session stays valid (JWT) so the user keeps browsing; the NEW
- * password is what the next login accepts.
+ * same rule signup uses (shared `lib/password`, min AND max), re-hashes and
+ * persists it, and increments `sessionVersion` so every existing JWT for this
+ * account is invalidated on its next session read (a stolen cookie dies with
+ * the rotation). The caller is expected to sign in again on the next 401.
  *
  * Guards: 401 unauthenticated (or a user row that vanished); 400 invalid
- * body / wrong current password / new password too short. On success `{ ok:
- * true }`. The `code` field on the two 400s lets the client pick the right
- * copy without parsing English.
+ * body / wrong current password / new password out of bounds. On success
+ * `{ ok: true }`. The `code` field on the two 400s lets the client pick the
+ * right copy without parsing English.
  */
 export async function PATCH(req: Request) {
   const session = await auth();
@@ -67,14 +70,22 @@ export async function PATCH(req: Request) {
     );
   }
 
-  if (!isPasswordLongEnough(body.newPassword)) {
+  if (!isPasswordAcceptable(body.newPassword)) {
     return NextResponse.json(
-      { error: "New password must be at least 8 characters long", code: WEAK_NEW_PASSWORD_CODE },
+      {
+        error: `New password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters long`,
+        code: WEAK_NEW_PASSWORD_CODE,
+      },
       { status: 400 },
     );
   }
 
   const passwordHash = await hash(body.newPassword, PASSWORD_SALT_ROUNDS);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  await prisma.user.update({
+    where: { id: userId },
+    // sessionVersion bumps invalidate every previously issued JWT for this
+    // account (see the jwt callback in auth.ts).
+    data: { passwordHash, sessionVersion: { increment: 1 } },
+  });
   return NextResponse.json({ ok: true });
 }
