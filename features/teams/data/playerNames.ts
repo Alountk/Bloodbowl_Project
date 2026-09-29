@@ -1477,7 +1477,20 @@ export function randomPlayerName(
   }
 
   const surnameBank = getPlayerSurnameBank(raceId);
-  const availableFirsts = firstBank.filter((first) => !used.has(first));
+  // `used` normally holds COMPOSED names ("First Surname"), so filtering the
+  // bank with `used.has(first)` never matched anything — the first-name
+  // exclusion was dead code for every caller that passes a roster. That matters
+  // because a player is LABELLED by first name alone (the dock chip renders
+  // `#N {first}`, `shortName()`), so two players sharing one first name render
+  // indistinguishable chips and break the "one chip per player" invariant.
+  // Derive the first tokens instead; `used` itself is left untouched so callers
+  // that count it (fallback prefixes) keep their arithmetic.
+  const usedFirsts = new Set<string>();
+  for (const entry of used) {
+    const first = entry.trim().split(/\s+/)[0];
+    if (first) usedFirsts.add(first);
+  }
+  const availableFirsts = firstBank.filter((first) => !usedFirsts.has(first));
 
   if (surnameBank && surnameBank.length > 0) {
     // Every unused "First Surname" combination, so the same pair is never
@@ -1497,6 +1510,17 @@ export function randomPlayerName(
   // Surname bank absent or exhausted: fall back to a bare first name.
   if (availableFirsts.length > 0) {
     return availableFirsts[Math.floor(rng() * availableFirsts.length)];
+  }
+
+  // Every first name already carries a composed entry — the surname space AND
+  // the first-name space are both exhausted. A real roster cannot get here (30
+  // firsts × 12 surnames against at most 16 players), so keep the documented
+  // contract of returning a bare first name instead of a synthetic "Player N":
+  // here only an EXACT match against `used` disqualifies one, because at this
+  // point uniqueness of the visible label has already been given up.
+  const bareFirsts = firstBank.filter((first) => !used.has(first));
+  if (bareFirsts.length > 0) {
+    return bareFirsts[Math.floor(rng() * bareFirsts.length)];
   }
 
   return `${fallbackPrefix ?? "Player"} ${used.size + 1}`;
