@@ -93,6 +93,8 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Capa de email cero-dependencias** (Resend por `fetch`, fallback a consola) + notificación de **propuesta de fecha** al rival | #273 |
 | Env de logging y mail propagado por el compose de deploy | #274 |
 | Flakes restantes de la suite unit estabilizados (headroom de timeout + carreras de efectos) | #275 |
+| **Hardening de seguridad** (headers + CSP, rate-limit en signup/login/password, invalidación de JWT al cambiar contraseña, gate 401 de `/api` en el proxy, topes de payload + validación profunda de rosters, `AUTH_SECRET` fail-fast, compose endurecido) | #282, #283–#287 |
+| **README trilingüe** (EN/ES/CA con selector de idioma) | `2244b46` |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -140,6 +142,17 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Observabilidad** | Ya hay logger estructurado + captura de 500s (#272) y envío de email (#273). Falta centralización externa (Sentry opcional) y alertas. |
 | **QA mobile manual** | La iteración mobile quedó con una tarea de QA manual (375px) pendiente de verificación en dispositivo real. |
 | **Refactor `enrichFixture`** | Deuda técnica de live-match (D7): la ruta GET de fixture importa `enrichFixture` desde `app/api/leagues/[id]/route.ts` (cast estructural porque `FixtureWithMatchday` no se exporta). Extraer a `lib/fixtures.ts` y exportar el tipo — refactor no bloqueante, verificado en verify-report. |
+| **SSR del shell roto** | `SessionProvider` se monta sin la prop `session`, así que `SessionAppProvider` pinta `Loading…` en el SSR de todas las rutas no exentas (`/login`, `/teams`, `/matches`…): el primer contenido depende del JS + `/api/auth/session`. `app/layout.tsx` ya llama `auth()` — pasar `session` por props arregla el FCP de toda la app en un fichero. |
+| **Imagen Docker de runtime** | El runner copia el store completo de pnpm (`Dockerfile:46`), así que Storybook/Playwright/Vitest/ESLint viajan en la imagen de producción. Migrar a un stage `pnpm deploy --prod` o al trazado de `.next/standalone`. |
+| **Ticker de `liveHub` sin parar** | `stopTicking` no tiene ningún llamador en producción y `channels` nunca se borra: queda un `setInterval` de 1s por fixture que haya jugado, para la vida del proceso, emitiendo frames que el cliente descarta (el reloj se deriva en local). |
+| **Cierre de partido duplicado** | La lógica de cierre (FF, ganancias, MVP, PE, tesorería, bajas) está implementada dos veces — `result/route.ts` y `lib/liveStore.ts` (`resolveLiveMatch`/`runWizardClose`) — con helpers duplicados que se citan entre sí por comentario. Extraer `lib/matchClose.ts`. |
+| **Errores HTTP sin tipar** | `Object.assign(new Error, { status })` ~40 veces + casts estructurales de lectura + comparación por mensaje de texto. Introducir `HttpError { status, code }`, un `toErrorResponse` compartido y un `ApiError` tipado en el cliente. |
+| **Guards de acceso copy-paste** | El bloque 401 idéntico está repetido en 33 rutas, y el mismo actor recibe 404 en `result` pero 403 en `forfeit`. Generalizar `loadFixtureGate` a `loadFixtureContext` y unificar la política 404-no-leak. |
+| **Protocolo de control en vivo duplicado** | La unión de comandos y su guard runtime viven en `live/route.ts` y otra vez en `features/leagues/api.ts` sin tipo compartido; el drift sale como 400 en producción. Mover a `lib/liveProtocol.ts`. |
+| **DTO de liga sobrecargado** | `GET /api/leagues/[id]` trae el ruleset completo, los equipos sin `select` y el historial de `proposals`; `useUpcomingMatches` lo multiplica por liga en cada mount. |
+| **Bundle del cliente** | Cero `next/dynamic`, cero `Suspense`/`loading.tsx`; los dos diccionarios i18n y el catálogo completo de 31 razas viajan al navegador; las 5 fuentes van en TTF en vez de WOFF2. |
+| **Re-render del partido en vivo** | Cero `React.memo` en el repositorio: el reloj re-renderiza el subárbol cada 1s recalculando el feed, y `AppProvider` mezcla `searchQuery` con `teams`. |
+| **Accesibilidad pendiente** | El dock de acciones y el drawer móvil no son dialogs (sin `role`/`aria-modal`/focus trap/Escape), el feed no tiene `aria-live`, la nav no marca `aria-current`, y `text-slate-400` sobre panel queda en ~2.6:1. |
 
 ### Backlog de producto (ideas)
 
