@@ -129,9 +129,14 @@ test("change password: wrong/weak/mismatch errors → success → login with the
   await fillPasswordForm(page, "wrong-password", NEW_PASSWORD);
   await expect(page.getByText("La contraseña actual no es correcta.")).toBeVisible();
 
-  // New password too short → clear inline error (the signup rule).
+  // New password too short → the shared 8..128 rule, rejected client-side.
+  // `profile.password.weak`; the wording changed when #285 bounded the password
+  // at 128, and this spec kept asserting the pre-hardening copy because nothing
+  // runs the auth suite in CI (#271).
   await fillPasswordForm(page, PASSWORD, "short");
-  await expect(page.getByText("al menos 8 caracteres")).toBeVisible();
+  await expect(
+    page.getByText("La contraseña debe tener entre 8 y 128 caracteres."),
+  ).toBeVisible();
 
   // Confirmation mismatch → client-side error, no request.
   await fillPasswordForm(page, PASSWORD, "brand-new-pass-1", "different-confirm");
