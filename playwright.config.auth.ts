@@ -94,6 +94,18 @@ export default defineConfig({
       // Fast bcrypt for e2e only (default 10 in prod): the ~130 signups/login
       // would otherwise saturate the single dev server under parallel workers.
       PASSWORD_SALT_ROUNDS: "4",
+      // Same reason, and the same population: the suite signs up ~130 accounts
+      // from one machine, and with no proxy in front of `next dev` clientIp()
+      // resolves to the SAME key for every request — so the production cap of
+      // 5 signups/hour/IP rejects everything after the 5th account. Observed
+      // effect before this override: 11 of 71 specs passing.
+      //
+      // Production defaults are untouched (`lib/rateLimit.ts` falls back to
+      // 5/10/10 when these are unset) and the 429 path stays covered by
+      // `lib/rateLimit.test.ts` and the signup route test.
+      AUTH_RATE_LIMIT_SIGNUP: "1000",
+      AUTH_RATE_LIMIT_LOGIN: "1000",
+      AUTH_RATE_LIMIT_PASSWORD_CHANGE: "1000",
       // AUTH_SECRET falls back to .env when present; a dev default keeps CI green.
       AUTH_SECRET: process.env.AUTH_SECRET ?? "e2e-auth-secret-for-tests-only",
       AUTH_TRUST_HOST: "true",

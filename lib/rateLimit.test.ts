@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_RATE_LIMITS,
   clientIp,
@@ -9,6 +9,8 @@ import {
 
 afterEach(() => {
   resetRateLimits();
+  vi.unstubAllEnvs();
+  vi.resetModules();
 });
 
 describe("rateLimit (sliding window)", () => {
@@ -89,5 +91,37 @@ describe("AUTH_RATE_LIMITS", () => {
     expect(AUTH_RATE_LIMITS.login.limit).toBe(10);
     expect(AUTH_RATE_LIMITS.passwordChange.limit).toBe(10);
     expect(AUTH_RATE_LIMITS.login.windowMs).toBe(15 * 60 * 1000);
+  });
+});
+
+/**
+ * The limits are read at module load, so the override is exercised through a
+ * fresh import with a stubbed environment. The point of the second case is that
+ * a bad value must NOT widen the policy: a typo has to keep the default, never
+ * disable the protection.
+ */
+describe("AUTH_RATE_LIMITS env overrides (e2e)", () => {
+  async function limitsWith(env: Record<string, string>) {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    vi.resetModules();
+    return (await import("./rateLimit")).AUTH_RATE_LIMITS;
+  }
+
+  it("applies a positive integer override and leaves the other limits alone", async () => {
+    const limits = await limitsWith({ AUTH_RATE_LIMIT_SIGNUP: "42" });
+    expect(limits.signup.limit).toBe(42);
+    expect(limits.login.limit).toBe(10);
+    expect(limits.passwordChange.limit).toBe(10);
+    // Windows are not overridable: only the count is a test concern.
+    expect(limits.signup.windowMs).toBe(60 * 60 * 1000);
+  });
+
+  it("keeps the default for a malformed or non-positive override", async () => {
+    for (const bad of ["", "abc", "0", "-5", "3.7"]) {
+      const limits = await limitsWith({ AUTH_RATE_LIMIT_SIGNUP: bad });
+      expect(limits.signup.limit).toBe(5);
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
   });
 });
