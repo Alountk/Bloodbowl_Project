@@ -20,7 +20,7 @@ Stack: Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind 
 ## Workflow
 
 - Branch: `type/description` from `main`. One PR per feature/fix with the PR template.
-- Once the PR is merged into `main`, delete the local branch: `git pull --ff-only`, check `git branch --merged main`, then `git branch -d <branch>`. Plain `-d` (never `-D`) is the guard — it fails unless the work is really merged, so the convention cannot discard unpushed work. Stale merged branches have sent an agent into a loop before, so this is part of closing the task, not optional cleanup.
+- Once the PR is merged into `main`, delete **both** the local and the remote branch: `git pull --ff-only`, check `git branch --merged main`, then `git branch -d <branch>` and `git push origin --delete <branch>` (batches of ~8 — GitHub rejects one push carrying dozens of ref deletions). Plain `-d` (never `-D`) is the guard — it fails unless the work is really merged, so the convention cannot discard unpushed work. Delete **only** what is actually merged; branches holding unmerged work stay. `git fetch --prune` does not do this: it only drops refs whose remote branch is already gone, so a merged-but-still-published branch survives it. Stale merged branches have sent an agent into a loop before, so this is part of closing the task, not optional cleanup.
 - Before assuming a bug persists, check if it's a stale deploy: in production (Arcane) many "fixed" bugs are old images — verify `docker compose pull web && docker compose up -d --force-recreate web` and that CI published the image.
 - Read `README.md`, `ROADMAP.md`, `docs/auth.md` for context. `ROADMAP.md` lists planned features (live match, standings, avatars/profile, notifications).
 
