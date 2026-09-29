@@ -4,6 +4,10 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // A run that goes green on a retry is NOT a clean green — check the
+  // first-attempt result in the HTML report (trace: on-first-retry keeps the
+  // evidence). Retries only absorb dev-server contention; a genuinely broken
+  // flow fails every attempt.
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [["html", { outputFolder: "playwright-report" }]],
@@ -54,6 +58,18 @@ export default defineConfig({
     command: "pnpm dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    // Cold Turbopack boot on a CI runner regularly eats the default 30s
+    // budget; the auth config allows 60s for the same reason.
+    timeout: 60_000,
+    // This file IS the AUTH_MODE=local suite, so pin the mode rather than
+    // inherit whatever the shell has. AUTH_SECRET is required for Auth.js to
+    // answer `/api/auth/session`: with it missing that endpoint 500s and every
+    // spec asserting a clean console fails. CI checks out no `.env`, so the
+    // test-only fallback below is what keeps the gate green there.
+    env: {
+      AUTH_MODE: "local",
+      AUTH_SECRET: process.env.AUTH_SECRET ?? "local-e2e-secret-for-tests-only",
+      AUTH_TRUST_HOST: "true",
+    },
   },
 });

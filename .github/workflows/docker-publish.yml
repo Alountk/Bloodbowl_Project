@@ -34,9 +34,40 @@ jobs:
       # broken build can merge behind a green Test check (it happened once).
       - run: pnpm build
 
+  # Local e2e gate (AUTH_MODE=local): no Postgres and no secrets required.
+  # Runs in parallel with `test` so the wall-clock cost is only the slower of
+  # the two. Without this job CI never executes Playwright, so a broken flow
+  # surfaces at the next manual QA instead of on the PR (#271).
+  e2e:
+    name: E2E (local)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.6.6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # `next dev` imports the generated Prisma client even in local mode.
+      - run: pnpm db:generate
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:e2e
+      # A red run without evidence is undiagnosable; keep the HTML report
+      # (traces included) only when something failed.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
   docker:
     name: Docker Image
-    needs: test
+    needs: [test, e2e]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
