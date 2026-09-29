@@ -6,7 +6,7 @@
 
 Team, league and championship manager for **Blood Bowl 2025** — with a design inspired by the official rulebook ("book" theme: light panels, navy/red headers, rulebook-style tables).
 
-Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailwind v4 · **Prisma + PostgreSQL** · **Auth.js v5** (email + password) · Vitest + Playwright · Docker/GHCR.
+Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailwind v4 · **Prisma + PostgreSQL** · **Auth.js v5** (email + password) · Vitest + Playwright · Docker/GHCR · structured logging (zero-dep) · email layer (Resend, zero-dep).
 
 ---
 
@@ -20,6 +20,7 @@ Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailw
 - **Journeymen**: if fewer than 11 are available, the roster is filled with journeymen from the race's name bank (deterministic names); they earn PE, are MVP-eligible and after the match can be **signed (one-time fee) or released**.
 - **Team detail** book-style view: roster, coaching staff, treasury; **archive (soft delete)** with confirmation modal; a team in a league **cannot be archived** (409 guard, kick out first).
 - **`/teams` page**: your teams split into "No league" / "In league", cards with TV, treasury and a "ready to improve" hint.
+- **Custom team crest**: the owner uploads a shield from the team detail page (server-side WebP 512×512, ≤2MB, type-checked by magic bytes) that replaces the deterministic emblem on cards, the detail view and the match card (placeholder fallback).
 
 ### Authentication & account
 - **Auth.js v5** (Credentials + JWT, bcryptjs): open registration, login, logout, protected routes (`AUTH_MODE=auth`); **modal auth** (top-sheet on mobile).
@@ -28,6 +29,9 @@ Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailw
 - **My Profile**: avatar (256×256 WebP), password change, **career stats** (championships, wins/draws/losses) and **per-account language** (ES/EN, cookie + selector).
 - **PostgreSQL + Prisma**: teams and leagues per user; automatic migrations on deploy.
 - **Storage**: local mode (no login) uses an **in-memory store** (localStorage deprecated); the **legacy localStorage → account migration** is kept (idempotent, source never deleted).
+- **RBAC + plans**: additive `User.plan` (`free`/`club`/`premium`), a typed permission layer (`lib/permissions`) and a generalized `requirePermission` guard; a developer-only `/dev/users` section manages roles and plans (server-side 403, self-role lockout).
+- **Account theme**: `vintage` (default) or `scoreboard`, resolved server-side on `<html data-theme>` (account → cookie → default) with a toggle in the nav and a selector in My Profile (anti-FOUC).
+- **Security hardening**: rate limiting on signup/login/password change, security headers + CSP, JWT invalidation on password change, a 401 JSON gate for unmatched `/api` paths in the proxy, payload caps and deep roster validation, and fail-fast when `AUTH_SECRET` is missing.
 
 ### Leagues & championships
 - **Rulesets**: define allowed races, starting treasury, TV cap, roster min/max and hiring policy; leagues pick one at creation (seed "Estándar BB2025"). Dev-only section with card/tab wizard.
@@ -36,13 +40,20 @@ Stack: **Next.js 16** (App Router, Turbopack) · React 19 · TypeScript · Tailw
 - **League closure & champion**: when the last matchday completes the league closes automatically; **3/1/0 standings** with tiebreakers (points → TD difference → TDs scored → head-to-head) decide the **champion** ("Finished" badge + champion panel).
 - **Matchday**: date negotiation (give-and-take), admin forfeit (walkover), rival scouting, matchday completeness, **re-schedule** (renegotiate before playing) and result correction by both captains.
 - **Match resolution** (wizard per side, resumable): **winnings** → **fan factor roll** (↑/=/↓) → **MVP** (checkboxes, max. 6 per side) → **casualties** → **journeymen**; when both sides finish, the match closes itself.
-- **Live match**: correct turns (home T1 → away T1 → home T2), ★2 only on the causer, **concession**, result correction and kickoff events (Costly error + Fan factor) with 100% server-side dice.
+- **Live match (real-time)**: SSE-driven two-coach mode with server-derived clocks, turn synchronization, consent/ready phase, an event feed persisted from day one, recovery on a new device, and a lazy auto-close after 8h that freezes the score.
+- **Match rules enforced server-side**: correct turn order (home T1 → away T1 → home T2), ★2 only on the causer, **concession**, kickoff events (Costly error + Fan factor) and 100% server-side dice.
+- **Action entry**: a contextual dock registers TD/pass/casualty/foul from the active coach's side (with guided 1D16/1D6 steppers and "both down" symmetry); every card is acknowledged by the rival with ✓/✗, auto-verifying after 60s.
+- **Pre-match incentives**: the lower-TV coach buys from a 16-card BB2025 catalogue during the `ready` phase against a ΔTV budget; the finished feed shows them as per-team chips.
+- **Public share link**: a fixed 192-bit token lets a guest open `/watch/[token]` and follow the match read-only (score, clock, timeline) with no account; it expires once the result is in.
 - **`/matches` page**: upcoming matches grouped by date, with **LIVE** badge while running.
 
 ### UI / UX
 - Coherent **rulebook light** design (shell, sidebar, cards, tables, modals).
 - **i18n ES/EN**: own dictionaries with no dependencies; per-account language (selector in My Profile) and per-browser (cookie `bb-locale`).
 - **Responsive / mobile**: hamburger drawer, stacked tables on mobile, native 16px combos, no horizontal scroll.
+- **Two visual themes**: the default "reglamento vintage" direction (cream paper + editorial ink, self-hosted Fraunces + Space Grotesk) and an opt-in "scoreboard" theme (`[data-theme=scoreboard]`).
+- **Storybook design system**: versioned token gallery plus component stories, with UI/UX skills versioned in `.opencode/skills`.
+- **Accessibility**: landmarks and labelled regions throughout, an APG menu-button pattern on match cards, and a dedicated 375px mobile e2e suite asserting no horizontal scroll.
 
 ---
 
@@ -76,6 +87,7 @@ pnpm build-storybook     # Static Storybook build → storybook-static/
 pnpm db:generate         # Prisma client
 pnpm db:migrate          # Apply migrations
 pnpm docker:build        # Build local image
+pnpm playground          # migrate + seed + dev (playground)
 ```
 
 ### 3. Deploy (Docker / Arcane)
@@ -98,19 +110,22 @@ docker compose up -d --force-recreate web
 
 ```
 app/                  # Routes (App Router): teams, leagues, matches, profile, dev, API routes
-components/           # Shell (Sidebar/Topbar), AuthCard
+components/           # Shell (AppShell/AppNav), SessionProvider, MatchCard, UserAvatar
 features/
   teams/              # Catalog (data/: JSON + validator, skills, names), rulebook roster, wizard
   leagues/            # Leagues, championships, matchday, live match, resolution, matchdays
   matches/            # /matches page (upcoming grouped by date)
+  dashboard/          # Logged-in home
   rulesets/           # Rulesets (dev-only section)
-  profile/            # My Profile (avatar, password, stats, language)
-  migration/          # localStorage → account migration
-lib/                  # Prisma client, roundRobin, standings, liveStore, i18n
+  profile/            # My Profile (avatar, password, stats, language, theme)
+  auth/ landing/ users/ migration/  # Auth modal, public landing, /dev/users, localStorage migration
+lib/                  # Prisma client, pure domain (liveMatch/standings/rules), SSE hub, i18n, logger, mail, storage
 prisma/               # Schema + migrations
-e2e/                  # Playwright: desktop, mobile, auth, leagues, matchday, live match
+e2e/                  # Playwright (playwright.config.ts local, playwright.config.auth.ts real-DB)
+stories/              # Storybook design system
 openspec/             # SDD: specs, archived changes
 docs/                 # auth.md (ops/deploy)
+.opencode/skills/     # Workflow skills versioned with the repo
 ```
 
 ---
@@ -158,6 +173,14 @@ pnpm dev:docker:down          # keeps the Postgres volume
 ```
 
 ---
+
+## Quality
+
+- **Unit + integration**: `pnpm test` (Vitest) — 200 files / ~2900 tests.
+- **E2E**: `pnpm run test:e2e` (local, `AUTH_MODE=local`, no database needed) and `pnpm run test:e2e:auth` (real PostgreSQL; requires Docker).
+- **Static gates**: `pnpm lint` and `npx tsc --noEmit`; `pnpm build` is the only gate that runs the production type-check.
+- **CI** (`.github/workflows/docker-publish.yml`): `pnpm test` → `pnpm lint` → `pnpm build`, then publishes the image to GHCR on `main`.
+- **Known gap**: the Playwright suites are not wired into CI yet ([issue #271](https://github.com/Alountk/bloodbowl_project/issues/271)).
 
 ## Documentation
 
