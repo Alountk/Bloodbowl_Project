@@ -1299,6 +1299,81 @@ describe("MatchView — ready-phase inducement purchase step (IND-2/3, LM-30/S2)
       expect(within(panel).getByRole("alert").textContent).toMatch(/purchase only when ready/),
     );
   });
+
+  /**
+   * Issue #270. The real flow is NOT "open the page on a ready match": the coach
+   * lands on the SCHEDULED fixture, so the first fixture GET has `live: null` —
+   * the LiveMatch row only exists after the FIRST consent (lib/liveStore.ts,
+   * create-on-first-consent). The budget is fixture-GET data and the SSE frames
+   * carry status but never `inducementBudget`, so without a refetch the ready
+   * transition can never surface the purchase step.
+   */
+  it("refetches the detail when the match reaches ready, so a page opened before the live row gets the budget", async () => {
+    stubLiveEventSource();
+
+    const withBudget = readyWithBudget();
+    const beforeRow: MatchDetail = { ...withBudget, live: null };
+
+    // The budget may only become available ONCE the page learns the match is
+    // ready: every fixture GET before that instant returns `live: null`, exactly
+    // like the real API (no LiveMatch row yet). Keying this off the call COUNT
+    // would let an incidental second fetch at mount satisfy the test for free.
+    let readySeen = false;
+    let fixtureGets = 0;
+    const fetchMock = vi.fn((input: unknown) => {
+      if (/\/api\/leagues\/l1\/fixtures\/f1(\?|$)/.test(String(input))) fixtureGets += 1;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(readySeen ? withBudget : beforeRow),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPlayed();
+    expect(await screen.findByText(/Partido programado/)).toBeTruthy();
+    // No live row → no budget → no purchase step, whatever fetches ran at mount.
+    expect(screen.queryByTestId("inducement-purchase")).toBeNull();
+    const getsBeforeReady = fixtureGets;
+
+    // Both coaches consented → the hub frame flips the page to ready. It carries
+    // status only; `inducementBudget` is not part of it.
+    readySeen = true;
+    await dispatchState(
+      JSON.stringify({
+        seq: 2,
+        status: "ready",
+        half: 1,
+        turnNumber: 1,
+        activeSide: "home",
+        homeConsented: true,
+        awayConsented: true,
+        viewerSide: null,
+        startedAt: null,
+        elapsed: 0,
+        homeTurnMs: 0,
+        awayTurnMs: 0,
+        paused: false,
+        homeScore: 0,
+        awayScore: 0,
+        finishedAt: null,
+        concedeProposedBy: null,
+        mvpNominations: { home: null, away: null },
+        resolutionState: {
+          home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+          away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+        },
+        inducements: { home: [], away: [] },
+        events: [],
+      }),
+    );
+
+    expect(await screen.findByText(/Listo para empezar/)).toBeTruthy();
+    // The detail must be requested AGAIN after ready — the budget lives only there.
+    await waitFor(() => expect(fixtureGets).toBeGreaterThan(getsBeforeReady));
+    expect(await screen.findByTestId("inducement-purchase")).toBeTruthy();
+    expect(screen.getByText(/Presupuesto disponible: 300\.000/)).toBeTruthy();
+  });
 });
 
 describe("MatchView — D19: viewerSide survives hub state frames (no viewerSide)", () => {

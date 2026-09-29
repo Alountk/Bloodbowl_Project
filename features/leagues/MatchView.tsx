@@ -1045,6 +1045,7 @@ function LiveActiveMatch({
   homeTeam,
   awayTeam,
   onFinished,
+  onReady,
 }: {
   live: LiveMatchView | null;
   leagueId: string;
@@ -1059,6 +1060,10 @@ function LiveActiveMatch({
    * refetches the match detail (fixture GET) and shows the persisted finish-time
    * winnings WITHOUT a manual refresh. */
   onFinished?: () => void;
+  /** LM-30/S2 (#270): fired ONCE when the match reaches "ready" without the
+   * budget already in hand, so the page refetches the detail and the
+   * ready-phase inducement purchase step can render. */
+  onReady?: () => void;
 }) {
   const { live: hookLive, sendCommand } = useLiveMatch({ leagueId, fixtureId });
   // Start from the persisted snapshot (or an empty pending shell when no row
@@ -1091,6 +1096,21 @@ function LiveActiveMatch({
       onFinished?.();
     }
   }, [state.status, onFinished]);
+
+  // LM-30/S2 (#270): one-shot refetch when the match reaches `ready`. The
+  // budget is FIXTURE-GET data and the LiveMatch row is created on FIRST
+  // consent, so a coach who opened the scheduled fixture (the normal flow) has
+  // `live: null` and no budget — while the hub frame that flips the page to
+  // ready carries status only, never `inducementBudget`. Without this second
+  // GET the purchase step can never render. Skipped when the mount already
+  // returned the budget, so a plain page load still costs one request.
+  const readyNotified = useRef(false);
+  useEffect(() => {
+    if (state.status !== "ready" || readyNotified.current) return;
+    readyNotified.current = true;
+    if (live?.inducementBudget != null) return;
+    onReady?.();
+  }, [state.status, live, onReady]);
 
   // Synchronous in-flight lock: a second invocation while a command is pending
   // (e.g. the second click of a double-click) is dropped — the `submitting`
@@ -1804,6 +1824,7 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
           homeTeam={detail.homeTeam}
           awayTeam={detail.awayTeam}
           onFinished={refresh}
+          onReady={refresh}
         />
       );
     }
@@ -1832,6 +1853,12 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         leagueLabel={leagueLabel}
         homeTeam={detail.homeTeam}
         awayTeam={detail.awayTeam}
+        // No LiveMatch row yet, so this branch used to drop BOTH refetch
+        // triggers: `onReady` (the budget only exists once the row does, #270)
+        // and `onFinished` (RAU-44). The coach who opens the scheduled fixture
+        // — the normal flow — would never learn the match had moved on.
+        onReady={refresh}
+        onFinished={refresh}
       />
     );
   } else if (detail.fixture.status === "pending") {
@@ -1849,6 +1876,10 @@ export function MatchView({ leagueId, fixtureId }: { leagueId: string; fixtureId
         leagueLabel={leagueLabel}
         homeTeam={detail.homeTeam}
         awayTeam={detail.awayTeam}
+        // Same as the scheduled branch above: the row does not exist yet, so
+        // the ready/finished refetches have to be wired here too.
+        onReady={refresh}
+        onFinished={refresh}
       />
     );
   } else {
