@@ -93,6 +93,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm exec playwright install --with-deps chromium
+      # `e2e/auth.spec.ts` "Auth flow regression (LAN host)" deliberately runs
+      # the journey against a LAN IP — the cookie/redirect path differs from
+      # localhost, which is exactly the production shape it pins (and why
+      # `next.config.ts` allows that origin). A runner has no such address, so
+      # give the loopback device the one the app already expects instead of
+      # skipping the regression test.
+      - name: Add the LAN origin to loopback
+        run: sudo ip addr add 111.111.111.100/32 dev lo
       # Starts compose Postgres on 127.0.0.1:5433, waits for `pg_isready`,
       # applies the schema, then boots `next dev` in AUTH_MODE=auth.
       - run: pnpm run test:e2e:auth
