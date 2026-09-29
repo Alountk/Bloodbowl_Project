@@ -79,15 +79,47 @@ export function clientIp(req: Request): string {
   return req.headers.get("x-real-ip") ?? "local";
 }
 
-/** Shared policy for the three auth-sensitive endpoints. */
+/**
+ * Read a positive integer override for a limit from the environment.
+ *
+ * The defaults below are the production policy and must not change by accident:
+ * an absent, empty, non-numeric or non-positive value keeps the fallback, so a
+ * typo cannot silently disable the protection.
+ *
+ * The override exists for the real-DB Playwright suite, which signs up ~130
+ * accounts from a single machine. Without a proxy in front of it `clientIp()`
+ * resolves to the same key for every request, so the 5/hour signup cap blocks
+ * the run after the 5th account. See `playwright.config.auth.ts`.
+ */
+function envLimit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  // `Number` (not `parseInt`) so "3.7" is malformed rather than silently
+  // truncated to 3 — an unexpected value must fall back to the policy, not
+  // reinterpret it.
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * Shared policy for the three auth-sensitive endpoints.
+ *
+ * Limits are env-overridable (`AUTH_RATE_LIMIT_SIGNUP`,
+ * `AUTH_RATE_LIMIT_LOGIN`, `AUTH_RATE_LIMIT_PASSWORD_CHANGE`) for the e2e
+ * suite only; windows are fixed. When unset — production, and every unit test —
+ * the values below apply verbatim.
+ */
 export const AUTH_RATE_LIMITS = {
   /** Signup: 5 accounts / hour / IP. */
-  signup: { limit: 5, windowMs: 60 * 60 * 1000 },
+  signup: { limit: envLimit("AUTH_RATE_LIMIT_SIGNUP", 5), windowMs: 60 * 60 * 1000 },
   /** Credentials login: 10 attempts / 15 min / email (checked before bcrypt). */
-  login: { limit: 10, windowMs: 15 * 60 * 1000 },
+  login: { limit: envLimit("AUTH_RATE_LIMIT_LOGIN", 10), windowMs: 15 * 60 * 1000 },
   /** Password change: 10 attempts / hour / user. */
-  passwordChange: { limit: 10, windowMs: 60 * 60 * 1000 },
-} as const;
+  passwordChange: {
+    limit: envLimit("AUTH_RATE_LIMIT_PASSWORD_CHANGE", 10),
+    windowMs: 60 * 60 * 1000,
+  },
+};
 
 /** 429 JSON with `Retry-After` in seconds (rounded up, min 1). */
 export function tooManyRequests(retryAfterMs: number): Response {
