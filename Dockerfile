@@ -1,5 +1,8 @@
-# ---- Dependencies ----
+# ---- Dependencies (build only) ----
 # Install production+dev deps and generate the Prisma client from the schema.
+# Everything from this stage except the traced standalone output is build-time:
+# Storybook, Playwright, Vitest, ESLint, Vite and TypeScript are never imported
+# by the running server.
 FROM node:22-alpine AS deps
 RUN corepack enable
 WORKDIR /app
@@ -8,6 +11,23 @@ COPY prisma ./prisma
 RUN pnpm install --frozen-lockfile
 # Generate the Prisma client (binaryTargets include linux-musl for Alpine).
 RUN pnpm prisma generate
+
+# ---- Production dependencies (runtime) ----
+# Derived from `deps` so every lifecycle script has already run there (the
+# Prisma engine download and the client generate), then pruned to what the
+# server actually imports — Storybook, Playwright, Vitest, ESLint, Vite and
+# TypeScript are build/test-only and used to ship inside the runtime image.
+#
+# A plain `pnpm install --frozen-lockfile --prod` cannot be used instead:
+# `prepare` wires the git hooks, husky is a devDependency, so in a prod-only
+# install it dies with `sh: husky: not found`. Deleting `prepare` for this stage
+# is safe — it is dev ergonomics, not part of the app.
+FROM deps AS deps-prod
+RUN pnpm pkg delete scripts.prepare && pnpm prune --prod
+# The entrypoint runs `./node_modules/.bin/prisma migrate deploy` on every
+# start; fail the build now rather than at container boot if the prune dropped
+# the CLI. (`prisma` is a production dependency for exactly this reason.)
+RUN test -x node_modules/.bin/prisma
 
 # ---- Build ----
 # Build the Next.js standalone output.
@@ -39,14 +59,16 @@ COPY --from=build /app/public ./public
 RUN mkdir -p /app/public/uploads && chown -R node:node /app/public/uploads
 # Prisma schema + migrations so `prisma migrate deploy` works at startup.
 COPY --from=build /app/prisma ./prisma
-# Prisma client runtime + CLI that the standalone trace does NOT bundle,
-# because no app code imports Prisma yet (PR2 wires it). Kept explicit here so
-# `prisma migrate deploy` and future PrismaClient both resolve. The generated
-# client lives at `.pnpm/@prisma+client@*/node_modules/.prisma/client`.
-COPY --from=build /app/node_modules/.pnpm ./node_modules/.pnpm
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=build /app/node_modules/prisma ./node_modules/prisma
-COPY --from=build /app/node_modules/.bin ./node_modules/.bin
+# Production node_modules. The standalone trace covers the server's own
+# imports, but it does not include the Prisma CLI the entrypoint needs for
+# `prisma migrate deploy`, and `pnpm`'s layout keeps the real packages inside
+# `.pnpm` behind symlinks — so copy that store (plus the Prisma entry points
+# and `.bin`) from the PRODUCTION install. Copying it from `deps` instead is
+# what used to ship Storybook/Playwright/Vitest/ESLint in the runtime image.
+COPY --from=deps-prod /app/node_modules/.pnpm ./node_modules/.pnpm
+COPY --from=deps-prod /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=deps-prod /app/node_modules/prisma ./node_modules/prisma
+COPY --from=deps-prod /app/node_modules/.bin ./node_modules/.bin
 USER node
 COPY --chown=node:node --from=build /app/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
