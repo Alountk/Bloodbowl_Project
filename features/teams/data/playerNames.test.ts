@@ -134,6 +134,20 @@ describe("randomPlayerName", () => {
     expect(name.startsWith(`${firsts[0]} `)).toBe(false);
   });
 
+  it("avoids a first name already taken by a COMPOSED entry in usedNames", () => {
+    const firsts = PLAYER_NAME_BANKS.orc;
+    const surnames = PLAYER_SURNAME_BANKS.orc;
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    // Callers pass whole rosters ("First Surname"), and the dock chip labels a
+    // player by first name alone (`#N {first}`) — so a roster player called
+    // "Grumok Ironhide" has to block a later "Grumok …" too. The composed full
+    // name in `used` is NOT the one about to be picked (different surname), so
+    // only the derived first-name check can reject it.
+    const name = randomPlayerName("orc", new Set([`${firsts[0]} ${surnames[1]}`]));
+    expect(name.startsWith(`${firsts[0]} `)).toBe(false);
+    expect(name).not.toBe(firsts[0]);
+  });
+
   it("falls back to a bare first name when every surname combination is used", () => {
     const firsts = PLAYER_NAME_BANKS.orc;
     const surnames = PLAYER_SURNAME_BANKS.orc;
