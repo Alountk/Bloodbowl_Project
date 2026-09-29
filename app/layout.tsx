@@ -83,7 +83,11 @@ export default async function RootLayout({
   return (
     <html lang={initialLocale} data-theme={initialTheme}>
       <body className="min-h-screen bg-background text-ink antialiased">
-        <SessionProvider>
+        {/* The session resolved above is handed to the client provider so the
+            shell SSRs as real markup: without it `useSession()` starts at
+            `loading` and every non-exempt route paints only "Loading…" until
+            hydration plus a /api/auth/session round-trip. */}
+        <SessionProvider session={session}>
           <I18nProvider initialLocale={initialLocale}>
             <ThemeProvider initialTheme={initialTheme}>
               <SessionAppProvider>{children}</SessionAppProvider>

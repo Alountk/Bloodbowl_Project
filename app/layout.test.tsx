@@ -22,6 +22,11 @@ const state = vi.hoisted(() => ({
   sessionUserId: null as string | null,
   dbTheme: null as string | null,
   dbLocale: null as string | null,
+  // Whatever the layout handed to the client session provider, captured at the
+  // `next-auth/react` seam (the real `@/components/SessionProvider` wrapper runs
+  // and forwards straight into this mock).
+  providerSession: undefined as unknown,
+  providerSessionSet: false,
 }));
 
 vi.mock("next/headers", () => ({
@@ -56,7 +61,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next-auth/react", () => ({
-  SessionProvider: ({ children }: { children: unknown }) => children,
+  SessionProvider: ({
+    children,
+    session,
+  }: {
+    children: unknown;
+    session?: unknown;
+  }) => {
+    state.providerSession = session;
+    state.providerSessionSet = true;
+    return children;
+  },
   useSession: () => ({ status: "unauthenticated" }),
   signOut: async () => {},
 }));
@@ -75,6 +90,8 @@ describe("RootLayout SSR theme painting (TS-4)", () => {
     state.sessionUserId = null;
     state.dbTheme = null;
     state.dbLocale = null;
+    state.providerSession = undefined;
+    state.providerSessionSet = false;
   });
 
   it("paints data-theme=vintage when nothing is set (product default)", async () => {
@@ -108,5 +125,46 @@ describe("RootLayout SSR theme painting (TS-4)", () => {
     state.cookieTheme = "scoreboard";
     const html = await renderLayoutHtml();
     expect(html).toContain('data-theme="scoreboard"');
+  });
+});
+
+/**
+ * SSR shell (P0): `SessionAppProvider` renders its "Loading…" placeholder while
+ * `useSession()` reports `loading`, and Auth.js only starts at `loading` when
+ * the provider is given NO session. So the whole fix lives in one hand-off —
+ * the layout must pass `auth()`'s result through, and it must be an explicit
+ * `null` for anonymous visitors, never `undefined`.
+ *
+ * The two assertions below pin exactly that: an anonymous request that
+ * accidentally forwards `undefined` silently reintroduces a "Loading…"
+ * first paint for every non-exempt route.
+ */
+describe("RootLayout session hand-off to the client provider (SSR shell)", () => {
+  beforeEach(() => {
+    state.cookieTheme = null;
+    state.cookieLocale = null;
+    state.dbTheme = null;
+    state.dbLocale = null;
+    state.providerSession = undefined;
+    state.providerSessionSet = false;
+  });
+
+  it("forwards the server-resolved session so the shell renders on first paint", async () => {
+    state.sessionUserId = "user-42";
+
+    await renderLayoutHtml();
+
+    expect(state.providerSessionSet).toBe(true);
+    expect(state.providerSession).toEqual({ user: { id: "user-42" } });
+  });
+
+  it("forwards an explicit null (not undefined) when there is no session", async () => {
+    state.sessionUserId = null;
+
+    await renderLayoutHtml();
+
+    // `undefined` would leave Auth.js at `loading` → "Loading…" SSR.
+    expect(state.providerSessionSet).toBe(true);
+    expect(state.providerSession).toBeNull();
   });
 });
