@@ -65,9 +65,48 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Real-DB auth suite (71 specs) against Postgres. Same shape as the job above,
+  # but this is the one that covers the journeys users actually run — signup,
+  # league lifecycle, live match, resolution. It only became gateable once the
+  # suite went green (#297 rate-limit, #270, #300, #301), which is precisely the
+  # gap #271 opened: a broken flow used to surface at the next manual QA.
+  e2e-auth:
+    name: E2E (auth)
+    runs-on: ubuntu-latest
+    env:
+      # `docker compose up -d postgres` (inside `pnpm run test:e2e:auth`)
+      # interpolates the WHOLE compose file, and the `web` service declares
+      # `AUTH_SECRET: ${AUTH_SECRET:?...}` — without a value compose refuses to
+      # load the file at all, so even starting only `postgres` needs it. The
+      # app never reads this: playwright.config.auth.ts supplies its own test
+      # secret to the dev server.
+      AUTH_SECRET: ci-e2e-auth-secret-for-tests-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.6.6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm exec playwright install --with-deps chromium
+      # Starts compose Postgres on 127.0.0.1:5433, waits for `pg_isready`,
+      # applies the schema, then boots `next dev` in AUTH_MODE=auth.
+      - run: pnpm run test:e2e:auth
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-auth
+          path: playwright-report-auth/
+          if-no-files-found: ignore
+          retention-days: 7
+
   docker:
     name: Docker Image
-    needs: [test, e2e]
+    needs: [test, e2e, e2e-auth]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
