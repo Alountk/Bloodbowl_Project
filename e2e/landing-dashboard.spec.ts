@@ -113,7 +113,16 @@ test.describe("Dashboard for logged-in users (auth mode)", () => {
     await createLeague(page, leagueName);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "My Leagues" })).toBeVisible();
-    await expect(page.getByText(leagueName)).toBeVisible();
+    // The league name now ALSO heads a row in "Needs your attention" (an OPEN
+    // league awaits start — issue #268), so a bare getByText() would hit two
+    // elements and fail Playwright's strict mode. Assert the card's heading.
+    await expect(page.getByRole("heading", { name: leagueName })).toBeVisible();
+    // …and the same league is offered as an actionable row up top.
+    await expect(
+      page
+        .getByRole("region", { name: "Needs your attention" })
+        .getByRole("link", { name: /awaiting start/ }),
+    ).toBeVisible();
 
     // Logout → the public landing, no dashboard/team data visible.
     await logout(page);
