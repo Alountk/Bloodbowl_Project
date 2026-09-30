@@ -9,6 +9,8 @@ import { isOwnerEquivalent } from "@/features/leagues/access";
 import { useLeagues } from "@/features/leagues/useLeagues";
 import { TeamList } from "@/features/teams/TeamList";
 import { TeamSearch } from "@/features/teams/TeamSearch";
+import { PendingAttention } from "./PendingAttention";
+import { useDashboardInbox } from "./useDashboardInbox";
 
 interface DashboardProps {
   /** True when backed by an authenticated session (API store + real leagues). */
@@ -18,18 +20,20 @@ interface DashboardProps {
 }
 
 /**
- * Classic home dashboard for logged-in users: welcome header, stat cards
- * (teams + my leagues), quick actions, and the two lists — teams (reusing
- * `TeamList` unchanged) and my leagues (reusing the league card). Home-chrome
- * copy (welcome/stats/quick actions) is English per the repo convention; the
- * embedded teams/leagues sections keep their own (Spanish) copy.
- */
-/**
- * Classic home dashboard for logged-in users: welcome header, stat cards
- * (teams + my leagues), quick actions, and the two lists — teams (reusing
- * `TeamList` unchanged) and my leagues (reusing the league card). Home-chrome
- * copy (welcome/stats/quick actions) is English per the repo convention; the
- * embedded teams/leagues sections keep their own (Spanish) copy.
+ * Classic home dashboard for logged-in users: welcome header, then the
+ * issue-#268 priority zone — pending attention (proposals / live / results
+ * owed / open leagues) — fed by the single `GET /api/me/dashboard` aggregate
+ * (never N league details), followed by the stat cards (teams + my leagues),
+ * quick actions, and the two lists — teams (reusing `TeamList` unchanged) and
+ * my leagues (reusing the league card).
+ * Home-chrome copy (welcome/inbox/stats/quick actions) is English per the repo
+ * convention; the embedded teams/leagues sections keep their own (Spanish)
+ * copy. The zone renders only after the aggregate resolves: hidden while
+ * loading, on error, and in local mode (no API session), so nothing flashes.
+ *
+ * Deliberately split from the second PR of #268: the next-match zone, the
+ * widened stat cards, the team summary that replaces `TeamList` and the
+ * conditional quick actions are NOT here yet.
  */
 export function Dashboard({ authenticated, userName }: DashboardProps) {
   const { teams } = useApp();
@@ -55,6 +59,19 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
   const showLeaguesEmpty = leaguesUnavailable || myLeagues.length === 0;
   const leaguesLoading = loading && !leaguesUnavailable;
 
+  // Zone 1 feed (issue #268): one server-computed aggregate for proposals,
+  // live fixtures, results owed and the next match. Hidden while loading and
+  // on error/local mode — see the hook docstring.
+  const inbox = useDashboardInbox(authenticated);
+  const inboxData = inbox.loading ? null : inbox.data;
+  // Open leagues awaiting start, derived from the ALREADY-loaded list (no
+  // extra request). The server computes `canManage` (owner or `leagues.manage`)
+  // on every list row (app/api/leagues/route.ts), so the owner's own open
+  // league is covered by the same predicate as a member's.
+  const openLeagues = leagues.filter(
+    (league) => league.status === "open" && (league.isMember || league.canManage === true),
+  );
+
   return (
     <div className="space-y-8">
       <header>
@@ -63,6 +80,15 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
         </h1>
         <p className="mt-1 text-[13px] text-slate-500">Your league at a glance.</p>
       </header>
+
+      {inboxData ? (
+        <PendingAttention
+          proposals={inboxData.proposals}
+          live={inboxData.live}
+          resultsPending={inboxData.resultsPending}
+          openLeagues={openLeagues}
+        />
+      ) : null}
 
       <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="border border-slate-200 bg-panel p-4">

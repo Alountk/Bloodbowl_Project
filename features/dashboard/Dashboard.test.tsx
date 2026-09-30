@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { AppProvider } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { DEFAULT_COACHING, type Team } from "@/features/teams/types";
+import type { DashboardFixture, DashboardPayload } from "@/app/api/me/dashboard/route";
 import { Dashboard } from "./Dashboard";
 
 const me = "u1";
@@ -74,6 +75,61 @@ function stubLeaguesFetch(status = 200) {
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+/** A dashboard payload with nothing pending (the common case). */
+function emptyInbox(overrides: Partial<DashboardPayload> = {}): DashboardPayload {
+  return {
+    proposals: [],
+    live: [],
+    resultsPending: [],
+    nextMatch: null,
+    teams: { count: 0, readyToImprove: 0, squadPe: 0 },
+    ...overrides,
+  };
+}
+
+/** A `GET /api/me/dashboard` fixture; defaults to a scheduled viewer-away match. */
+function inboxFixture(overrides: Partial<DashboardFixture> = {}): DashboardFixture {
+  return {
+    fixtureId: "f1",
+    leagueId: "l1",
+    leagueName: "Pretemporada Cup",
+    round: 2,
+    scheduledAt: "2026-10-05T18:00:00.000Z",
+    homeTeam: { id: "t-home", name: "Reikland Reavers" },
+    awayTeam: { id: "t-away", name: "Chaos Crushers" },
+    viewerSide: "away",
+    status: "scheduled",
+    pendingProposal: null,
+    live: null,
+    ...overrides,
+  };
+}
+
+/** Serves BOTH `/api/leagues` and `/api/me/dashboard` from a single stub. */
+function stubInbox(payload: DashboardPayload, leagues: unknown[] = []) {
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/leagues") {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(leagues) });
+    }
+    if (url === "/api/me/dashboard") {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(payload) });
+    }
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+/** The authenticated render used by the #268 zone tests. */
+function renderDashboard() {
+  return render(
+    <AppProvider store={new InMemoryTeamStore(teams)} authenticated>
+      <Dashboard authenticated userName="Coach" />
+    </AppProvider>,
+  );
 }
 
 afterEach(() => {
@@ -191,5 +247,126 @@ describe("Dashboard — LAC-5 owner-equivalent leagues", () => {
     await waitFor(() => expect(screen.getByText("North Reikland")).toBeTruthy());
     expect(screen.queryByText("Foreign Open Cup")).toBeNull();
     expect(leaguesStat().textContent).toContain("1");
+  });
+});
+
+describe("Dashboard — pending attention (issue #268)", () => {
+  it("renders a rival date proposal as an actionable item linking to the fixture", async () => {
+    stubInbox(
+      emptyInbox({
+        proposals: [
+          inboxFixture({
+            fixtureId: "f-props",
+            leagueId: "l9",
+            leagueName: "Pretemporada Cup",
+            status: "pending",
+            pendingProposal: {
+              id: "pr1",
+              date: "2026-10-05T18:00:00.000Z",
+              createdAt: "2026-09-30T10:00:00.000Z",
+            },
+          }),
+        ],
+      }),
+    );
+    renderDashboard();
+
+    const link = await screen.findByRole("link", { name: /Date proposal/ });
+    expect(link.getAttribute("href")).toBe("/leagues/l9/fixtures/f-props");
+    expect(screen.getByRole("heading", { name: "Needs your attention" })).toBeTruthy();
+  });
+
+  it("renders a live fixture with the LIVE indicator", async () => {
+    stubInbox(
+      emptyInbox({
+        live: [
+          inboxFixture({
+            fixtureId: "f-live",
+            live: { status: "live", homeScore: 1, awayScore: 0, half: 2, turnNumber: 4 },
+          }),
+        ],
+      }),
+    );
+    renderDashboard();
+
+    // Locale-aware badge: "EN VIVO" (es default) or "LIVE" (en).
+    const link = await screen.findByRole("link", { name: /EN VIVO|LIVE/ });
+    expect(link.getAttribute("href")).toBe("/leagues/l1/fixtures/f-live");
+  });
+
+  it("renders a result-owed fixture with the report affordance", async () => {
+    stubInbox(emptyInbox({ resultsPending: [inboxFixture({ fixtureId: "f-res" })] }));
+    renderDashboard();
+
+    const link = await screen.findByRole("link", { name: /Report result/ });
+    expect(link.getAttribute("href")).toBe("/leagues/l1/fixtures/f-res");
+  });
+
+  it("shows a re-negotiating fixture ONCE (the proposal wins over result-owed)", async () => {
+    // Rejornar leaves `scheduledAt` untouched, so the same fixture satisfies
+    // both predicates. Two rows for one match would make the triage list look
+    // broken, so the date answer takes priority.
+    const fixture = inboxFixture({ fixtureId: "f-rejornar" });
+    stubInbox(emptyInbox({ proposals: [fixture], resultsPending: [fixture] }));
+    renderDashboard();
+
+    expect(await screen.findByRole("link", { name: /Respond/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Report result/ })).toBeNull();
+  });
+
+  it("surfaces an open league awaiting start from the already-loaded list", async () => {
+    stubInbox(emptyInbox(), [
+      { id: "l3", name: "Spring Cup", ownerId: "u9", status: "open", memberCount: 4, isMember: true, canManage: false },
+    ]);
+    renderDashboard();
+
+    const link = await screen.findByRole("link", { name: /awaiting start/ });
+    expect(link.getAttribute("href")).toBe("/leagues/l3");
+    expect(link.textContent).toContain("Spring Cup");
+  });
+
+  it("shows the calm empty state and no zone-1 content on an empty payload", async () => {
+    stubInbox(emptyInbox());
+    renderDashboard();
+
+    const region = await screen.findByRole("region", { name: "Needs your attention" });
+    expect(within(region).getByText("Nothing needs your attention right now.")).toBeTruthy();
+    expect(within(region).queryByRole("link")).toBeNull();
+  });
+
+  it("keeps the zone hidden while the inbox is loading", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/leagues") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url === "/api/me/dashboard") {
+        return new Promise(() => undefined); // never settles
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderDashboard();
+
+    // `waitFor` wraps its callback in act(), so the `/api/leagues` promise that
+    // settles in here does not leak an un-wrapped state update into the log.
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Needs your attention" })).toBeNull();
+      expect(screen.queryByText("Nothing needs your attention right now.")).toBeNull();
+    });
+  });
+
+  it("shows an in-play fixture ONCE, as LIVE — never as a dead Respond card", async () => {
+    // `propose` has no live-match guard and the live flow never closes a
+    // ScheduleProposal, so a fixture can be in both arrays at once. While the
+    // match runs `MatchCard` hides negotiation, so the proposal row would link
+    // to an affordance that is not there.
+    const fixture = inboxFixture({ fixtureId: "f-inplay" });
+    stubInbox(emptyInbox({ proposals: [fixture], live: [fixture] }));
+    renderDashboard();
+
+    const link = await screen.findByRole("link", { name: /EN VIVO|LIVE/ });
+    expect(link.getAttribute("href")).toBe("/leagues/l1/fixtures/f-inplay");
+    expect(screen.queryByRole("link", { name: /Respond/ })).toBeNull();
   });
 });
