@@ -13,9 +13,14 @@ import { test, expect, type Page } from "@playwright/test";
 /**
  * Creates a team via the wizard using client-side navigation so the shared
  * in-memory store is preserved (a full page load would reset it).
+ *
+ * The card is confirmed on /teams — the home embeds only a summary now (#268) —
+ * and the helper ends back on the home dashboard.
  */
 async function createTeamViaUi(page: Page, name: string) {
+  await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
   await page.getByRole("link", { name: "Create team" }).first().click();
+  await expect(page).toHaveURL("/teams/create");
   await page.getByLabel("Team name", { exact: true }).fill(name);
   await page.getByLabel("Race").selectOption("human");
   await page.getByRole("button", { name: "Next →" }).click();
@@ -23,7 +28,11 @@ async function createTeamViaUi(page: Page, name: string) {
   for (let i = 0; i < 11; i++) await addLineman.click();
   await page.getByRole("button", { name: /create team/i }).click();
   await expect(page).toHaveURL("/");
+  await page.getByRole("link", { name: /ready to improve/i }).click();
+  await expect(page).toHaveURL(/\/teams$/);
   await expect(page.getByText(name)).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL("/");
 }
 
 test.describe("Mobile", () => {
@@ -35,7 +44,7 @@ test.describe("Mobile", () => {
     expect(overflow, `${label}: no horizontal page overflow (extra=${overflow}px)`).toBeLessThanOrEqual(1);
   }
 
-  test("home has no horizontal overflow with a team list", async ({ page }) => {
+  test("home has no horizontal overflow with the team summary", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
     await createTeamViaUi(page, "Mobile Reavers");
@@ -45,6 +54,8 @@ test.describe("Mobile", () => {
   test("team detail has no horizontal overflow (stacked rows + coaching)", async ({ page }) => {
     await page.goto("/");
     await createTeamViaUi(page, "Mobile Reavers");
+    // The list lives on /teams now (#268): open it via the home summary link.
+    await page.getByRole("link", { name: /ready to improve/i }).click();
     // Client navigation to the detail page keeps the in-memory store.
     await page.getByRole("link", { name: /Mobile Reavers/ }).click();
     await page.waitForLoadState("networkidle");

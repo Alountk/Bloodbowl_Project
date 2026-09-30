@@ -28,29 +28,16 @@ The system MUST preserve existing behaviors such as search filtering and roster 
 #### Scenario: Only own teams listed
 
 - GIVEN a signed-in user owns teams
-- WHEN the home page renders
+- WHEN the teams page renders
 - THEN only that user's teams appear in the list
+
+(Previously: this scenario pinned the home page — issue #268 replaced the embedded home list with a compact summary linking to `/teams`, so the dedicated teams page is where the list renders.)
+
 ### Requirement: Home Heading with Create Action
-The home section MUST render a heading row: h2 "Teams" in navy `#12225a` with a red `#d11938` underline (book section style) and, on the right, a navy "Create New Team" link pointing to `/teams/create`. Below `md` the heading row MUST wrap (`flex-wrap`) so the h2 and CTA stack instead of overflowing at 375px, and the CTA MUST have a tap target of at least 40px (e.g. `py-2.5`). The card grid remains single-column by default.
 
-(Previously: the heading row was `flex items-end justify-between` with the CTA at `px-4 py-2`, which squeezed the h2 and button at narrow widths.)
+(REMOVED in issue #268 — the home no longer embeds the team list, so its heading row (h2 "Teams" + header "Create New Team" CTA) does not exist either, and the teams page grid does not render such a header. The surviving create CTA is the empty-state panel under "Empty States".)
 
-#### Scenario: Heading row renders
-- GIVEN the home page renders
-- WHEN the section heading row renders
-- THEN h2 "Teams" shows navy text with a red underline
-- AND a "Create New Team" link to `/teams/create` appears on the right
-
-#### Scenario: Heading row wraps on mobile
-- GIVEN a viewport below `md`
-- WHEN the heading row renders
-- THEN it uses `flex-wrap` so the CTA sits below the h2 instead of overflowing
-- AND the CTA maintains a ≥40px vertical tap target
-
-#### Scenario: CTA navigates to create
-- GIVEN the user activates "Create New Team"
-- WHEN navigation completes
-- THEN the create-team form route loads
+(Previously: the home section MUST render a heading row: h2 "Teams" in navy `#12225a` with a red `#d11938` underline (book section style) and, on the right, a navy "Create New Team" link pointing to `/teams/create`. Below `md` the heading row MUST wrap (`flex-wrap`) so the h2 and CTA stack instead of overflowing at 375px, and the CTA MUST have a tap target of at least 40px (e.g. `py-2.5`). The card grid remains single-column by default. Its scenarios pinned the h2/underline, the right-hand CTA, the `flex-wrap` mobile stacking with the ≥40px tap target, and CTA navigation to the create-team form.)
 
 ### Requirement: Empty States
 The list MUST render empty states as light book panels with square corners. With no teams, the panel MUST show "No teams yet. Create your first team." and a navy "Create New Team" button to `/teams/create`. When a search query matches nothing, the panel MUST show "No teams match your search." without a CTA.
@@ -81,13 +68,15 @@ Each team card MUST use square corners (`rounded-none`) on a white card: a `h-[6
 - THEN it navigates to `/teams/${id}` and remains keyboard-focusable
 ### Requirement: Per-Card Delete Control
 
-Each team card in the home list MUST render a visible delete control (`aria-label="Delete {team.name}"`) that does not collide with the card's detail link (the delete control is a `<button>`, the card body remains a `<Link>`). The delete control MUST be keyboard-focusable and must not trigger card navigation when activated.
+Each team card in the teams-page grid MUST render a visible delete control (`aria-label="Eliminar {team.name}"`, the Spanish rulebook copy matching the card's visible "Eliminar" button text) that does not collide with the card's detail link (the delete control is a `<button>`, the card body remains a `<Link>`). The delete control MUST be keyboard-focusable and must not trigger card navigation when activated.
+
+(Previously: this requirement pinned the home list and the localized label `Delete {team.name}` — issue #268 removed the embedded home list, so the reachable card is the teams-page card with its hardcoded Spanish accessible name.)
 
 #### Scenario: Delete button present per card
 
 - GIVEN a list of teams is displayed
 - WHEN a team card renders
-- THEN a button with accessible name `Delete {team.name}` is present and is keyboard-focusable
+- THEN a button with accessible name `Eliminar {team.name}` is present and is keyboard-focusable
 
 #### Scenario: Delete does not navigate
 
@@ -125,4 +114,6 @@ After a confirmed delete, the team list MUST reflect the removed team without a 
 
 - GIVEN a team is confirmed for deletion
 - WHEN `removeTeam(id)` resolves
-- THEN the home list no longer renders that team
+- THEN the teams page grid no longer renders that team
+
+(Previously: this scenario pinned the home list — the list renders on `/teams` since issue #268.)

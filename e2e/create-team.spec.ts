@@ -160,8 +160,10 @@ test.describe("Create Team — E2E", () => {
     // Submit the team.
     await page.getByRole("button", { name: /create team/i }).click();
 
-    // Should redirect to home page and show the team.
+    // Should redirect to home page; the card itself lives on /teams now (#268).
     await expect(page).toHaveURL("/");
+    await page.getByRole("link", { name: /ready to improve/i }).click();
+    await expect(page).toHaveURL(/\/teams$/);
     await expect(page.getByText("Reikland Reavers")).toBeVisible();
     await expect(page.getByText("Human", { exact: true })).toBeVisible();
   });

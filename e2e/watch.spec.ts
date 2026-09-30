@@ -43,6 +43,8 @@ async function createTeam(page: Page, name: string, playerCount = 11) {
   }
   await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
+  // The home shows only a summary now (#268): confirm the card on /teams.
+  await page.goto("/teams");
   await expect(page.getByText(name)).toBeVisible();
 }
 

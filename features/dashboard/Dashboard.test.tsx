@@ -138,7 +138,7 @@ afterEach(() => {
 });
 
 describe("Dashboard", () => {
-  it("shows the welcome header, stats, quick actions, teams and my leagues", async () => {
+  it("shows the welcome header, stats, team summary and my leagues", async () => {
     stubLeaguesFetch();
     render(
       <AppProvider store={new InMemoryTeamStore(teams)} authenticated>
@@ -149,24 +149,24 @@ describe("Dashboard", () => {
     expect(screen.getByRole("heading", { name: "Welcome back, Coach" })).toBeTruthy();
     expect(screen.getByText("Your league at a glance.")).toBeTruthy();
 
-    // Wait for the team store hydration + leagues fetch, then assert stats.
-    await waitFor(() => expect(screen.getByText("Reikland Reavers")).toBeTruthy());
+    // Wait for the team store hydration (the summary only renders hydrated),
+    // then assert the stat cards: 2 teams, 1 my-league (owned only). The
+    // career cards stay hidden — the stub 404s GET /api/me/stats.
+    await waitFor(() => expect(screen.getByText(/2 teams/)).toBeTruthy());
     const overview = screen.getByLabelText("Overview");
-    // Stat cards: 2 teams, 1 my-league (owned only).
     expect(within(overview).getByText("2")).toBeTruthy();
     expect(within(overview).getByText("1")).toBeTruthy();
 
-    // Quick actions.
-    expect(screen.getByRole("link", { name: "Create team" }).getAttribute("href")).toBe(
-      "/teams/create",
-    );
-    expect(screen.getByRole("link", { name: "Create league" }).getAttribute("href")).toBe(
-      "/leagues",
-    );
+    // Quick actions are state-driven: teams AND a league exist, so neither the
+    // "Create team" nor the "Join/Find a league" action renders (nothing is
+    // owed either, so no "Report result").
+    expect(screen.queryByRole("link", { name: "Create team" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Join/Find a league" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Report result" })).toBeNull();
 
-    // My teams (TeamList embedded).
-    expect(screen.getByText("Dwarf Wall")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Equipos" })).toBeTruthy();
+    // Compact team summary (the embedded list moved to /teams in #268).
+    expect(screen.getByRole("heading", { name: "Your teams" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /2 teams/ }).getAttribute("href")).toBe("/teams");
 
     // My leagues: owned only, never the foreign open league.
     await waitFor(() => expect(screen.getByText("North Reikland")).toBeTruthy());
@@ -298,7 +298,10 @@ describe("Dashboard — pending attention (issue #268)", () => {
     stubInbox(emptyInbox({ resultsPending: [inboxFixture({ fixtureId: "f-res" })] }));
     renderDashboard();
 
-    const link = await screen.findByRole("link", { name: /Report result/ });
+    // Scoped to the zone: the "Report result" quick action (issue #268) links
+    // to the same fixture OUTSIDE the attention list.
+    const region = await screen.findByRole("region", { name: "Needs your attention" });
+    const link = within(region).getByRole("link", { name: /Report result/ });
     expect(link.getAttribute("href")).toBe("/leagues/l1/fixtures/f-res");
   });
 
@@ -311,7 +314,10 @@ describe("Dashboard — pending attention (issue #268)", () => {
     renderDashboard();
 
     expect(await screen.findByRole("link", { name: /Respond/ })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: /Report result/ })).toBeNull();
+    // Scoped to the zone: the quick action outside it may legitimately offer
+    // "Report result" for the same payload.
+    const region = screen.getByRole("region", { name: "Needs your attention" });
+    expect(within(region).queryByRole("link", { name: /Report result/ })).toBeNull();
   });
 
   it("surfaces an open league awaiting start from the already-loaded list", async () => {
@@ -368,5 +374,29 @@ describe("Dashboard — pending attention (issue #268)", () => {
     const link = await screen.findByRole("link", { name: /EN VIVO|LIVE/ });
     expect(link.getAttribute("href")).toBe("/leagues/l1/fixtures/f-inplay");
     expect(screen.queryByRole("link", { name: /Respond/ })).toBeNull();
+  });
+
+  it("offers each quick action only while its condition holds", async () => {
+    // Zero teams + zero leagues + one result owed → all three actions render.
+    stubInbox(emptyInbox({ resultsPending: [inboxFixture({ fixtureId: "f-quick" })] }));
+    render(
+      <AppProvider store={new InMemoryTeamStore([])} authenticated>
+        <Dashboard authenticated userName="Coach" />
+      </AppProvider>,
+    );
+
+    // `findBy*`: the store-backed actions are gated on `isHydrated`, which only
+    // flips once AppProvider's effect has run — a synchronous query would read
+    // the pre-hydration frame where the section is deliberately absent.
+    const actions = await screen.findByLabelText("Quick actions");
+    expect(
+      (await within(actions).findByRole("link", { name: "Create team" })).getAttribute("href"),
+    ).toBe("/teams/create");
+    expect(
+      within(actions).getByRole("link", { name: "Join/Find a league" }).getAttribute("href"),
+    ).toBe("/leagues");
+    expect(
+      within(actions).getByRole("link", { name: "Report result" }).getAttribute("href"),
+    ).toBe("/leagues/l1/fixtures/f-quick");
   });
 });

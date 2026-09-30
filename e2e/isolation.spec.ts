@@ -37,6 +37,8 @@ test.describe("User isolation E2E (real Postgres)", () => {
     for (let i = 0; i < 11; i++) await addLineman.click();
     await pageA.getByRole("button", { name: /create team/i }).click();
     await expect(pageA).toHaveURL("/");
+    // The home embeds only a summary now (#268): the card is on /teams.
+    await pageA.goto("/teams");
     await expect(pageA.getByText("Alpha Blitzers")).toBeVisible();
 
     // Read A's DB team id from the user-scoped API.

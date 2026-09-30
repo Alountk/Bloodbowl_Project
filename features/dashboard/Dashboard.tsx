@@ -7,10 +7,12 @@ import { useI18n } from "@/lib/i18n";
 import { LeagueCard } from "@/features/leagues/LeagueList";
 import { isOwnerEquivalent } from "@/features/leagues/access";
 import { useLeagues } from "@/features/leagues/useLeagues";
-import { TeamList } from "@/features/teams/TeamList";
-import { TeamSearch } from "@/features/teams/TeamSearch";
+import { getRaceById } from "@/features/teams/data/races";
+import { computeSpendableBalance } from "@/features/teams/roster";
+import { formatRulebookCost } from "@/features/teams/format";
 import { PendingAttention } from "./PendingAttention";
 import { useDashboardInbox } from "./useDashboardInbox";
+import { useCareerStats } from "./useCareerStats";
 
 interface DashboardProps {
   /** True when backed by an authenticated session (API store + real leagues). */
@@ -19,24 +21,33 @@ interface DashboardProps {
   userName: string | null;
 }
 
+/** Square stat card (existing navy/slate tokens — no new variants). */
+function StatCard({ value, label }: { value: number | string; label: string }) {
+  return (
+    <div className="border border-slate-200 bg-panel p-4">
+      <p className="text-3xl font-black text-navy">{value}</p>
+      <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+    </div>
+  );
+}
+
 /**
- * Classic home dashboard for logged-in users: welcome header, then the
- * issue-#268 priority zone — pending attention (proposals / live / results
- * owed / open leagues) — fed by the single `GET /api/me/dashboard` aggregate
- * (never N league details), followed by the stat cards (teams + my leagues),
- * quick actions, and the two lists — teams (reusing `TeamList` unchanged) and
- * my leagues (reusing the league card).
- * Home-chrome copy (welcome/inbox/stats/quick actions) is English per the repo
- * convention; the embedded teams/leagues sections keep their own (Spanish)
- * copy. The zone renders only after the aggregate resolves: hidden while
- * loading, on error, and in local mode (no API session), so nothing flashes.
- *
- * Deliberately split from the second PR of #268: the next-match zone, the
- * widened stat cards, the team summary that replaces `TeamList` and the
- * conditional quick actions are NOT here yet.
+ * Classic home dashboard for logged-in users (issue #268): welcome header,
+ * then the priority zone — pending attention (proposals / live / results owed /
+ * open leagues) fed by the single `GET /api/me/dashboard` aggregate — the stat
+ * cards (teams + leagues from data already loaded; career matches and W-D-L
+ * from `GET /api/me/stats`), the state-driven quick actions, the compact team
+ * summary linking to `/teams` (the list itself lives on the teams page now),
+ * and the my-leagues list. Home-chrome copy (welcome/inbox/stats/quick actions/
+ * summary) is hardcoded English per the repo convention; the embedded leagues
+ * section keeps its own (Spanish) `t()` copy. The stats and inbox zones render
+ * only after their feed resolves — hidden while loading, on error, and in local
+ * mode (no API session) — so nothing flashes.
  */
 export function Dashboard({ authenticated, userName }: DashboardProps) {
-  const { teams } = useApp();
+  const { teams, isHydrated } = useApp();
   const { data: session } = useSession();
   const { t } = useI18n();
   const { leagues, loading, error } = useLeagues();
@@ -64,6 +75,11 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
   // on error/local mode — see the hook docstring.
   const inbox = useDashboardInbox(authenticated);
   const inboxData = inbox.loading ? null : inbox.data;
+  const resultsPending = inboxData?.resultsPending ?? [];
+  const readyToImprove = inboxData?.teams.readyToImprove ?? 0;
+  // Career stats (matches played + W-D-L) for the widened stat cards. Hidden
+  // with the rest of the /api/me/stats-backed pair while loading or on error.
+  const careerStats = useCareerStats(authenticated);
   // Open leagues awaiting start, derived from the ALREADY-loaded list (no
   // extra request). The server computes `canManage` (owner or `leagues.manage`)
   // on every list row (app/api/leagues/route.ts), so the owner's own open
@@ -71,6 +87,20 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
   const openLeagues = leagues.filter(
     (league) => league.status === "open" && (league.isMember || league.canManage === true),
   );
+
+  // Total treasury across the NON-archived teams already in memory (the
+  // team-count card also comes from here — `stats.teams` counts archived teams,
+  // which is right for career stats and wrong for "your squads right now").
+  // Money maths stays in the shared roster helpers — never re-derived here.
+  const totalTreasury = teams.reduce((total, team) => {
+    const race = getRaceById(team.raceId) ?? {
+      id: team.raceId,
+      name: team.raceId,
+      rerollCost: 0,
+      positionals: [],
+    };
+    return total + computeSpendableBalance(team, race);
+  }, 0);
 
   return (
     <div className="space-y-8">
@@ -90,39 +120,71 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
         />
       ) : null}
 
-      <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="border border-slate-200 bg-panel p-4">
-          <p className="text-3xl font-black text-navy">{teams.length}</p>
-          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Teams
-          </p>
-        </div>
-        <div className="border border-slate-200 bg-panel p-4">
-          <p className="text-3xl font-black text-navy">{myLeagues.length}</p>
-          <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Leagues
-          </p>
-        </div>
+      <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard value={teams.length} label="Teams" />
+        <StatCard value={myLeagues.length} label="Leagues" />
+        {careerStats ? (
+          <>
+            <StatCard value={careerStats.matches} label="Matches" />
+            <StatCard
+              value={`${careerStats.wins}-${careerStats.draws}-${careerStats.losses}`}
+              label="W-D-L"
+            />
+          </>
+        ) : null}
       </section>
 
+      {/* Rendered only when something qualifies: an empty labelled landmark is
+          noise for screen readers and leaves a phantom gap. `isHydrated` gates
+          the two store-backed conditions so nobody is shown a "Create team"
+          affordance in the instant before the team store has loaded. */}
+      {(isHydrated && (teams.length === 0 || myLeagues.length === 0)) ||
+      resultsPending.length > 0 ? (
       <section aria-label="Quick actions" className="flex flex-wrap gap-3">
-        <Link
-          href="/teams/create"
-          className="rounded-none bg-navy px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-hover"
-        >
-          Create team
-        </Link>
-        <Link
-          href="/leagues"
-          className="rounded-none border-2 border-navy px-4 py-2.5 text-sm font-bold text-navy hover:bg-info-fill"
-        >
-          Create league
-        </Link>
+        {isHydrated && teams.length === 0 ? (
+          <Link
+            href="/teams/create"
+            className="rounded-none bg-navy px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+          >
+            Create team
+          </Link>
+        ) : null}
+        {isHydrated && myLeagues.length === 0 ? (
+          <Link
+            href="/leagues"
+            className="rounded-none border-2 border-navy px-4 py-2.5 text-sm font-bold text-navy hover:bg-info-fill focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+          >
+            Join/Find a league
+          </Link>
+        ) : null}
+        {resultsPending.length > 0 ? (
+          <Link
+            href={`/leagues/${resultsPending[0].leagueId}/fixtures/${resultsPending[0].fixtureId}`}
+            className="rounded-none border-2 border-navy px-4 py-2.5 text-sm font-bold text-navy hover:bg-info-fill focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+          >
+            Report result
+          </Link>
+        ) : null}
       </section>
+      ) : null}
 
-      <TeamSearch />
-
-      <TeamList />
+      {isHydrated ? (
+        <section aria-labelledby="dashboard-teams-heading">
+          <h2
+            id="dashboard-teams-heading"
+            className="mb-4 border-b-[3px] border-red pb-1.5 text-lg font-bold text-navy"
+          >
+            Your teams
+          </h2>
+          <Link
+            href="/teams"
+            className="block border border-slate-200 bg-panel px-4 py-3 text-sm font-bold text-navy hover:bg-info-fill focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+          >
+            {teams.length} {teams.length === 1 ? "team" : "teams"} ·{" "}
+            {formatRulebookCost(totalTreasury)} treasury · {readyToImprove} ready to improve
+          </Link>
+        </section>
+      ) : null}
 
       <section aria-labelledby="dashboard-leagues-heading">
         <h2

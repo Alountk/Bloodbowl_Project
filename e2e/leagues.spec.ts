@@ -35,6 +35,8 @@ async function createTeam(page: Page, name = "Middenheim Marauders") {
   await page.getByRole("button", { name: "Añadir Human Blitzer" }).first().click();
   await page.getByRole("button", { name: /crear equipo/i }).click();
   await expect(page).toHaveURL("/");
+  // The home shows only a summary now (#268): confirm the card on /teams.
+  await page.goto("/teams");
   await expect(page.getByText(name)).toBeVisible();
 }
 
@@ -114,14 +116,19 @@ test("deleting an assigned team surfaces the 409 archive guard instead of removi
   await page.getByRole("button", { name: "Apuntarse" }).click();
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
 
-  // Go home and attempt to delete the member team.
-  await page.goto("/");
+  // The card (and its delete control) lives on the teams page now (#268).
+  await page.goto("/teams");
+  // The card renders as soon as the store hydrates, but the 409 dialog resolves
+  // the league NAME through `useLeagueNameMap`, which fills asynchronously. Click
+  // before it lands and the dialog shows the raw league id instead (same wait
+  // `teams-page.spec.ts` uses after this navigation).
+  await page.waitForLoadState("networkidle");
   await expect(page.getByText("Middenheim Marauders")).toBeVisible();
   await page.getByRole("button", { name: "Eliminar Middenheim Marauders" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
 
   // Confirm the delete → the API returns 409 and the guard message appears.
-  // Scoped to the dialog: the dashboard's "Mis Ligas" cards also carry the
+  // Scoped to the dialog: the team card's league badge also carries the
   // league name, which would otherwise be an ambiguous multi-match locator.
   await page.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(page.getByRole("dialog").getByText(leagueName)).toBeVisible();
@@ -184,7 +191,7 @@ async function openLeagueCard(page: import("@playwright/test").Page, name: strin
 }
 
 async function archiveGuardArchive(page: import("@playwright/test").Page, name: string) {
-  await page.goto("/");
+  await page.goto("/teams");
   await page.getByRole("button", { name: `Eliminar ${name}` }).click();
   await page.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
