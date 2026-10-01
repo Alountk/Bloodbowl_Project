@@ -9,6 +9,7 @@ e2e
 playwright-report
 test-results
 playwright.config.ts
+playwright.config.auth.ts
 external-assets
 .atl
 .codegraph
