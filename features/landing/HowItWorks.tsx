@@ -31,41 +31,35 @@ export function HowItWorks() {
   ] as const;
 
   return (
-    <section
-      aria-labelledby="how-heading"
-      className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-panel"
-    >
-      <div className="flex flex-wrap items-center gap-2 bg-slate-100 px-4 py-3.5">
-        <h2 id="how-heading" className="flex-1 text-[16px] font-black text-navy">
+    <section aria-labelledby="how-heading" className="mt-12 border-t border-border pt-8">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 id="how-heading" className="mr-auto text-[17px] font-bold text-navy">
           {t("landing.howHeading")}
         </h2>
-        <span className="hidden text-[11.5px] text-slate-500 sm:inline">
-          {t("landing.howSubtitle")}
-        </span>
         <button
           type="button"
           onClick={() => setHidden((value) => !value)}
           aria-expanded={!hidden}
-          className="rounded-none border-2 border-navy bg-panel px-3.5 py-1.5 text-[13px] font-bold text-navy hover:bg-info-fill"
+          className="rounded-none border border-navy px-3 py-1.5 text-[13px] font-bold text-navy hover:bg-navy hover:text-white"
         >
           {hidden ? t("landing.howShow") : t("landing.howHide")}
         </button>
       </div>
+      <p className="mt-1 text-[13px] text-slate">{t("landing.howSubtitle")}</p>
       {!hidden ? (
-        <div className="grid gap-3.5 p-4 sm:grid-cols-3">
+        <ol className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-3">
           {steps.map((step, index) => (
-            <article
+            <li
               key={step.title}
-              className="relative rounded-xl border border-slate-200 bg-panel p-4 pt-6"
+              className="border-t border-border pt-4 first:border-t-0 sm:border-t-0 sm:pt-0"
             >
-              <span className="absolute -top-3 left-4 grid h-7 w-7 place-items-center rounded-full bg-red text-[13px] font-black text-white">
-                {index + 1}
-              </span>
-              <h3 className="text-[15px] font-bold text-navy">{step.title}</h3>
-              <p className="mt-1 text-[12.5px] text-slate-500">{step.copy}</p>
-            </article>
+              <h3 className="text-[15px] font-bold text-navy">
+                {index + 1}. {step.title}
+              </h3>
+              <p className="mt-1 text-[13.5px] leading-relaxed text-slate">{step.copy}</p>
+            </li>
           ))}
-        </div>
+        </ol>
       ) : null}
     </section>
   );
