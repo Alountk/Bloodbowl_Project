@@ -47,8 +47,10 @@ async function createTeam(page: Page, name: string) {
   const addLineman = page.getByRole("button", { name: "Add Human Lineman" }).first();
   for (let i = 0; i < 11; i++) await addLineman.click();
   await page.getByRole("button", { name: /create team/i }).click();
-  // Redirect home and show the saved team.
+  // Redirect home, then confirm the saved team on the teams page — the home
+  // shows only a summary now (#268).
   await expect(page).toHaveURL("/");
+  await page.goto("/teams");
   await expect(page.getByText(name)).toBeVisible();
 }
 
@@ -62,8 +64,8 @@ test.describe("Auth E2E (real Postgres)", () => {
     const teamName = "Reikland Reavers";
     await createTeam(page, teamName);
 
-    // Reload home: the team must come from the DB (not localStorage), so it is
-    // still present after a full navigation.
+    // Reload the teams page: the team must come from the DB (not localStorage),
+    // so it is still present after a full navigation.
     await page.reload();
     await expect(page.getByText(teamName)).toBeVisible();
 
@@ -75,6 +77,7 @@ test.describe("Auth E2E (real Postgres)", () => {
 
     // Log back in with the same account: the team is still there from the DB.
     await login(page, email, password);
+    await page.goto("/teams");
     await expect(page.getByText(teamName)).toBeVisible();
   });
 });
@@ -151,6 +154,8 @@ test.describe("Auth flow regression (LAN host)", () => {
     for (let i = 0; i < 11; i++) await add.click();
     await page.getByRole("button", { name: /create team/i }).click();
     await expect(page).toHaveURL(`${base}/`);
+    // The card lives on /teams now (#268); reach it via the home summary.
+    await page.getByRole("link", { name: /ready to improve/i }).click();
     await expect(page.getByText("LAN Reavers")).toBeVisible();
 
     // Logout → the public landing.
@@ -167,6 +172,9 @@ test.describe("Auth flow regression (LAN host)", () => {
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Log in" }).last().click();
     await expect(page).toHaveURL(`${base}/`);
+    // No reload: the home summary (only the list moved to /teams, #268) links
+    // to the teams page through client-side navigation.
+    await page.getByRole("link", { name: /ready to improve/i }).click();
     await expect(page.getByText("LAN Reavers")).toBeVisible();
 
     // No refresh: navigating to another protected section must work.

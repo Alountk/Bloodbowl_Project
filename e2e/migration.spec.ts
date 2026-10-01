@@ -87,7 +87,17 @@ test.describe("localStorage migration E2E (real Postgres)", () => {
     await seedLegacyTeams(page);
     await login(page, email, password);
 
-    // After login the migration POSTed both teams into the account.
+    // After login the migration POSTed both teams into the account (the home
+    // embeds only a summary now — #268 — so assert on the teams page).
+    //
+    // The migration is ONE-SHOT PER DOCUMENT: navigating away before its POSTs
+    // land aborts them, and the new document skips the pre-check only when the
+    // flag is already set — so a half-finished run leaves /teams empty forever.
+    // Wait for the flag instead of racing it.
+    await expect
+      .poll(() => page.evaluate((k) => window.localStorage.getItem(k), FLAG_KEY))
+      .toBe("1");
+    await page.goto("/teams");
     await expect(page.getByText("Legacy Reavers")).toBeVisible();
     await expect(page.getByText("Legacy Orcs")).toBeVisible();
     // The flag is set and the legacy copy is retained (never cleared).
@@ -102,6 +112,7 @@ test.describe("localStorage migration E2E (real Postgres)", () => {
       page.getByRole("heading", { name: "Your league, in your pocket." }),
     ).toBeVisible();
     await login(page, email, password);
+    await page.goto("/teams");
     await expect(page.getByText("Legacy Reavers")).toHaveCount(1);
   });
 });

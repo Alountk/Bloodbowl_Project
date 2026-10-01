@@ -6,8 +6,8 @@ import { test, expect, type Page } from "@playwright/test";
  * Pins the product behavior:
  * - anonymous users hitting "/" get the public Landing (no redirect to /login),
  *   and protected pages still redirect;
- * - logged-in users hitting "/" get the classic Dashboard (welcome + teams +
- *   leagues);
+ * - logged-in users hitting "/" get the classic Dashboard (welcome + team
+ *   summary + leagues);
  * - logout lands back on the Landing.
  */
 
@@ -101,11 +101,12 @@ test.describe("Dashboard for logged-in users (auth mode)", () => {
     await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();
     await expect(page.getByLabel("Overview")).toBeVisible();
     await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Create team" })).toBeVisible();
-    await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Create league" })).toBeVisible();
+    await expect(page.getByLabel("Quick actions").getByRole("link", { name: "Join/Find a league" })).toBeVisible();
 
-    // My teams (TeamList embedded).
+    // My teams: the list lives on /teams now; the home carries a summary (#268).
     const teamName = "Landing Reavers";
     await createTeam(page, teamName);
+    await page.goto("/teams");
     await expect(page.getByText(teamName)).toBeVisible();
 
     // My leagues (reused league card) after creating a league.
