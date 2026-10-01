@@ -10,6 +10,8 @@ import { useLeagues } from "@/features/leagues/useLeagues";
 import { getRaceById } from "@/features/teams/data/races";
 import { computeSpendableBalance } from "@/features/teams/roster";
 import { formatRulebookCost } from "@/features/teams/format";
+import { formatMatchDate } from "@/features/leagues/MatchCard";
+import type { DashboardFixture } from "@/app/api/me/dashboard/route";
 import { PendingAttention } from "./PendingAttention";
 import { useDashboardInbox } from "./useDashboardInbox";
 import { useCareerStats } from "./useCareerStats";
@@ -34,11 +36,61 @@ function StatCard({ value, label }: { value: number | string; label: string }) {
 }
 
 /**
+ * Zone 2 of the home dashboard (issue #268): the next scheduled fixture as one
+ * whole-card link (navy header strip — league + round + LIVE badge; body —
+ * home vs away; footer — status word + scheduled date). The dashboard renders
+ * this ONLY when `nextMatch` is non-null: an empty labelled landmark would be
+ * noise for screen readers, so the common no-fixture case renders nothing. The
+ * LIVE badge reuses the matches-feature `match.liveBadge` key (locale-aware:
+ * EN VIVO / LIVE), same as the attention zone.
+ */
+function NextMatchCard({ match }: { match: DashboardFixture }) {
+  const { t } = useI18n();
+  // English home chrome. The server's nextMatch filter requires `scheduledAt`
+  // (deriveFixtureStatus → "scheduled") and excludes played fixtures; "Pending"
+  // stays as the defensive word for any other status a future payload carries.
+  const statusWord = match.status === "scheduled" ? "Scheduled" : "Pending";
+  return (
+    <section aria-labelledby="dashboard-next-match-heading">
+      <h2
+        id="dashboard-next-match-heading"
+        className="mb-4 border-b-[3px] border-red pb-1.5 text-lg font-bold text-navy"
+      >
+        Next match
+      </h2>
+      <Link
+        href={`/leagues/${match.leagueId}/fixtures/${match.fixtureId}`}
+        className="block border border-slate-200 bg-panel hover:bg-info-fill focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy"
+      >
+        <span className="flex items-center justify-between gap-2 bg-navy px-4 py-2 text-sm font-bold text-white">
+          <span className="truncate">
+            {match.leagueName} · Round {match.round}
+          </span>
+          {match.live?.status === "live" ? (
+            <span className="shrink-0 rounded-sm bg-red px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em] text-white">
+              {t("match.liveBadge")}
+            </span>
+          ) : null}
+        </span>
+        <span className="block px-4 py-3 text-sm font-extrabold text-navy">
+          {match.homeTeam.name} vs {match.awayTeam.name}
+        </span>
+        <span className="block border-t border-slate-100 px-4 py-2.5 text-xs text-slate-500">
+          {statusWord} · {formatMatchDate(match.scheduledAt)}
+        </span>
+      </Link>
+    </section>
+  );
+}
+
+/**
  * Classic home dashboard for logged-in users (issue #268): welcome header,
  * then the priority zone — pending attention (proposals / live / results owed /
- * open leagues) fed by the single `GET /api/me/dashboard` aggregate — the stat
+ * open leagues) fed by the single `GET /api/me/dashboard` aggregate — the next
+ * match card (same payload, rendered only when a fixture qualifies), the stat
  * cards (teams + leagues from data already loaded; career matches and W-D-L
- * from `GET /api/me/stats`), the state-driven quick actions, the compact team
+ * from `GET /api/me/stats`; squad PE from the dashboard payload), the
+ * state-driven quick actions, the compact team
  * summary linking to `/teams` (the list itself lives on the teams page now),
  * and the my-leagues list. Home-chrome copy (welcome/inbox/stats/quick actions/
  * summary) is hardcoded English per the repo convention; the embedded leagues
@@ -120,7 +172,11 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
         />
       ) : null}
 
-      <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {/* Zone 2 (issue #268 reading order: attention → next match → stats).
+          Null when the user has no dated, unplayed fixture — no empty landmark. */}
+      {inboxData?.nextMatch ? <NextMatchCard match={inboxData.nextMatch} /> : null}
+
+      <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard value={teams.length} label="Teams" />
         <StatCard value={myLeagues.length} label="Leagues" />
         {careerStats ? (
@@ -131,6 +187,11 @@ export function Dashboard({ authenticated, userName }: DashboardProps) {
               label="W-D-L"
             />
           </>
+        ) : null}
+        {/* Squad PE (server sum over ACTIVE squads, `DashboardPayload.teams`).
+            Formatted with the same grouped-thousands helper as the treasury. */}
+        {inboxData ? (
+          <StatCard value={formatRulebookCost(inboxData.teams.squadPe)} label="Squad PE" />
         ) : null}
       </section>
 
