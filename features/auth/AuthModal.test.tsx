@@ -16,6 +16,29 @@ function renderModal(overrides: Partial<Parameters<typeof AuthModal>[0]> = {}) {
   return { props, result: render(<AuthModal {...props} />) };
 }
 
+/** A successful signup answer (the only call the default route makes). */
+const signupOk = () => ({ ok: true, json: async () => ({ id: "user-1", verifyRequired: true }) });
+
+/**
+ * Drives the signup form to the code screen, with every `fetch(url)` routed
+ * through `route` so a test can script the resend answers per URL.
+ */
+async function openVerifyView(route: (url: string) => Promise<unknown> = async () => signupOk()) {
+  const fetchMock = vi.fn((url: string) => route(url));
+  vi.stubGlobal("fetch", fetchMock);
+  renderModal({ initialMode: "signup" });
+  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Coach" } });
+  fireEvent.change(screen.getByLabelText("Correo electrónico"), {
+    target: { value: "coach@example.com" },
+  });
+  fireEvent.change(screen.getByLabelText("Contraseña"), {
+    target: { value: "SuperSecret123!" },
+  });
+  fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" }).at(-1)!);
+  await waitFor(() => expect(screen.getByLabelText("Código de verificación")).toBeTruthy());
+  return fetchMock;
+}
+
 beforeEach(() => {
   signInMock.mockReset();
   pushMock.mockReset();
@@ -89,12 +112,14 @@ describe("AuthModal", () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it("POSTs to the signup API (with name) then signs the new user in", async () => {
+  it("signup shows the check-your-email code screen WITHOUT signing in", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "user-1" }) }),
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: "user-1", verifyRequired: true }),
+      }),
     );
-    signInMock.mockResolvedValue({ error: null });
     renderModal({ initialMode: "signup" });
 
     fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Coach" } });
@@ -106,14 +131,206 @@ describe("AuthModal", () => {
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" }).at(-1)!);
 
+    // Two-step signup (#197): the panel asks for the mailed code, shows the
+    // target address, and neither a session nor navigation happens yet.
     await waitFor(() =>
-      expect(signInMock).toHaveBeenCalledWith("credentials", {
-        email: "coach@example.com",
-        password: "SuperSecret123!",
-        redirect: false,
+      expect(screen.getByLabelText("Código de verificación")).toBeTruthy(),
+    );
+    expect(screen.getByText(/coach@example\.com/)).toBeTruthy();
+    expect(signInMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("entering the mailed code verifies, signs in, and navigates home", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: "user-1", verifyRequired: true }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+    signInMock.mockResolvedValue({ error: null });
+    renderModal({ initialMode: "signup" });
+
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Coach" } });
+    fireEvent.change(screen.getByLabelText("Correo electrónico"), {
+      target: { value: "coach@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Contraseña"), {
+      target: { value: "SuperSecret123!" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" }).at(-1)!);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Código de verificación")).toBeTruthy(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Código de verificación"), {
+      target: { value: "042133" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    expect(refreshMock).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/auth/verify/code",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "coach@example.com", code: "042133" }),
       }),
     );
+    expect(signInMock).toHaveBeenCalledWith("credentials", {
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+      redirect: false,
+    });
+  });
+
+  it("surfaces a rejected code and does not sign in", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ id: "user-1", verifyRequired: true }),
+        })
+        .mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({}) }),
+    );
+    renderModal({ initialMode: "signup" });
+
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Coach" } });
+    fireEvent.change(screen.getByLabelText("Correo electrónico"), {
+      target: { value: "coach@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Contraseña"), {
+      target: { value: "SuperSecret123!" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Registrarse" }).at(-1)!);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Código de verificación")).toBeTruthy(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Código de verificación"), {
+      target: { value: "000000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe(
+        "El código no es válido o ha caducado.",
+      ),
+    );
+    expect(signInMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("a login refused with code=email_not_verified opens the code screen and completes the sign-in", async () => {
+    // Refusal (correct password, unverified account), then the successful
+    // sign-in after the code is confirmed.
+    signInMock
+      .mockResolvedValueOnce({ error: "CredentialsSignin", code: "email_not_verified" })
+      .mockResolvedValueOnce({ error: null });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+    renderModal();
+
+    fireEvent.change(screen.getByLabelText("Correo electrónico"), {
+      target: { value: "coach@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Contraseña"), {
+      target: { value: "SuperSecret123!" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Iniciar sesión" }).at(-1)!);
+
+    // THE lockout fix (#197): the refusal lands on the code screen, not on a
+    // dead-end message in the form. Email + password stay in state.
+    await waitFor(() => expect(screen.getByLabelText("Código de verificación")).toBeTruthy());
+    expect(screen.getByText(/coach@example\.com/)).toBeTruthy();
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(signInMock).toHaveBeenCalledTimes(1);
+
+    // `submitVerification` from the LOGIN path: posts the code, then signs in
+    // with the credentials already in state — no re-entry needed.
+    fireEvent.change(screen.getByLabelText("Código de verificación"), {
+      target: { value: "042133" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verificar" }));
+
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/"));
+    expect(refreshMock).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/verify/code",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "coach@example.com", code: "042133" }),
+      }),
+    );
+    expect(signInMock).toHaveBeenLastCalledWith("credentials", {
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+      redirect: false,
+    });
+  });
+
+  it("resends the code and shows a calm confirmation with the target address", async () => {
+    const fetchMock = await openVerifyView(async (url) =>
+      url === "/api/auth/verify/resend"
+        ? { ok: true, json: async () => ({ ok: true }) }
+        : signupOk(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reenviar código" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Hemos enviado un nuevo código a coach@example.com.",
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/verify/resend",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "coach@example.com" }),
+      }),
+    );
+    expect(signInMock).not.toHaveBeenCalled();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("turns the resend cooldown 429 into a retry message (never the raw JSON body)", async () => {
+    await openVerifyView(async (url) =>
+      url === "/api/auth/verify/resend"
+        ? {
+            ok: false,
+            status: 429,
+            headers: { get: (name: string) => (name === "retry-after" ? "42" : null) },
+            json: async () => ({ error: "Too many requests" }),
+          }
+        : signupOk(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reenviar código" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toBe(
+        "Espera 42 segundos antes de pedir otro código.",
+      ),
+    );
+    expect(screen.queryByText(/Too many requests/)).toBeNull();
+  });
+
+  it("shows a generic resend note when the request fails (transport error)", async () => {
+    await openVerifyView(async (url) =>
+      url === "/api/auth/verify/resend" ? Promise.reject(new Error("offline")) : signupOk(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reenviar código" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe(
+        "No se pudo reenviar el código. Inténtalo de nuevo.",
+      ),
+    );
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it("surfaces the signup API message without signing in", async () => {

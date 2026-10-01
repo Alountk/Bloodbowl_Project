@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { E2E_VERIFICATION_CODE } from "./verificationCode";
 test.use({ locale: "es-ES" });
 
 /**
@@ -25,6 +26,8 @@ async function signup(page: Page, email: string) {
   await page.getByLabel("Contraseña").fill(PASSWORD);
   await page.getByLabel("Nombre").fill("Entrenador E2E");
   await page.getByRole("button", { name: "Registrarse" }).last().click();
+  await page.getByLabel("Código de verificación").fill(E2E_VERIFICATION_CODE);
+  await page.getByRole("button", { name: "Verificar" }).click();
   await expect(page).toHaveURL("/");
 }
 

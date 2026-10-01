@@ -43,7 +43,7 @@ function stubUsers(rows: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  sendMailMock.mockResolvedValue(true);
+  sendMailMock.mockResolvedValue("delivered");
   vi.stubEnv("APP_URL", "https://bb.example");
 });
 
@@ -152,6 +152,28 @@ describe("notifyDateProposed", () => {
       expect.objectContaining({ fixtureId: "f1" }),
     );
   });
+
+  it("warns with notDelivered (never .sent) when auth mode has no mail provider", async () => {
+    vi.stubEnv("AUTH_MODE", "auth");
+    sendMailMock.mockResolvedValue("printed");
+    stubUsers({
+      "user-1": { name: "Ana" },
+      "user-2": { email: "bea@example.com", name: "Bea", locale: "es" },
+    });
+
+    await notifyDateProposed(build());
+
+    expect(loggerMock.warn).toHaveBeenCalledWith("mail.dateProposed.notDelivered", {
+      fixtureId: "f1",
+      userId: "user-2",
+      transport: "console",
+      reason: expect.stringContaining("RESEND_API_KEY"),
+    });
+    expect(loggerMock.info).not.toHaveBeenCalledWith(
+      "mail.dateProposed.sent",
+      expect.anything(),
+    );
+  });
 });
 
 describe("notifyEmailVerification", () => {
@@ -209,5 +231,51 @@ describe("notifyEmailVerification", () => {
     expect(JSON.stringify(logErrorMock.mock.calls)).not.toContain(
       "coach@example.com",
     );
+  });
+
+  // The dishonesty guard (#197 review, MAJOR): a default AUTH_MODE=auth deploy
+  // with no RESEND_API_KEY prints the code to stdout — the outcome must be a
+  // warning, and `.sent` (which the verify UI's resend trust turns into a
+  // permanent lockout story) must never be claimed for it.
+  it("never claims .sent when only the console printed the code in auth mode", async () => {
+    vi.stubEnv("AUTH_MODE", "auth");
+    sendMailMock.mockResolvedValue("printed");
+
+    await notifyEmailVerification(params);
+
+    expect(loggerMock.warn).toHaveBeenCalledWith("mail.verification.notDelivered", {
+      userId: "user-1",
+      transport: "console",
+      reason: expect.stringContaining("RESEND_API_KEY"),
+    });
+    expect(loggerMock.info).not.toHaveBeenCalledWith(
+      "mail.verification.sent",
+      expect.anything(),
+    );
+  });
+
+  it("logs the print as informational in local mode (console is the intended sink)", async () => {
+    vi.stubEnv("AUTH_MODE", "local");
+    sendMailMock.mockResolvedValue("printed");
+
+    await notifyEmailVerification(params);
+
+    expect(loggerMock.info).toHaveBeenCalledWith("mail.verification.printed", {
+      userId: "user-1",
+      transport: "console",
+    });
+    expect(loggerMock.warn).not.toHaveBeenCalled();
+  });
+
+  it("writes no claim line when the send failed (sendMail logged mail.failed already)", async () => {
+    sendMailMock.mockResolvedValue("failed");
+
+    await notifyEmailVerification(params);
+
+    expect(loggerMock.info).not.toHaveBeenCalledWith(
+      "mail.verification.sent",
+      expect.anything(),
+    );
+    expect(loggerMock.warn).not.toHaveBeenCalled();
   });
 });

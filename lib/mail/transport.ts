@@ -63,12 +63,16 @@ export function createResendTransport(apiKey: string, from: string): MailTranspo
  * Dev/test fallback: emits one structured line instead of contacting a provider.
  * It intentionally logs the recipient address (the console transport only runs
  * when no provider is configured) so a developer can see what WOULD be sent.
+ *
+ * The event is `mail.printed`, NOT `mail.sent`: nothing was delivered, and a
+ * log line claiming otherwise is exactly how a mail-less deploy hides behind
+ * "the logs said it went out" (see `lib/mail/index.ts`'s `MailOutcome`).
  */
 export function createConsoleTransport(): MailTransport {
   return {
     name: "console",
     async send(message: MailMessage): Promise<void> {
-      logger.info("mail.sent", {
+      logger.info("mail.printed", {
         transport: "console",
         to: message.to,
         subject: message.subject,

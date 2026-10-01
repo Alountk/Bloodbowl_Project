@@ -76,7 +76,7 @@ describe("createResendTransport", () => {
 });
 
 describe("createConsoleTransport", () => {
-  it("logs one mail.sent line and never touches the network", async () => {
+  it("logs one mail.printed line and never touches the network", async () => {
     const consoleCapture = captureConsole();
     const transport = createConsoleTransport();
 
@@ -85,8 +85,9 @@ describe("createConsoleTransport", () => {
     expect(transport.name).toBe("console");
     expect(fetchMock).not.toHaveBeenCalled();
     expect(consoleCapture.lines).toHaveLength(1);
+    // `printed`, not `sent`: a stdout-only fallback must never claim delivery.
     expect(JSON.parse(consoleCapture.lines[0])).toMatchObject({
-      event: "mail.sent",
+      event: "mail.printed",
       transport: "console",
       to: "coach@example.com",
       subject: "Nueva fecha",

@@ -72,24 +72,37 @@ describe("resolveTransport", () => {
 });
 
 describe("sendMail", () => {
-  it("returns true and logs mail.sent on the console transport", async () => {
+  it("returns printed and logs mail.printed on the console transport", async () => {
     vi.stubEnv("RESEND_API_KEY", "");
     vi.stubEnv("MAIL_FROM", "");
 
-    await expect(sendMail(message)).resolves.toBe(true);
+    await expect(sendMail(message)).resolves.toBe("printed");
 
+    // The transport line must claim a print, never a delivery — `printed` is
+    // what notify.ts maps to a warning in AUTH_MODE=auth.
     expect(JSON.parse(streams.out[0])).toMatchObject({
-      event: "mail.sent",
+      event: "mail.printed",
       transport: "console",
     });
   });
 
-  it("returns false, logs mail.failed and never throws when the transport fails", async () => {
+  it("returns delivered (and logs nothing extra) when the provider accepts the message", async () => {
+    vi.stubEnv("RESEND_API_KEY", "key-123");
+    vi.stubEnv("MAIL_FROM", "BB <no-reply@x.com>");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+
+    await expect(sendMail(message)).resolves.toBe("delivered");
+
+    expect(streams.out).toEqual([]);
+    expect(streams.err).toEqual([]);
+  });
+
+  it("returns failed, logs mail.failed and never throws when the transport fails", async () => {
     vi.stubEnv("RESEND_API_KEY", "key-123");
     vi.stubEnv("MAIL_FROM", "BB <no-reply@x.com>");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("provider down")));
 
-    await expect(sendMail(message)).resolves.toBe(false);
+    await expect(sendMail(message)).resolves.toBe("failed");
 
     const line = JSON.parse(streams.err[0]);
     expect(line.event).toBe("mail.failed");

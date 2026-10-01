@@ -29,6 +29,17 @@ are read at runtime (never committed):
 | `AUTH_SECRET` | value of `openssl rand -base64 32` | Signing Auth.js session cookies |
 | `AUTH_TRUST_HOST` | `true` (dev/LAN) / `false` behind HTTPS | Auth.js over plain HTTP on a LAN host |
 | `AUTH_MODE` | `local` (dev) / `auth` (prod) | Route protection + store selection |
+| `RESEND_API_KEY` | `re_…` (https://resend.com/api-keys) | **Hard prerequisite of `AUTH_MODE=auth`** — verification mail delivery |
+| `MAIL_FROM` | `Blood Bowl Teams <no-reply@example.com>` (verified in Resend) | **Hard prerequisite of `AUTH_MODE=auth`** — the sender the code arrives from |
+
+> **`AUTH_MODE=auth` requires BOTH mail variables.** Signup and resend are
+> load-bearing on email in auth mode: without a configured provider the app
+> falls back to a console transport that only prints the message, so no code
+> ever reaches a mailbox, login is refused (`email_not_verified`), and the
+> account can never be activated. The server logs this as
+> `mail.verification.notDelivered` (warn) instead of a `sent` line, but the
+> deploy is still broken — set both variables before enabling auth mode.
+> `AUTH_MODE=local` needs neither (the console fallback is the intended sink).
 
 > Keep `.env` gitignored. `AUTH_SECRET` in production must be a long random
 > string, kept secret, and stable across restarts (rotating it logs everyone out).
@@ -104,7 +115,9 @@ The default `pnpm run test:e2e` is unchanged and stays anonymous (`local`).
 - Ensure the container entrypoint runs `prisma migrate deploy` before the server
   accepts traffic (already in `docker-entrypoint.sh`); for an existing database,
   run `pnpm prisma migrate deploy` against it during the rollout.
-- Set `AUTH_MODE=auth` in production and do **not** ship `local`.
+- Set `AUTH_MODE=auth` in production and do **not** ship `local` — together
+  with `RESEND_API_KEY` and `MAIL_FROM` set (see Environment variables above;
+  auth mode cannot activate accounts without real mail delivery).
 - Confirm the runner/entrypoint runs migrations — either the image entrypoint or
   an explicit deploy-invoked `pnpm prisma migrate deploy` (see the Open Question
   in `design.md`).

@@ -66,7 +66,12 @@ export function resolveAuthGate(params: {
   // still be able to open a share link). A path that merely starts with the word
   // (e.g. `/watchdog`) is NOT the prefix and stays protected.
   const isPublicShare = params.pathname === "/watch" || params.pathname.startsWith("/watch/");
-  const isPublic = isPublicLanding || isPublicShare;
+  // Issue #197: the mailed activation link (`${APP_URL}/verify?token=…`) —
+  // an anonymous click must reach the page instead of bouncing to /login,
+  // exactly like the other public pages above (they stay MATCHED; only the
+  // decision lives here — see proxy.ts).
+  const isPublicVerify = params.pathname === "/verify";
+  const isPublic = isPublicLanding || isPublicShare || isPublicVerify;
 
   // API paths: public prefixes (Auth.js/watch/logout) allow immediately;
   // every other /api/* path is either allowed (session present) or denied

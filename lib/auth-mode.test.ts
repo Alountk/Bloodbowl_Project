@@ -137,6 +137,22 @@ describe("resolveAuthGate", () => {
     );
   });
 
+  it("allows an unauthenticated user on the mailed activation link (/verify)", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/verify", authEnabled: true })).toBe("allow");
+  });
+
+  it("allows an authenticated user on /verify (a coach may open the link too)", () => {
+    expect(
+      resolveAuthGate({ auth: { user: { id: "u1" } } as never, pathname: "/verify", authEnabled: true }),
+    ).toBe("allow");
+  });
+
+  it("does not treat a /verify/* subpath as the activation route", () => {
+    expect(resolveAuthGate({ auth: null, pathname: "/verify/other", authEnabled: true })).toBe(
+      "redirect-login",
+    );
+  });
+
   it("keeps redirecting an unauthenticated user on protected routes other than the landing", () => {
     expect(resolveAuthGate({ auth: null, pathname: "/teams", authEnabled: true })).toBe(
       "redirect-login",

@@ -27,14 +27,13 @@ describe("Signup page (AuthModal fallback)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("POSTs to the signup API then signs the new user in", async () => {
+  it("POSTs to the signup API and shows the code screen instead of signing in", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 201,
-      json: async () => ({ id: "user-1", email: "coach@example.com" }),
+      json: async () => ({ id: "user-1", email: "coach@example.com", verifyRequired: true }),
     });
     vi.stubGlobal("fetch", fetchMock);
-    signInMock.mockResolvedValue({ error: null, ok: true });
 
     await submitForm("coach@example.com", "SuperSecret123!");
 
@@ -44,13 +43,11 @@ describe("Signup page (AuthModal fallback)", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
-    await waitFor(() => {
-      expect(signInMock).toHaveBeenCalledWith("credentials", {
-        email: "coach@example.com",
-        password: "SuperSecret123!",
-        redirect: false,
-      });
-    });
+    // Deep-link page (#197): the check-your-email state, no session yet.
+    await waitFor(() =>
+      expect(screen.getByLabelText("Código de verificación")).toBeTruthy(),
+    );
+    expect(signInMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 

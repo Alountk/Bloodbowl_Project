@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { E2E_VERIFICATION_CODE } from "./verificationCode";
 
 /**
  * Real-DB auth E2E (run via `pnpm run test:e2e:auth` with AUTH_MODE=auth and a
@@ -15,7 +16,9 @@ async function signup(page: Page, email: string, password: string) {
   await page.getByLabel("Password").fill(password);
   await page.getByLabel("Name").fill("E2E Coach");
   await page.getByRole("button", { name: "Sign up" }).last().click();
-  // Successful signup establishes a session and lands on `/`.
+  // Signup creates the account but no session (#197): enter the mailed code.
+  await page.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+  await page.getByRole("button", { name: "Verify" }).click();
   await expect(page).toHaveURL("/");
 }
 
@@ -80,6 +83,42 @@ test.describe("Auth E2E (real Postgres)", () => {
     await page.goto("/teams");
     await expect(page.getByText(teamName)).toBeVisible();
   });
+
+  /**
+   * The #197 lockout fix: sign up, NEVER enter the code (missed mail / the
+   * 15-minute code expired), then log in with the CORRECT password. The
+   * refusal must open the code screen — with a resend — and the mailed code
+   * must still complete the sign-in from there.
+   */
+  test("unverified account with the correct password reaches the code screen (no lockout)", async ({
+    page,
+  }) => {
+    const email = uniqueEmail();
+    const password = "password-123";
+
+    // Sign up but do NOT enter the code.
+    await page.goto("/signup");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByLabel("Name").fill("E2E Coach");
+    await page.getByRole("button", { name: "Sign up" }).last().click();
+    await expect(page.getByLabel("Verification code")).toBeVisible();
+    await page.getByRole("button", { name: "Back" }).click();
+
+    // Correct password on an unverified account → the check-your-email screen
+    // (code field + Resend code), never a dead-end error on the login form.
+    await page.goto("/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button", { name: "Log in" }).last().click();
+    await expect(page.getByLabel("Verification code")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Resend code" })).toBeVisible();
+
+    // The code closes the loop from the login path.
+    await page.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+    await page.getByRole("button", { name: "Verify" }).click();
+    await expect(page).toHaveURL("/");
+  });
 });
 
 /**
@@ -143,6 +182,9 @@ test.describe("Auth flow regression (LAN host)", () => {
     await page.getByLabel("Password").fill(password);
     await page.getByLabel("Name").fill("E2E Coach");
     await page.getByRole("button", { name: "Sign up" }).last().click();
+    // Two-step signup (#197): verify with the mailed code before the session.
+    await page.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+    await page.getByRole("button", { name: "Verify" }).click();
     await expect(page).toHaveURL(`${base}/`);
 
     // Create a team (11 Linemen).

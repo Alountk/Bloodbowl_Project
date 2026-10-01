@@ -2,9 +2,10 @@ import { createHash, randomBytes, randomInt } from "node:crypto";
 
 /**
  * Email-verification domain logic (issue #197): pure functions and policy
- * constants — no I/O, no Prisma, no environment reads — so every rule is
- * unit-testable without mocks. Server wiring (rate limits, DB, HTTP responses)
- * lives in `lib/verificationServer.ts`.
+ * constants — no I/O, no Prisma — so every rule is unit-testable without
+ * mocks. The ONE environment read is the E2E test hook in
+ * `generateVerificationCode` (guarded by NODE_ENV). Server wiring (rate
+ * limits, DB, HTTP responses) lives in `lib/verificationServer.ts`.
  *
  * Policy mirrors the issue: a 6-digit code the user types, plus a SEPARATE
  * activation link for "por si cierra el alta sin querer". Either one activates.
@@ -25,8 +26,22 @@ export const ATTEMPT_CAP = 5;
  *  AUTH_RATE_LIMITS.resend, which enforces it). */
 export const RESEND_COOLDOWN_MS = 60 * 1000;
 
-/** Unbiased 6-digit code (`crypto.randomInt`), always 6 chars incl. leading zeros. */
+/**
+ * Unbiased 6-digit code (`crypto.randomInt`), always 6 chars incl. leading zeros.
+ *
+ * E2E test hook (issue #197): the DB stores only `sha256(code + ":" + email)`,
+ * so a Playwright worker can never read a generated code back — the suite
+ * needs a KNOWN value instead. When `E2E_VERIFICATION_CODE` is set, that value
+ * is generated — but ONLY when `NODE_ENV !== "production"`: production builds
+ * run with `NODE_ENV=production`, so a deployed bundle structurally cannot
+ * honour the variable no matter what env is injected. Nothing else weakens:
+ * the hash, TTL, attempt cap and resend cooldown stay real either way.
+ */
 export function generateVerificationCode(): string {
+  const fixed = process.env.E2E_VERIFICATION_CODE;
+  if (process.env.NODE_ENV !== "production" && fixed && /^\d{6}$/.test(fixed)) {
+    return fixed;
+  }
   return randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 

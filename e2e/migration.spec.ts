@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { E2E_VERIFICATION_CODE } from "./verificationCode";
 
 /**
  * Real-DB migration E2E (run via `pnpm run test:e2e:auth`). Verifies the one-time
@@ -42,6 +43,8 @@ async function signup(page: Page, email: string, password: string) {
   await page.getByLabel("Password").fill(password);
   await page.getByLabel("Name").fill("E2E Coach");
   await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+  await page.getByRole("button", { name: "Verify" }).click();
   await expect(page).toHaveURL("/");
 }
 
@@ -75,9 +78,9 @@ test.describe("localStorage migration E2E (real Postgres)", () => {
   }) => {
     const email = uniqueEmail();
     const password = "password-123";
-    // Create the account but do NOT log in yet.
+    // Create AND verify the account (the helper signs in), then sign out so we
+    // can seed localStorage before the migration-triggering login.
     await signup(page, email, password);
-    // Sign out so we can seed localStorage before the migration-triggering login.
     await logout(page);
     await expect(
       page.getByRole("heading", { name: "Your league, in your pocket." }),

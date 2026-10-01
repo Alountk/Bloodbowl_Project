@@ -101,6 +101,26 @@ describe("POST /api/auth/verify/resend", () => {
     expect(prismaMock.user.update.mock.calls.length).toBe(writesBefore);
   });
 
+  it("does not charge cooldown-denied clicks to the per-IP budget", async () => {
+    // Hammer ONE address up to the hourly cap: click 1 passes (mail sent),
+    // clicks 2..limit are refused by the 60s cooldown. A cooldown refusal
+    // sends no mail, so it must not record against the caller's 5/hour —
+    // otherwise four impatient clicks strand a legitimate user for an hour.
+    const first = await POST(post({ email: EMAIL }));
+    expect(first.status).toBe(200);
+    for (let i = 1; i < AUTH_RATE_LIMITS.resendIp.limit; i++) {
+      const refused = await POST(post({ email: EMAIL }));
+      expect(refused.status).toBe(429);
+      expect(Number(refused.headers.get("retry-after"))).toBeLessThan(60 * 60);
+    }
+
+    // Only 1 of 5 slots used: a fresh address must still get through.
+    const probe = await POST(post({ email: "other@example.com" }));
+    expect(probe.status).toBe(200);
+    expect(notifyMock).toHaveBeenCalledTimes(2);
+    expect(prismaMock.user.update).toHaveBeenCalledTimes(2);
+  });
+
   it("answers an unknown email with the SAME 200 body as a real resend (no oracle)", async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
 

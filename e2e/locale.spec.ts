@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { E2E_VERIFICATION_CODE } from "./verificationCode";
 
 /**
  * RAU-58 per-account locale E2E (AUTH_MODE=auth + real Postgres). Pins:
@@ -30,6 +31,8 @@ async function signupEs(page: Page, email: string) {
   await page.getByLabel("Contraseña").fill(PASSWORD);
   await page.getByLabel("Nombre").fill("Entrenador Locale");
   await page.getByRole("button", { name: "Registrarse" }).last().click();
+  await page.getByLabel("Código de verificación").fill(E2E_VERIFICATION_CODE);
+  await page.getByRole("button", { name: "Verificar" }).click();
   await expect(page).toHaveURL("/");
 }
 
@@ -39,6 +42,8 @@ async function signupEn(page: Page, email: string) {
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByLabel("Name").fill("Locale Coach");
   await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+  await page.getByRole("button", { name: "Verify" }).click();
   await expect(page).toHaveURL("/");
 }
 
