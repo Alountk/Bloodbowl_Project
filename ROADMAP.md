@@ -24,6 +24,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Tokens de color centralizados en `@theme`** (Tailwind v4): 56 tokens (paleta marca, superficies/texto, bandas de severidad, badges de cotejo, estados funcionales, sombras), 44 archivos migrados de hex arbitrarios a utilidades; MatchCard robustecida (contraste AA, `<button>` nativo, target 24px, focus-visible, heading) | #180 |
 | **Dirección visual = Reglamento vintage default**: papel crema + tinta editorial con tipografía dual self-hosted Fraunces (títulos/scores) + Space Grotesk (datos/UI); **Tablón americano queda como opt-in** `[data-theme=scoreboard]` (Anton display + acento end-zone) | `98318c0`, `21e2d9c` |
 | **Escudo de equipo personalizado** (RAU-78): el owner sube/quita un escudo desde el detalle (WebP 512 cuadrado server-side, ≤2MB, JPEG/PNG/WebP por magic bytes, key `shields/` vía el adapter storage local/S3) que reemplaza el emblema determinista en cards, detalle y MatchCard (fallback al placeholder; fuera: header en vivo y standings) | #188, #189, #190, #191 |
+| **Rediseño de la home** (#268), en 3 PRs: zona *Needs your attention* (propuestas, partidos en vivo, resultados pendientes, ligas OPEN) → *Next match* → stat cards ampliadas (equipos, ligas, partidos, V-E-D, PE de plantilla) → **resumen de equipos que sustituye a `TeamList` en la home** → accesos rápidos condicionales. Alimentada por el agregado `GET /api/me/dashboard` (2 queries) en lugar de N detalles de liga | #306, #307, #309, #310 |
 
 ### Cuenta y datos
 | Feature | PR / Cambio |
@@ -95,6 +96,9 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Flakes restantes de la suite unit estabilizados (headroom de timeout + carreras de efectos) | #275 |
 | **Hardening de seguridad** (headers + CSP, rate-limit en signup/login/password, invalidación de JWT al cambiar contraseña, gate 401 de `/api` en el proxy, topes de payload + validación profunda de rosters, `AUTH_SECRET` fail-fast, compose endurecido) | #282, #283–#287 |
 | **README trilingüe** (EN/ES/CA con selector de idioma) | `2244b46` |
+| **Gate del e2e en CI** — job `E2E (local)` sin BD + job `E2E (auth)` con Postgres en el runner (el spec LAN-host da de alta `111.111.111.100` en loopback); `docker` depende de los tres. Para poder conectarlo la suite auth pasó de **60 fallos / 11 pasan** a **0 fallos**: rate-limit de signup sobre una sola IP (#298), #270 (#299), copy de password previo a #285 (#302) y primeros nombres duplicados en el dock (#303) | #290, #304, #271, #297, #299, #300, #301 |
+| **SSR del shell** — `SessionProvider` recibe la sesión ya resuelta por `auth()`, así que las rutas dejan de pintar `Loading…` en el primer HTML | #292, #291 |
+| **Imagen Docker de runtime solo con prod deps** — stage `deps-prod` podado + guard del CLI de Prisma; **1.31 GB → 1.15 GB** | #294, #293 |
 
 ### Bugs resueltos
 | Bug | Fix |
@@ -121,6 +125,8 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Keys duplicadas de React por víctimas de lesión repetidas en la resolución en vivo | Dedup de `casualtyVictimsFromEvents` por (equipo, jugador) con la banda más severa (#139) |
 | Flaky del locator de live-match (filter ambiguo → strict violation cuando el SSE era rápido) | Locator por víctima + línea del causante, resuelve a una sola card (#140) |
 | El logout no volvía a la landing y a veces **no deslogueaba** (dos causas: el Router Cache reproducía la página logueada, y una lectura de sesión en vuelo re-emitía la cookie ya borrada) | Navegación de documento completo + borrado server-side con drenaje y verificación (#276, #277; issue #269) |
+| El step de compra de incentivos no aparecía al coach de menor TV (#270) | El presupuesto vivía solo en el fixture GET y las ramas `scheduled`/`pending` no tenían refetch: `onReady` cableado en los 3 call sites (#299) |
+| Dos chips de novato con el mismo nombre en el dock (RAU-13) | `randomPlayerName` filtraba primeros nombres contra nombres **compuestos** — filtro muerto; ahora se derivan los primeros tokens (#303) |
 
 ## Pendiente / Roadmap futuro
 
@@ -137,13 +143,10 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | Tema | Detalle |
 |---|---|
 | **Coverage tooling** | No hay `@vitest/coverage` instalado; añadir para gatear ramas. |
-| **CI hardening** | CI corre `pnpm test` + `lint` + `build`, pero **el e2e (Playwright) no está conectado** (#271): ninguna regresión de flujo la cubre CI. Además el e2e auth sufre cold-start race (primer run puede dar timeout; re-run verde), así que hay que estabilizarlo **antes** de conectarlo. |
 | **Dependabot / renovate** | No configurado aún. |
 | **Observabilidad** | Ya hay logger estructurado + captura de 500s (#272) y envío de email (#273). Falta centralización externa (Sentry opcional) y alertas. |
 | **QA mobile manual** | La iteración mobile quedó con una tarea de QA manual (375px) pendiente de verificación en dispositivo real. |
 | **Refactor `enrichFixture`** | Deuda técnica de live-match (D7): la ruta GET de fixture importa `enrichFixture` desde `app/api/leagues/[id]/route.ts` (cast estructural porque `FixtureWithMatchday` no se exporta). Extraer a `lib/fixtures.ts` y exportar el tipo — refactor no bloqueante, verificado en verify-report. |
-| **SSR del shell roto** | `SessionProvider` se monta sin la prop `session`, así que `SessionAppProvider` pinta `Loading…` en el SSR de todas las rutas no exentas (`/login`, `/teams`, `/matches`…): el primer contenido depende del JS + `/api/auth/session`. `app/layout.tsx` ya llama `auth()` — pasar `session` por props arregla el FCP de toda la app en un fichero. |
-| **Imagen Docker de runtime** | El runner copia el store completo de pnpm (`Dockerfile:46`), así que Storybook/Playwright/Vitest/ESLint viajan en la imagen de producción. Migrar a un stage `pnpm deploy --prod` o al trazado de `.next/standalone`. |
 | **Ticker de `liveHub` sin parar** | `stopTicking` no tiene ningún llamador en producción y `channels` nunca se borra: queda un `setInterval` de 1s por fixture que haya jugado, para la vida del proceso, emitiendo frames que el cliente descarta (el reloj se deriva en local). |
 | **Cierre de partido duplicado** | La lógica de cierre (FF, ganancias, MVP, PE, tesorería, bajas) está implementada dos veces — `result/route.ts` y `lib/liveStore.ts` (`resolveLiveMatch`/`runWizardClose`) — con helpers duplicados que se citan entre sí por comentario. Extraer `lib/matchClose.ts`. |
 | **Errores HTTP sin tipar** | `Object.assign(new Error, { status })` ~40 veces + casts estructurales de lectura + comparación por mensaje de texto. Introducir `HttpError { status, code }`, un `toErrorResponse` compartido y un `ApiError` tipado en el cliente. |
