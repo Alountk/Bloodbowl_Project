@@ -4,6 +4,8 @@ import { AppProvider } from "@/app/providers/AppProvider";
 import { InMemoryTeamStore } from "@/features/teams/store/InMemoryTeamStore";
 import { DEFAULT_COACHING, type Team } from "@/features/teams/types";
 import type { DashboardFixture, DashboardPayload } from "@/app/api/me/dashboard/route";
+import { formatMatchDate } from "@/features/leagues/MatchCard";
+import { formatRulebookCost } from "@/features/teams/format";
 import { Dashboard } from "./Dashboard";
 
 const me = "u1";
@@ -398,5 +400,60 @@ describe("Dashboard — pending attention (issue #268)", () => {
     expect(
       within(actions).getByRole("link", { name: "Report result" }).getAttribute("href"),
     ).toBe("/leagues/l1/fixtures/f-quick");
+  });
+});
+
+describe("Dashboard — next match + squad PE (issue #268)", () => {
+  it("renders the next match as ONE link to the fixture, with round and formatted date", async () => {
+    stubInbox(emptyInbox({ nextMatch: inboxFixture() }));
+    renderDashboard();
+
+    const region = await screen.findByRole("region", { name: "Next match" });
+    const link = within(region).getByRole("link");
+    expect(link.getAttribute("href")).toBe("/leagues/l1/fixtures/f1");
+    expect(link.textContent).toContain("Pretemporada Cup · Round 2");
+    expect(link.textContent).toContain("Reikland Reavers vs Chaos Crushers");
+    // Footer: English status word + the shared date helper (same machine, so
+    // the locale/timezone formatting matches the component's output exactly).
+    expect(link.textContent).toContain("Scheduled");
+    expect(link.textContent).toContain(formatMatchDate("2026-10-05T18:00:00.000Z"));
+  });
+
+  it("omits the Next match landmark entirely when the payload has no next fixture", async () => {
+    stubInbox(emptyInbox());
+    renderDashboard();
+
+    // The inbox resolved (the attention region landed) and STILL no landmark:
+    // the common no-fixture case must never render an empty labelled section.
+    await screen.findByRole("region", { name: "Needs your attention" });
+    expect(screen.queryByRole("heading", { name: "Next match" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Next match" })).toBeNull();
+  });
+
+  it("shows the LIVE badge on a live next match", async () => {
+    stubInbox(
+      emptyInbox({
+        nextMatch: inboxFixture({
+          live: { status: "live", homeScore: 1, awayScore: 0, half: 2, turnNumber: 4 },
+        }),
+      }),
+    );
+    renderDashboard();
+
+    const region = await screen.findByRole("region", { name: "Next match" });
+    // Locale-aware badge: "EN VIVO" (es default) or "LIVE" (en) — scoped to
+    // the zone so the attention list can never satisfy the assertion.
+    expect(within(region).getByRole("link", { name: /EN VIVO|LIVE/ }).getAttribute("href")).toBe(
+      "/leagues/l1/fixtures/f1",
+    );
+  });
+
+  it("shows the squad PE total from the dashboard payload", async () => {
+    stubInbox(emptyInbox({ teams: { count: 2, readyToImprove: 1, squadPe: 12340 } }));
+    renderDashboard();
+
+    const overview = screen.getByLabelText("Overview");
+    expect(await within(overview).findByText("Squad PE")).toBeTruthy();
+    expect(within(overview).getByText(formatRulebookCost(12340))).toBeTruthy();
   });
 });
