@@ -2,11 +2,13 @@
 # Usage: docker compose up -d
 # `pull_policy: always` ensures every up pulls the newest `latest` image.
 #
-# Connectivity: the web reaches postgres via `host.docker.internal:5432`
-# (resolved to the host gateway). This works even when the orchestrator
-# isolates per-service networks and `postgres` as a DNS name is not available.
-# If your orchestrator DOES share a network (plain docker compose), you can
-# switch DATABASE_URL back to `@postgres:5432` and drop the extra_hosts.
+# Connectivity: BOTH services live in this stack and share `arcane_net`, so the
+# web reaches postgres by its SERVICE NAME — no host hop, no published port
+# involved, and no dependency on how the host resolves `host.docker.internal`
+# (on a Linux Engine that alias is a bridge address, which cannot reach a
+# loopback-bound publish; on Docker Desktop it happens to work — see issue #308).
+# `extra_hosts` below stays as the escape hatch for a DATABASE_URL override that
+# deliberately targets the host instead.
 services:
   web:
     image: ghcr.io/alountk/bloodbowl_project:latest
@@ -21,9 +23,10 @@ services:
         condition: service_healthy
     environment:
       # Full control from the environment: set DATABASE_URL in the .env when you
-      # need a custom connection string. Falls back to the standard local
-      # postgres on the published port when DATABASE_URL is unset.
-      DATABASE_URL: ${DATABASE_URL:-postgresql://bloodbowl:bloodbowl@host.docker.internal:5433/bloodbowl?schema=public}
+      # need a custom connection string. Unset, it falls back to the `postgres`
+      # service of THIS stack (in-network, port 5432 inside the container — the
+      # host-published port below is irrelevant to the web).
+      DATABASE_URL: ${DATABASE_URL:-postgresql://bloodbowl:bloodbowl@postgres:5432/bloodbowl?schema=public}
       # Required for Auth.js on a LAN/HTTP host. Override in production with the
       # real session secret; the `:?` makes compose fail fast without it.
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — generate with `openssl rand -base64 32`}
@@ -63,8 +66,9 @@ services:
     ports:
       # Published port is configurable; the default 5433 avoids the common 5432
       # clash with other Postgres instances on the same host. Bound to
-      # loopback so a LAN peer cannot reach Postgres with the default creds —
-      # the web service still reaches it via host.docker.internal:5432.
+      # loopback so a LAN peer cannot reach Postgres with the default creds.
+      # This publish is ONLY for the host (psql on the box) — the web service
+      # never uses it: it talks to `postgres:5432` over `arcane_net` above.
       - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - bloodbowl_postgres_data:/var/lib/postgresql/data
