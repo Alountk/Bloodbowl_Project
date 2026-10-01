@@ -16,14 +16,21 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("bcryptjs", () => bcryptMock);
 
+// Mail is best-effort: the signup must return 201 even when the notifier
+// fails (mirrors how the propose route test stubs the mail layer).
+const notifyMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/mail/notify", () => ({ notifyEmailVerification: notifyMock }));
+
 import { POST } from "./route";
 import { MAX_PASSWORD_LENGTH } from "@/lib/password";
+import { hashVerificationValue } from "@/lib/verification";
 import { AUTH_RATE_LIMITS, resetRateLimits } from "@/lib/rateLimit";
 
 describe("POST /api/auth/signup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetRateLimits();
+    notifyMock.mockResolvedValue(undefined);
   });
 
   it("creates a user and returns 201 with the created user when credentials are valid", async () => {
@@ -232,5 +239,76 @@ describe("POST /api/auth/signup", () => {
     expect((await denied.json()).error).toBe("Too many requests");
     // The denied attempt never reaches bcrypt/Prisma.
     expect(prismaMock.user.create).toHaveBeenCalledTimes(AUTH_RATE_LIMITS.signup.limit);
+  });
+
+  it("stores hashed verification secrets and mails code + link, without changing the 201", async () => {
+    bcryptMock.hash.mockResolvedValue("hashed-password");
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "coach@example.com",
+      name: null,
+      locale: "es",
+    });
+
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: "coach@example.com", password: "SuperSecret123!" }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    // Response body stays exactly the created user — no verification payload.
+    expect(Object.keys(await res.json()).sort()).toEqual([
+      "email",
+      "id",
+      "locale",
+      "name",
+    ]);
+
+    // Only hashes/expiries hit the DB — the stored values are exactly
+    // sha256(secret + ":" + email) of the plaintexts that were mailed, and
+    // the account starts UNVERIFIED (PR 2 enforces; the migration backfilled
+    // old rows).
+    const data = prismaMock.user.create.mock.calls[0][0].data;
+    const { code, token } = notifyMock.mock.calls[0][0];
+    expect(data.emailVerificationCodeHash).toBe(
+      hashVerificationValue(code, "coach@example.com"),
+    );
+    expect(data.emailVerificationTokenHash).toBe(
+      hashVerificationValue(token, "coach@example.com"),
+    );
+    expect(data.emailVerifiedAt).toBeUndefined();
+
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        email: "coach@example.com",
+        locale: "es",
+        code: expect.stringMatching(/^\d{6}$/),
+        token: expect.any(String),
+      }),
+    );
+  });
+
+  it("still returns 201 when the verification mail fails", async () => {
+    bcryptMock.hash.mockResolvedValue("hashed-password");
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "coach@example.com",
+      name: null,
+      locale: "es",
+    });
+    notifyMock.mockRejectedValue(new Error("mail provider down"));
+
+    const req = new Request("http://localhost:3000/api/auth/signup", {
+      method: "POST",
+      body: JSON.stringify({ email: "coach@example.com", password: "SuperSecret123!" }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    expect((await res.json()).id).toBe("user-1");
   });
 });
