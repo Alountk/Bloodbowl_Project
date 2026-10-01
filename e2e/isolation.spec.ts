@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { E2E_VERIFICATION_CODE } from "./verificationCode";
 
 /**
  * Real-DB multi-user isolation E2E (run via `pnpm run test:e2e:auth`).
@@ -27,6 +28,8 @@ test.describe("User isolation E2E (real Postgres)", () => {
     await pageA.getByLabel("Password").fill(password);
     await pageA.getByLabel("Name").fill("E2E Coach");
     await pageA.getByRole("button", { name: "Sign up" }).last().click();
+    await pageA.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+    await pageA.getByRole("button", { name: "Verify" }).click();
     await expect(pageA).toHaveURL("/");
 
     await pageA.goto("/teams/create");
@@ -54,6 +57,8 @@ test.describe("User isolation E2E (real Postgres)", () => {
     await pageB.getByLabel("Password").fill(password);
     await pageB.getByLabel("Name").fill("E2E Coach");
     await pageB.getByRole("button", { name: "Sign up" }).last().click();
+    await pageB.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+    await pageB.getByRole("button", { name: "Verify" }).click();
     await expect(pageB).toHaveURL("/");
 
     // B's list does NOT include A's team (isolation).

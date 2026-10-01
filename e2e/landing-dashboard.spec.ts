@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { E2E_VERIFICATION_CODE } from "./verificationCode";
 
 /**
  * Landing + dashboard behavior E2E (RAU-55, AUTH_MODE=auth + real Postgres).
@@ -19,6 +20,8 @@ async function signup(page: Page, email: string, password: string) {
   await page.getByLabel("Password").fill(password);
   await page.getByLabel("Name").fill("E2E Coach");
   await page.getByRole("button", { name: "Sign up" }).last().click();
+  await page.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+  await page.getByRole("button", { name: "Verify" }).click();
   await expect(page).toHaveURL("/");
 }
 
@@ -156,6 +159,9 @@ test.describe("Auth modal (auth mode)", () => {
     await dialog.getByLabel("Password").fill(password);
     await dialog.getByLabel("Name").fill("E2E Coach");
     await dialog.getByRole("button", { name: "Sign up" }).last().click();
+    // Two-step signup (#197): verify with the mailed code before the session.
+    await dialog.getByLabel("Verification code").fill(E2E_VERIFICATION_CODE);
+    await dialog.getByRole("button", { name: "Verify" }).click();
 
     // Signed in → the dashboard renders.
     await expect(page.getByRole("heading", { name: /Welcome back/ })).toBeVisible();

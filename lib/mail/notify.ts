@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { isAuthEnabled } from "@/lib/auth-mode";
 import { logError, logger } from "@/lib/logger";
-import { sendMail } from "./index";
+import { sendMail, type MailOutcome } from "./index";
 import { dateProposedMail, verificationMail } from "./templates";
 
 export interface NotifyDateProposedParams {
@@ -42,6 +43,43 @@ function verificationUrl(token: string, email: string): string {
   const base = (process.env.APP_URL ?? "").replace(/\/+$/, "");
   const query = `token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
   return `${base}/verify?${query}`;
+}
+
+/**
+ * Writes the delivery claim for one notification, honestly by outcome:
+ *
+ * - `delivered` → `<event>.sent` (info): a real provider accepted it.
+ * - `printed` → NOTHING was delivered (console transport only). With
+ *   `AUTH_MODE=auth` that is a WARN — `<event>.notDelivered`: signup/resend
+ *   just told the user to watch an inbox that will never receive the code, so
+ *   a default compose deploy with no `RESEND_API_KEY` must be visible as a
+ *   failure, not as success. With `AUTH_MODE=local` printing IS the intended
+ *   sink (tests and anonymous browsing run credential-free), so it stays
+ *   informational as `<event>.printed`.
+ * - `failed` → no claim line here: `sendMail` already logged `mail.failed`.
+ *
+ * Reserving `.sent` for real delivery is the whole point of this helper: the
+ * outcome must never be indistinguishable between a delivered mail and a line
+ * printed to stdout.
+ */
+function logMailOutcome(
+  event: string,
+  outcome: MailOutcome,
+  fields: Record<string, unknown>,
+): void {
+  if (outcome === "delivered") {
+    logger.info(`${event}.sent`, fields);
+  } else if (outcome === "printed") {
+    const printed = { ...fields, transport: "console" };
+    if (isAuthEnabled()) {
+      logger.warn(`${event}.notDelivered`, {
+        ...printed,
+        reason: "no mail provider configured (set RESEND_API_KEY and MAIL_FROM)",
+      });
+    } else {
+      logger.info(`${event}.printed`, printed);
+    }
+  }
 }
 
 /**
@@ -87,7 +125,7 @@ export async function notifyDateProposed(
       // A user without an email cannot be reached — skip rather than fail.
       if (!user?.email) continue;
 
-      const sent = await sendMail(
+      const outcome = await sendMail(
         dateProposedMail({
           to: user.email,
           locale: user.locale,
@@ -99,12 +137,10 @@ export async function notifyDateProposed(
         }),
       );
 
-      if (sent) {
-        logger.info("mail.dateProposed.sent", {
-          fixtureId: params.fixtureId,
-          userId: recipient.userId,
-        });
-      }
+      logMailOutcome("mail.dateProposed", outcome, {
+        fixtureId: params.fixtureId,
+        userId: recipient.userId,
+      });
     }
   } catch (error) {
     logError("mail.dateProposed.failed", error, {
@@ -130,18 +166,21 @@ export interface NotifyEmailVerificationParams {
  * alta sin querer").
  *
  * Best-effort by contract, like `notifyDateProposed`: it NEVER throws, so a
- * mail outage cannot fail the signup or resend that triggered it. Every log
- * line THIS function writes carries `userId` only — no verification secret
- * ever reaches the logger. (The recipient address is a different story:
- * `sendMail`'s own failure path logs `{ to, subject }` — see
- * `lib/mail/index.ts:35`. The claim belongs to this function, not to the mail
- * layer, which is why it is phrased that way.)
+ * mail outage cannot fail the signup or resend that triggered it. The delivery
+ * claim is written by `logMailOutcome`: `mail.verification.sent` only for a
+ * real provider, `mail.verification.notDelivered` (warn) when auth mode has no
+ * provider configured and only the console printed the code. Every log line
+ * THIS function writes carries `userId` only — no verification secret ever
+ * reaches the logger. (The recipient address is a different story: `sendMail`'s
+ * own failure path logs `{ to, subject }` — see `lib/mail/index.ts`. The claim
+ * belongs to this function, not to the mail layer, which is why it is phrased
+ * that way.)
  */
 export async function notifyEmailVerification(
   params: NotifyEmailVerificationParams,
 ): Promise<void> {
   try {
-    const sent = await sendMail(
+    const outcome = await sendMail(
       verificationMail({
         to: params.email,
         locale: params.locale,
@@ -149,9 +188,7 @@ export async function notifyEmailVerification(
         url: verificationUrl(params.token, params.email),
       }),
     );
-    if (sent) {
-      logger.info("mail.verification.sent", { userId: params.userId });
-    }
+    logMailOutcome("mail.verification", outcome, { userId: params.userId });
   } catch (error) {
     logError("mail.verification.failed", error, { userId: params.userId });
   }

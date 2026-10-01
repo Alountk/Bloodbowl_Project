@@ -70,10 +70,14 @@ export function gateResendCooldown(email: string): Response | null {
 
 /** Resend, capped by the CALLER (not the target): 5/hour/IP.
  *
- *  Checked FIRST, before the body is even parsed, so the 429 depends only on
- *  the caller's own budget — never on whether an address exists, which keeps
- *  the no-oracle contract intact while bounding mail volume and the number of
- *  `verify:` budget resets one host can force. */
+ *  Checked AFTER the per-address cooldown but BEFORE the lookup, and it
+ *  records only when a resend actually proceeds: a cooldown denial sends no
+ *  mail, so it must not consume the budget that exists to bound mail volume
+ *  (impatient clicks inside the 60s window used to burn hourly slots). Like
+ *  the cooldown it is identity-blind — format and recent-resend state say
+ *  nothing about whether an account exists — so the no-oracle contract holds
+ *  while mail volume and the number of `verify:` budget resets one host can
+ *  force stay bounded. */
 export function gateResendPerIp(ip: string): Response | null {
   const gate = rateLimit(
     `resend-ip:${ip}`,

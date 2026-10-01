@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { submitAuth } from "./authSubmit";
+import { submitAuth, submitVerification } from "./authSubmit";
 
 const signInMock = vi.hoisted(() => vi.fn());
 vi.mock("next-auth/react", () => ({ signIn: signInMock }));
@@ -57,13 +57,12 @@ describe("submitAuth", () => {
     expect(outcome.errorKey).toBe("loginError");
   });
 
-  it("POSTs to the signup route (with name) then signs the new user in", async () => {
+  it("POSTs to the signup route (with name) and asks for verification, WITHOUT signing in", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ id: "user-1" }),
+      json: async () => ({ id: "user-1", verifyRequired: true }),
     });
     vi.stubGlobal("fetch", fetchMock);
-    signInMock.mockResolvedValue({ error: null });
 
     const outcome = await submitAuth({
       mode: "signup",
@@ -73,6 +72,8 @@ describe("submitAuth", () => {
     });
 
     expect(outcome.ok).toBe(true);
+    // Two-step signup (#197): the code screen, never a session.
+    expect(outcome.next).toBe("verify");
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/auth/signup",
       expect.objectContaining({
@@ -84,11 +85,7 @@ describe("submitAuth", () => {
         }),
       }),
     );
-    expect(signInMock).toHaveBeenCalledWith("credentials", {
-      email: "coach@example.com",
-      password: "SuperSecret123!",
-      redirect: false,
-    });
+    expect(signInMock).not.toHaveBeenCalled();
   });
 
   it("omits an empty name from the signup payload", async () => {
@@ -147,12 +144,30 @@ describe("submitAuth", () => {
     expect(signInMock).not.toHaveBeenCalled();
   });
 
-  it("maps a signIn error after a successful signup to signupSigninFailed", async () => {
+  it("maps login of an unverified account (code=email_not_verified) to its own key", async () => {
+    signInMock.mockResolvedValue({
+      error: "CredentialsSignin",
+      code: "email_not_verified",
+    });
+
+    const outcome = await submitAuth({
+      mode: "login",
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.errorKey).toBe("emailNotVerified");
+  });
+
+  it("skips the code screen when signup answers verifyRequired:false (AUTH_MODE=local)", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "user-1" }) }),
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: "user-1", verifyRequired: false }),
+      }),
     );
-    signInMock.mockResolvedValue({ error: "CredentialsSignin" });
 
     const outcome = await submitAuth({
       mode: "signup",
@@ -160,7 +175,91 @@ describe("submitAuth", () => {
       password: "SuperSecret123!",
     });
 
+    // No `next: verify` → the caller navigates straight home; no session to make.
+    expect(outcome.ok).toBe(true);
+    expect(outcome.next).toBeUndefined();
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("fails CLOSED to the code screen when the signup body omits verifyRequired", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "user-1" }) }),
+    );
+
+    const outcome = await submitAuth({
+      mode: "signup",
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+    });
+
+    // Only an EXPLICIT `false` may skip verification (authSubmit.ts:94-97) —
+    // a missing field must never silently establish an unverified account
+    // with no session and no code screen.
+    expect(outcome.ok).toBe(true);
+    expect(outcome.next).toBe("verify");
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("fails CLOSED to the code screen when the signup body is a garbled non-object", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => null }),
+    );
+
+    const outcome = await submitAuth({
+      mode: "signup",
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.next).toBe("verify");
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("submitVerification accepts the mailed code, signs in, and reports ok", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+    signInMock.mockResolvedValue({ error: null });
+
+    const outcome = await submitVerification({
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+      code: "421337",
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/verify/code",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "coach@example.com", code: "421337" }),
+      }),
+    );
+    expect(signInMock).toHaveBeenCalledWith("credentials", {
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+      redirect: false,
+    });
+  });
+
+  it("submitVerification maps a rejected code to verifyFailed and does NOT sign in", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({}) }),
+    );
+
+    const outcome = await submitVerification({
+      email: "coach@example.com",
+      password: "SuperSecret123!",
+      code: "000000",
+    });
+
     expect(outcome.ok).toBe(false);
-    expect(outcome.errorKey).toBe("signupSigninFailed");
+    expect(outcome.errorKey).toBe("verifyFailed");
+    expect(signInMock).not.toHaveBeenCalled();
   });
 });

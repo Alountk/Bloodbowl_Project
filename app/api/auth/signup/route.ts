@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isValidEmail, normalizeEmail } from "@/lib/email";
 import { isPasswordAcceptable, PASSWORD_SALT_ROUNDS } from "@/lib/password";
 import { isLocale } from "@/lib/i18n/serverLocale";
+import { isAuthEnabled } from "@/lib/auth-mode";
 import { logError } from "@/lib/logger";
 import { notifyEmailVerification } from "@/lib/mail/notify";
 import { newVerificationSecrets } from "@/lib/verification";
@@ -39,13 +40,17 @@ function readSignupLocale(req: Request): "es" | "en" | undefined {
  * Body: `{ email, password, name? }`. Validates input, hashes the password with
  * bcryptjs, and persists a new User (locale captured from the `bb-locale`
  * cookie so the account inherits the signup language). Returns 201 with the
- * created user, or a 400/409 on invalid input / duplicate email. The client
- * establishes the session afterwards via `signIn("credentials")`.
+ * created user (plus `verifyRequired`), or a 400/409 on invalid input /
+ * duplicate email. The client does NOT sign in afterwards (issue #197 PR 2):
+ * in auth mode it asks for the mailed verification code first.
  *
  * Issue #197 PR 1 (additive): the create also stores the pending verification
- * code/link secrets (hashes only) and mails them best-effort. The response,
- * the session flow, and enforcement are untouched — verification is enforced
- * in PR 2; until then `emailVerifiedAt` simply stays NULL on new signups.
+ * code/link secrets (hashes only) and mails them best-effort. PR 2 extends the
+ * 201 body with `verifyRequired` (server-resolved from AUTH_MODE): the client
+ * must NOT sign in after signup anymore — in auth mode it shows the code
+ * screen (`next: "verify"`); in local mode `verifyRequired: false` skips
+ * straight home (no session exists there, the LocalStorage dashboard is the
+ * signed-in state). Status codes and the created-user fields are unchanged.
  */
 export async function POST(req: Request) {
   let body: { email?: string; password?: string; name?: string };
@@ -117,7 +122,10 @@ export async function POST(req: Request) {
       logError("mail.verification.failed", error, { userId: user.id });
     }
 
-    return NextResponse.json(user, { status: 201 });
+    return NextResponse.json(
+      { ...user, verifyRequired: isAuthEnabled() },
+      { status: 201 },
+    );
   } catch (error) {
     const isDuplicate = (error as { code?: string }).code === "P2002";
     if (isDuplicate) {

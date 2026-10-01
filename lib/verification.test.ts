@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ATTEMPT_CAP,
   CODE_TTL_MS,
@@ -10,6 +10,13 @@ import {
   isExpired,
   newVerificationSecrets,
 } from "./verification";
+
+// The E2E-hook tests below stub NODE_ENV and E2E_VERIFICATION_CODE; restore
+// both before any other test in this file runs (none of them stub the env,
+// so the reset is a no-op for the rest of the suite).
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("policy constants", () => {
   it("pins the windows and caps from issue #197", () => {
@@ -34,6 +41,31 @@ describe("generateVerificationCode", () => {
   it("varies across calls", () => {
     const codes = new Set(Array.from({ length: 50 }, generateVerificationCode));
     expect(codes.size).toBeGreaterThan(1);
+  });
+});
+
+describe("generateVerificationCode E2E hook (E2E_VERIFICATION_CODE)", () => {
+  it("honours a well-formed fixed code outside production (what the e2e suites rely on)", () => {
+    vi.stubEnv("E2E_VERIFICATION_CODE", "999999");
+    expect(generateVerificationCode()).toBe("999999");
+  });
+
+  it("IGNORES the fixed code when NODE_ENV=production (the deployment invariant)", () => {
+    vi.stubEnv("E2E_VERIFICATION_CODE", "999999");
+    vi.stubEnv("NODE_ENV", "production");
+
+    // A production build must structurally never obey the variable, whatever
+    // env is injected — otherwise a deployed bundle would issue a KNOWN code.
+    const codes = Array.from({ length: 20 }, generateVerificationCode);
+    for (const code of codes) expect(code).toMatch(/^\d{6}$/);
+    expect(codes).not.toContain("999999");
+  });
+
+  it("ignores a malformed fixed code (non-6-digit values never pin a code)", () => {
+    vi.stubEnv("E2E_VERIFICATION_CODE", "not-a-code");
+    const code = generateVerificationCode();
+    expect(code).toMatch(/^\d{6}$/);
+    expect(code).not.toBe("not-a-code");
   });
 });
 

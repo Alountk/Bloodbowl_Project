@@ -258,12 +258,15 @@ describe("POST /api/auth/signup", () => {
 
     const res = await POST(req);
     expect(res.status).toBe(201);
-    // Response body stays exactly the created user — no verification payload.
+    // Response body = the created user + the server-resolved `verifyRequired`
+    // flag (#197 PR 2) that tells the client whether to show the code screen;
+    // no verification SECRETS ever ride the response.
     expect(Object.keys(await res.json()).sort()).toEqual([
       "email",
       "id",
       "locale",
       "name",
+      "verifyRequired",
     ]);
 
     // Only hashes/expiries hit the DB — the stored values are exactly
@@ -310,5 +313,33 @@ describe("POST /api/auth/signup", () => {
     const res = await POST(req);
     expect(res.status).toBe(201);
     expect((await res.json()).id).toBe("user-1");
+  });
+
+  it("resolves verifyRequired from AUTH_MODE (false = local, true = auth)", async () => {
+    bcryptMock.hash.mockResolvedValue("hashed-password");
+    prismaMock.user.create.mockResolvedValue({
+      id: "user-1",
+      email: "coach@example.com",
+      name: null,
+      locale: "es",
+    });
+    const make = () =>
+      new Request("http://localhost:3000/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ email: "coach@example.com", password: "SuperSecret123!" }),
+        headers: { "content-type": "application/json" },
+      });
+
+    try {
+      // AUTH_MODE=local: no session exists at all, so the client skips the
+      // code screen straight to the LocalStorage dashboard.
+      vi.stubEnv("AUTH_MODE", "local");
+      expect((await (await POST(make())).json()).verifyRequired).toBe(false);
+
+      vi.stubEnv("AUTH_MODE", "auth");
+      expect((await (await POST(make())).json()).verifyRequired).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_VERIFICATION_CODE } from "./e2e/verificationCode";
 
 /**
  * Playwright config for the real-DB auth/migration/isolation E2E suites.
@@ -106,6 +107,12 @@ export default defineConfig({
       AUTH_RATE_LIMIT_SIGNUP: "1000",
       AUTH_RATE_LIMIT_LOGIN: "1000",
       AUTH_RATE_LIMIT_PASSWORD_CHANGE: "1000",
+      // Fixed 6-digit verification code (#197): only sha256 hashes reach the
+      // DB, so the specs could not read a random code back — the app must
+      // generate this known value instead (e2e/verificationCode.ts is the
+      // single source shared with the specs). lib/verification.ts ignores the
+      // variable when NODE_ENV=production; hash/TTL/attempts/cooldown stay real.
+      E2E_VERIFICATION_CODE,
       // AUTH_SECRET falls back to .env when present; a dev default keeps CI green.
       AUTH_SECRET: process.env.AUTH_SECRET ?? "e2e-auth-secret-for-tests-only",
       AUTH_TRUST_HOST: "true",

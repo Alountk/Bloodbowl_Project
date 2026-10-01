@@ -29,11 +29,6 @@ function invalidEmail(): Response {
  * propose route wears).
  */
 export async function POST(req: Request) {
-  // CALLER cap first: it must not depend on the body at all, or the 429 would
-  // start correlating with what was sent and become an oracle of its own.
-  const ipGate = gateResendPerIp(clientIp(req));
-  if (ipGate) return ipGate;
-
   let body: { email?: unknown };
   try {
     body = await req.json();
@@ -44,8 +39,21 @@ export async function POST(req: Request) {
   const email = readEmail(body.email);
   if (email === null) return invalidEmail();
 
-  const gated = gateResendCooldown(email);
-  if (gated) return gated;
+  // Cooldown FIRST: it is keyed by the target address, and a cooldown denial
+  // sends no mail — so it must NOT draw from the caller's per-IP budget below,
+  // whose whole purpose is bounding MAIL volume. Checking the per-IP gate
+  // first (which records on pass) let four impatient clicks inside the 60s
+  // window consume 4 of the 5 hourly slots, stranding a legitimate, mail-less
+  // user behind the ~1h per-IP 429.
+  const cooldown = gateResendCooldown(email);
+  if (cooldown) return cooldown;
+
+  // CALLER cap: 5/hour/IP, recorded only when a resend actually proceeds.
+  // Identity-blind like every gate above (format + cooldown say nothing about
+  // existence), and BOTH gates still run before the lookup — so unknown and
+  // known addresses answer identically and the no-oracle contract holds.
+  const ipGate = gateResendPerIp(clientIp(req));
+  if (ipGate) return ipGate;
 
   const user = await loadPendingVerification(email);
   if (!user || user.emailVerifiedAt !== null) {

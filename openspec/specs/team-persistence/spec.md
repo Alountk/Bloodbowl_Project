@@ -119,6 +119,7 @@ The system MUST keep the `TeamStore` interface and the `LocalStorageTeamStore` +
 ### Requirement: localStorage Migration
 
 On first login/signup per browser, the system MUST read the local `bb_teams_v1` teams, POST each into the signed-in user's account, and set the flag `bb_teams_migrated_v1` in localStorage. The system MUST NOT clear `bb_teams_v1` (rollback). The migration MUST be idempotent (runs once per browser).
+(Previously: signup established the session in the same step, so "first signup" meant the signup submit itself; since issue #197 PR 2 a signup yields a session only after the mailed code is entered, so for new accounts the migration runs at that first authenticated session — the trigger (first authenticated session per browser) and every rule below are unchanged.)
 
 #### Scenario: First login migrates once
 
