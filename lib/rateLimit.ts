@@ -1,3 +1,5 @@
+import { ATTEMPT_CAP, CODE_TTL_MS, RESEND_COOLDOWN_MS } from "@/lib/verification";
+
 /**
  * In-memory sliding-window rate limiter.
  *
@@ -102,12 +104,16 @@ function envLimit(name: string, fallback: number): number {
 }
 
 /**
- * Shared policy for the three auth-sensitive endpoints.
+ * Shared policy for the auth-sensitive endpoints.
  *
  * Limits are env-overridable (`AUTH_RATE_LIMIT_SIGNUP`,
- * `AUTH_RATE_LIMIT_LOGIN`, `AUTH_RATE_LIMIT_PASSWORD_CHANGE`) for the e2e
- * suite only; windows are fixed. When unset — production, and every unit test —
- * the values below apply verbatim.
+ * `AUTH_RATE_LIMIT_LOGIN`, `AUTH_RATE_LIMIT_PASSWORD_CHANGE`,
+ * `AUTH_RATE_LIMIT_VERIFY`, `AUTH_RATE_LIMIT_RESEND`,
+ * `AUTH_RATE_LIMIT_RESEND_IP`) for the e2e suite only;
+ * windows are fixed. When unset — production, and every unit test — the values
+ * below apply verbatim. The verify/resend defaults come straight from
+ * `lib/verification.ts` so the policy constant and its enforcement can never
+ * drift apart.
  */
 export const AUTH_RATE_LIMITS = {
   /** Signup: 5 accounts / hour / IP. */
@@ -117,6 +123,30 @@ export const AUTH_RATE_LIMITS = {
   /** Password change: 10 attempts / hour / user. */
   passwordChange: {
     limit: envLimit("AUTH_RATE_LIMIT_PASSWORD_CHANGE", 10),
+    windowMs: 60 * 60 * 1000,
+  },
+  /** Email-verification attempts (code AND link token share one budget):
+   *  ATTEMPT_CAP tries per code-TTL window / email, counted before the DB
+   *  lookup so guessing is capped whether or not the account exists. */
+  verify: {
+    limit: envLimit("AUTH_RATE_LIMIT_VERIFY", ATTEMPT_CAP),
+    windowMs: CODE_TTL_MS,
+  },
+  /** Verification resend cooldown: 1 mail / RESEND_COOLDOWN_MS / email. */
+  resend: {
+    limit: envLimit("AUTH_RATE_LIMIT_RESEND", 1),
+    windowMs: RESEND_COOLDOWN_MS,
+  },
+  /** Verification resend, capped by the CALLER: 5 mails / hour / IP.
+   *
+   *  The cooldown above is keyed by the TARGET address, so on its own it is
+   *  not abuse control: one caller can mailbomb a victim (1 mail/min forever),
+   *  fan out over unlimited addresses, and — because every successful resend
+   *  resets that address's `verify` bucket — turn 5 guesses per code into 5
+   *  guesses per minute indefinitely. Mirrors signup's own 5/hour/IP, which is
+   *  the repo's baseline for anything that makes the server send mail. */
+  resendIp: {
+    limit: envLimit("AUTH_RATE_LIMIT_RESEND_IP", 5),
     windowMs: 60 * 60 * 1000,
   },
 };

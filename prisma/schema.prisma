@@ -41,6 +41,21 @@ model User {
   /// sign-in; a mismatch on a later session read invalidates the cookie so a
   /// stolen session dies when the password is rotated.
   sessionVersion    Int                @default(0)
+  /// Email verification (#197): when the address was confirmed. NULL = pending.
+  /// Only new signups ever see NULL — the migration backfills existing rows
+  /// (existing accounts count as verified; see the migration comment).
+  emailVerifiedAt DateTime?
+  /// Pending 6-digit code, stored as SHA-256 of `code + ":" + email` only: a
+  /// bare 6-digit code is brute-forceable offline from a DB leak, so the email
+  /// is domain separation and a leaked hash validates against one account only.
+  /// 15-minute expiry lives in the sibling column (policy: lib/verification.ts).
+  emailVerificationCodeHash String?
+  emailVerificationCodeExpiresAt DateTime?
+  /// Pending activation-link token (the "por si cierra el alta sin querer"
+  /// fallback): same domain-separated SHA-256 rule over 32 random bytes,
+  /// expiring after 24h — it must OUTLIVE the typed code.
+  emailVerificationTokenHash String?
+  emailVerificationTokenExpiresAt DateTime?
   teams             Team[]
   leagues           League[]
   scheduleProposals ScheduleProposal[]

@@ -95,3 +95,72 @@ export function dateProposedMail(params: DateProposedMailParams): MailMessage {
 
   return { to: params.to, subject, html, text };
 }
+
+export interface VerificationMailParams {
+  to: string;
+  locale: string;
+  /** The 6-digit code the user types on the signup screen. */
+  code: string;
+  /** Absolute activation link, built by the caller from `APP_URL`. */
+  url: string;
+}
+
+/**
+ * The email-verification mail (#197). Carries BOTH activation paths — the
+ * typed code AND the direct link — because either one confirms the address:
+ * the link exists specifically "por si cierra el alta sin querer". The copy
+ * states that rule in both languages so the choice never reads as an either/or
+ * step. Plain like `dateProposedMail`: paragraphs and links, no external CSS
+ * or images. The quoted TTLs ("15 minutes" / "24 hours") mirror CODE_TTL_MS /
+ * LINK_TOKEN_TTL_MS; `templates.test.ts` pins copy and constants together.
+ */
+export function verificationMail(params: VerificationMailParams): MailMessage {
+  const english = isEnglish(params.locale);
+
+  if (english) {
+    const subject = "Confirm your email address";
+    const text = [
+      "Almost there! Confirm your email address to activate your account.",
+      "",
+      `Confirmation code: ${params.code}`,
+      "Enter it on the signup screen to finish creating your account. The code expires in 15 minutes.",
+      "",
+      "Prefer a click? Open this link to activate right away (it is there in case you close the signup page by accident):",
+      params.url,
+      "The link expires in 24 hours.",
+      "",
+      "Either the code or the link activates the account — use whichever is easier.",
+    ].join("\n");
+    const html = [
+      "<p>Almost there! Confirm your email address to activate your account.</p>",
+      `<p><strong>Confirmation code:</strong> ${escapeHtml(params.code)}</p>`,
+      "<p>Enter it on the signup screen to finish creating your account. The code expires in 15 minutes.</p>",
+      `<p>Prefer a click? <a href="${escapeHtml(params.url)}">Open this link to activate right away</a> (it is there in case you close the signup page by accident).</p>`,
+      "<p>The link expires in 24 hours. <strong>Either the code or the link activates the account</strong> — use whichever is easier.</p>",
+    ].join("\n");
+    return { to: params.to, subject, html, text };
+  }
+
+  const subject = "Confirma tu dirección de correo";
+  const text = [
+    "¡Ya casi está! Confirma tu dirección de correo para activar tu cuenta.",
+    "",
+    `Código de confirmación: ${params.code}`,
+    "Introdúcelo en la pantalla de alta para terminar de crear tu cuenta. El código caduca en 15 minutos.",
+    "",
+    "¿Prefieres un clic? Abre este enlace para activar la cuenta ahora mismo (está por si cierras el alta sin querer):",
+    params.url,
+    "El enlace caduca en 24 horas.",
+    "",
+    "Tanto el código como el enlace activan la cuenta: usa el que te resulte más cómodo.",
+  ].join("\n");
+  const html = [
+    "<p>¡Ya casi está! Confirma tu dirección de correo para activar tu cuenta.</p>",
+    `<p><strong>Código de confirmación:</strong> ${escapeHtml(params.code)}</p>`,
+    "<p>Introdúcelo en la pantalla de alta para terminar de crear tu cuenta. El código caduca en 15 minutos.</p>",
+    `<p>¿Prefieres un clic? <a href="${escapeHtml(params.url)}">Abre este enlace para activar la cuenta ahora mismo</a> (está por si cierras el alta sin querer).</p>`,
+    "<p>El enlace caduca en 24 horas. <strong>Tanto el código como el enlace activan la cuenta</strong>: usa el que te resulte más cómodo.</p>",
+  ].join("\n");
+
+  return { to: params.to, subject, html, text };
+}

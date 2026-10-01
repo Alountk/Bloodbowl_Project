@@ -91,6 +91,12 @@ describe("AUTH_RATE_LIMITS", () => {
     expect(AUTH_RATE_LIMITS.login.limit).toBe(10);
     expect(AUTH_RATE_LIMITS.passwordChange.limit).toBe(10);
     expect(AUTH_RATE_LIMITS.login.windowMs).toBe(15 * 60 * 1000);
+    // Issue #197: verify = attempt cap over the code TTL, resend = 1 mail /
+    // 60s cooldown (defaults sourced from lib/verification.ts).
+    expect(AUTH_RATE_LIMITS.verify.limit).toBe(5);
+    expect(AUTH_RATE_LIMITS.verify.windowMs).toBe(15 * 60 * 1000);
+    expect(AUTH_RATE_LIMITS.resend.limit).toBe(1);
+    expect(AUTH_RATE_LIMITS.resend.windowMs).toBe(60 * 1000);
   });
 });
 

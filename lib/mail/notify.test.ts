@@ -15,7 +15,11 @@ const loggerMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/logger", () => ({ logError: logErrorMock, logger: loggerMock }));
 
-import { notifyDateProposed, type NotifyDateProposedParams } from "./notify";
+import {
+  notifyDateProposed,
+  notifyEmailVerification,
+  type NotifyDateProposedParams,
+} from "./notify";
 
 function build(overrides: Partial<NotifyDateProposedParams> = {}): NotifyDateProposedParams {
   return {
@@ -146,6 +150,64 @@ describe("notifyDateProposed", () => {
       "mail.dateProposed.failed",
       expect.any(Error),
       expect.objectContaining({ fixtureId: "f1" }),
+    );
+  });
+});
+
+describe("notifyEmailVerification", () => {
+  const params = {
+    userId: "user-1",
+    email: "coach@example.com",
+    locale: "es",
+    code: "123456",
+    token: "tok-abc",
+  };
+
+  it("mails the code and an absolute link built from APP_URL with slashes stripped", async () => {
+    vi.stubEnv("APP_URL", "https://bb.example///");
+
+    await notifyEmailVerification(params);
+
+    expect(sendMailMock).toHaveBeenCalledTimes(1);
+    const mail = sendMailMock.mock.calls[0][0];
+    expect(mail.to).toBe("coach@example.com");
+    expect(mail.text).toContain("123456");
+    // Both halves ride in the query: the stored hashes are domain-separated
+    // by the address, so the verify screen must POST the pair back.
+    expect(mail.text).toContain(
+      "https://bb.example/verify?token=tok-abc&email=coach%40example.com",
+    );
+    expect(mail.html).toContain('href="https://bb.example/verify?');
+    expect(loggerMock.info).toHaveBeenCalledWith("mail.verification.sent", {
+      userId: "user-1",
+    });
+    // The logger does not redact addresses: logs carry userId only.
+    expect(JSON.stringify(loggerMock.info.mock.calls)).not.toContain(
+      "coach@example.com",
+    );
+  });
+
+  it("falls back to a relative link when APP_URL is unset", async () => {
+    vi.stubEnv("APP_URL", "");
+
+    await notifyEmailVerification(params);
+
+    expect(sendMailMock.mock.calls[0][0].text).toContain("/verify?token=");
+    expect(sendMailMock.mock.calls[0][0].text).not.toContain("undefined/verify");
+  });
+
+  it("never throws when the transport fails and logs with userId only", async () => {
+    sendMailMock.mockRejectedValue(new Error("smtp down"));
+
+    await expect(notifyEmailVerification(params)).resolves.toBeUndefined();
+
+    expect(logErrorMock).toHaveBeenCalledWith(
+      "mail.verification.failed",
+      expect.any(Error),
+      { userId: "user-1" },
+    );
+    expect(JSON.stringify(logErrorMock.mock.calls)).not.toContain(
+      "coach@example.com",
     );
   });
 });

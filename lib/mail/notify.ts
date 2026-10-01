@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logError, logger } from "@/lib/logger";
 import { sendMail } from "./index";
-import { dateProposedMail } from "./templates";
+import { dateProposedMail, verificationMail } from "./templates";
 
 export interface NotifyDateProposedParams {
   leagueName: string;
@@ -28,6 +28,20 @@ interface Recipient {
 function leagueUrl(leagueId: string): string {
   const base = (process.env.APP_URL ?? "").replace(/\/+$/, "");
   return `${base}/leagues/${leagueId}`;
+}
+
+/**
+ * Activation link for the verification mail: `${APP_URL}/verify?token=…&email=…`
+ * with trailing slashes stripped (the `leagueUrl` rule above). The email rides
+ * in the link on purpose: both stored hashes are domain-separated by the
+ * address (`sha256(secret + ":" + email)`), so the verify screen must POST the
+ * pair back — the token alone cannot be looked up. Neither value is secret to
+ * the recipient; they arrive in the same mailbox.
+ */
+function verificationUrl(token: string, email: string): string {
+  const base = (process.env.APP_URL ?? "").replace(/\/+$/, "");
+  const query = `token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  return `${base}/verify?${query}`;
 }
 
 /**
@@ -97,5 +111,48 @@ export async function notifyDateProposed(
       fixtureId: params.fixtureId,
       leagueId: params.leagueId,
     });
+  }
+}
+
+export interface NotifyEmailVerificationParams {
+  userId: string;
+  email: string;
+  locale: string;
+  /** Plaintext 6-digit code — never stored, only mailed. */
+  code: string;
+  /** Plaintext activation token — only its hash is stored. */
+  token: string;
+}
+
+/**
+ * Sends the account-activation mail: the typed code AND the direct link,
+ * either of which confirms the address (the link is there "por si cierra el
+ * alta sin querer").
+ *
+ * Best-effort by contract, like `notifyDateProposed`: it NEVER throws, so a
+ * mail outage cannot fail the signup or resend that triggered it. Every log
+ * line THIS function writes carries `userId` only — no verification secret
+ * ever reaches the logger. (The recipient address is a different story:
+ * `sendMail`'s own failure path logs `{ to, subject }` — see
+ * `lib/mail/index.ts:35`. The claim belongs to this function, not to the mail
+ * layer, which is why it is phrased that way.)
+ */
+export async function notifyEmailVerification(
+  params: NotifyEmailVerificationParams,
+): Promise<void> {
+  try {
+    const sent = await sendMail(
+      verificationMail({
+        to: params.email,
+        locale: params.locale,
+        code: params.code,
+        url: verificationUrl(params.token, params.email),
+      }),
+    );
+    if (sent) {
+      logger.info("mail.verification.sent", { userId: params.userId });
+    }
+  } catch (error) {
+    logError("mail.verification.failed", error, { userId: params.userId });
   }
 }
