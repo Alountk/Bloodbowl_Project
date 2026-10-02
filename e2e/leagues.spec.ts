@@ -197,20 +197,40 @@ async function openLeagueCard(page: import("@playwright/test").Page, name: strin
 
 async function archiveGuardArchive(page: import("@playwright/test").Page, name: string) {
   await page.goto("/teams");
+  const card = page.getByRole("link", { name: new RegExp(name) });
+  const href = await card.getAttribute("href");
+  const id = href?.split("/").pop() ?? "";
+  expect(id).not.toBe("");
+
   await page.getByRole("button", { name: `Eliminar ${name}` }).click();
   await page.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  await expect(page.getByRole("link", { name: new RegExp(name) })).not.toBeVisible();
+
+  // Two assertions on purpose, in dependency order. In CI this test has timed
+  // out on a card that was STILL visible right after a DELETE that the server
+  // answered 204 (issue #320) — a single "card still there" cannot say whether
+  // the server kept it or the client failed to drop it. The first check pins
+  // the server; only if it passes does the second one mean "client state".
+  const remaining = (await (await page.request.get("/api/teams")).json()) as {
+    id: string;
+  }[];
+  expect(remaining.some((t) => t.id === id)).toBe(false);
+
+  await expect(card).not.toBeVisible();
 }
 
 test("archived team must not appear in the league assign select", async ({ page }) => {
   await archiveGuardSignup(page);
-  await archiveGuardCreateTeam(page, "Archivable Reavers");
+  // Unique per run: the auth suite's database is NOT wiped between attempts, so
+  // a fixed name leaves the previous attempt's team behind and dooms the retry
+  // (its locator would match the leftover card regardless of what it deletes).
+  const teamName = `Archivable Reavers ${Date.now()}`;
+  await archiveGuardCreateTeam(page, teamName);
   const leagueName = await archiveGuardCreateLeague(
     page,
     `Guard Liga ${Date.now()}`,
   );
-  await archiveGuardArchive(page, "Archivable Reavers");
+  await archiveGuardArchive(page, teamName);
 
   await page.goto("/leagues");
   await openLeagueCard(page, leagueName);
@@ -219,12 +239,13 @@ test("archived team must not appear in the league assign select", async ({ page 
   const count = await options.count();
   for (let i = 0; i < count; i++)
     texts.push((await options.nth(i).textContent()) ?? "");
-  expect(texts.some((t) => t.includes("Archivable Reavers"))).toBe(false);
+  expect(texts.some((t) => t.includes(teamName))).toBe(false);
 });
 
 test("direct API assign of an archived team returns 409", async ({ page }) => {
   await archiveGuardSignup(page);
-  await archiveGuardCreateTeam(page, "API Archivable");
+  const apiTeamName = `API Archivable ${Date.now()}`;
+  await archiveGuardCreateTeam(page, apiTeamName);
   const leagueName = await archiveGuardCreateLeague(
     page,
     `API Guard Liga ${Date.now()}`,
@@ -240,7 +261,7 @@ test("direct API assign of an archived team returns 409", async ({ page }) => {
   )?.id;
   expect(leagueId).toBeDefined();
 
-  await archiveGuardArchive(page, "API Archivable");
+  await archiveGuardArchive(page, apiTeamName);
 
   const assign = await page.request.post(`/api/leagues/${leagueId}/teams`, {
     data: { teamId },
