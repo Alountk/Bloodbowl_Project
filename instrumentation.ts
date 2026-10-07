@@ -44,6 +44,25 @@ export function register(): void {
     }
     logger.warn("server.misconfigured", misconfig);
   }
+
+  // AUTH_MODE=auth without a mail provider boots fine and then blocks every
+  // signup: since #197 the verification code only arrives by email, so the
+  // compose defaults (auth + empty RESEND_API_KEY/MAIL_FROM) leave accounts
+  // permanently unactivatable. Say it once at boot — the per-send path already
+  // WARNs `mail.*.notDelivered` (#317), but an operator should learn this at
+  // deploy time, not at the first signup. WARN only, never fatal (product
+  // decision #319): a running deploy whose existing users still sign in must
+  // stay up. `resolveTransport` needs BOTH values; either missing means the
+  // console transport is the sink.
+  if (
+    process.env.AUTH_MODE === "auth" &&
+    !(process.env.RESEND_API_KEY && process.env.MAIL_FROM)
+  ) {
+    logger.warn("server.misconfigured", {
+      reason:
+        "AUTH_MODE=auth without a mail provider (set RESEND_API_KEY and MAIL_FROM) — no user can activate their account",
+    });
+  }
 }
 
 /**
