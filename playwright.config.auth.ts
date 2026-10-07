@@ -29,6 +29,7 @@ export default defineConfig({
     "**/match-view.spec.ts",
     "**/live-match.spec.ts",
     "**/live-resolution.spec.ts",
+    "**/full-match-journey.spec.ts",
     "**/inducement-purchase.spec.ts",
     "**/rulesets.spec.ts",
     "**/profile.spec.ts",
@@ -62,19 +63,21 @@ export default defineConfig({
       testIgnore: [
         "**/live-match.spec.ts",
         "**/live-resolution.spec.ts",
+        "**/full-match-journey.spec.ts",
       ],
       fullyParallel: true,
       workers: process.env.CI ? 1 : 3,
       use: { ...devices["Desktop Chrome"] },
     },
     {
-      // SSE fan-out is process-wide: the two live specs must never run
+      // SSE fan-out is process-wide: the live specs must never run
       // concurrently with each other, and the resolution wizard is the heaviest
       // journey. One serial worker keeps the hub quiet.
       name: "chromium-sse-heavy",
       testMatch: [
         "**/live-match.spec.ts",
         "**/live-resolution.spec.ts",
+        "**/full-match-journey.spec.ts",
       ],
       fullyParallel: false,
       workers: 1,
