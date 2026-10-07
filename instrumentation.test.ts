@@ -79,9 +79,52 @@ describe("register", () => {
     expect(parse(streams.err)[0].level).toBe("error");
   });
 
-  it("does not warn when the auth secret is present", () => {
+  it("does not warn when the auth secret and mail provider are present", () => {
     vi.stubEnv("AUTH_MODE", "auth");
     vi.stubEnv("AUTH_SECRET", "s3cret");
+    vi.stubEnv("RESEND_API_KEY", "key-123");
+    vi.stubEnv("MAIL_FROM", "Blood Bowl <bb@example.com>");
+
+    register();
+
+    expect(streams.err).toHaveLength(0);
+  });
+
+  // #319: a compose default of AUTH_MODE=auth with no mail provider leaves
+  // every signup permanently unactivatable (#197 makes the mail load-bearing),
+  // so the boot must say so — WARN only, never fatal (product decision).
+  it("warns when AUTH_MODE=auth has no mail provider configured", () => {
+    vi.stubEnv("AUTH_MODE", "auth");
+    vi.stubEnv("AUTH_SECRET", "s3cret");
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("MAIL_FROM", "");
+    vi.stubEnv("NODE_ENV", "production");
+
+    register();
+
+    const line = parse(streams.err)[0];
+    expect(line.event).toBe("server.misconfigured");
+    expect(line.level).toBe("warn");
+    expect(String(line.reason)).toContain("RESEND_API_KEY");
+    expect(String(line.reason)).toContain("MAIL_FROM");
+    expect(String(line.reason)).toContain("activate");
+  });
+
+  it("warns when AUTH_MODE=auth has a key but no MAIL_FROM", () => {
+    vi.stubEnv("AUTH_MODE", "auth");
+    vi.stubEnv("AUTH_SECRET", "s3cret");
+    vi.stubEnv("RESEND_API_KEY", "key-123");
+    vi.stubEnv("MAIL_FROM", "");
+
+    register();
+
+    expect(parse(streams.err)[0].event).toBe("server.misconfigured");
+  });
+
+  it("does not warn in AUTH_MODE=local without a mail provider", () => {
+    vi.stubEnv("AUTH_MODE", "local");
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("MAIL_FROM", "");
 
     register();
 
