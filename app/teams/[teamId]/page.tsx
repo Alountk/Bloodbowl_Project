@@ -5,8 +5,10 @@ import { use } from "react";
 import { notFound } from "next/navigation";
 import { useApp } from "@/app/providers/AppProvider";
 import { getRaceById } from "@/features/teams/data/races";
-import { TeamDetailView } from "@/features/teams/detail/TeamDetailView";
+import { TeamDetailView, type TeamDetailViewProps } from "@/features/teams/detail/TeamDetailView";
+import { TeamDetailViewV2 } from "@/features/teams/detail/TeamDetailViewV2";
 import { ShieldControl } from "@/features/teams/detail/ShieldControl";
+import { useUiFlag } from "@/lib/ui-flag";
 import { useLeagueName } from "@/features/leagues/useLeagueName";
 import { getScoutedTeam, type ScoutedTeamDetail } from "@/features/leagues/api";
 import {
@@ -105,6 +107,12 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
   const resolvedTeam: Team | null = localTeam ?? (scouted as unknown as Team);
 
   const leagueName = useLeagueName(resolvedTeam?.leagueId);
+
+  // ui-refresh (UIR-1/UIR-2): the flag is resolved ONCE per render at the top
+  // of the hook block (BEFORE any early return) so the hook order stays stable
+  // across the skeleton/hydration early returns below. It is consumed only
+  // here — this page is the single declared seam.
+  const uiV2 = useUiFlag();
 
   if (!isHydrated) {
     return (
@@ -254,19 +262,22 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
       }
     : undefined;
 
-  return (
-    <TeamDetailView
-      team={teamForView}
-      race={resolvedRace}
-      leagueName={leagueName}
-      progression={isOwner && !progressionFailed && progression != null ? progression : undefined}
-      onImprove={onImprove}
-      onRename={onRename}
-      onReorder={onReorder}
-      onHire={onHire}
-      onFire={onFire}
-      reorderError={reorderError}
-      shieldControl={shieldControl}
-    />
-  );
+  // Identical props contract for BOTH surfaces (UIR-2): one shared object is
+  // spread into exactly one component, so V2 can never drift from legacy and
+  // the two can never mount together.
+  const viewProps: TeamDetailViewProps = {
+    team: teamForView,
+    race: resolvedRace,
+    leagueName,
+    progression: isOwner && !progressionFailed && progression != null ? progression : undefined,
+    onImprove,
+    onRename,
+    onReorder,
+    onHire,
+    onFire,
+    reorderError,
+    shieldControl,
+  };
+
+  return uiV2 ? <TeamDetailViewV2 {...viewProps} /> : <TeamDetailView {...viewProps} />;
 }
