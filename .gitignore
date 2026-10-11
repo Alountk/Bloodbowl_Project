@@ -55,6 +55,10 @@ node_modules/.cache
 # local pi runtime state
 .atl/
 
+# local agent state (never committed)
+/odd/
+.opencode/opencode.json
+
 # local codegraph index/runtime
 /.codegraph/
 
