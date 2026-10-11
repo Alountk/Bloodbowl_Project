@@ -14,7 +14,12 @@ import { test, expect, type Page } from "@playwright/test";
  *  2. triangulation (UIR-1 / UIR-4): `bb-ui=legacy` → legacy surface only
  *     (`team-roster-table` present, `ui-v2-roster` absent);
  *  3. triangulation (UIR-1 default): no `bb-ui` cookie at all → legacy surface
- *     (flag OFF is the default, no flash of V2).
+ *     (flag OFF is the default, no flash of V2);
+ *  4. mobile (UIR-4): the same cookie at an inline 390×844 viewport → the V2
+ *     roster renders as stacked `ui-v2-roster-card-*` player cards and neither
+ *     the legacy table nor the desktop V2 table is mounted. The viewport is set
+ *     inline because the Playwright `mobile` project's `testMatch` only covers
+ *     `mobile.spec.ts` — playwright.config.ts is deliberately untouched.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -89,4 +94,26 @@ test("flag OFF with no cookie: the legacy surface renders (default)", async ({
 
   await expect(page.getByTestId("team-roster-table")).toHaveCount(1);
   await expect(page.getByTestId("ui-v2-roster")).toHaveCount(0);
+});
+
+test("flag ON at a mobile viewport: stacked V2 cards replace both tables", async ({
+  page,
+}) => {
+  // Inline viewport + cookie BEFORE the first goto. The `mobile` Playwright
+  // project only matches mobile.spec.ts, so this desktop-project spec opts
+  // into the mobile width itself (task 3.4) without touching any config.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setUiFlag(page, "next");
+  await createTeamAndOpenDetail(page, "V2 Mobile Team");
+
+  await expect(page.getByTestId("ui-v2-roster")).toBeVisible();
+  // Stacked player cards, not the desktop ruled table (RosterV2's useIsDesktop
+  // branch flips on hydration with the 768px breakpoint).
+  await expect(
+    page.locator('[data-testid^="ui-v2-roster-card-"]').first(),
+  ).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-roster-row-"]')).toHaveCount(0);
+  await expect(page.getByTestId("ui-v2-roster-table")).toHaveCount(0);
+  // Never the legacy surface (UIR-2: never both).
+  await expect(page.getByTestId("team-roster-table")).toHaveCount(0);
 });
