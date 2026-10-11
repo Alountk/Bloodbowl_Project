@@ -13,6 +13,8 @@ import {
 } from "@/lib/i18n/serverLocale";
 import { ThemeProvider } from "@/lib/theme";
 import { resolveServerTheme } from "@/lib/theme/serverTheme";
+import { UiFlagProvider } from "@/lib/ui-flag";
+import { resolveUiFlag, UI_FLAG_COOKIE } from "@/lib/ui-flag/flag";
 
 export const metadata: Metadata = {
   title: "Bloodbowl Teams",
@@ -42,6 +44,11 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const raw = cookieStore.get("bb-locale")?.value;
   const rawTheme = cookieStore.get("bb-theme")?.value;
+  // ui-refresh (UIR-1): the `bb-ui` cookie is the ONLY source of the V2 flag
+  // (cookie-only, no env, no DB read). Read beside bb-locale/bb-theme so the
+  // single layout read seeds UiFlagProvider and server + client agree on
+  // first paint: absent/any value other than "next" is OFF (legacy), no flash.
+  const initialUiFlag = resolveUiFlag(cookieStore.get(UI_FLAG_COOKIE)?.value);
 
   const session = await auth();
   let dbLocale: string | null = null;
@@ -90,7 +97,9 @@ export default async function RootLayout({
         <SessionProvider session={session}>
           <I18nProvider initialLocale={initialLocale}>
             <ThemeProvider initialTheme={initialTheme}>
-              <SessionAppProvider>{children}</SessionAppProvider>
+              <UiFlagProvider initialUiFlag={initialUiFlag}>
+                <SessionAppProvider>{children}</SessionAppProvider>
+              </UiFlagProvider>
             </ThemeProvider>
           </I18nProvider>
         </SessionProvider>
