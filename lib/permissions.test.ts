@@ -41,6 +41,14 @@ describe("roles (RBAC) — RAU-52", () => {
     expect(can(null, "live.manage")).toBe(false);
   });
 
+  it("grants ui.refresh to developer and admin only (UIR-6)", () => {
+    expect(can("developer", "ui.refresh")).toBe(true);
+    expect(can("admin", "ui.refresh")).toBe(true);
+    expect(can("user", "ui.refresh")).toBe(false);
+    expect(can(null, "ui.refresh")).toBe(false);
+    expect(can("mystery", "ui.refresh")).toBe(false);
+  });
+
   it("grants leagues.manage to developer and admin only (LAC-1)", () => {
     expect(can("developer", "leagues.manage")).toBe(true);
     expect(can("admin", "leagues.manage")).toBe(true);

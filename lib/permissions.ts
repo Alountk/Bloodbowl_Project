@@ -25,15 +25,16 @@ export const PERMISSIONS = [
   "users.manage",
   "live.manage",
   "leagues.manage",
+  "ui.refresh",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 /** role → permissions. Extend here when a new capability appears. */
 const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   user: [],
-  developer: ["rulesets.dev", "users.manage", "live.manage", "leagues.manage"],
+  developer: ["rulesets.dev", "users.manage", "live.manage", "leagues.manage", "ui.refresh"],
   // Future platform management (users, plans, billing) — inherits the dev set.
-  admin: ["rulesets.dev", "users.manage", "live.manage", "leagues.manage"],
+  admin: ["rulesets.dev", "users.manage", "live.manage", "leagues.manage", "ui.refresh"],
 };
 
 /** Narrower type guard: any value is a valid role only when in ROLES. */

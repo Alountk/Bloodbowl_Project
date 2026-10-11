@@ -8,7 +8,7 @@ import type { Theme } from "./theme";
 const COOKIE_KEY = "bb-theme";
 
 type SessionStub = {
-  data: { user: { id: string; name: string } } | null;
+  data: { user: { id: string; name: string; role?: string } } | null;
   status: string;
 };
 
@@ -19,6 +19,12 @@ vi.mock("next-auth/react", () => ({ useSession: () => sessionMock() }));
 
 const patchMeMock = vi.hoisted(() => vi.fn());
 vi.mock("@/features/profile/api", () => ({ patchMe: patchMeMock }));
+
+const routerRefreshMock = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefreshMock }) }));
+
+const writeUiFlagMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/ui-flag/write", () => ({ writeUiFlag: writeUiFlagMock }));
 
 function renderSwitcher(initialTheme: Theme, initialLocale: "es" | "en" = "es") {
   return render(
@@ -40,10 +46,26 @@ const esScoreboardPressed = () =>
 
 const authenticatedUser = { data: { user: { id: "u1", name: "Coach" } }, status: "authenticated" };
 
+const developerUser = {
+  data: { user: { id: "d1", name: "Dev", role: "developer" } },
+  status: "authenticated",
+} as const;
+const adminUser = {
+  data: { user: { id: "a1", name: "Admin", role: "admin" } },
+  status: "authenticated",
+} as const;
+const plainUser = {
+  data: { user: { id: "u2", name: "Coach", role: "user" } },
+  status: "authenticated",
+} as const;
+
 beforeEach(() => {
   sessionMock.mockReturnValue({ data: null, status: "unauthenticated" });
   patchMeMock.mockReset();
+  routerRefreshMock.mockReset();
+  writeUiFlagMock.mockReset();
   document.cookie = `${COOKIE_KEY}=; path=/; max-age=0`;
+  document.cookie = "bb-ui=; path=/; max-age=0";
 });
 
 describe("ThemeSwitcher (AS-8 auth-aware)", () => {
@@ -125,5 +147,73 @@ describe("ThemeSwitcher (AS-8 auth-aware)", () => {
 
     expect(patchMeMock).not.toHaveBeenCalled();
     expect(esScoreboardPressed()).toBe("true");
+  });
+});
+
+describe("ThemeSwitcher view toggle (UIR-6, issue #331)", () => {
+  it("shows the Vista group for a developer session", () => {
+    sessionMock.mockReturnValue(developerUser);
+    renderSwitcher("vintage");
+
+    expect(screen.getByRole("group", { name: "Vista" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Clásica" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Nueva (V2)" })).toBeTruthy();
+  });
+
+  it("shows the Vista group for an admin session", () => {
+    sessionMock.mockReturnValue(adminUser);
+    renderSwitcher("vintage");
+
+    expect(screen.getByRole("group", { name: "Vista" })).toBeTruthy();
+  });
+
+  it("hides the Vista group for a plain user session", () => {
+    sessionMock.mockReturnValue(plainUser);
+    renderSwitcher("vintage");
+
+    expect(screen.queryByRole("group", { name: "Vista" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Nueva (V2)" })).toBeNull();
+  });
+
+  it("hides the Vista group with no session at all", () => {
+    renderSwitcher("vintage");
+
+    expect(screen.queryByRole("group", { name: "Vista" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clásica" })).toBeNull();
+  });
+
+  it("clicking Nueva (V2) writes the flag ON and refreshes the router", () => {
+    sessionMock.mockReturnValue(developerUser);
+    renderSwitcher("vintage");
+
+    fireEvent.click(screen.getByRole("button", { name: "Nueva (V2)" }));
+
+    expect(writeUiFlagMock).toHaveBeenCalledWith(true);
+    expect(routerRefreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking Clásica writes the flag OFF and refreshes the router", () => {
+    // Start ON so Clásica is a real transition (active clicks are no-ops).
+    document.cookie = "bb-ui=next; path=/; max-age=31536000";
+    sessionMock.mockReturnValue(developerUser);
+    renderSwitcher("vintage");
+
+    fireEvent.click(screen.getByRole("button", { name: "Clásica" }));
+
+    expect(writeUiFlagMock).toHaveBeenCalledWith(false);
+    expect(routerRefreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the active view from the bb-ui cookie read once on mount", () => {
+    document.cookie = "bb-ui=next; path=/; max-age=31536000";
+    sessionMock.mockReturnValue(developerUser);
+    renderSwitcher("vintage");
+
+    expect(screen.getByRole("button", { name: "Nueva (V2)" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Clásica" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
   });
 });
