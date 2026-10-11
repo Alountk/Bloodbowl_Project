@@ -26,7 +26,7 @@ Chain strategy: stacked-to-main
 |------|------|-----------|----------------------|-----------------|-------------------|
 | 1 | Flag plumbing: resolver + provider + layout wiring | PR 1 (base = main) | `pnpm exec vitest run lib/ui-flag` | `pnpm dev` → SSR first paint with/without `bb-ui=next` (FOUC evidence) | Revert `lib/ui-flag/` + `app/layout.tsx`; cookie ignored by older builds |
 | 2 | Seam + V2 skeleton + flag-ON e2e harness | PR 2 (base = PR 1 branch) | `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts` | Playwright local: cookie before `goto`, wizard-created team | Revert `app/teams/[teamId]/page.tsx` branch + `TeamDetailViewV2.tsx` skeleton + new spec; PR 1 unaffected |
-| 3 | Full V2 desktop + mobile translation | PR 3 (base = PR 2 branch) | `pnpm exec vitest run features/teams/detail/TeamDetailViewV2.test.tsx` | Playwright local desktop + inline 375×812 viewport | Revert `features/teams/detail/v2/` + V2 container + e2e additions; seam falls back to legacy |
+| 3 | Full V2 desktop + mobile translation | PR 3 (base = PR 2 branch) | `pnpm exec vitest run features/teams/detail/TeamDetailViewV2.test.tsx` | Playwright local desktop + inline 390×844 viewport | Revert `features/teams/detail/v2/` + V2 container + e2e additions; seam falls back to legacy |
 
 ## Slice 1 — Flag plumbing (~150 lines)
 
@@ -57,7 +57,7 @@ Chain strategy: stacked-to-main
 - [x] 3.1 Create `features/teams/detail/v2/RosterV2.tsx`: desktop table / mobile cards via `features/teams/hooks/useIsDesktop.ts`, `ui-v2-*` testids per 2.1, presentation-only (pure helpers `features/teams/roster.ts`, `format.ts` allowed; `features/teams/api` forbidden). — UIR-2, UIR-4. Verify: `npx tsc --noEmit`; `pnpm lint`.
 - [x] 3.2 Complete `features/teams/detail/TeamDetailViewV2.tsx` (hero, coaching, treasury) from the same Stitch screens; behavior arrives only via props (hire/fire/reorder callbacks). — UIR-2. Verify: `npx tsc --noEmit`; `pnpm lint`.
 - [x] 3.3 RED→GREEN: Create `features/teams/detail/TeamDetailViewV2.test.tsx`: V2 renders from shared props, `ui-v2-*` markers present, no legacy testids, no `features/teams/api`/`AppProvider` imports. — UIR-2. Verify: `pnpm exec vitest run features/teams/detail/TeamDetailViewV2.test.tsx`.
-- [x] 3.4 Add the mobile case to `e2e/ui-refresh-roster.spec.ts`: same cookie setup + `page.setViewportSize({ width: 375, height: 812 })` (mobile Playwright project `testMatch` covers only `mobile.spec.ts`) → assert `ui-v2-roster-card-*` V2 cards. — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
+- [x] 3.4 Add the mobile case to `e2e/ui-refresh-roster.spec.ts`: same cookie setup + `page.setViewportSize({ width: 390, height: 844 })` (mobile Playwright project `testMatch` covers only `mobile.spec.ts`) → assert `ui-v2-roster-card-*` V2 cards. — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
 - [x] 3.5 VERIFY-ONLY: rerun `pnpm test` and `AUTH_MODE=local pnpm exec playwright test`; legacy suites still pass with NO legacy test edits. — UIR-3. Verify: those two exact commands.
 - [x] 3.6 Flip discipline: ship NO default flip; grep confirms `useUiFlag()` is consumed only by `app/teams/[teamId]/page.tsx`; document that flipping the default requires green `e2e/ui-refresh-roster.spec.ts` and stays a separate change. — UIR-5. Verify: `pnpm lint`; `npx tsc --noEmit`; `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
 

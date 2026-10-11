@@ -67,7 +67,7 @@ return useUiFlag() ? <TeamDetailViewV2 {...viewProps} /> : <TeamDetailView {...v
 | Unit (new) | `lib/ui-flag/flag.test.ts` | `"next"`→true; absent/`null`/`""`/`"NEXT"`/`"v2"`→false, no throw |
 | Unit (new) | `lib/ui-flag/index.test.tsx` | provider seed honored; bare `useUiFlag()` → `false` |
 | Component (new) | `TeamDetailViewV2.test.tsx` | V2 renders from shared props; no api/AppProvider imports |
-| E2E (new) | `e2e/ui-refresh-roster.spec.ts` — local mode, **not** in `playwright.config.ts` `testIgnore` | cookie before first `goto`: `page.context().addCookies([{ name:"bb-ui", value:"next", url:"http://localhost:3000" }])` (`e2e/locale.spec.ts:69`); team via `create-team.spec.ts` wizard. **Desktop**: `ui-v2-roster` visible AND `team-roster-table` count 0 (UIR-4). **Mobile**: `page.setViewportSize({ width: 375, height: 812 })` (mobile project matches only `mobile.spec.ts`) → V2 cards. **Triangulate**: `bb-ui=legacy` → legacy surface (UIR-1) |
+| E2E (new) | `e2e/ui-refresh-roster.spec.ts` — local mode, **not** in `playwright.config.ts` `testIgnore` | cookie before first `goto`: `page.context().addCookies([{ name:"bb-ui", value:"next", url:"http://localhost:3000" }])` (`e2e/locale.spec.ts:69`); team via `create-team.spec.ts` wizard. **Desktop**: `ui-v2-roster` visible AND `team-roster-table` count 0 (UIR-4). **Mobile**: `page.setViewportSize({ width: 390, height: 844 })` (mobile project matches only `mobile.spec.ts`) → V2 cards. **Triangulate**: `bb-ui=legacy` → legacy surface (UIR-1) |
 
 ## Threat Matrix
 
