@@ -28,26 +28,34 @@ The system MUST recognize cookie `bb-ui=next` as ON. The server MUST read it in 
 - WHEN the flag resolves on server or client
 - THEN it resolves OFF — no error, no V2
 
-### Requirement: UIR-2 · Single Team Detail Seam
+### Requirement: UIR-2 · Declared Seams
 
-`app/teams/[teamId]/page.tsx` MUST be the only seam: flag ON renders `TeamDetailViewV2`, flag OFF renders `TeamDetailView`, never both. Both MUST receive an identical props contract, and V2 MUST be presentation-only — no data-fetching, mutation, or behavior changes.
+The declared seams MUST be: team detail — `app/teams/[teamId]/page.tsx` (`TeamDetailView` vs `TeamDetailViewV2`) — and teams list — `app/teams/page.tsx` (`TeamsPage` vs `TeamsListViewV2`). At each seam flag ON MUST render the V2 surface, flag OFF MUST render the legacy surface, never both. Both surfaces at a seam MUST receive an identical props contract (teams list: both take no props), and V2 MUST be presentation-only — no data-fetching, mutation, or behavior paths beyond those the legacy surface already uses through shared providers.
+
+(Previously: UIR-2 declared only the single team detail seam in `app/teams/[teamId]/page.tsx`, hardwired to `TeamDetailView`/`TeamDetailViewV2`.)
 
 #### Scenario: Flag ON selects V2
 
 - GIVEN `bb-ui=next`
-- WHEN the team detail page renders
-- THEN `TeamDetailViewV2` renders with the same props `TeamDetailView` gets
+- WHEN a declared seam renders
+- THEN exactly one surface mounts: `TeamDetailViewV2` on team detail with the same props `TeamDetailView` gets, or `TeamsListViewV2` on `/teams` with the same (empty) props `TeamsPage` gets
 
 #### Scenario: Flag OFF selects legacy
 
 - GIVEN no `bb-ui` cookie
-- WHEN the team detail page renders
-- THEN `TeamDetailView` renders with its current props and behavior
+- WHEN a declared seam renders
+- THEN the legacy component (`TeamDetailView` or `TeamsPage`) renders with its current props and behavior
+
+#### Scenario: Never both surfaces at a seam
+
+- GIVEN either flag value
+- WHEN one declared seam renders
+- THEN only one of its two components is mounted — no `ui-v2-teams-*` marker alongside the legacy `/teams` surface, and no legacy marker alongside V2
 
 #### Scenario: Behavior identical across variants
 
-- GIVEN either surface on the same team
-- WHEN a user runs a roster action (e.g. the hire flow)
+- GIVEN either surface at the same seam
+- WHEN a user runs an action available on that surface (e.g. the hire flow on detail, search or "Crear equipo" on the list)
 - THEN requests and results are identical; only markup differs
 
 ### Requirement: UIR-3 · Legacy Contract Frozen With Flag OFF
