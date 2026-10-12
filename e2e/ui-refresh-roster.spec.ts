@@ -32,6 +32,13 @@ import { test, expect, type Page } from "@playwright/test";
  *  8. delete parity flag ON (task 2.5): the V2 card delete control opens the
  *     reused `TeamDeleteModal` with the Spanish copy and confirming removes
  *     the team through the store channel (empty state takes over).
+ *  9. `/` desktop (task 1.4, third declared seam): `bb-ui=next` → the V2
+ *     dashboard skeleton (`ui-v2-dashboard-*`) is visible — including the
+ *     "ready to improve" link the helpers above click — and the legacy
+ *     `#dashboard-teams-heading` id is absent (never both, UIR-2);
+ * 10. dashboard triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie
+ *     at all → the legacy dashboard heading renders and `ui-v2-dashboard-*`
+ *     count is 0.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -214,4 +221,41 @@ test("flag OFF with no cookie: the legacy teams list renders (default)", async (
 
   await expect(page.locator("#teams-unassigned-heading")).toBeVisible();
   await expect(page.locator('[data-testid^="ui-v2-teams-"]')).toHaveCount(0);
+});
+
+test("flag ON (bb-ui=next): the dashboard seam renders the V2 skeleton", async ({
+  page,
+}) => {
+  await setUiFlag(page, "next");
+  await page.goto("/");
+
+  // V2 vocabulary (task 1.4): ui-v2-dashboard-* only — the legacy section
+  // heading id must never be mounted alongside (never both, UIR-2).
+  await expect(page.getByTestId("ui-v2-dashboard-teams")).toBeVisible();
+  await expect(page.locator("#dashboard-teams-heading")).toHaveCount(0);
+  // The harness contract the flag-ON helpers above depend on: the skeleton
+  // keeps the "ready to improve" summary link navigating to /teams.
+  await expect(
+    page.getByRole("link", { name: /ready to improve/i }),
+  ).toBeVisible();
+});
+
+test("flag OFF via bb-ui=legacy: the legacy dashboard renders (triangulation)", async ({
+  page,
+}) => {
+  await setUiFlag(page, "legacy");
+  await page.goto("/");
+
+  await expect(page.locator("#dashboard-teams-heading")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-dashboard-"]')).toHaveCount(0);
+});
+
+test("flag OFF with no cookie: the legacy dashboard renders (default)", async ({
+  page,
+}) => {
+  // No addCookies at all — absent cookie MUST resolve OFF (UIR-1).
+  await page.goto("/");
+
+  await expect(page.locator("#dashboard-teams-heading")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-dashboard-"]')).toHaveCount(0);
 });
