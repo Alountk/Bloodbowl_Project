@@ -26,6 +26,11 @@ export function register(): void {
     env: process.env.NODE_ENV ?? "unknown",
     authMode: process.env.AUTH_MODE ?? "local",
     logLevel: process.env.LOG_LEVEL ?? "(default)",
+    // Image provenance: APP_VERSION is stamped by the Docker build (CI
+    // build-arg = the readable YYYY.MM.DD-<run> tag), so the container's own
+    // first log line answers "which build is running?" — no docker inspect
+    // needed. Unset outside the image (local dev) → "dev".
+    version: process.env.APP_VERSION || "dev",
   });
 
   // AUTH_MODE=auth without a secret boots fine and then fails every session
