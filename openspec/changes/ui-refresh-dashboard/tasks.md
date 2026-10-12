@@ -30,10 +30,10 @@ Estimated changed lines: ~530 (Slice 1 ~180 · Slice 2 ~350; each <400). Deliver
 
 ## Slice 2 — Full V2 + tests + mobile (~350 lines)
 
-- [ ] 2.1 RED: Extend `DashboardV2.test.tsx`: attention zone (proposals, LIVE badge, pending results), next-match card, stat cards (Teams/Leagues/Matches/W-D-L/Squad PE), your teams, my leagues; English chrome; no legacy markers; no fetch beyond the two legacy endpoints. — UIR-2. Verify: `pnpm exec vitest run features/dashboard` (fails).
-- [ ] 2.2 GREEN: Finish `DashboardV2.tsx` per Stitch `04 dashboard` / `M 04`: same hooks as legacy, responsive CSS (mobile stacked, stats 2×2), reuse `PendingAttention`/`LeagueCard` where markup fits. — UIR-2. Verify: `pnpm exec vitest run features/dashboard`; `npx tsc --noEmit`; `pnpm lint`.
-- [ ] 2.3 Add mobile e2e case (390×844, flag ON → `ui-v2-dashboard-*` visible, legacy count 0). — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
-- [ ] 2.4 VERIFY-ONLY: rerun `pnpm test` + local Playwright; grep `useUiFlag()` at exactly three seams; NO flip; Landing branch flag-free. — UIR-3, UIR-5.
+- [x] 2.1 RED: Extend `DashboardV2.test.tsx`: attention zone (proposals, LIVE badge, pending results), next-match card, stat cards (Teams/Leagues/Matches/W-D-L/Squad PE), your teams, my leagues; English chrome; no legacy markers; no fetch beyond the two legacy endpoints. — UIR-2. Verify: `pnpm exec vitest run features/dashboard` (fails).
+- [x] 2.2 GREEN: Finish `DashboardV2.tsx` per Stitch `04 dashboard` / `M 04`: same hooks as legacy, responsive CSS (mobile stacked, stats 2×2), reuse `PendingAttention`/`LeagueCard` where markup fits. — UIR-2. Verify: `pnpm exec vitest run features/dashboard`; `npx tsc --noEmit`; `pnpm lint`.
+- [x] 2.3 Add mobile e2e case (390×844, flag ON → `ui-v2-dashboard-*` visible, legacy count 0). — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
+- [x] 2.4 VERIFY-ONLY: rerun `pnpm test` + local Playwright; grep `useUiFlag()` at exactly three seams; NO flip; Landing branch flag-free. — UIR-3, UIR-5.
 
 **Close-out**: `feat(ui-refresh): translate dashboard V2 desktop and mobile (refs #339)`.
 

@@ -33,12 +33,15 @@ import { test, expect, type Page } from "@playwright/test";
  *     reused `TeamDeleteModal` with the Spanish copy and confirming removes
  *     the team through the store channel (empty state takes over).
  *  9. `/` desktop (task 1.4, third declared seam): `bb-ui=next` → the V2
- *     dashboard skeleton (`ui-v2-dashboard-*`) is visible — including the
+ *     dashboard surface (`ui-v2-dashboard-*`) is visible — including the
  *     "ready to improve" link the helpers above click — and the legacy
  *     `#dashboard-teams-heading` id is absent (never both, UIR-2);
  * 10. dashboard triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie
  *     at all → the legacy dashboard heading renders and `ui-v2-dashboard-*`
- *     count is 0.
+ *     count is 0;
+ * 11. `/` mobile (task 2.3, UIR-4): the same cookie at an inline 390×844
+ *     viewport → the stacked V2 dashboard zones (stats, teams, leagues) are
+ *     visible and every legacy dashboard marker count is 0.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -223,7 +226,7 @@ test("flag OFF with no cookie: the legacy teams list renders (default)", async (
   await expect(page.locator('[data-testid^="ui-v2-teams-"]')).toHaveCount(0);
 });
 
-test("flag ON (bb-ui=next): the dashboard seam renders the V2 skeleton", async ({
+test("flag ON (bb-ui=next): the dashboard seam renders the V2 surface", async ({
   page,
 }) => {
   await setUiFlag(page, "next");
@@ -233,8 +236,34 @@ test("flag ON (bb-ui=next): the dashboard seam renders the V2 skeleton", async (
   // heading id must never be mounted alongside (never both, UIR-2).
   await expect(page.getByTestId("ui-v2-dashboard-teams")).toBeVisible();
   await expect(page.locator("#dashboard-teams-heading")).toHaveCount(0);
-  // The harness contract the flag-ON helpers above depend on: the skeleton
+  // The harness contract the flag-ON helpers above depend on: the surface
   // keeps the "ready to improve" summary link navigating to /teams.
+  await expect(
+    page.getByRole("link", { name: /ready to improve/i }),
+  ).toBeVisible();
+});
+
+test("flag ON at a mobile viewport: the dashboard renders stacked V2 zones", async ({
+  page,
+}) => {
+  // Inline viewport + cookie BEFORE the first goto (task 2.3): the `mobile`
+  // Playwright project only matches mobile.spec.ts, so this desktop-project
+  // spec opts into the 390×844 width itself without touching any config.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setUiFlag(page, "next");
+  await page.goto("/");
+
+  // Stacked zones (Tailwind grid falls to one column below the breakpoints):
+  // stats, teams and leagues landmarks are all visible on the narrow width.
+  await expect(page.getByTestId("ui-v2-dashboard-stats")).toBeVisible();
+  await expect(page.getByTestId("ui-v2-dashboard-teams")).toBeVisible();
+  await expect(page.getByTestId("ui-v2-dashboard-leagues")).toBeVisible();
+  // Never the legacy surface: every legacy dashboard marker count is 0 (UIR-2).
+  await expect(page.locator("#dashboard-teams-heading")).toHaveCount(0);
+  await expect(page.locator("#dashboard-next-match-heading")).toHaveCount(0);
+  await expect(page.locator("#dashboard-leagues-heading")).toHaveCount(0);
+  await expect(page.locator('[aria-label="Overview"]')).toHaveCount(0);
+  await expect(page.locator('[aria-label="Quick actions"]')).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: /ready to improve/i }),
   ).toBeVisible();
