@@ -30,33 +30,39 @@ The system MUST recognize cookie `bb-ui=next` as ON. The server MUST read it in 
 
 ### Requirement: UIR-2 · Declared Seams
 
-The declared seams MUST be: team detail — `app/teams/[teamId]/page.tsx` (`TeamDetailView` vs `TeamDetailViewV2`) — and teams list — `app/teams/page.tsx` (`TeamsPage` vs `TeamsListViewV2`). At each seam flag ON MUST render the V2 surface, flag OFF MUST render the legacy surface, never both. Both surfaces at a seam MUST receive an identical props contract (teams list: both take no props), and V2 MUST be presentation-only — no data-fetching, mutation, or behavior paths beyond those the legacy surface already uses through shared providers.
+The declared seams MUST be: team detail — `app/teams/[teamId]/page.tsx` (`TeamDetailView` vs `TeamDetailViewV2`) — teams list — `app/teams/page.tsx` (`TeamsPage` vs `TeamsListViewV2`) — and dashboard — `features/dashboard/HomeDashboard.tsx` (`Dashboard` vs `DashboardV2`). At each seam flag ON MUST render the V2 surface, flag OFF MUST render the legacy surface, never both. Both surfaces at a seam MUST receive an identical props contract (teams list: both take no props; dashboard: both take `{authenticated, userName}`), and V2 MUST be presentation-only — no NEW data-fetching, mutation, or behavior paths beyond those the legacy surface already uses (shared providers, or for the dashboard the legacy surface's own hooks). The dashboard seam MUST sit inside the authenticated dashboard render only: the anonymous Landing branch of `/` in `app/page.tsx` MUST NOT consult the flag.
 
-(Previously: UIR-2 declared only the single team detail seam in `app/teams/[teamId]/page.tsx`, hardwired to `TeamDetailView`/`TeamDetailViewV2`.)
+(Previously: UIR-2 declared two seams — team detail and teams list — with no dashboard seam and no flag-free landing guarantee.)
 
 #### Scenario: Flag ON selects V2
 
 - GIVEN `bb-ui=next`
 - WHEN a declared seam renders
-- THEN exactly one surface mounts: `TeamDetailViewV2` on team detail with the same props `TeamDetailView` gets, or `TeamsListViewV2` on `/teams` with the same (empty) props `TeamsPage` gets
+- THEN exactly one surface mounts: `TeamDetailViewV2` on team detail with the same props `TeamDetailView` gets, `TeamsListViewV2` on `/teams` with the same (empty) props `TeamsPage` gets, or `DashboardV2` on the dashboard with the same `{authenticated, userName}` props `Dashboard` gets
 
 #### Scenario: Flag OFF selects legacy
 
 - GIVEN no `bb-ui` cookie
 - WHEN a declared seam renders
-- THEN the legacy component (`TeamDetailView` or `TeamsPage`) renders with its current props and behavior
+- THEN the legacy component (`TeamDetailView`, `TeamsPage`, or `Dashboard`) renders with its current props and behavior
 
 #### Scenario: Never both surfaces at a seam
 
 - GIVEN either flag value
 - WHEN one declared seam renders
-- THEN only one of its two components is mounted — no `ui-v2-teams-*` marker alongside the legacy `/teams` surface, and no legacy marker alongside V2
+- THEN only one of its two components is mounted — no `ui-v2-*` marker alongside that seam's legacy surface (e.g. no `ui-v2-dashboard-*` beside the legacy dashboard), and no legacy marker alongside V2
 
 #### Scenario: Behavior identical across variants
 
 - GIVEN either surface at the same seam
-- WHEN a user runs an action available on that surface (e.g. the hire flow on detail, search or "Crear equipo" on the list)
+- WHEN a user runs an action available on that surface (e.g. the hire flow on detail, search or "Crear equipo" on the list, the dashboard's team-summary link)
 - THEN requests and results are identical; only markup differs
+
+#### Scenario: Landing unaffected by the flag
+
+- GIVEN `bb-ui=next` and an anonymous visitor in auth mode
+- WHEN `/` renders
+- THEN the public Landing renders unchanged — the flag is consulted only inside the authenticated dashboard branch
 
 ### Requirement: UIR-3 · Legacy Contract Frozen With Flag OFF
 
