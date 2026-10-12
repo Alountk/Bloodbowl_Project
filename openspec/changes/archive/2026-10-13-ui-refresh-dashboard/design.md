@@ -79,4 +79,4 @@ No migration; flag stays OFF. Rollback: revert the 2 chained PRs in reverse (V2 
 ## Open Questions
 
 - [x] Chain strategy: RESOLVED as stacked-to-main (2 PRs, each <400) — precedent #326→#328, #335; ask-on-risk satisfied.
-- [ ] Zone-by-zone reuse of `PendingAttention`/`LeagueCard` vs Stitch re-skin — decide in slice 2 against `04 dashboard`; payload identical either way (non-blocking).
+- [x] Zone-by-zone reuse of `PendingAttention`/`LeagueCard` vs Stitch re-skin — RESOLVED in slice 2: both reused (`DashboardV2.tsx:204` PendingAttention, `:345` LeagueCard), same payload (per verify-report Coherence + SUGGESTION).
