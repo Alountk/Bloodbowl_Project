@@ -42,6 +42,16 @@ RUN pnpm prisma generate && pnpm build
 
 # ---- Runner (Next.js standalone) ----
 FROM node:22-alpine AS runner
+# Build provenance, stamped by CI (docker-publish build-args) and readable at
+# runtime: the OCI labels answer "which build is this image?" from the registry
+# or `docker inspect`, and APP_VERSION (ENV below) reaches instrumentation's
+# server.boot so `docker logs` names the running build. Defaults keep a plain
+# local `docker build` working without args.
+ARG APP_VERSION=dev
+ARG APP_SHA=local
+LABEL org.opencontainers.image.version=$APP_VERSION
+LABEL org.opencontainers.image.revision=$APP_SHA
+ENV APP_VERSION=$APP_VERSION
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

@@ -146,6 +146,13 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name == 'push' }}
+          # Provenance: the runner stage stamps these into the OCI labels
+          # (org.opencontainers.image.version/revision) and APP_VERSION reaches
+          # the server.boot log line — that is how a running container names
+          # its build (issue #333).
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.tag }}
+            APP_SHA=${{ github.sha }}
           tags: |
             ${{ steps.meta.outputs.image }}:latest
             ${{ steps.meta.outputs.image }}:${{ steps.version.outputs.tag }}

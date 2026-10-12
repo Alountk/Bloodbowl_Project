@@ -59,6 +59,29 @@ describe("register", () => {
     expect(line.runtime).toBe("nodejs");
   });
 
+  // Image provenance: the Docker image stamps APP_VERSION (CI build-arg) so
+  // `docker logs` answers "which build is running?" without docker inspect.
+  it("names the build version when APP_VERSION is stamped", () => {
+    vi.stubEnv("AUTH_MODE", "local");
+    vi.stubEnv("APP_VERSION", "2026.10.12-42");
+
+    register();
+
+    const line = parse(streams.out)[0];
+    expect(line.event).toBe("server.boot");
+    expect(line.version).toBe("2026.10.12-42");
+  });
+
+  it("defaults the boot version to dev when APP_VERSION is absent", () => {
+    vi.stubEnv("AUTH_MODE", "local");
+    vi.stubEnv("APP_VERSION", "");
+
+    register();
+
+    const line = parse(streams.out)[0];
+    expect(line.version).toBe("dev");
+  });
+
   it("warns once when AUTH_MODE=auth has no AUTH_SECRET outside production", () => {
     vi.stubEnv("AUTH_MODE", "auth");
     vi.stubEnv("AUTH_SECRET", "");
