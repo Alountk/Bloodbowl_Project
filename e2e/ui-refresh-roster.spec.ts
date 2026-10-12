@@ -24,7 +24,14 @@ import { test, expect, type Page } from "@playwright/test";
  *     V2 list skeleton (`ui-v2-teams-grid`) is visible and the legacy
  *     `#teams-unassigned-heading` id is absent (never both, UIR-2);
  *  6. list triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
- *     all → the legacy list heading renders and `ui-v2-teams-*` count is 0.
+ *     all → the legacy list heading renders and `ui-v2-teams-*` count is 0;
+ *  7. `/teams` mobile (task 2.3, UIR-4): the same cookie at an inline
+ *     390×844 viewport → stacked `ui-v2-teams-card-*` cards, the sticky
+ *     `ui-v2-teams-create-cta` (Stitch "M 05") visible, and every legacy
+ *     list marker count 0;
+ *  8. delete parity flag ON (task 2.5): the V2 card delete control opens the
+ *     reused `TeamDeleteModal` with the Spanish copy and confirming removes
+ *     the team through the store channel (empty state takes over).
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -141,6 +148,52 @@ test("flag ON (bb-ui=next): the teams list seam renders the V2 surface", async (
   // heading id must never be mounted alongside (never both, UIR-2).
   await expect(page.getByTestId("ui-v2-teams-grid")).toBeVisible();
   await expect(page.locator("#teams-unassigned-heading")).toHaveCount(0);
+});
+
+test("flag ON at a mobile viewport: the teams list renders stacked V2 cards", async ({
+  page,
+}) => {
+  // Inline viewport + cookie BEFORE the first goto (task 2.3): the `mobile`
+  // Playwright project only matches mobile.spec.ts, so this desktop-project
+  // spec opts into the 390×844 width itself without touching any config.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setUiFlag(page, "next");
+  await createTeamAndOpenList(page, "V2 Mobile List Team");
+
+  // Stacked cards (Tailwind grid falls to one column below 640px) and the
+  // sticky bottom create CTA from Stitch "M 05".
+  await expect(page.getByTestId("ui-v2-teams-grid")).toBeVisible();
+  await expect(
+    page.locator('[data-testid^="ui-v2-teams-card-"]').first(),
+  ).toBeVisible();
+  await expect(page.getByTestId("ui-v2-teams-create-cta")).toBeVisible();
+  // Never the legacy surface: every legacy list marker count is 0 (UIR-2).
+  await expect(page.locator("#teams-unassigned-heading")).toHaveCount(0);
+  await expect(page.locator('[data-testid="team-ctv"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="team-treasury"]')).toHaveCount(0);
+});
+
+test("flag ON (bb-ui=next): card delete opens the modal and removes the team", async ({
+  page,
+}) => {
+  await setUiFlag(page, "next");
+  await createTeamAndOpenList(page, "V2 Delete Team");
+
+  // Same accessible name convention as the legacy TeamCard control (the
+  // reused TeamDeleteModal keeps its hardcoded Spanish copy in every locale).
+  await page.getByRole("button", { name: "Eliminar V2 Delete Team" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(page.getByText(/Esta acción no se puede deshacer/i)).toBeVisible();
+
+  // exact: the card buttons share the "Eliminar" prefix in their names.
+  await page.getByRole("button", { name: "Eliminar", exact: true }).click();
+
+  // The store channel removed the team (persists for the tab session) and the
+  // empty state takes over.
+  await expect(page.locator('[data-testid^="ui-v2-teams-card-"]')).toHaveCount(0);
+  await expect(page.getByTestId("ui-v2-teams-empty")).toBeVisible();
+  await expect(dialog).not.toBeVisible();
 });
 
 test("flag OFF via bb-ui=legacy: the legacy teams list renders (triangulation)", async ({

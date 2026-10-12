@@ -37,11 +37,11 @@ Chain strategy: stacked-to-main (PR 2 base = PR 1 branch)
 
 ## Slice 2 — Full V2 translation + tests (~350 lines)
 
-- [ ] 2.1 RED: Extend `TeamsListViewV2.test.tsx`: sections by `leagueId`, league badge, search filters, CTA → `/teams/create`, empty states, no legacy markers. — UIR-2. Verify: `pnpm exec vitest run features/teams/list` (fails).
-- [ ] 2.2 GREEN: Finish `TeamsListViewV2.tsx` per Stitch `05 teams` / `M 05`: cards (emblem, name, race, TV, treasury), responsive CSS, i18n `teams.*`; NO hamburger (`AppNav` owns it); no `features/teams/api`. — UIR-2. Verify: `pnpm exec vitest run features/teams/list`; `npx tsc --noEmit`; `pnpm lint`.
-- [ ] 2.3 Add mobile e2e case (390×844, flag ON → `ui-v2-teams-card-*` visible, legacy count 0). — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
-- [ ] 2.4 VERIFY-ONLY: rerun `pnpm test` + local Playwright; grep: `useUiFlag()` only at the two seams; NO flip. — UIR-3, UIR-5.
-- [ ] 2.5 RED/GREEN: delete parity — card delete control in V2 wired through the SAME handler channel legacy `TeamsPage` uses (store handlers; `TeamDeleteModal` reusable as-is), Spanish guard copy, zero legacy file edits. — UIR-2. Verify: `pnpm exec vitest run features/teams/list` (fails before) + flag-ON e2e deletes-and-persists case if it fits the existing spec harness.
+- [x] 2.1 RED: Extend `TeamsListViewV2.test.tsx`: sections by `leagueId`, league badge, search filters, CTA → `/teams/create`, empty states, no legacy markers. — UIR-2. Verify: `pnpm exec vitest run features/teams/list` (fails).
+- [x] 2.2 GREEN: Finish `TeamsListViewV2.tsx` per Stitch `05 teams` / `M 05`: cards (emblem, name, race, TV, treasury), responsive CSS, i18n `teams.*`; NO hamburger (`AppNav` owns it); no `features/teams/api`. — UIR-2. Verify: `pnpm exec vitest run features/teams/list`; `npx tsc --noEmit`; `pnpm lint`.
+- [x] 2.3 Add mobile e2e case (390×844, flag ON → `ui-v2-teams-card-*` visible, legacy count 0). — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
+- [x] 2.4 VERIFY-ONLY: rerun `pnpm test` + local Playwright; grep: `useUiFlag()` only at the two seams; NO flip. — UIR-3, UIR-5.
+- [x] 2.5 RED/GREEN: delete parity — card delete control in V2 wired through the SAME handler channel legacy `TeamsPage` uses (store handlers; `TeamDeleteModal` reusable as-is), Spanish guard copy, zero legacy file edits. — UIR-2. Verify: `pnpm exec vitest run features/teams/list` (fails before) + flag-ON e2e deletes-and-persists case if it fits the existing spec harness.
 
 **Close-out**: `feat(ui-refresh): translate teams list V2 desktop and mobile (refs #335)`.
 
