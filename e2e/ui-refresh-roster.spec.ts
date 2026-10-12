@@ -19,7 +19,12 @@ import { test, expect, type Page } from "@playwright/test";
  *     roster renders as stacked `ui-v2-roster-card-*` player cards and neither
  *     the legacy table nor the desktop V2 table is mounted. The viewport is set
  *     inline because the Playwright `mobile` project's `testMatch` only covers
- *     `mobile.spec.ts` — playwright.config.ts is deliberately untouched.
+ *     `mobile.spec.ts` — playwright.config.ts is deliberately untouched;
+ *  5. `/teams` desktop (task 1.4, second declared seam): `bb-ui=next` → the
+ *     V2 list skeleton (`ui-v2-teams-grid`) is visible and the legacy
+ *     `#teams-unassigned-heading` id is absent (never both, UIR-2);
+ *  6. list triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
+ *     all → the legacy list heading renders and `ui-v2-teams-*` count is 0.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -37,9 +42,9 @@ async function setUiFlag(page: Page, value: string) {
 
 /**
  * Creates an 11-player human team through the wizard (English labels, the
- * local-suite default) and walks CLIENT-SIDE to its detail page.
+ * local-suite default) and walks CLIENT-SIDE to the team list (`/teams`).
  */
-async function createTeamAndOpenDetail(page: Page, teamName: string) {
+async function createTeamAndOpenList(page: Page, teamName: string) {
   await page.goto("/teams/create");
   await page.waitForLoadState("networkidle");
 
@@ -57,6 +62,14 @@ async function createTeamAndOpenDetail(page: Page, teamName: string) {
   // Client-side navigation only from here: the local store dies on reload.
   await page.getByRole("link", { name: /ready to improve/i }).click();
   await expect(page).toHaveURL(/\/teams$/);
+}
+
+/**
+ * The wizard team walked to its detail page (client-side from the list, so
+ * the tab-session store survives).
+ */
+async function createTeamAndOpenDetail(page: Page, teamName: string) {
+  await createTeamAndOpenList(page, teamName);
   await page.getByRole("link", { name: teamName }).click();
   await expect(page).toHaveURL(/\/teams\/.+$/);
 }
@@ -116,4 +129,36 @@ test("flag ON at a mobile viewport: stacked V2 cards replace both tables", async
   await expect(page.getByTestId("ui-v2-roster-table")).toHaveCount(0);
   // Never the legacy surface (UIR-2: never both).
   await expect(page.getByTestId("team-roster-table")).toHaveCount(0);
+});
+
+test("flag ON (bb-ui=next): the teams list seam renders the V2 surface", async ({
+  page,
+}) => {
+  await setUiFlag(page, "next");
+  await createTeamAndOpenList(page, "V2 List Team");
+
+  // V2 vocabulary (task 1.3): ui-v2-teams-* only — the legacy section
+  // heading id must never be mounted alongside (never both, UIR-2).
+  await expect(page.getByTestId("ui-v2-teams-grid")).toBeVisible();
+  await expect(page.locator("#teams-unassigned-heading")).toHaveCount(0);
+});
+
+test("flag OFF via bb-ui=legacy: the legacy teams list renders (triangulation)", async ({
+  page,
+}) => {
+  await setUiFlag(page, "legacy");
+  await createTeamAndOpenList(page, "Legacy List Team");
+
+  await expect(page.locator("#teams-unassigned-heading")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-teams-"]')).toHaveCount(0);
+});
+
+test("flag OFF with no cookie: the legacy teams list renders (default)", async ({
+  page,
+}) => {
+  // No addCookies at all — absent cookie MUST resolve OFF (UIR-1).
+  await createTeamAndOpenList(page, "No Flag List Team");
+
+  await expect(page.locator("#teams-unassigned-heading")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-teams-"]')).toHaveCount(0);
 });
