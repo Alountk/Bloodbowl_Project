@@ -43,6 +43,14 @@ import { test, expect, type Page } from "@playwright/test";
  *     viewport → the stacked V2 dashboard zones (stats, teams, leagues) are
  *     visible and every legacy dashboard marker count is 0.
  *
+ * 11. `/teams/create` desktop (task 1.4, fourth declared seam): `bb-ui=next`
+ *     → the V2 wizard (`ui-v2-create-step1`) is visible and the legacy
+ *     `#team-name` id is absent (never both, UIR-2). Every flag-ON test above
+ *     already walks this seam through the UNEDITED `createTeamAndOpenList`
+ *     helper — that is the harness contract the V2 preserves.
+ * 12. wizard triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
+ *     all → the legacy wizard input renders and `ui-v2-create-*` count is 0.
+ *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
  * is created is client-side — a full reload would wipe the tab-session store
@@ -287,4 +295,44 @@ test("flag OFF with no cookie: the legacy dashboard renders (default)", async ({
 
   await expect(page.locator("#dashboard-teams-heading")).toBeVisible();
   await expect(page.locator('[data-testid^="ui-v2-dashboard-"]')).toHaveCount(0);
+});
+
+test("flag ON (bb-ui=next): the create wizard seam renders the V2 surface", async ({
+  page,
+}) => {
+  await setUiFlag(page, "next");
+  await page.goto("/teams/create");
+  await page.waitForLoadState("networkidle");
+
+  // V2 vocabulary (task 1.4): ui-v2-create-* only — the legacy step-1 input
+  // id must never be mounted alongside (never both, UIR-2).
+  await expect(page.getByTestId("ui-v2-create-step1")).toBeVisible();
+  await expect(page.locator("#team-name")).toHaveCount(0);
+  // The harness contract: the accessible names createTeamAndOpenList
+  // resolves (labels + "Next →") stay resolvable on the V2 surface.
+  await expect(page.getByLabel("Team name", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Race")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next →" })).toBeVisible();
+});
+
+test("flag OFF via bb-ui=legacy: the legacy wizard renders (triangulation)", async ({
+  page,
+}) => {
+  await setUiFlag(page, "legacy");
+  await page.goto("/teams/create");
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.locator("#team-name")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-create-"]')).toHaveCount(0);
+});
+
+test("flag OFF with no cookie: the legacy wizard renders (default)", async ({
+  page,
+}) => {
+  // No addCookies at all — absent cookie MUST resolve OFF (UIR-1).
+  await page.goto("/teams/create");
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.locator("#team-name")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-create-"]')).toHaveCount(0);
 });
