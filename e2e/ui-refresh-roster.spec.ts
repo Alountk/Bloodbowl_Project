@@ -336,3 +336,31 @@ test("flag OFF with no cookie: the legacy wizard renders (default)", async ({
   await expect(page.locator("#team-name")).toBeVisible();
   await expect(page.locator('[data-testid^="ui-v2-create-"]')).toHaveCount(0);
 });
+
+test("flag ON at a mobile viewport: the create wizard renders stacked V2 zones", async ({
+  page,
+}) => {
+  // Inline viewport + cookie BEFORE the first goto (task 2.3): the `mobile`
+  // Playwright project only matches mobile.spec.ts, so this desktop-project
+  // spec opts into the 390×844 width itself without touching any config.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setUiFlag(page, "next");
+  await page.goto("/teams/create");
+  await page.waitForLoadState("networkidle");
+
+  // Stepper + step-1 landmarks stack on the narrow width (Stitch "M 06").
+  await expect(page.getByTestId("ui-v2-create-step1")).toBeVisible();
+  await expect(page.getByTestId("ui-v2-create-stepper")).toBeVisible();
+  await expect(page.getByTestId("ui-v2-create-treasury")).toBeVisible();
+  // Never the legacy surface: every legacy wizard marker count is 0 (UIR-2).
+  await expect(page.locator("#team-name")).toHaveCount(0);
+  await expect(page.locator("#team-race")).toHaveCount(0);
+
+  // Walk to step 2: the coaching zone (parity with legacy) is visible too.
+  await page.getByLabel("Team name", { exact: true }).fill("Mobile V2 Team");
+  await page.getByLabel("Race").selectOption("human");
+  await page.getByRole("button", { name: "Next →" }).click();
+  await expect(page.getByTestId("ui-v2-create-step2")).toBeVisible();
+  await expect(page.getByTestId("ui-v2-create-coaching")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-create-"]').first()).toBeVisible();
+});

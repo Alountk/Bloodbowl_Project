@@ -139,6 +139,9 @@ const es: Dict = {
   "create.rulesetApplied": "Reglas de la liga: {name}",
   "create.tvCapLine": "Tope de TV: {cap} (valor actual: {value})",
   "create.saveError": "No se pudo guardar el equipo. Comprueba tu conexión e inténtalo de nuevo.",
+  "create.stepper.step1": "Nombre y raza",
+  "create.stepper.step2": "Plantilla y cuerpo técnico",
+  "create.availableBudget": "Presupuesto disponible",
 
   "coaching.rerolls": "Segundas oportunidades",
   "coaching.dedicatedFans": "Fanáticos dedicados",
@@ -1058,6 +1061,9 @@ const en: Dict = {
   "create.rulesetApplied": "League rules: {name}",
   "create.tvCapLine": "TV cap: {cap} (current value: {value})",
   "create.saveError": "Could not save the team. Please check your connection and try again.",
+  "create.stepper.step1": "Name & race",
+  "create.stepper.step2": "Roster & coaching",
+  "create.availableBudget": "Available budget",
 
   "coaching.rerolls": "Rerolls",
   "coaching.dedicatedFans": "Dedicated Fans",
