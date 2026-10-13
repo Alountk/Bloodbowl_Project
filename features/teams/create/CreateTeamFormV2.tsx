@@ -6,7 +6,17 @@ import { useI18n } from "@/lib/i18n";
 import { useApp } from "@/app/providers/AppProvider";
 import { RACES } from "../data/races";
 import { randomTeamName } from "../data/teamNames";
-import { MAX_PLAYERS, STARTING_TREASURY } from "../roster";
+import {
+  APOTHECARY_COST,
+  ASSISTANT_COACH_MAX,
+  CHEERLEADER_MAX,
+  DEDICATED_FANS_MAX,
+  DEDICATED_FANS_START,
+  MAX_PLAYERS,
+  MAX_REROLLS,
+  STARTING_TREASURY,
+  computeCoachingCostItems,
+} from "../roster";
 import { RosterTable } from "../roster-table/RosterTable";
 import { PlayerAvailabilityTable } from "./PlayerAvailabilityTable";
 import { useCreateTeamForm } from "./useCreateTeamForm";
@@ -35,6 +45,20 @@ import type { CreateTeamFormProps } from "./CreateTeamForm";
 function formatGold(value: number): string {
   return `${(value / 1000).toLocaleString("en-US")}k`;
 }
+
+/** Parses a count input as a non-negative integer, defaulting to 0. */
+function parseCount(value: string): number {
+  const parsed = Number(value);
+  if (Number.isNaN(parsed) || parsed < 0) return 0;
+  return Math.floor(parsed);
+}
+
+const COACHING_LABELS: Record<string, string> = {
+  rerolls: "coaching.rerolls",
+  dedicatedFans: "coaching.dedicatedFans",
+  assistantCoaches: "coaching.assistantCoaches",
+  cheerleaders: "coaching.cheerleaders",
+};
 
 const fieldClassName =
   "w-full rounded-md border border-slate-300 bg-panel px-3 py-2 text-slate-900 outline-none focus:border-blue-500";
@@ -91,12 +115,50 @@ export function CreateTeamFormV2({ ruleset = null, leagueId, onCreated }: Create
   const budgetPercent = Math.min(100, (form.totalCost / treasury) * 100);
   const isOverBudget = form.totalCost > treasury;
 
+  // Coaching parity (slice 2): the SAME `computeCoachingCostItems` data legacy
+  // derives its staff subtotal from — no second cost model.
+  const coachingItems = race ? computeCoachingCostItems(race, form.coaching) : [];
+  const staffSubtotal = coachingItems.reduce((acc, item) => acc + item.total, 0);
+  const apothecaryTotal = form.coaching.apothecary ? APOTHECARY_COST : 0;
+  const coachingTotal = staffSubtotal + apothecaryTotal;
+
   return (
     <form
       onSubmit={form.handleSubmit}
       noValidate
       className="mx-auto max-w-[900px] space-y-6 bg-panel px-4 py-6 text-[#1a1a1a] shadow-[0_4px_8px_rgba(0,0,0,0.35)] sm:px-6"
     >
+      {/* Progress stepper (Stitch "Crear Equipo (Paso 1)" / "M 06"): the
+          FROZEN flow is 2 steps (harness contract), so two honest milestones
+          track the current position. */}
+      <ol data-testid="ui-v2-create-stepper" className="flex flex-wrap gap-2">
+        <li
+          aria-current={form.step === 1 ? "step" : undefined}
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold ${
+            form.step === 1
+              ? "border-navy bg-navy text-white"
+              : "border-border bg-fill-hover text-slate-strong"
+          }`}
+        >
+          <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs text-white">
+            1
+          </span>
+          <span>{t("create.stepper.step1")}</span>
+        </li>
+        <li
+          aria-current={form.step === 2 ? "step" : undefined}
+          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold ${
+            form.step === 2
+              ? "border-navy bg-navy text-white"
+              : "border-border bg-fill-hover text-slate-strong"
+          }`}
+        >
+          <span aria-hidden className="flex h-5 w-5 items-center justify-center rounded-full bg-navy/10 text-xs text-navy">
+            2
+          </span>
+          <span>{t("create.stepper.step2")}</span>
+        </li>
+      </ol>
       {race && form.step === 2 ? (
         <>
           {/* Step 2 — navy hero + roster + availability. */}
@@ -181,6 +243,86 @@ export function CreateTeamFormV2({ ruleset = null, leagueId, onCreated }: Create
               maxPlayers={maxPlayers}
             />
           </section>
+
+          {/* Cuerpo técnico — same inputs, same cost items as legacy
+              (CoachingStaffSection parity, slice 2). */}
+          <section
+            data-testid="ui-v2-create-coaching"
+            aria-label={t("create.coachingStaff")}
+            className="rounded-md border border-border bg-fill-hover p-4"
+          >
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className="border-b-[3px] border-red pb-1.5 text-[16px] text-navy">
+                {t("create.coachingStaff")}
+              </h2>
+              <span className="text-sm text-slate">{formatGold(coachingTotal)} gc</span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {coachingItems.map((item) => {
+                const max =
+                  item.key === "rerolls"
+                    ? MAX_REROLLS
+                    : item.key === "dedicatedFans"
+                      ? DEDICATED_FANS_MAX
+                      : item.key === "assistantCoaches"
+                        ? ASSISTANT_COACH_MAX
+                        : CHEERLEADER_MAX;
+                const min = item.key === "dedicatedFans" ? DEDICATED_FANS_START : 0;
+                return (
+                  <div key={item.key}>
+                    <label
+                      htmlFor={`ui-v2-coaching-${item.key}`}
+                      className="mb-1 flex items-baseline justify-between text-sm font-medium text-slate-700"
+                    >
+                      <span>{t(COACHING_LABELS[item.key])}</span>
+                      <span className="text-xs text-slate">
+                        {item.key === "dedicatedFans"
+                          ? t("coaching.startsWith", {
+                              min: DEDICATED_FANS_START,
+                              cost: formatGold(item.unitCost),
+                            })
+                          : `${formatGold(item.unitCost)} gc`}
+                        {item.quantity > min ? ` · ${formatGold(item.total)}` : ""}
+                      </span>
+                    </label>
+                    <input
+                      id={`ui-v2-coaching-${item.key}`}
+                      aria-label={t(COACHING_LABELS[item.key])}
+                      type="number"
+                      min={min}
+                      max={max}
+                      step={1}
+                      value={item.quantity}
+                      onChange={(event) =>
+                        form.setCoaching({ [item.key]: parseCount(event.target.value) })
+                      }
+                      className={fieldClassName}
+                    />
+                  </div>
+                );
+              })}
+
+              <label className="flex items-center gap-3 self-end rounded-md border border-border bg-panel px-3 py-2 text-sm text-slate-700">
+                <input
+                  id="ui-v2-coaching-apothecary"
+                  aria-label={t("coaching.apothecary")}
+                  type="checkbox"
+                  checked={form.coaching.apothecary}
+                  onChange={(event) =>
+                    form.setCoaching({ apothecary: event.target.checked })
+                  }
+                  className="h-4 w-4 accent-navy"
+                />
+                <span className="flex items-baseline gap-1">
+                  {t("coaching.apothecary")}
+                  <span className="text-xs text-slate">
+                    {formatGold(APOTHECARY_COST)} gc
+                    {apothecaryTotal > 0 ? ` · ${formatGold(apothecaryTotal)}` : ""}
+                  </span>
+                </span>
+              </label>
+            </div>
+          </section>
         </>
       ) : form.step === 1 ? (
         /* Step 1 — team name + race. */
@@ -188,6 +330,23 @@ export function CreateTeamFormV2({ ruleset = null, leagueId, onCreated }: Create
           <h1 className="mb-4 border-b-[3px] border-red pb-1.5 text-[26px] font-black text-navy">
             {t("create.step1Title")}
           </h1>
+
+          {/* Budget card (Stitch "M 06" PRESUPUESTO DISPONIBLE): the frozen
+              starting pot, shown before the first draft decision. */}
+          <div
+            data-testid="ui-v2-create-treasury"
+            className="mb-4 rounded-md border border-border bg-fill-hover px-3 py-2"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">
+              {t("create.availableBudget")}
+            </p>
+            <p className="text-lg font-black text-navy">
+              {formatGold(treasury)} <span className="text-xs font-bold text-red">gc</span>
+            </p>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-border">
+              <div className="h-full rounded-full bg-navy" style={{ width: `${budgetPercent}%` }} />
+            </div>
+          </div>
 
           {ruleset ? (
             <p className="mb-4 rounded-md border border-border bg-fill-hover px-3 py-2 text-[12px] text-slate-strong">
