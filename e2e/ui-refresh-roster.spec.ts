@@ -50,6 +50,13 @@ import { test, expect, type Page } from "@playwright/test";
  *     helper — that is the harness contract the V2 preserves.
  * 12. wizard triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
  *     all → the legacy wizard input renders and `ui-v2-create-*` count is 0.
+ * 13. `/leagues` desktop (task 1.4, fifth declared seam): `bb-ui=next` → the
+ *     V2 hero (`ui-v2-leagues-hero`) is visible and the legacy
+ *     `#leagues-heading` id is absent (never both, UIR-2). No helper walks
+ *     this route — cookie set, then goto directly (design.md S7: traced,
+ *     `createTeamAndOpenList` never reaches `/leagues`).
+ * 14. leagues triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
+ *     all → the legacy hero renders and `ui-v2-leagues-*` count is 0.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -363,4 +370,44 @@ test("flag ON at a mobile viewport: the create wizard renders stacked V2 zones",
   await expect(page.getByTestId("ui-v2-create-step2")).toBeVisible();
   await expect(page.getByTestId("ui-v2-create-coaching")).toBeVisible();
   await expect(page.locator('[data-testid^="ui-v2-create-"]').first()).toBeVisible();
+});
+
+test("flag ON (bb-ui=next): the leagues list seam renders the V2 surface", async ({
+  page,
+}) => {
+  await setUiFlag(page, "next");
+  await page.goto("/leagues");
+
+  // V2 vocabulary (task 1.4): ui-v2-leagues-* only — the legacy hero id must
+  // never be mounted alongside (never both, UIR-2). No helper walks this
+  // route (design.md S7): cookie, then goto directly.
+  await expect(page.getByTestId("ui-v2-leagues-hero")).toBeVisible();
+  await expect(page.locator("#leagues-heading")).toHaveCount(0);
+  await expect(page.locator("#my-leagues-heading")).toHaveCount(0);
+  // AUTH_MODE=local is anonymous: GET /api/leagues answers 401, so the V2
+  // renders its ERROR zone (same data channel as legacy — the observed
+  // behavior of the legacy surface too, whose error panel shows the same
+  // message). The empty state is covered by the component test.
+  await expect(page.getByTestId("ui-v2-leagues-error")).toBeVisible();
+  await expect(page.getByText("Unauthorized")).toBeVisible();
+});
+
+test("flag OFF via bb-ui=legacy: the legacy leagues list renders (triangulation)", async ({
+  page,
+}) => {
+  await setUiFlag(page, "legacy");
+  await page.goto("/leagues");
+
+  await expect(page.locator("#leagues-heading")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-leagues-"]')).toHaveCount(0);
+});
+
+test("flag OFF with no cookie: the legacy leagues list renders (default)", async ({
+  page,
+}) => {
+  // No addCookies at all — absent cookie MUST resolve OFF (UIR-1).
+  await page.goto("/leagues");
+
+  await expect(page.locator("#leagues-heading")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-leagues-"]')).toHaveCount(0);
 });
