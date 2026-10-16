@@ -57,6 +57,9 @@ import { test, expect, type Page } from "@playwright/test";
  *     `createTeamAndOpenList` never reaches `/leagues`).
  * 14. leagues triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
  *     all → the legacy hero renders and `ui-v2-leagues-*` count is 0.
+ * 15. `/leagues` mobile (task 2.3, UIR-4): the same cookie at an inline
+ *     390×844 viewport → the V2 hero + zones render stacked on the narrow
+ *     width and every legacy leagues marker count is 0.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -400,6 +403,33 @@ test("flag OFF via bb-ui=legacy: the legacy leagues list renders (triangulation)
 
   await expect(page.locator("#leagues-heading")).toBeVisible();
   await expect(page.locator('[data-testid^="ui-v2-leagues-"]')).toHaveCount(0);
+});
+
+test("flag ON at a mobile viewport: the leagues list renders the stacked V2 surface", async ({
+  page,
+}) => {
+  // Inline viewport + cookie BEFORE the first goto (task 2.3): the `mobile`
+  // Playwright project only matches mobile.spec.ts, so this desktop-project
+  // spec opts into the 390×844 width itself without touching any config.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setUiFlag(page, "next");
+  await page.goto("/leagues");
+
+  // V2 vocabulary on the narrow width (M 09): hero + zones stacked, never
+  // the legacy markers (never both, UIR-2).
+  await expect(page.getByTestId("ui-v2-leagues-hero")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Nueva liga|New league/ }),
+  ).toBeVisible();
+  await expect(page.locator("#leagues-heading")).toHaveCount(0);
+  await expect(page.locator("#my-leagues-heading")).toHaveCount(0);
+  await expect(page.locator("#open-leagues-heading")).toHaveCount(0);
+  await expect(page.locator('[data-testid^="ui-v2-leagues-"]')).not.toHaveCount(0);
+  // The hero must not force a horizontal scrollbar at 390px.
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(overflows).toBe(false);
 });
 
 test("flag OFF with no cookie: the legacy leagues list renders (default)", async ({
