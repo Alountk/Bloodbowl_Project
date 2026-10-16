@@ -26,16 +26,30 @@ import Page from "@/app/leagues/page";
  * contract here is the surface itself; the flag-ON e2e cases goto directly.
  */
 
+/** Session mock shape: `role` optional so a test can simulate a developer. */
+interface SessionShape {
+  data: { user: { id: string; role?: string } };
+  status: string;
+}
+
 const sessionMock = vi.hoisted(() =>
-  vi.fn(() => ({ data: { user: { id: "u1" } }, status: "authenticated" })),
+  vi.fn((): SessionShape => ({ data: { user: { id: "u1" } }, status: "authenticated" })),
 );
 vi.mock("next-auth/react", () => ({
   useSession: () => sessionMock(),
 }));
 
+/** LAC-5 parity pin: overrides the session with an optional JWT role snapshot. */
+function setSession(role?: string) {
+  sessionMock.mockReturnValue({
+    data: { user: role ? { id: "u1", role } : { id: "u1" } },
+    status: "authenticated",
+  });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
-  sessionMock.mockReturnValue({ data: { user: { id: "u1" } }, status: "authenticated" });
+  setSession();
 });
 
 /** League rows shaped like the `GET /api/leagues` payload (League interface). */
@@ -57,14 +71,17 @@ function league(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-/** Stubs the single legacy endpoint (`useLeagues` → `listLeagues`). */
+/** Stubs the single legacy endpoint (`useLeagues` → `listLeagues`), routing by URL like legacy's stub. */
 function stubLeaguesFetch(rows: unknown[]) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(() =>
-      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rows) }),
-    ),
-  );
+  const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/leagues") {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(rows) });
+    }
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 /**
@@ -196,5 +213,146 @@ describe("LeaguesListViewV2 core (slice 1 — skeleton on the legacy channel)", 
     expect(content).not.toMatch(
       /id="leagues-heading"|id="my-leagues-heading"|id="open-leagues-heading"/,
     );
+  });
+});
+
+describe("LeaguesListViewV2 full surface (slice 2, task 2.1 — parity + create channel)", () => {
+  /** URL-routed stub: rulesets → [], POST creates + appends, GET lists. */
+  function stubCreateFlow(initial: unknown[]) {
+    const rows = [...initial];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url === "/api/rulesets") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+      }
+      if (url === "/api/leagues" && method === "POST") {
+        const body = JSON.parse(String(init?.body));
+        const created = league({ id: "l-new", name: body.name, ownerId: "u1" });
+        rows.push(created);
+        return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(created) });
+      }
+      if (url === "/api/leagues") {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([...rows]) });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  async function mountV2() {
+    const spec = "./LeaguesListViewV2";
+    const { LeaguesListViewV2 } = await import(/* @vite-ignore */ spec);
+    return render(<LeaguesListViewV2 />);
+  }
+
+  it("creates a league through the shared modal channel and the refreshed list shows the new card", async () => {
+    const fetchMock = stubCreateFlow([league()]);
+    await mountV2();
+
+    fireEvent.click(await screen.findByTestId("ui-v2-leagues-create-cta"));
+    await screen.findByRole("dialog");
+    // The modal loads the ruleset selector from the shared public endpoint.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]) === "/api/rulesets")).toBe(true),
+    );
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Nueva Copa" } });
+    fireEvent.click(screen.getByRole("button", { name: "Crear liga" }));
+
+    // Dialog closes itself (same wiring as legacy) …
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // … exactly ONE POST hit the shared /api/leagues channel …
+    const posts = fetchMock.mock.calls.filter(
+      (call) =>
+        String(call[0]) === "/api/leagues" &&
+        (call[1] as RequestInit | undefined)?.method === "POST",
+    );
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(String((posts[0][1] as RequestInit).body))).toEqual({
+      name: "Nueva Copa",
+      description: null,
+      rulesetId: null,
+    });
+    // … and onCreate refreshed the list: the new card lands under Mis Ligas.
+    const mySection = await screen.findByTestId("ui-v2-leagues-section-my");
+    expect(await within(mySection).findByText("Nueva Copa")).toBeTruthy();
+  });
+
+  it("parity: a STARTED league I am a MEMBER of lands in Mis Ligas, never in Ligas abiertas", async () => {
+    await renderV2([
+      league({ id: "l4", name: "Joined Started Cup", ownerId: "u2", status: "started", isMember: true }),
+    ]);
+
+    const mySection = await screen.findByTestId("ui-v2-leagues-section-my");
+    const openSection = screen.getByTestId("ui-v2-leagues-section-open");
+    expect(within(mySection).getByText("Joined Started Cup")).toBeTruthy();
+    expect(within(openSection).queryByText("Joined Started Cup")).toBeNull();
+  });
+
+  it("parity: an OPEN league I am a MEMBER of stays out of Ligas abiertas (Mis Ligas only)", async () => {
+    await renderV2([
+      league({ id: "l5", name: "Open Member Cup", ownerId: "u2", status: "open", isMember: true }),
+    ]);
+
+    const mySection = await screen.findByTestId("ui-v2-leagues-section-my");
+    const openSection = screen.getByTestId("ui-v2-leagues-section-open");
+    expect(within(mySection).getByText("Open Member Cup")).toBeTruthy();
+    expect(within(openSection).queryByText("Open Member Cup")).toBeNull();
+  });
+
+  it("parity: a foreign OPEN league flagged canManage lands in Mis Ligas (server flag preferred)", async () => {
+    await renderV2([
+      league({ id: "lc", name: "Managed Cup", ownerId: "u2", status: "open", canManage: true }),
+    ]);
+
+    const mySection = await screen.findByTestId("ui-v2-leagues-section-my");
+    const openSection = screen.getByTestId("ui-v2-leagues-section-open");
+    expect(within(mySection).getByText("Managed Cup")).toBeTruthy();
+    expect(within(openSection).queryByText("Managed Cup")).toBeNull();
+  });
+
+  it("parity: a developer session lands every foreign league in Mis Ligas (LAC-5 predicate)", async () => {
+    setSession("developer");
+    await renderV2([
+      league({ id: "lf1", name: "Foreign Started Cup", ownerId: "u2", status: "started" }),
+      league({ id: "lf2", name: "Foreign Open Cup", ownerId: "u2", status: "open" }),
+    ]);
+
+    const mySection = await screen.findByTestId("ui-v2-leagues-section-my");
+    const openSection = screen.getByTestId("ui-v2-leagues-section-open");
+    expect(within(mySection).getByText("Foreign Started Cup")).toBeTruthy();
+    expect(within(mySection).getByText("Foreign Open Cup")).toBeTruthy();
+    expect(within(openSection).queryByText("Foreign Open Cup")).toBeNull();
+    // No open leagues remain for a developer → the section shows its empty copy.
+    expect(within(openSection).getByText("No hay ligas abiertas a las que unirte.")).toBeTruthy();
+  });
+
+  it("parity: shared-atom badges render on the V2 cards (🏆 Finalizada + ruleset name)", async () => {
+    await renderV2([
+      league({ id: "l6", name: "Finished Cup", ownerId: "u1", status: "finished" }),
+      league({
+        id: "l7",
+        name: "Ruleset Cup",
+        ownerId: "u1",
+        rulesetId: "tier1",
+        rulesetName: "Liga Tier 1",
+      }),
+    ]);
+
+    await screen.findByTestId("ui-v2-leagues-section-my");
+    expect(screen.getByText(/Finalizada/)).toBeTruthy();
+    const card = screen.getByText("Ruleset Cup").closest("li") as HTMLElement;
+    expect(within(card).getByText("Liga Tier 1")).toBeTruthy();
+  });
+
+  it("no N+1 on the V2 surface: every request hits the single list endpoint", async () => {
+    const fetchMock = stubLeaguesFetch([league()]);
+    await mountV2();
+
+    await screen.findByTestId("ui-v2-leagues-section-my");
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((url) => url === "/api/leagues")).toBe(true);
   });
 });
