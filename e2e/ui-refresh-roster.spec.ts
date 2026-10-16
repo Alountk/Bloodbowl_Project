@@ -60,6 +60,15 @@ import { test, expect, type Page } from "@playwright/test";
  * 15. `/leagues` mobile (task 2.3, UIR-4): the same cookie at an inline
  *     390×844 viewport → the V2 hero + zones render stacked on the narrow
  *     width and every legacy leagues marker count is 0.
+ * 16. fixture desktop (task 1.4, sixth declared seam): `bb-ui=next` → the V2
+ *     surface zone (`ui-v2-match-error` on this suite's anonymous 401) is
+ *     visible and the legacy loaded-state testids are absent. Never-both
+ *     proof: the legacy error panel carries NO testid, so
+ *     `getByText("Unauthorized")` — strict, single match — means exactly one
+ *     surface mounted. No helper walks this route (design.md S7): cookie,
+ *     then goto directly.
+ * 17. fixture triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
+ *     all → the legacy error panel renders and `ui-v2-match-*` count is 0.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -440,4 +449,47 @@ test("flag OFF with no cookie: the legacy leagues list renders (default)", async
 
   await expect(page.locator("#leagues-heading")).toBeVisible();
   await expect(page.locator('[data-testid^="ui-v2-leagues-"]')).toHaveCount(0);
+});
+
+test("flag ON (bb-ui=next): the live match seam renders the V2 surface", async ({
+  page,
+}) => {
+  await setUiFlag(page, "next");
+  await page.goto("/leagues/l1/fixtures/f1");
+
+  // V2 vocabulary (task 1.4): ui-v2-match-* only. AUTH_MODE=local is
+  // anonymous: the fixture GET validates auth() BEFORE the lookup (route.ts),
+  // so it answers 401 — the skeleton renders its ERROR zone through the SAME
+  // data channel legacy uses (seam-5 precedent: ui-v2-leagues-error).
+  await expect(page.getByTestId("ui-v2-match-error")).toBeVisible();
+  await expect(page.getByText("Unauthorized")).toBeVisible();
+  // Never both (UIR-2): the legacy error panel has no testid, so the strict
+  // single-match assertion above IS the never-both proof (two surfaces → two
+  // "Unauthorized" panels → strict violation). Loaded-state legacy testids
+  // must be absent as well.
+  await expect(page.locator('[data-testid="rulebook-header"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="share-link"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="mini-strip"]')).toHaveCount(0);
+});
+
+test("flag OFF via bb-ui=legacy: the legacy live match renders (triangulation)", async ({
+  page,
+}) => {
+  await setUiFlag(page, "legacy");
+  await page.goto("/leagues/l1/fixtures/f1");
+
+  // Same channel, other surface: the legacy error panel renders (strict
+  // single match) and no V2 marker exists.
+  await expect(page.getByText("Unauthorized")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-match-"]')).toHaveCount(0);
+});
+
+test("flag OFF with no cookie: the legacy live match renders (default)", async ({
+  page,
+}) => {
+  // No addCookies at all — absent cookie MUST resolve OFF (UIR-1).
+  await page.goto("/leagues/l1/fixtures/f1");
+
+  await expect(page.getByText("Unauthorized")).toBeVisible();
+  await expect(page.locator('[data-testid^="ui-v2-match-"]')).toHaveCount(0);
 });
