@@ -1,9 +1,9 @@
 import { Suspense } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { UiFlagProvider } from "@/lib/ui-flag";
 import Page from "@/app/leagues/[id]/fixtures/[fixtureId]/page";
-import type { MatchDetail } from "./api";
+import type { MatchDetail, LiveMatchView } from "./api";
 
 // `MatchView` reads the session to derive the viewer's side (D19) — mock the
 // same way `MatchView.test.tsx` does so the legacy surface renders.
@@ -275,5 +275,338 @@ describe("MatchViewV2 core (slice 1 — skeleton on the legacy channel)", () => 
     expect(content).not.toMatch(
       /data-testid="rulebook-header"|data-testid="mini-strip"|data-testid="share-link"/,
     );
+    // Slice 2 (task 2.1) — the machinery whitelist is imported, and the
+    // remaining legacy-surface testids (summary/score/journeymen/dock-legacy
+    // vocabulary, shared-atom testids rendered ONLY by the atoms themselves)
+    // never appear in V2's own source.
+    expect(content).toContain("useLiveMatch");
+    expect(content).toContain("MatchTimelineBar");
+    expect(content).toContain("LiveEventCardsActa");
+    expect(content).toContain("LiveActionDock");
+    expect(content).toContain("MatchResolveModal");
+    expect(content).toContain("ResetLiveMatchModal");
+    expect(content).toContain("buildMatchSummary");
+    expect(content).toContain("buildSummaryFeedRows");
+    expect(content).toContain("createShareLink");
+    expect(content).not.toMatch(
+      /data-testid="summary-row|data-testid="score-|data-testid="journeymen-notice"|data-testid="inducement-purchase"|data-testid="turn-reason-chip"/,
+    );
+  });
+});
+
+/**
+ * Slice 2 (task 2.1) — the FULL surface across the pending/ready/live/finished
+ * states, wired to the shared atoms. Each test pins one zone through the SAME
+ * channel legacy uses (`sendLiveCommand` → POST `/live`, `createShareLink` →
+ * POST `/share`, `resetLiveMatch` → POST `/reset`): no new data paths (UIR-2),
+ * V2 vocabulary only (`ui-v2-match-*`), assertions in the ES dictionary.
+ */
+
+/** A full live row (state + feed) shaped like the fixture GET's `live` DTO. */
+function resolutionState(): LiveMatchView["resolutionState"] {
+  const side = {
+    step: "winnings",
+    fansDone: false,
+    fans: null,
+    mvpConfirmed: false,
+    mvpRolled: false,
+    casualtiesDone: false,
+    journeymenDone: false,
+  } as const;
+  return { home: { ...side }, away: { ...side } };
+}
+
+function liveRow(overrides: Partial<LiveMatchView> = {}): LiveMatchView {
+  const events: LiveMatchView["events"] = [
+    { seq: 1, kind: "turnStart", side: "home", playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+    { seq: 2, kind: "turnStart", side: "away", playerRosterId: null, half: 1, turnNumber: 2, payload: {}, at: 60000 },
+  ];
+  return {
+    seq: 2,
+    status: "live",
+    half: 1,
+    turnNumber: 3,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    viewerSide: "home",
+    startedAt: 1000,
+    elapsed: 120000,
+    homeTurnMs: 60000,
+    awayTurnMs: 60000,
+    paused: false,
+    homeScore: 1,
+    awayScore: 0,
+    finishedAt: null,
+    concedeProposedBy: null,
+    mvpNominations: { home: null, away: null },
+    resolutionState: resolutionState(),
+    events,
+    ...overrides,
+  };
+}
+
+/** `pendingDetail()` + a live row + a scheduled fixture (the startable shape). */
+function detailWithLive(live: LiveMatchView): MatchDetail {
+  const base = pendingDetail();
+  return {
+    ...base,
+    fixture: { ...base.fixture, status: "scheduled", scheduledAt: "2026-03-01T20:00:00" },
+    live,
+  };
+}
+
+/** A played fixture WITH the persisted snapshot (buildMatchSummary sections). */
+function playedDetail(): MatchDetail {
+  const base = pendingDetail();
+  return {
+    ...base,
+    fixture: {
+      ...base.fixture,
+      status: "played",
+      scheduledAt: "2026-03-01T20:00:00",
+      homeScore: 2,
+      awayScore: 1,
+      winnerId: "t1",
+    },
+    result: {
+      id: "mr1",
+      fixtureId: "f1",
+      weather: "heat",
+      scores: {
+        home: { score: 2, postFf: 4, winnings: 45_000, casualties: [], pe: [{ rosterPlayerId: "p1", pe: 7 }] },
+        away: { score: 1, postFf: 2, winnings: 35_000, casualties: [], pe: [] },
+        winnerId: "t1",
+        mvp: { home: "p1", away: "p3" },
+      },
+      pettyCash: 150_000,
+      loadedBy: "u1",
+      createdAt: "2026-03-01T21:00:00.000Z",
+    },
+    live: null,
+  };
+}
+
+/** A played fixture WITHOUT a snapshot — the walkover/forfeit shape. */
+function walkoverDetail(): MatchDetail {
+  const base = pendingDetail();
+  return {
+    ...base,
+    fixture: {
+      ...base.fixture,
+      status: "played",
+      scheduledAt: null,
+      homeScore: 2,
+      awayScore: 0,
+      winnerId: "t1",
+    },
+    result: null,
+    live: null,
+  };
+}
+
+/**
+ * URL-routed stub covering the FULL surface: the fixture/league GETs plus the
+ * three shared POST channels (`/live` commands, `/share`, `/reset`). Every
+ * response is a stable object (unstable detail objects × the bare-i18n `t` re-
+ * render loop — slice-1 lesson).
+ */
+function stubFullFetch(detail: MatchDetail, commandView?: LiveMatchView) {
+  const league = { id: "l1", name: "North Reikland", ownerId: "u1", status: "open" };
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    const json = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    if (method === "POST" && url.endsWith("/live")) {
+      return json({ view: commandView ?? liveRow() });
+    }
+    if (method === "POST" && url.endsWith("/share")) {
+      return json({ token: "share-token" });
+    }
+    if (method === "POST" && url.endsWith("/reset")) {
+      return json({ ok: true });
+    }
+    if (url === "/api/leagues/l1/fixtures/f1") return json(detail);
+    if (url === "/api/leagues/l1") return json(league);
+    return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: "Not found" }) });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+/** Mounts V2 directly against a full-surface stub; returns the fetch mock. */
+async function mountV2Detail(detail: MatchDetail, commandView?: LiveMatchView) {
+  const fetchMock = stubFullFetch(detail, commandView);
+  const spec = "./MatchViewV2";
+  const { MatchViewV2 } = await import(/* @vite-ignore */ spec);
+  render(<MatchViewV2 leagueId="l1" fixtureId="f1" />);
+  return fetchMock;
+}
+
+/** The parsed JSON body of the FIRST POST to `url` (assertion helper). The
+ *  share POST (channel parity with `createShareLink`) carries NO body → `{}`. */
+function postBody(fetchMock: ReturnType<typeof stubFullFetch>, url: string): unknown {
+  const call = fetchMock.mock.calls.find(
+    ([u, init]) => String(u) === url && (init as RequestInit | undefined)?.method === "POST",
+  );
+  expect(call).toBeDefined();
+  const raw = (call![1] as RequestInit | undefined)?.body;
+  return raw == null ? {} : JSON.parse(String(raw));
+}
+
+describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/summary/share)", () => {
+  it("consent zone: a startable fixture offers the consent start control and POSTs consent", async () => {
+    // No live row + session u1 owns the home side → viewerSide "home".
+    const fetchMock = await mountV2Detail(pendingDetail(), liveRow({ status: "pending", homeConsented: true, startedAt: null, events: [] }));
+
+    const zone = await screen.findByTestId("ui-v2-match-consent");
+    expect(zone.textContent).toContain("Partido sin programar");
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar partido" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([u, init]) => String(u) === "/api/leagues/l1/fixtures/f1/live" && (init as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toBe(true),
+    );
+    expect(postBody(fetchMock, "/api/leagues/l1/fixtures/f1/live")).toEqual({ type: "consent", side: "home" });
+  });
+
+  it("consent zone ready: both consented offers begin and POSTs the begin command", async () => {
+    const fetchMock = await mountV2Detail(
+      detailWithLive(liveRow({ status: "ready", startedAt: null, events: [] })),
+      liveRow(),
+    );
+
+    expect(await screen.findByTestId("ui-v2-match-consent")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Empezar partido" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/live") && (init as RequestInit | undefined)?.method === "POST"),
+      ).toBe(true),
+    );
+    expect(postBody(fetchMock, "/api/leagues/l1/fixtures/f1/live")).toEqual({ type: "begin" });
+  });
+
+  it("live zone: timeline, acta feed and the action dock come from the shared atoms (endTurn through the dock)", async () => {
+    const fetchMock = await mountV2Detail(detailWithLive(liveRow()));
+
+    // MatchTimelineBar (shared atom) — started match with a feed.
+    expect(await screen.findByTestId("match-timeline")).toBeTruthy();
+    // LiveEventCardsActa (shared atom) — both feed rows render.
+    expect((await screen.findAllByTestId("live-event-row")).length).toBe(2);
+    // V2 zones wrap the atoms (never-both vocabulary).
+    expect(screen.getByTestId("ui-v2-match-timeline")).toBeTruthy();
+    expect(screen.getByTestId("ui-v2-match-acta")).toBeTruthy();
+    expect(screen.getByTestId("ui-v2-match-dock")).toBeTruthy();
+
+    // LiveActionDock wiring: active home coach → pass-turn → reason → POST.
+    fireEvent.click(screen.getByRole("button", { name: "Dar el turno" }));
+    const modal = await screen.findByTestId("live-action-modal");
+    fireEvent.click(within(modal).getByRole("button", { name: "Voluntario" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/live") && (init as RequestInit | undefined)?.method === "POST"),
+      ).toBe(true),
+    );
+    expect(postBody(fetchMock, "/api/leagues/l1/fixtures/f1/live")).toEqual({
+      type: "endTurn",
+      side: "home",
+      reason: "voluntary",
+    });
+  });
+
+  it("live zone: the non-active coach gets the turn request control (POST requestTurn)", async () => {
+    const fetchMock = await mountV2Detail(detailWithLive(liveRow({ activeSide: "away" })));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pedir turno" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/live") && (init as RequestInit | undefined)?.method === "POST"),
+      ).toBe(true),
+    );
+    expect(postBody(fetchMock, "/api/leagues/l1/fixtures/f1/live")).toEqual({ type: "requestTurn" });
+  });
+
+  it("finished summary rows: the reported snapshot rows render from buildSummaryFeedRows", async () => {
+    await mountV2Detail({ ...playedDetail(), live: liveRow({ status: "finished", finishedAt: 999_000 }) });
+
+    const zone = await screen.findByTestId("ui-v2-match-summary");
+    const reported = await screen.findByTestId("ui-v2-match-summary-reported");
+    expect(reported.textContent).toContain("Partido reportado");
+    // Winnings + fans rows at minimum (45.000 / +4 …).
+    expect(screen.getAllByTestId("ui-v2-match-summary-row").length).toBeGreaterThanOrEqual(2);
+    expect(zone.textContent).toContain("Ganancias");
+    // Never-both: the legacy row testids never appear in V2.
+    expect(document.querySelector('[data-testid="summary-row-reported"]')).toBeNull();
+    expect(document.querySelector('[data-testid="summary-row"]')).toBeNull();
+  });
+
+  it("finished unresolved: the resume banner opens the shared resolve modal", async () => {
+    const base = detailWithLive(liveRow({ status: "finished", finishedAt: 999_000 }));
+    await mountV2Detail({ ...base, result: null });
+
+    const banner = await screen.findByTestId("ui-v2-match-resolve-banner");
+    expect(banner.textContent).toContain("Informar del fin del partido");
+    fireEvent.click(within(banner).getByRole("button", { name: "Reanudar" }));
+
+    expect(await screen.findByRole("dialog", { name: "Resolver partido" })).toBeTruthy();
+  });
+
+  it("share/reset bar parity: share POSTs /share and flips Copiado; reset confirms through the shared modal", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+    try {
+      const fetchMock = await mountV2Detail(
+        detailWithLive(liveRow({ status: "pending", homeConsented: false, awayConsented: false, startedAt: null, events: [] })),
+      );
+
+      const share = await screen.findByTestId("ui-v2-match-share");
+      expect(share.textContent).toBe("Compartir");
+      fireEvent.click(share);
+      await waitFor(() => expect(screen.getByTestId("ui-v2-match-share").textContent).toBe("Copiado"));
+      expect(postBody(fetchMock, "/api/leagues/l1/fixtures/f1/share")).toEqual({});
+
+      fireEvent.click(screen.getByTestId("ui-v2-match-reset"));
+      expect(await screen.findByRole("dialog", { name: "Reiniciar partido en vivo" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Sí, reiniciar" }));
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(([u, init]) => String(u).endsWith("/reset") && (init as RequestInit | undefined)?.method === "POST"),
+        ).toBe(true),
+      );
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Reiniciar partido en vivo" })).toBeNull());
+    } finally {
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
+  it("walkover: a played fixture without a snapshot renders the forfeit panel", async () => {
+    await mountV2Detail(walkoverDetail());
+
+    const zone = await screen.findByTestId("ui-v2-match-walkover");
+    expect(zone.textContent).toContain("Victoria por incomparecencia.");
+    expect(zone.textContent).toContain("2");
+    // No live chrome on a walkover (legacy renders no turn/clock header here).
+    expect(document.querySelector('[data-testid="ui-v2-match-consent"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ui-v2-match-timeline"]')).toBeNull();
+  });
+
+  it("played summary: the reported result renders buildMatchSummary sections", async () => {
+    await mountV2Detail(playedDetail());
+
+    const zone = await screen.findByTestId("ui-v2-match-played");
+    expect(zone.textContent).toContain("Reavers"); // score/teams section
+    expect(zone.textContent).toContain("Calor asfixiante"); // weather section (ES)
+    expect(zone.textContent).toContain("Ganancias");
+    // Never-both: no consent/live chrome on a report-only fixture.
+    expect(document.querySelector('[data-testid="ui-v2-match-consent"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ui-v2-match-dock"]')).toBeNull();
   });
 });

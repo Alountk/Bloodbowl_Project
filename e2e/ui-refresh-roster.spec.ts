@@ -69,6 +69,9 @@ import { test, expect, type Page } from "@playwright/test";
  *     then goto directly.
  * 17. fixture triangulation (UIR-1 / UIR-4): `bb-ui=legacy` AND no cookie at
  *     all → the legacy error panel renders and `ui-v2-match-*` count is 0.
+ * 18. fixture mobile (task 2.3, UIR-4): the same cookie at an inline
+ *     390×844 viewport → the V2 surface renders on the narrow width with no
+ *     horizontal overflow and every legacy marker count is 0.
  *
  * The team is established through the local-mode wizard pattern: AUTH_MODE=local
  * keeps teams in a shared in-memory store, so every navigation AFTER the team
@@ -492,4 +495,26 @@ test("flag OFF with no cookie: the legacy live match renders (default)", async (
 
   await expect(page.getByText("Unauthorized")).toBeVisible();
   await expect(page.locator('[data-testid^="ui-v2-match-"]')).toHaveCount(0);
+});
+
+test("flag ON at a mobile viewport: the live match renders the V2 surface", async ({
+  page,
+}) => {
+  // Inline viewport + cookie BEFORE the first goto (task 2.3): the `mobile`
+  // Playwright project only matches mobile.spec.ts, so this desktop-project
+  // spec opts into the 390×844 width itself without touching any config.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setUiFlag(page, "next");
+  await page.goto("/leagues/l1/fixtures/f1");
+
+  // V2 vocabulary on the narrow width: the surface zone renders, every legacy
+  // marker count is 0 (never both, UIR-2), and the layout must not overflow
+  // horizontally (M-frame parity).
+  await expect(page.locator('[data-testid^="ui-v2-match-"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="rulebook-header"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="share-link"]')).toHaveCount(0);
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(overflows).toBe(false);
 });

@@ -30,10 +30,10 @@ Estimated changed lines: ~680 (Slice 1 ~350 · Slice 2 ~330; each <400). Deliver
 
 ## Slice 2 — Full V2 chrome + tests + mobile (~330 lines)
 
-- [ ] 2.1 RED: Extend `MatchViewV2.test.tsx`: consent/ready zone, acta feed through `LiveEventCardsActa` reuse, timeline parity via `MatchTimelineBar`, finished summary rows; presentation-only source check (no direct `fetch(` in source, no legacy testids in source, only the machinery whitelist imported); share-link state parity. — UIR-2. Verify: `pnpm exec vitest run features/leagues` (fails).
-- [ ] 2.2 GREEN: Finish `MatchViewV2.tsx` per Stitch "Partido en Directo (Acta en Vivo)": full chrome across pending/ready/live/finished states, wiring the shared atoms (`LiveActionDock`, `MatchTimelineBar`, `LiveEventCardsActa`, modals); reuse `match.*` i18n keys (new keys only where none exists, both locales). — UIR-2. Verify: `pnpm exec vitest run features/leagues`; `npx tsc --noEmit`; `pnpm lint`.
-- [ ] 2.3 Add mobile e2e case (390×844, flag ON → `ui-v2-match-*` visible, legacy markers 0, no horizontal overflow). — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
-- [ ] 2.4 VERIFY-ONLY: rerun `pnpm test` + local Playwright; grep `useUiFlag()` at exactly SIX seams (`app/teams/[teamId]/page.tsx`, `app/teams/page.tsx`, `features/dashboard/HomeDashboard.tsx`, `app/teams/create/page.tsx`, `app/leagues/page.tsx`, `app/leagues/[id]/fixtures/[fixtureId]/page.tsx`); NO flip; `/watch/[token]` flag-free. — UIR-3, UIR-5.
+- [x] 2.1 RED: Extend `MatchViewV2.test.tsx`: consent/ready zone, acta feed through `LiveEventCardsActa` reuse, timeline parity via `MatchTimelineBar`, finished summary rows; presentation-only source check (no direct `fetch(` in source, no legacy testids in source, only the machinery whitelist imported); share-link state parity. — UIR-2. Verify: `pnpm exec vitest run features/leagues` (fails).
+- [x] 2.2 GREEN: Finish `MatchViewV2.tsx` per Stitch "Partido en Directo (Acta en Vivo)": full chrome across pending/ready/live/finished states, wiring the shared atoms (`LiveActionDock`, `MatchTimelineBar`, `LiveEventCardsActa`, modals); reuse `match.*` i18n keys (new keys only where none exists, both locales). — UIR-2. Verify: `pnpm exec vitest run features/leagues`; `npx tsc --noEmit`; `pnpm lint`.
+- [x] 2.3 Add mobile e2e case (390×844, flag ON → `ui-v2-match-*` visible, legacy markers 0, no horizontal overflow). — UIR-4. Verify: `AUTH_MODE=local pnpm exec playwright test e2e/ui-refresh-roster.spec.ts`.
+- [x] 2.4 VERIFY-ONLY: rerun `pnpm test` + local Playwright; grep `useUiFlag()` at exactly SIX seams (`app/teams/[teamId]/page.tsx`, `app/teams/page.tsx`, `features/dashboard/HomeDashboard.tsx`, `app/teams/create/page.tsx`, `app/leagues/page.tsx`, `app/leagues/[id]/fixtures/[fixtureId]/page.tsx`); NO flip; `/watch/[token]` flag-free. — UIR-3, UIR-5.
 
 **Close-out**: `feat(ui-refresh): translate live match V2 desktop and mobile (refs #351)`.
 
