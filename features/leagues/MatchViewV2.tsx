@@ -11,14 +11,13 @@ import {
   getMatchDetail,
   resetLiveMatch,
   type LiveCommand,
-  type LiveMatchView,
   type LiveMatchViewState,
   type MatchDetail,
 } from "./api";
 import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock } from "./useLiveClock";
-import { useLeague } from "./useLeagueName";
-import { MatchTimelineBar } from "./matchTimelineBar";
+import { useLeague, type LeagueAccess } from "./useLeagueName";
+import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { LiveEventCardsActa } from "./eventCardActa";
 import { LiveActionDock } from "./liveActionDock";
 import { MatchResolveModal } from "./MatchResolveModal";
@@ -39,8 +38,10 @@ interface MatchViewV2Props {
  * Live match V2 (ui-refresh seam 6, UIR-2): presentation-only rewrite of the
  * fixture surface. It reuses the legacy surface's OWN machinery —
  * `getMatchDetail` (single `GET /api/leagues/{id}/fixtures/{fid}`),
- * `useLeague`, `useLiveMatch` (SSE + `sendLiveCommand` commands), the shared
- * atoms (`MatchTimelineBar`, `LiveEventCardsActa`, `LiveActionDock`) and the
+ * `useLeague`, `useLiveMatch` (SSE + `sendLiveCommand` commands), the Acta en
+ * Vivo shell (`ActaSheetHeader`, MVA-1/MVA-2 + MVA-3 stepper half — supersedes
+ * the old sticky chrome MVT-2/MVT-3), the shared
+ * atoms (`LiveEventCardsActa`, `LiveActionDock`) and the
  * shared modals (`MatchResolveModal`, `ResetLiveMatchModal`) — and mirrors the
  * legacy state dispatch (pending/ready consent → live acta → finished summary,
  * walkover, reported sections) with `ui-v2-match-*` markers. No direct network
@@ -75,23 +76,6 @@ function emptyPendingView(): LiveMatchViewState {
       away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
     },
   };
-}
-
-/** H:MM:SS clock cell (mirror of MatchView's FormatHms). */
-function FormatHms({ ms }: { ms: number }) {
-  const totalSeconds = Math.floor(Math.max(ms, 0) / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  return (
-    <span>
-      {h}
-      <span aria-hidden="true">:</span>
-      {String(m).padStart(2, "0")}
-      <span aria-hidden="true">:</span>
-      {String(s).padStart(2, "0")}
-    </span>
-  );
 }
 
 /** ES coins format (mirror of MatchView's formatCoins). */
@@ -149,89 +133,6 @@ function MatchupLine({ names }: { names: { home: string; away: string } }) {
     <p className="text-sm font-black uppercase tracking-wide text-navy">
       {names.home} <span className="text-red">·</span> {names.away}
     </p>
-  );
-}
-
-/**
- * Sticky chrome shared by the active and finished states (label row + clock
- * meta row + timeline zone + score strip), mirroring the legacy rulebook
- * header's data display with `ui-v2-match-*` markers.
- */
-function MatchChrome({
-  label,
-  state,
-  events,
-  homeTeam,
-  awayTeam,
-  clock,
-}: {
-  label: string;
-  state: LiveMatchViewState;
-  events: LiveMatchView["events"];
-  homeTeam: MatchDetail["homeTeam"];
-  awayTeam: MatchDetail["awayTeam"];
-  clock: { elapsed: number; homeTurnMs: number; awayTurnMs: number };
-}) {
-  const { t } = useI18n();
-  const live = state.status === "live";
-  const played = live || state.status === "finished";
-  const clockValue = (ms: number) => (live || ms > 0 ? <FormatHms ms={ms} /> : "–");
-  return (
-    <>
-      <div
-        data-testid="ui-v2-match-header"
-        className="sticky top-0 z-40 border-b border-navy-tint bg-navy px-4 py-3 shadow-[0_6px_16px_rgba(15,23,42,0.18)]"
-      >
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <p className="min-w-0 truncate text-[11px] font-bold uppercase tracking-[0.04em] text-border-subtle">
-            {label}
-          </p>
-          {live ? (
-            <span className="rounded-sm bg-red px-1.5 py-px text-[9px] font-extrabold tracking-[0.15em] text-white">
-              {t("match.liveBadge")}
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-border-subtle">
-          <span>{t("match.halfTurn", { half: state.half, turn: state.turnNumber })}</span>
-          <span className="tabular-nums">{clockValue(clock.elapsed)}</span>
-          <span className="flex items-center gap-3">
-            <span>{t("match.clima")}</span>
-            <span>{t("match.estadio")}</span>
-          </span>
-        </div>
-        {/* MVT-10 parity: the shared timeline atom inside the sticky header. */}
-        {state.startedAt != null && events.length > 0 ? (
-          <div data-testid="ui-v2-match-timeline" className="mt-1.5">
-            <MatchTimelineBar
-              events={events}
-              startedAt={state.startedAt}
-              finishedAt={state.finishedAt}
-              homeTeam={homeTeam}
-              awayTeam={awayTeam}
-            />
-          </div>
-        ) : null}
-      </div>
-      <div data-testid="ui-v2-match-score" className="flex items-center justify-between gap-4 px-4 py-5">
-        <span className="min-w-0 flex-1 truncate text-right text-lg font-extrabold text-navy">
-          {homeTeam.name}
-        </span>
-        <span className="flex shrink-0 items-center gap-2 text-xl font-black tabular-nums text-navy">
-          {played ? state.homeScore : "–"}
-          <span className="text-red">:</span>
-          {played ? state.awayScore : "–"}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-lg font-extrabold text-navy">
-          {awayTeam.name}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border bg-background px-3.5 py-1.5 text-[11px] text-slate-500">
-        <span>{t("match.clima")}</span>
-        <span className="tabular-nums">{clockValue(clock.homeTurnMs)} · {clockValue(clock.awayTurnMs)}</span>
-        <span>{t("match.estadio")}</span>
-      </div>
-    </>
   );
 }
 
@@ -532,7 +433,7 @@ function ActiveMatchBody({
   fixtureId,
   viewerSide,
   scheduled,
-  label,
+  league,
   onRefresh,
 }: {
   detail: MatchDetail;
@@ -540,7 +441,7 @@ function ActiveMatchBody({
   fixtureId: string;
   viewerSide: "home" | "away" | null;
   scheduled: boolean;
-  label: string;
+  league: LeagueAccess;
   onRefresh: () => Promise<void>;
 }) {
   const { t } = useI18n();
@@ -589,13 +490,27 @@ function ActiveMatchBody({
 
   return (
     <>
-      <MatchChrome
-        label={label}
-        state={state}
-        events={events}
-        homeTeam={detail.homeTeam}
-        awayTeam={detail.awayTeam}
-        clock={clock}
+      {/* MVA-1/MVA-2 + MVA-3 stepper half: the Acta en Vivo shell (artboard 08). */}
+      <ActaSheetHeader
+        leagueName={league.name}
+        round={detail.fixture.round}
+        status={state.status}
+        half={state.half}
+        turnNumber={state.turnNumber}
+        home={{
+          name: detail.homeTeam.name,
+          score: state.homeScore,
+          rerolls: league.teamRerolls?.[detail.homeTeam.id] ?? null,
+          bribes: bribesOf(detail, "home"),
+        }}
+        away={{
+          name: detail.awayTeam.name,
+          score: state.awayScore,
+          rerolls: league.teamRerolls?.[detail.awayTeam.id] ?? null,
+          bribes: bribesOf(detail, "away"),
+        }}
+        weather={detail.result?.weather ?? null}
+        casualtyTurns={casualtyTurnsOf(events, state.half)}
       />
       {pendingOrReady ? (
         <div data-testid="ui-v2-match-consent">
@@ -668,7 +583,7 @@ function ActiveMatchBody({
 /** The finished state — summary rows + resume banner + shared resolve modal. */
 function FinishedMatchBody({
   detail,
-  label,
+  league,
   viewerSide,
   onRefresh,
   resolveOpen,
@@ -676,8 +591,8 @@ function FinishedMatchBody({
   onResolveClose,
 }: {
   detail: MatchDetail;
+  league: LeagueAccess;
   viewerSide: "home" | "away" | null;
-  label: string;
   onRefresh: () => Promise<void>;
   resolveOpen: boolean;
   onResolve: () => void;
@@ -685,9 +600,8 @@ function FinishedMatchBody({
 }) {
   const { t } = useI18n();
   const live = detail.live;
-  // Hooks BEFORE the conditional return (rules-of-hooks): the parent only
-  // mounts this zone with a live row, so the fallback shape never renders.
-  const clock = useLiveClock(live ?? emptyPendingView());
+  // The parent only mounts this zone with a live row, so the fallback shape
+  // never renders (kept as a defensive guard).
   if (live == null) return null;
   const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
   const rows = buildSummaryFeedRows(detail);
@@ -698,13 +612,27 @@ function FinishedMatchBody({
 
   return (
     <>
-      <MatchChrome
-        label={label}
-        state={live}
-        events={live.events}
-        homeTeam={detail.homeTeam}
-        awayTeam={detail.awayTeam}
-        clock={clock}
+      {/* MVA-1/MVA-2 + MVA-3 stepper half: the Acta en Vivo shell (artboard 08). */}
+      <ActaSheetHeader
+        leagueName={league.name}
+        round={detail.fixture.round}
+        status={live.status}
+        half={live.half}
+        turnNumber={live.turnNumber}
+        home={{
+          name: detail.homeTeam.name,
+          score: detail.result?.scores.home.score ?? live.homeScore,
+          rerolls: league.teamRerolls?.[detail.homeTeam.id] ?? null,
+          bribes: bribesOf(detail, "home"),
+        }}
+        away={{
+          name: detail.awayTeam.name,
+          score: detail.result?.scores.away.score ?? live.awayScore,
+          rerolls: league.teamRerolls?.[detail.awayTeam.id] ?? null,
+          bribes: bribesOf(detail, "away"),
+        }}
+        weather={detail.result?.weather ?? null}
+        casualtyTurns={casualtyTurnsOf(live.events, live.half)}
       />
       {detail.result == null ? (
         <div
@@ -755,9 +683,9 @@ function FinishedMatchBody({
   );
 }
 
-/** The label: "{league} · Jornada {n}" (legacy pattern) — computed once in the
- *  root from `useLeague` + `match.jornada` and passed down to the zones. */
-
+/** The root surface: resolves the detail + league access once and passes the
+ *  league facts (S5 name → the shell's status line, team rerolls → the
+ *  subheader blocks) down to the zones that render the Acta en Vivo shell. */
 export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
   const { t } = useI18n();
   const { data: session } = useSession();
@@ -898,7 +826,6 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
     await refresh();
   };
 
-  const label = `${league.name ? `${league.name} · ` : ""}${t("match.jornada", { round: detail.fixture.round })}`;
   const summary = buildMatchSummary(detail, t);
 
   let body: ReactNode;
@@ -908,7 +835,7 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
         <FinishedMatchBody
           detail={detail}
           viewerSide={viewerSide}
-          label={label}
+          league={league}
           onRefresh={refresh}
           resolveOpen={resolveOpen}
           onResolve={() => setResolveOpen(true)}
@@ -923,7 +850,7 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
           fixtureId={fixtureId}
           viewerSide={viewerSide}
           scheduled={detail.fixture.status === "scheduled"}
-          label={label}
+          league={league}
           onRefresh={refresh}
         />
       );
@@ -945,7 +872,7 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
         fixtureId={fixtureId}
         viewerSide={viewerSide}
         scheduled={detail.fixture.status === "scheduled"}
-        label={label}
+        league={league}
         onRefresh={refresh}
       />
     );

@@ -110,14 +110,17 @@ function ok(body: unknown) {
  * the league GET (`useLeague`); everything else 404s. Pass `fixtureResponse`
  * to simulate the fixture outcome (404 → not-found, 500 → error).
  */
-function stubMatchFetch(fixtureResponse?: { status: number; body: unknown }) {
+function stubMatchFetch(
+  fixtureResponse?: { status: number; body: unknown },
+  leagueOverride?: Record<string, unknown>,
+) {
   // ONE stable response object per stub (the `MatchView.test.tsx`
   // `stubMatch(detail)` pattern): the bare `useI18n()` fallback returns a new
   // `t` per render, so `useMatchDetail`'s effect re-runs after each detail
   // state change — returning a FRESH object every call would loop forever
   // (setDetail always differs). Same object → React bails out → loop ends.
   const detail = pendingDetail();
-  const league = { id: "l1", name: "North Reikland", ownerId: "u1", status: "open" };
+  const league = leagueOverride ?? { id: "l1", name: "North Reikland", ownerId: "u1", status: "open" };
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/leagues/l1/fixtures/f1") {
@@ -149,8 +152,12 @@ function stubMatchFetch(fixtureResponse?: { status: number; body: unknown }) {
  * plus `UiFlagProvider` only when a flag value is given (absent provider must
  * fall back to legacy — UIR-1). Session stub mirrors `MatchView.test.tsx`.
  */
-async function renderSeam(uiFlag?: boolean) {
-  const fetchMock = stubMatchFetch();
+async function renderSeam(
+  uiFlag?: boolean,
+  fixtureResponse?: { status: number; body: unknown },
+  leagueOverride?: Record<string, unknown>,
+) {
+  const fetchMock = stubMatchFetch(fixtureResponse, leagueOverride);
   // Suspense boundary like `app/leagues/[id]/page.test.tsx`: `use(params)`
   // suspends on the unresolved params promise, so the render must flush inside
   // an async act for the legacy surface to commit.
@@ -220,11 +227,14 @@ async function mountV2(fixtureResponse?: { status: number; body: unknown }) {
 }
 
 describe("MatchViewV2 core (slice 1 — skeleton on the legacy channel)", () => {
-  it("loads the detail through the SAME channel and renders header + score strip", async () => {
+  it("loads the detail through the SAME channel and renders the shell + team blocks", async () => {
     await mountV2();
 
+    // Acta shell top bar (MVA-2): the running score line binds team names.
     const header = await screen.findByTestId("ui-v2-match-header");
-    expect(header.textContent).toContain("North Reikland");
+    expect(header.textContent).toMatch(/Reavers\s*0\s*-\s*0\s*Dwarves/);
+    // Status line (MVA-1/S5): league name + round come from data.
+    expect(screen.getByTestId("ui-v2-match-status").textContent).toContain("North Reikland");
     const score = screen.getByTestId("ui-v2-match-score");
     expect(score.textContent).toContain("Reavers");
     expect(score.textContent).toContain("Dwarves");
@@ -280,7 +290,6 @@ describe("MatchViewV2 core (slice 1 — skeleton on the legacy channel)", () => 
     // vocabulary, shared-atom testids rendered ONLY by the atoms themselves)
     // never appear in V2's own source.
     expect(content).toContain("useLiveMatch");
-    expect(content).toContain("MatchTimelineBar");
     expect(content).toContain("LiveEventCardsActa");
     expect(content).toContain("LiveActionDock");
     expect(content).toContain("MatchResolveModal");
@@ -490,15 +499,15 @@ describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/
     expect(postBody(fetchMock, "/api/leagues/l1/fixtures/f1/live")).toEqual({ type: "begin" });
   });
 
-  it("live zone: timeline, acta feed and the action dock come from the shared atoms (endTurn through the dock)", async () => {
+  it("live zone: the turn stepper, acta feed and the action dock come from the shell + shared atoms (endTurn through the dock)", async () => {
     const fetchMock = await mountV2Detail(detailWithLive(liveRow()));
 
-    // MatchTimelineBar (shared atom) — started match with a feed.
-    expect(await screen.findByTestId("match-timeline")).toBeTruthy();
+    // Acta shell turn stepper (MVA-3 half) — supersedes the old timeline bar
+    // (MVT-2 superseded by MVA-3) on the V2 surface.
+    expect(await screen.findByTestId("ui-v2-match-stepper")).toBeTruthy();
     // LiveEventCardsActa (shared atom) — both feed rows render.
     expect((await screen.findAllByTestId("live-event-row")).length).toBe(2);
     // V2 zones wrap the atoms (never-both vocabulary).
-    expect(screen.getByTestId("ui-v2-match-timeline")).toBeTruthy();
     expect(screen.getByTestId("ui-v2-match-acta")).toBeTruthy();
     expect(screen.getByTestId("ui-v2-match-dock")).toBeTruthy();
 
@@ -595,7 +604,7 @@ describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/
     expect(zone.textContent).toContain("2");
     // No live chrome on a walkover (legacy renders no turn/clock header here).
     expect(document.querySelector('[data-testid="ui-v2-match-consent"]')).toBeNull();
-    expect(document.querySelector('[data-testid="ui-v2-match-timeline"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ui-v2-match-stepper"]')).toBeNull();
   });
 
   it("played summary: the reported result renders buildMatchSummary sections", async () => {
@@ -608,5 +617,57 @@ describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/
     // Never-both: no consent/live chrome on a report-only fixture.
     expect(document.querySelector('[data-testid="ui-v2-match-consent"]')).toBeNull();
     expect(document.querySelector('[data-testid="ui-v2-match-dock"]')).toBeNull();
+  });
+});
+
+/**
+ * T7 Slice A (spec S4/S5 — `openspec/changes/match-live-acta`, MVA-1/MVA-2 +
+ * the MVA-3 turn-stepper half): the "Acta en Vivo" shell (artboard
+ * `design/match-report-redesign/08-acta-en-vivo.html`) replaces the superseded
+ * sticky chrome (MVT-2/MVT-3) on the V2 surface ONLY. The timeline cards and
+ * the pending-injury callout (MVA-3 rest / MVA-4) are Slice B, the dock
+ * vocabulary is Slice C — not asserted here.
+ */
+describe("Acta en Vivo shell (MVA-1/MVA-2/MVA-3 stepper half — T7 Slice A)", () => {
+  it("MVA-1: flag ON renders the sheet (top bar + subheader + turn stepper)", async () => {
+    await renderSeam(true);
+
+    expect(await screen.findByTestId("ui-v2-match-header")).toBeTruthy();
+    expect(screen.getByTestId("ui-v2-match-status")).toBeTruthy();
+    expect(screen.getByTestId("ui-v2-match-stepper")).toBeTruthy();
+    expect(screen.getByTestId("ui-v2-match-status").textContent).toContain("Oficial");
+    // Never both: the legacy surface is untouched.
+    expect(document.querySelector('[data-testid="rulebook-header"]')).toBeNull();
+  });
+
+  it("MVA-1: flag OFF (V1) keeps the legacy surface and never renders the sheet", async () => {
+    await renderSeam();
+
+    expect(await screen.findByTestId("rulebook-header")).toBeTruthy();
+    expect(document.querySelector('[data-testid="ui-v2-match-status"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ui-v2-match-stepper"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ui-v2-match-header"]')).toBeNull();
+  });
+
+  it("MVA-1/S5: the status line binds league name + round from data ('Liga Nuffle CRUAB' • 'Jornada 4')", async () => {
+    const league = { id: "l1", name: "Liga Nuffle CRUAB", ownerId: "u1", status: "open" };
+    const detail = pendingDetail();
+    detail.fixture.round = 4;
+
+    await renderSeam(true, { status: 200, body: detail }, league);
+
+    const status = await screen.findByTestId("ui-v2-match-status");
+    expect(status.textContent).toMatch(/Liga Nuffle CRUAB/i);
+    expect(status.textContent).toMatch(/Jornada 4/);
+  });
+
+  it("MVA-2: the top bar score line and the TURNO badge reflect the live state (2-1, turn 6)", async () => {
+    const detail = detailWithLive(liveRow({ homeScore: 2, awayScore: 1, turnNumber: 6, half: 1 }));
+
+    await renderSeam(true, { status: 200, body: detail });
+
+    const header = await screen.findByTestId("ui-v2-match-header");
+    expect(header.textContent).toMatch(/Reavers\s*2\s*-\s*1\s*Dwarves/);
+    expect(screen.getByTestId("ui-v2-match-stepper").textContent).toContain("TURNO 6 EN JUEGO");
   });
 });
