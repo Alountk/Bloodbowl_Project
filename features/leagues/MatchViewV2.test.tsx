@@ -290,7 +290,9 @@ describe("MatchViewV2 core (slice 1 — skeleton on the legacy channel)", () => 
     // vocabulary, shared-atom testids rendered ONLY by the atoms themselves)
     // never appear in V2's own source.
     expect(content).toContain("useLiveMatch");
-    expect(content).toContain("LiveEventCardsActa");
+    // Slice B (T8): the V2 feed is the Acta en Vivo turn timeline (MVA-3/MVA-4)
+    // — the v4 `LiveEventCardsActa` atom is superseded on this surface.
+    expect(content).toContain("ActaTurnTimeline");
     expect(content).toContain("LiveActionDock");
     expect(content).toContain("MatchResolveModal");
     expect(content).toContain("ResetLiveMatchModal");
@@ -499,14 +501,20 @@ describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/
     expect(postBody(fetchMock, "/api/leagues/l1/fixtures/f1/live")).toEqual({ type: "begin" });
   });
 
-  it("live zone: the turn stepper, acta feed and the action dock come from the shell + shared atoms (endTurn through the dock)", async () => {
-    const fetchMock = await mountV2Detail(detailWithLive(liveRow()));
+  it("live zone: the turn stepper, acta timeline and the action dock come from the shell + shared atoms (endTurn through the dock)", async () => {
+    // Two CAPTURED display events on closed turns (turnStart rows are never
+    // served — LM-16 — so the timeline renders captured rows only).
+    const events: LiveMatchView["events"] = [
+      { seq: 3, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 1, payload: {}, at: 3000 },
+      { seq: 4, kind: "completion", side: "away", playerRosterId: "p3", half: 1, turnNumber: 2, payload: {}, at: 4000 },
+    ];
+    const fetchMock = await mountV2Detail(detailWithLive(liveRow({ events })));
 
     // Acta shell turn stepper (MVA-3 half) — supersedes the old timeline bar
     // (MVT-2 superseded by MVA-3) on the V2 surface.
     expect(await screen.findByTestId("ui-v2-match-stepper")).toBeTruthy();
-    // LiveEventCardsActa (shared atom) — both feed rows render.
-    expect((await screen.findAllByTestId("live-event-row")).length).toBe(2);
+    // ActaTurnTimeline (MVA-3) — both captured rows render in their turn cards.
+    expect((await screen.findAllByTestId("acta-event-row")).length).toBe(2);
     // V2 zones wrap the atoms (never-both vocabulary).
     expect(screen.getByTestId("ui-v2-match-acta")).toBeTruthy();
     expect(screen.getByTestId("ui-v2-match-dock")).toBeTruthy();

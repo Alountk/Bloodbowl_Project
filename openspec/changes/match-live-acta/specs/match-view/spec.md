@@ -48,6 +48,12 @@ A casualty awaiting its injury roll MUST render a callout with the BB2025 D16 se
 - WHEN the turn card renders
 - THEN the callout shows the severity band table and the roll action
 
+#### Scenario: Roll action only where the command is accepted
+
+- GIVEN a pending injury roll and a viewer
+- WHEN the turn card renders
+- THEN the roll action renders only when the server's turn-phase permissions (LM-12) would accept that viewer's command in the current turn window — never a button whose command would 409 (e.g. a caused casualty hides the action from the victim's coach, who may only record self-inflicted dodge/crowd casualties)
+
 ### Requirement: MVA-5 · Quick-Capture Dock
 
 A fixed bottom dock MUST expose +TD, +Pase, +Baja, +Evento and Fin Turno (high-contrast red); each action MUST record a live event for the recording coach's team on the active turn, and the server MUST keep enforcing turn-phase event permissions (LM-12).
