@@ -293,7 +293,10 @@ describe("MatchViewV2 core (slice 1 — skeleton on the legacy channel)", () => 
     // Slice B (T8): the V2 feed is the Acta en Vivo turn timeline (MVA-3/MVA-4)
     // — the v4 `LiveEventCardsActa` atom is superseded on this surface.
     expect(content).toContain("ActaTurnTimeline");
+    // Slice C (T9): the shared dock atom renders behind the Acta quick-capture
+    // variant (MVA-5) — V1 keeps the legacy chip bar (same atom, no variant).
     expect(content).toContain("LiveActionDock");
+    expect(content).toContain('variant="acta"');
     expect(content).toContain("MatchResolveModal");
     expect(content).toContain("ResetLiveMatchModal");
     expect(content).toContain("buildMatchSummary");
@@ -519,8 +522,9 @@ describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/
     expect(screen.getByTestId("ui-v2-match-acta")).toBeTruthy();
     expect(screen.getByTestId("ui-v2-match-dock")).toBeTruthy();
 
-    // LiveActionDock wiring: active home coach → pass-turn → reason → POST.
-    fireEvent.click(screen.getByRole("button", { name: "Dar el turno" }));
+    // Acta quick-capture dock (MVA-5): "Fin Turno" opens the pass-turn reason
+    // sheet and the reason chip POSTs endTurn (the existing command machinery).
+    fireEvent.click(within(screen.getByTestId("ui-v2-match-dock")).getByRole("button", { name: "Fin Turno" }));
     const modal = await screen.findByTestId("live-action-modal");
     fireEvent.click(within(modal).getByRole("button", { name: "Voluntario" }));
 
@@ -634,7 +638,7 @@ describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/
  * `design/match-report-redesign/08-acta-en-vivo.html`) replaces the superseded
  * sticky chrome (MVT-2/MVT-3) on the V2 surface ONLY. The timeline cards and
  * the pending-injury callout (MVA-3 rest / MVA-4) are Slice B, the dock
- * vocabulary is Slice C — not asserted here.
+ * vocabulary is Slice C — asserted in its own describe below.
  */
 describe("Acta en Vivo shell (MVA-1/MVA-2/MVA-3 stepper half — T7 Slice A)", () => {
   it("MVA-1: flag ON renders the sheet (top bar + subheader + turn stepper)", async () => {
@@ -677,5 +681,26 @@ describe("Acta en Vivo shell (MVA-1/MVA-2/MVA-3 stepper half — T7 Slice A)", (
     const header = await screen.findByTestId("ui-v2-match-header");
     expect(header.textContent).toMatch(/Reavers\s*2\s*-\s*1\s*Dwarves/);
     expect(screen.getByTestId("ui-v2-match-stepper").textContent).toContain("TURNO 6 EN JUEGO");
+  });
+});
+
+/**
+ * T9 Slice C (MVA-5 — `openspec/changes/match-live-acta`): the fixed bottom
+ * QUICK-CAPTURE dock (artboard 08 "FIXED BOTTOM QUICK-CAPTURE ACTION DOCK")
+ * renders its five actions on the V2 surface with the artboard roles/labels.
+ * The command wiring, the roll-inclusive casualty integrity rule and the V1
+ * parity pin live in `liveActionDock.test.tsx`.
+ */
+describe("Acta quick-capture dock (MVA-5 — T9 Slice C)", () => {
+  it("MVA-5: the V2 dock renders the five artboard actions (labels verbatim), never the V1 chips", async () => {
+    await mountV2Detail(detailWithLive(liveRow()));
+
+    const dockZone = await screen.findByTestId("ui-v2-match-dock");
+    for (const label of ["+ TD", "+ Pase", "+ Baja", "+ Evento", "Fin Turno"]) {
+      expect(within(dockZone).getByRole("button", { name: label })).toBeTruthy();
+    }
+    // Never both vocabularies on the V2 surface (the legacy chips stay V1).
+    expect(within(dockZone).queryByRole("button", { name: "Dar el turno" })).toBeNull();
+    expect(within(dockZone).queryByRole("button", { name: "Touchdown" })).toBeNull();
   });
 });

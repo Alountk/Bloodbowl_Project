@@ -22,9 +22,9 @@ Spec source: `odd/tasks/match-report-redesign.md` (S1-S5). Design source: `desig
 
 > Verification finding (Slice B, L12): if "+Baja" records roll-less casualty events, `deriveTeamStats` (lib/liveFeed.ts:103-104) and the timeline would double-count one victim (raw + resolved rows). Slice C MUST either supersede the roll-less event on resolution or dedupe casualty counters by victim (side, player).
 
-- [ ] C1 Fixed dock: +TD, +Pase, +Baja, +Evento, Fin Turno (high-contrast red).
-- [ ] C2 Each action records a live event for the recording coach's team on the active turn; server-side turn-phase permissions (LM-12) preserved.
-- [ ] C3 Focused verification.
+- [x] C1 Fixed dock: +TD, +Pase, +Baja, +Evento, Fin Turno (high-contrast red).
+- [x] C2 Each action records a live event for the recording coach's team on the active turn; server-side turn-phase permissions (LM-12) preserved.
+- [x] C3 Focused verification.
 
 ## Slice D — Motion layer (branch `feat/match-live-acta-slice-d`)
 
