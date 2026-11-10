@@ -1,5 +1,20 @@
 import { defineConfig, devices } from "@playwright/test";
 import { E2E_VERIFICATION_CODE } from "./e2e/verificationCode";
+import {
+  lanHostTitlePattern,
+  planLanHostPreflight,
+  probeLanHost,
+} from "./scripts/lan-host-preflight";
+
+// The LAN regression navigates to a literal IP: without the loopback alias
+// Chromium aborts with ERR_ABORTED before reaching the app. Exclude it with
+// an actionable message locally; in CI never exclude (a missing alias must
+// fail loudly). See scripts/lan-host-preflight.ts.
+const lanHost = planLanHostPreflight({
+  probeOutput: probeLanHost(),
+  isCI: !!process.env.CI,
+});
+if (lanHost.message) console.warn(lanHost.message);
 
 /**
  * Playwright config for the real-DB auth/migration/isolation E2E suites.
@@ -12,6 +27,7 @@ import { E2E_VERIFICATION_CODE } from "./e2e/verificationCode";
  *   existing 19 local e2e remain green.
  */
 export default defineConfig({
+  grepInvert: lanHost.excluded ? lanHostTitlePattern() : undefined,
   testDir: "./e2e",
   testMatch: [
     "**/auth.spec.ts",
