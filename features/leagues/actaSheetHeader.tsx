@@ -287,7 +287,7 @@ export function ActaSheetHeader({
         <div className="mb-2 flex items-center justify-between">
           <span className="font-display text-[15px] uppercase tracking-wide text-ink">{halfLabel}</span>
           {live ? (
-            <span className="flex items-center gap-1 rounded bg-navy px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+            <span className="acta-motion-pulse-badge flex items-center gap-1 rounded bg-navy px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red motion-reduce:animate-none" />
               TURNO {turnNumber} EN JUEGO
             </span>

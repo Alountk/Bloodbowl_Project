@@ -123,29 +123,64 @@ const ACTA_TONE = {
   solidRed: "border-red bg-red text-white shadow-sm hover:bg-red-hover",
 } as const;
 
+/** MVA-6 floating feedback (artboard 09 `data-label` values verbatim, keyed by
+ *  the flow that fired — navy pill for captures, red for Fin Turno). */
+const ACTA_FEEDBACK: Record<Flow, { text: string; tone: "navy" | "red" }> = {
+  td: { text: "+3 SPP (TD)", tone: "navy" },
+  completion: { text: "+1 SPP (Pase)", tone: "navy" },
+  casualtyCaused: { text: "+2 SPP (Baja)", tone: "navy" },
+  foul: { text: "Evento Registrado", tone: "navy" },
+  selfInflicted: { text: "+2 SPP (Baja)", tone: "navy" },
+  bothDown: { text: "+2 SPP (Baja)", tone: "navy" },
+  passTurn: { text: "Cambio de Turno", tone: "red" },
+};
+
+interface ActaFloatFeedback {
+  /** Remount key: each fired capture replays the one-shot float. */
+  id: number;
+  text: string;
+  tone: "navy" | "red";
+}
+
 /** One artboard quick-capture action: icon + uppercase label stacked on a
- *  square-ish panel (hover/press feedback only — the motion layer is Slice D). */
+ *  square-ish panel. Hover/press feedback via the artboard transitions; the
+ *  MVA-6 float (`acta-motion-float-feedback`, artboard 09 `.floating-feedback`)
+ *  rises from the button when the capture fires (decorative only). */
 function ActaDockButton({
   icon,
   label,
   tone,
   onClick,
+  feedback,
 }: {
   icon: keyof typeof ACTA_ICONS;
   label: string;
   tone: keyof typeof ACTA_TONE;
   onClick: () => void;
+  /** MVA-6: the floating badge for the LAST capture this action fired. */
+  feedback?: ActaFloatFeedback | null;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex flex-col items-center justify-center rounded-sm border px-1 py-1.5 ${ACTA_TONE[tone]}`}
+      className={`relative flex flex-col items-center justify-center rounded-sm border px-1 py-1.5 ${ACTA_TONE[tone]}`}
     >
       <svg viewBox="0 0 960 960" aria-hidden="true" focusable="false" className="text-xl">
         <path d={ACTA_ICONS[icon]} fill="currentColor" />
       </svg>
       <span className="mt-0.5 whitespace-nowrap text-[10px] font-bold uppercase">{label}</span>
+      {feedback != null ? (
+        <span
+          key={feedback.id}
+          aria-hidden="true"
+          className={`acta-motion-float-feedback rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+            feedback.tone === "red" ? "bg-red text-white" : "bg-navy text-white"
+          }`}
+        >
+          {feedback.text}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -227,6 +262,9 @@ export function LiveActionDock({
   const [stepIndex, setStepIndex] = useState(0);
   const [selections, setSelections] = useState<GuidedSelections>({});
   const [reason, setReason] = useState<TurnReason | null>(null);
+  // MVA-6: the floating "+SPP" feedback of the LAST fired acta capture
+  // (replaced on the next fire — no timers, no animation-event dependency).
+  const [feedback, setFeedback] = useState<(ActaFloatFeedback & { action: Flow }) | null>(null);
 
   // Gates: spectator (no side) or a non-live match → no dock at all.
   if (viewerSide == null || status !== "live") return null;
@@ -255,7 +293,17 @@ export function LiveActionDock({
 
   /** Fire a complete command and reset the flow. */
   const submit = (cmd: LiveCommand) => {
+    const source = flow;
     void onSubmit(cmd);
+    if (variant === "acta" && source != null) {
+      const next = ACTA_FEEDBACK[source];
+      // The incrementing id remounts the badge so the one-shot float replays.
+      setFeedback((prev) => ({
+        id: (prev?.id ?? 0) + 1,
+        action: source,
+        ...next,
+      }));
+    }
     close();
   };
 
@@ -597,6 +645,10 @@ export function LiveActionDock({
     );
   })();
 
+  /** MVA-6: the float badge only on the button whose capture fired it. */
+  const floatFor = (action: Flow): ActaFloatFeedback | null =>
+    feedback != null && feedback.action === action ? feedback : null;
+
   return (
     <section
       data-testid={variant === "acta" ? "acta-capture-dock" : "live-action-dock"}
@@ -621,11 +673,11 @@ export function LiveActionDock({
           >
             {active ? (
               <>
-                <ActaDockButton icon="football" label="+ TD" tone="navy" onClick={() => begin("td")} />
-                <ActaDockButton icon="send" label="+ Pase" tone="navy" onClick={() => begin("completion")} />
-                <ActaDockButton icon="medical" label="+ Baja" tone="red" onClick={() => begin("casualtyCaused")} />
-                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("foul")} />
-                <ActaDockButton icon="flag" label="Fin Turno" tone="solidRed" onClick={() => begin("passTurn")} />
+                <ActaDockButton icon="football" label="+ TD" tone="navy" onClick={() => begin("td")} feedback={floatFor("td")} />
+                <ActaDockButton icon="send" label="+ Pase" tone="navy" onClick={() => begin("completion")} feedback={floatFor("completion")} />
+                <ActaDockButton icon="medical" label="+ Baja" tone="red" onClick={() => begin("casualtyCaused")} feedback={floatFor("casualtyCaused")} />
+                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("foul")} feedback={floatFor("foul")} />
+                <ActaDockButton icon="flag" label="Fin Turno" tone="solidRed" onClick={() => begin("passTurn")} feedback={floatFor("passTurn")} />
               </>
             ) : (
               <>
@@ -634,12 +686,14 @@ export function LiveActionDock({
                   label={t("match.strip.selfInflicted")}
                   tone="navy"
                   onClick={() => begin("selfInflicted")}
+                  feedback={floatFor("selfInflicted")}
                 />
                 <ActaDockButton
                   icon="medical"
                   label={t("match.strip.bothDown")}
                   tone="red"
                   onClick={() => begin("bothDown")}
+                  feedback={floatFor("bothDown")}
                 />
               </>
             )}
