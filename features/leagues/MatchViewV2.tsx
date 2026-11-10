@@ -18,7 +18,7 @@ import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock } from "./useLiveClock";
 import { useLeague, type LeagueAccess } from "./useLeagueName";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
-import { LiveEventCardsActa } from "./eventCardActa";
+import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { LiveActionDock } from "./liveActionDock";
 import { MatchResolveModal } from "./MatchResolveModal";
 import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
@@ -40,8 +40,10 @@ interface MatchViewV2Props {
  * `getMatchDetail` (single `GET /api/leagues/{id}/fixtures/{fid}`),
  * `useLeague`, `useLiveMatch` (SSE + `sendLiveCommand` commands), the Acta en
  * Vivo shell (`ActaSheetHeader`, MVA-1/MVA-2 + MVA-3 stepper half — supersedes
- * the old sticky chrome MVT-2/MVT-3), the shared
- * atoms (`LiveEventCardsActa`, `LiveActionDock`) and the
+ * the old sticky chrome MVT-2/MVT-3), the Acta en Vivo turn timeline
+ * (`ActaTurnTimeline`, MVA-3 timeline half + MVA-4 pending injury-roll callout
+ * — supersedes the v4 event feed MVT-1/MVT-4 on this surface), the
+ * shared `LiveActionDock` atom and the
  * shared modals (`MatchResolveModal`, `ResetLiveMatchModal`) — and mirrors the
  * legacy state dispatch (pending/ready consent → live acta → finished summary,
  * walkover, reported sections) with `ui-v2-match-*` markers. No direct network
@@ -528,12 +530,16 @@ function ActiveMatchBody({
         <>
           {events.length > 0 ? (
             <div data-testid="ui-v2-match-acta" className="bg-background">
-              <LiveEventCardsActa
+              {/* MVA-3 timeline half + MVA-4: per-turn cards over the feed. */}
+              <ActaTurnTimeline
                 events={events}
-                startedAt={state.startedAt}
                 homeTeam={detail.homeTeam}
                 awayTeam={detail.awayTeam}
+                startedAt={state.startedAt}
                 now={now}
+                active={state}
+                viewerSide={state.viewerSide}
+                onSubmit={act}
               />
             </div>
           ) : null}
@@ -663,12 +669,16 @@ function FinishedMatchBody({
         </ul>
       ) : null}
       <div className="bg-background">
-        <LiveEventCardsActa
+        {/* MVA-3 timeline half + MVA-4: per-turn cards over the feed (the
+            roll action stays live-only, so no command pathway here). */}
+        <ActaTurnTimeline
           events={live.events}
-          startedAt={live.startedAt}
           homeTeam={detail.homeTeam}
           awayTeam={detail.awayTeam}
+          startedAt={live.startedAt}
           now={live.startedAt != null ? live.startedAt + live.elapsed : 0}
+          active={live}
+          viewerSide={viewerSide}
         />
       </div>
       {resolveOpen ? (
