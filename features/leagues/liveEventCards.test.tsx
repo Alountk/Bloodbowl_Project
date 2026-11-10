@@ -708,6 +708,35 @@ describe("LiveEventCards — design B non-blocking ack row (RAU-82)", () => {
     expect(acked).toEqual({ seq: 2, status: "ok" });
   });
 
+  it("the LM-13 scored kinds carry the ✓/✗ cotejo flow like a completion (verifier defect 3)", () => {
+    let acked: { seq: number; status: "ok" | "nok" } | null = null;
+    const now = Date.now();
+    const { container } = renderCards(
+      [
+        ev(2, "interception", "home", {}, "p1", 3, now),
+        ev(3, "throwTeamMate", "home", {}, "p4", 3, now),
+        ev(4, "landedSafe", "home", {}, "p1", 3, now),
+      ],
+      {
+        viewerSide: "away",
+        onAck: (seq, status) => {
+          acked = { seq, status };
+        },
+      },
+    );
+    // Player team cards with their ★SPP (not the generic centered fallback).
+    expect(container.textContent).toContain("Blitzer A");
+    expect(container.textContent).toContain("(★2)");
+    expect(container.textContent).toContain("(★1)");
+    // The RIVAL can ✓/✗ every new-kind card (the TEAM_EVENT_KINDS gate).
+    const okButtons = screen.getAllByRole("button", { name: /Correcto/i });
+    expect(okButtons).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: /Revisar/i })).toHaveLength(3);
+    okButtons[0].click();
+    // The chronology renders NEWEST FIRST, so the first ✓ belongs to the seq-4 card.
+    expect(acked).toEqual({ seq: 4, status: "ok" });
+  });
+
   it("shows the Cotejado badge on an acknowledged card (no buttons for either side)", () => {
     renderCards([{ ...tdEvent(), ackStatus: "ok", ackAt: Date.now(), ackedBy: "u2" }], { viewerSide: "away" });
     expect(screen.getByText(/Cotejado/)).toBeTruthy();

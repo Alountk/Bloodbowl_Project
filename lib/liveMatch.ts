@@ -41,6 +41,9 @@ export type LiveEventKind =
   | "turn"
   | "td"
   | "completion"
+  | "interception"
+  | "throwTeamMate"
+  | "landedSafe"
   | "casualty"
   | "foul"
   | "endHalf"
@@ -55,19 +58,24 @@ export type LiveEventKind =
 
 /**
  * The display-worthy kinds that reach the feed DTOs (LM-16): the history shows
- * `start|td|completion|casualty|foul|endHalf|endMatch|mvp|concede|journeyman`.
- * `turn`, `turnStart` and `requestTurn` stay in the DB (audit/replay) and
- * live-only (nudge banner) but MUST NEVER appear in a feed DTO. Shared by BOTH
- * serializers (`toEventDtos` in the live route and `serializeLive` in the
- * fixture GET) so the feed and the render can never drift (D23). Unknown kinds
- * are rejected so a future raw kind never leaks without a deliberate filter
- * change.
+ * `start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|
+ * endHalf|endMatch|mvp|concede|journeyman`. `turn`, `turnStart` and
+ * `requestTurn` stay in the DB (audit/replay) and live-only (nudge banner) but
+ * MUST NEVER appear in a feed DTO. Shared by BOTH serializers (`toEventDtos` in
+ * the live route and `serializeLive` in the fixture GET) so the feed and the
+ * render can never drift (D23). Unknown kinds are rejected so a future raw kind
+ * never leaks without a deliberate filter change — the LM-13 acta-vocabulary
+ * kinds (Slice E) are such a deliberate addition: without them the derived
+ * prefill could never see them (they feed `buildResultPrefill`).
  */
 export function isDisplayEvent(kind: string): boolean {
   switch (kind) {
     case "start":
     case "td":
     case "completion":
+    case "interception":
+    case "throwTeamMate":
+    case "landedSafe":
     case "casualty":
     case "foul":
     case "endHalf":
@@ -779,6 +787,54 @@ export function applyCompletion(
         half: state.half,
         turnNumber: state.turnNumber,
         payload: { spp: 1 },
+        at: now,
+      },
+    ],
+  };
+}
+
+/**
+ * The LM-13 acta-vocabulary scored actions added in Slice E (T4): interception
+ * (★2), throw-team-mate (★1) and landed-safe (★1) — the SPP-relevant actions
+ * `lib/rules/pe.ts` models beyond TD/completion/casualty (bb2025-rules R1).
+ */
+export type ScoredActionKind = "interception" | "throwTeamMate" | "landedSafe";
+
+/** The bb2025-rules PE award per scored action kind (mirrors `lib/rules/pe.ts`). */
+const SCORED_ACTION_SPP: Record<ScoredActionKind, number> = {
+  interception: 2,
+  throwTeamMate: 1,
+  landedSafe: 1,
+};
+
+/**
+ * Records one LM-13 scored action (Slice E). Like `applyTD` it guards the
+ * LIVE state and the active side (`cmd.side` MUST be the side whose turn is
+ * running — a wrong-side/wrong-turn record throws, the route maps it to 409
+ * "Invalid transition"); like `applyCompletion` it appends the labeled event
+ * WITHOUT flipping the turn or touching clock/score state. The route enforces
+ * the LM-12 side gate (active coach only) before calling this. The ★N award
+ * rides in the payload (`{ spp: N }`, D24 parity with `applyCompletion`).
+ */
+export function applyScoredAction(
+  state: LiveMatchState,
+  cmd: { kind: ScoredActionKind; side: TeamSide; playerRosterId: string },
+  now: number,
+): LiveMatchState {
+  if (cmd.side !== state.activeSide) throwInvalid("out-of-turn");
+  if (state.status !== "live") throwInvalid("match not live");
+  return {
+    ...state,
+    events: [
+      ...state.events,
+      {
+        seq: state.seq + 1,
+        kind: cmd.kind,
+        side: cmd.side,
+        playerRosterId: cmd.playerRosterId,
+        half: state.half,
+        turnNumber: state.turnNumber,
+        payload: { spp: SCORED_ACTION_SPP[cmd.kind] },
         at: now,
       },
     ],

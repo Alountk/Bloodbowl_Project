@@ -152,9 +152,12 @@ export function buildGuidedCommand(
   return base;
 }
 
-/** Builds the instant two-touch command for TD / Pase (active, own scorer). */
+/** Builds the instant two-touch command for TD / Pase (active, own scorer).
+ * LM-13 (Slice E): the union also carries the acta-vocabulary scored actions
+ * (interception / throw-team-mate / landed-safe) — same one-tap shape, same
+ * server gate as `completion`. */
 export function buildScoredCommand(
-  kind: "td" | "completion",
+  kind: "td" | "completion" | "interception" | "throwTeamMate" | "landedSafe",
   viewerSide: "home" | "away",
   playerRosterId: string,
 ): LiveCommand {

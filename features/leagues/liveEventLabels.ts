@@ -74,6 +74,9 @@ export const EVENT_GLYPH: Record<string, IconName> = {
   start: "timer",
   td: "football",
   completion: "hand",
+  interception: "hand",
+  throwTeamMate: "shirt",
+  landedSafe: "check",
   foul: "cleat",
   mvp: "trophy",
   endHalf: "timer",
@@ -257,13 +260,34 @@ export function journeymanJoinLabel(
   return fn(key, { name });
 }
 
+/**
+ * LM-13 (Slice E): the acta-vocabulary scored-action labels — the SAME Spanish
+ * wording as the acta wizard's `acta.accion.*` options ("Intercepción",
+ * "Lanzar compañero", "Aterrizar sano") so the live feed and the derived acta
+ * share one vocabulary. The `match.event.*` key wins when the dictionary carries
+ * it (it does not yet — the i18n dictionaries are outside this slice's edit
+ * surfaces); the Spanish map is the es fallback (the `causeLabel` pattern).
+ */
+export const SCORED_ACTION_LABELS: Record<string, string> = {
+  interception: "Intercepción",
+  throwTeamMate: "Lanzar compañero",
+  landedSafe: "Aterrizar sano",
+};
+
 /** The SPP star total for an event (LM-19): TD ★3, Completion ★1, MVP ★4, a
- * lasting casualty ★2 (bruise ★0), and any other kind ★0. */
+ * lasting casualty ★2 (bruise ★0), and any other kind ★0. The LM-13 scored
+ * actions follow the bb2025-rules PE table (`lib/rules/pe.ts`): interception
+ * ★2, throw-team-mate ★1, landed-safe ★1. */
 export function eventSpp(event: LiveEventLabelInput): number {
   switch (event.kind) {
     case "td":
       return 3;
     case "completion":
+      return 1;
+    case "interception":
+      return 2;
+    case "throwTeamMate":
+    case "landedSafe":
       return 1;
     case "casualty": {
       const band = typeof event.payload.band === "string" ? event.payload.band : null;
@@ -291,6 +315,15 @@ export function liveEventLabel(event: LiveEventLabelInput, fn: TFunc = esT): str
       return fn("match.event.td");
     case "completion":
       return fn("match.event.completion");
+    case "interception":
+    case "throwTeamMate":
+    case "landedSafe": {
+      // LM-13 (Slice E): dictionary key first, Spanish `SCORED_ACTION_LABELS`
+      // fallback (mirrors `causeLabel`; see that map's doc comment).
+      const key = `match.event.${event.kind}`;
+      const translated = fn(key);
+      return translated === key ? SCORED_ACTION_LABELS[event.kind] ?? event.kind : translated;
+    }
     case "mvp":
       return fn("match.event.mvp");
     case "casualty": {

@@ -34,9 +34,9 @@ Spec source: `odd/tasks/match-report-redesign.md` (S1-S5). Design source: `desig
 
 ## Slice E — Event vocabulary + prefill (T4)
 
-- [ ] E1 LiveEvent kinds ≡ acta actions (LM-13).
-- [ ] E2 `resultPrefill` carries every kind, not only TDs (`features/leagues/resultPrefill.ts:68-86`).
-- [ ] E3 Tests + focused verification.
+- [x] E1 LiveEvent kinds ≡ acta actions (LM-13).
+- [x] E2 `resultPrefill` carries every kind, not only TDs (`features/leagues/resultPrefill.ts:68-86`).
+- [x] E3 Tests + focused verification.
 
 ## Slice F — Unified closure (T5)
 

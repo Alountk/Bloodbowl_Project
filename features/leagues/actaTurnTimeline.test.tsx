@@ -220,6 +220,32 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
     const cards = screen.getAllByTestId("acta-turn-card");
     expect(cards[1].textContent).toMatch(/T5\s*•\s*AMBOS EQUIPOS/);
   });
+
+  it.each(["interception", "throwTeamMate", "landedSafe"] as const)(
+    "a turn whose only capture is a %s shows the acting team (verifier defect 2)",
+    (kind) => {
+      seqCounter = 0;
+      const only = [
+        event({
+          kind,
+          side: "home",
+          playerRosterId: "h2",
+          turnNumber: 5,
+          at: STARTED + 43 * MIN,
+        }),
+      ];
+      render(
+        <ActaTurnTimeline
+          {...timelineProps({ events: only, active: { ...liveActive(), turnNumber: 6 } })}
+        />,
+      );
+      const cards = screen.getAllByTestId("acta-turn-card");
+      // The single capture is the home side's own action → their turn title
+      // (never the AMBOS EQUIPOS fallback the td|completion|foul vote missed).
+      expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+      expect(cards[1].textContent).not.toMatch(/AMBOS EQUIPOS/);
+    },
+  );
 });
 
 describe("ActaTurnTimeline — event rows (MVA-3 / B2)", () => {

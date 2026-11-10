@@ -36,6 +36,7 @@ import {
   applyEndTurn,
   applyTD,
   applyCompletion,
+  applyScoredAction,
   applyEndMatch,
   applyRequestTurn,
   REQUEST_TURN_COOLDOWN_MS,
@@ -558,6 +559,16 @@ type ControlCommand =
   | { type: "td"; side: TeamSide; playerRosterId: string }
   | { type: "completion"; side: TeamSide; playerRosterId: string }
   | {
+      /** LM-13 (Slice E): the acta-vocabulary scored actions — interception ★2,
+       * throw-team-mate ★1, landed-safe ★1 (bb2025-rules PE table). Same shape
+       * and same LM-12 gate as `completion` (active coach, own side); the pure
+       * recorder (`applyScoredAction`) additionally rejects a wrong-side or
+       * non-live record with 409. Additive: no existing command changes. */
+      type: "interception" | "throwTeamMate" | "landedSafe";
+      side: TeamSide;
+      playerRosterId: string;
+    }
+  | {
       type: "casualty";
       side: TeamSide;
       victimRosterId: string;
@@ -691,6 +702,9 @@ function isControlCommand(value: unknown): value is ControlCommand {
       return c.side === "home" || c.side === "away";
     case "td":
     case "completion":
+    case "interception":
+    case "throwTeamMate":
+    case "landedSafe":
       return (c.side === "home" || c.side === "away") && typeof c.playerRosterId === "string";
     case "casualty":
       // Self-inflicted direct casualty: victim side + a KNOWN cause + roll16.
@@ -1343,6 +1357,9 @@ export async function POST(
     command.type === "endTurn" ||
     command.type === "td" ||
     command.type === "completion" ||
+    command.type === "interception" ||
+    command.type === "throwTeamMate" ||
+    command.type === "landedSafe" ||
     command.type === "casualty" ||
     command.type === "foul"
   ) {
@@ -1353,9 +1370,15 @@ export async function POST(
           ? "td"
           : command.type === "completion"
             ? "completion"
-            : command.type === "casualty"
-              ? "casualty"
-              : "foul";
+            : command.type === "interception"
+              ? "interception"
+              : command.type === "throwTeamMate"
+                ? "throwTeamMate"
+                : command.type === "landedSafe"
+                  ? "landedSafe"
+                  : command.type === "casualty"
+                    ? "casualty"
+                    : "foul";
     const victimSide = command.type === "casualty" ? command.side : undefined;
     // D1: for a casualty pass the cause + `bothDown` marker INTO the pure side
     // matrix so the ONE additive non-active both-down shape can open the gate
@@ -1472,6 +1495,24 @@ export async function POST(
     // LM-15: the active-coach branch is enforced by the side gate above. A
     // completion appends a ★1 event with NO turn flip.
     next = applyCompletion(current, { side: command.side, playerRosterId: command.playerRosterId }, now);
+  } else if (
+    command.type === "interception" ||
+    command.type === "throwTeamMate" ||
+    command.type === "landedSafe"
+  ) {
+    // LM-13 (Slice E): the acta-vocabulary scored actions ride the SAME gate as
+    // completion (side gate above) and the TD-style pure guard (live + active
+    // side) — a wrong-side/wrong-turn record throws and maps to 409. Appends the
+    // ★N event with NO turn flip.
+    try {
+      next = applyScoredAction(
+        current,
+        { kind: command.type, side: command.side, playerRosterId: command.playerRosterId },
+        now,
+      );
+    } catch {
+      return Response.json({ error: "Invalid transition" }, { status: 409 });
+    }
   } else if (command.type === "casualty") {
     // Design B: casualties are recorded DIRECTLY (one phase, no confirm) — the
     // band is derived server-side from the 1D16 roll. A roll/derivation failure

@@ -1191,6 +1191,112 @@ describe("POST .../live — completion command (LM-15) + mvp-not-a-command (LM-1
   });
 });
 
+describe("POST .../live — LM-13 acta-vocabulary commands (Slice E: interception / throw-team-mate / landed-safe)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active (liveState.activeSide = home). */
+  function liveSetup(sessionId: string, row: Record<string, unknown> | null = null) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(
+      row ?? {
+        ...readyRow(3),
+        status: "live",
+        startedAt: new Date(1000).toISOString(),
+        homeTurnMs: 0,
+        awayTurnMs: 0,
+        clockStartedAt: new Date(1000).toISOString(),
+      },
+    );
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function post(body: unknown) {
+    return POST(req(body), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+  }
+
+  const KINDS = ["interception", "throwTeamMate", "landedSafe"] as const;
+
+  it("returns 200 and persists when the ACTIVE coach records each new kind (no turn flip)", async () => {
+    for (const type of KINDS) {
+      vi.clearAllMocks();
+      liveSetup("coach-home");
+      applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+      const res = await post({ type, side: "home", playerRosterId: "p-2" });
+      expect(res.status, type).toBe(200);
+      const transitionArg = applyTransitionMock.mock.calls[0][0];
+      expect(transitionArg.next.events[0].kind, type).toBe(type);
+      expect(transitionArg.next.events[0].playerRosterId, type).toBe("p-2");
+      expect(transitionArg.next.activeSide, type).toBe("home");
+    }
+  });
+
+  it("returns 409 (no mutation) when a NON-active coach records any new kind", async () => {
+    for (const type of KINDS) {
+      vi.clearAllMocks();
+      liveSetup("coach-away");
+      const res = await post({ type, side: "away", playerRosterId: "p-9" });
+      expect(res.status, type).toBe(409);
+      expect(applyTransitionMock, type).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns 409 (no mutation) when the ACTIVE coach claims the OPPONENT side (wrong-side)", async () => {
+    for (const type of KINDS) {
+      vi.clearAllMocks();
+      liveSetup("coach-home");
+      const res = await post({ type, side: "away", playerRosterId: "p-9" });
+      expect(res.status, type).toBe(409);
+      expect(applyTransitionMock, type).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns 409 when the league admin (no side) records any new kind (D14 lifecycle-only)", async () => {
+    for (const type of KINDS) {
+      vi.clearAllMocks();
+      liveSetup("owner-1");
+      const res = await post({ type, side: "home", playerRosterId: "p-2" });
+      expect(res.status, type).toBe(409);
+      expect(applyTransitionMock, type).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns 409 + no mutation when a new kind is recorded outside a live turn (wrong-turn)", async () => {
+    for (const type of KINDS) {
+      vi.clearAllMocks();
+      // The row is live-shaped but the pure state is `ready` — not a live turn.
+      liveSetup("coach-home");
+      liveMatchRowToStateMock.mockReturnValue(readyState);
+      const res = await post({ type, side: "home", playerRosterId: "p-2" });
+      expect(res.status, type).toBe(409);
+      expect(applyTransitionMock, type).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns 400 (no mutation) for a malformed new-kind command shape", async () => {
+    for (const type of KINDS) {
+      vi.clearAllMocks();
+      liveSetup("coach-home");
+      const res = await post({ type, side: "home" }); // no playerRosterId
+      expect(res.status, type).toBe(400);
+      expect(applyTransitionMock, type).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe("POST .../live — requestTurn nudge + 60s cooldown (LM-13, D17)", () => {
   const now = Date.now();
 

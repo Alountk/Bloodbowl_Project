@@ -1,4 +1,5 @@
 import type { WeatherKind } from "@/lib/rules/weather";
+import { resolveInjury } from "@/lib/rules/injuries";
 import type { MatchScoreboard, ResultPayload, ResultPlayerAction } from "../api";
 import type { ResultTeamDraft } from "../resultPrefill";
 import { weatherLabel, type SummaryTFunc } from "../matchSummary";
@@ -393,20 +394,29 @@ function isLoadPrefill(
 
 /**
  * Rebuilds the free-form Acciones lines from a `ResultTeamDraft`'s per-player
- * rows. Only the directly-sourced non-casualty counts are mapped: the DRAFT
- * that `buildResultPrefill` returns carries a casualty COUNT per player but no
- * casualty VICTIM, so a count cannot be turned into the wizard's victim-bound
- * casualty line and is deliberately left for manual re-entry rather than
- * invented. This is a limitation of the DRAFT, not of the live source: the raw
- * `LiveMatchView.events` casualty payloads DO carry `victimRosterId`,
- * `causerRosterId`, `roll16`/`roll6`, and `band` (see the live route's
- * `recordCasualty`), and `LiveMatchView` exposes `mvpGrantees` — but
- * `buildResultPrefill` discards every non-`td` event, so this function never
- * sees them. A future slice could prefill casualties by reading those events.
+ * rows (LM-13 / Slice E: EVERY captured kind — not only TDs). Casualty lines are
+ * rebuilt from the draft's carried victim records, which keep the exact
+ * causer↔victim binding and the captured 1D16/1D6 rolls the live events carried
+ * (see `resultPrefill.ts`), so nothing captured is re-keyed. A self-inflicted
+ * victim (no causer) becomes a line that credits NO player — `aggregateActions`
+ * skips it (bb2025: no caused-casualty PE) while `casualtiesFromActions` keeps
+ * the victim, so the Bajas step still asks their pending roll.
+ *
+ * Roll alignment mirrors `bajasPlan.ts`: `injuryRoll[i]` binds to the i-th
+ * casualty line; `permanentRoll` is COMPRESSED to the permanent-band lines
+ * (band derived from the captured roll with the rulebook table, exactly like
+ * `planSide`), with unset slots as `undefined` holes. A PENDING casualty
+ * (no captured 1D16) gets NO roll slot value — it stays pending and is asked in
+ * the closure surface (never silently resolved or dropped).
  */
 function actionsFromResultPlayers(
   players: ResultTeamDraft["players"],
-): ActaActionLine[] {
+  casualties: ResultTeamDraft["casualties"],
+): {
+  lines: ActaActionLine[];
+  injuryRoll: number[];
+  permanentRoll: number[];
+} {
   const lines: ActaActionLine[] = [];
   for (const [rosterPlayerId, row] of Object.entries(players)) {
     for (const kind of Object.keys(ACTION_FIELD) as ActaActionKind[]) {
@@ -417,15 +427,49 @@ function actionsFromResultPlayers(
       }
     }
   }
-  return lines;
+  const injurySlots: (number | undefined)[] = [];
+  const permanentSlots: (number | undefined)[] = [];
+  for (const record of casualties) {
+    lines.push({
+      id: `cas:${record.team}:${record.rosterPlayerId}`,
+      rosterPlayerId: record.causerRosterPlayerId ?? "",
+      kind: "casualty",
+      quantity: 1,
+      victimTeam: record.team,
+      victimRosterPlayerId: record.rosterPlayerId,
+    });
+    injurySlots.push(record.injuryRoll ?? undefined);
+    if (record.injuryRoll != null && resolveInjury(record.injuryRoll, 0).kind === "permanent") {
+      permanentSlots.push(record.permanentRoll ?? undefined);
+    }
+  }
+  return {
+    lines,
+    injuryRoll: trimTrailingHoles(injurySlots),
+    permanentRoll: trimTrailingHoles(permanentSlots),
+  };
+}
+
+/** Mirrors `bajasPlan.ts`'s hole convention: unset slots are `undefined` holes
+ * (the route's `?? rollD16()` fallback rolls them), trailing holes trimmed. */
+function trimTrailingHoles(values: readonly (number | undefined)[]): number[] {
+  const next = [...values];
+  while (next.length > 0 && next[next.length - 1] == null) next.pop();
+  return next as number[];
 }
 
 /** Maps one finished-live `ResultTeamDraft` into the wizard's team draft. */
 function teamFromResultDraft(draft: ResultTeamDraft): ActaTeamDraft {
+  const { lines, injuryRoll, permanentRoll } = actionsFromResultPlayers(
+    draft.players,
+    draft.casualties,
+  );
   return {
     ...emptyTeamDraft(),
     score: draft.score,
     neverHeld: !draft.ballHeld,
-    actions: actionsFromResultPlayers(draft.players),
+    actions: lines,
+    injuryRoll,
+    permanentRoll,
   };
 }

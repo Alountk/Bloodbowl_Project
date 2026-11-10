@@ -6,6 +6,7 @@ import {
   applyEndTurn,
   applyTD,
   applyCompletion,
+  applyScoredAction,
   applyEndMatch,
   proposeConcede,
   declineConcede,
@@ -436,9 +437,65 @@ describe("applyCompletion — records a ★1 completion event WITHOUT flipping t
   });
 });
 
+describe("applyScoredAction — LM-13 acta-vocabulary scored actions (Slice E)", () => {
+  it("records interception ★2 / throw-team-mate ★1 / landed-safe ★1 WITHOUT flipping the turn", () => {
+    const entries = [
+      { kind: "interception" as const, playerRosterId: "p-1", spp: 2 },
+      { kind: "throwTeamMate" as const, playerRosterId: "p-2", spp: 1 },
+      { kind: "landedSafe" as const, playerRosterId: "p-3", spp: 1 },
+    ];
+    for (const entry of entries) {
+      const base = state();
+      const next = applyScoredAction(
+        base,
+        { kind: entry.kind, side: "home", playerRosterId: entry.playerRosterId },
+        1100,
+      );
+      expect(next.events[0].kind, entry.kind).toBe(entry.kind);
+      expect(next.events[0].payload.spp, entry.kind).toBe(entry.spp);
+      expect(next.events[0].playerRosterId, entry.kind).toBe(entry.playerRosterId);
+      // No turn flip, no score/clock/seq change (applyCompletion parity).
+      expect(next.activeSide, entry.kind).toBe("home");
+      expect(next.seq, entry.kind).toBe(base.seq);
+      expect(next.homeScore, entry.kind).toBe(0);
+    }
+  });
+
+  it("throws on a wrong-side record (cmd.side must be the active side)", () => {
+    expect(() =>
+      applyScoredAction(state(), { kind: "interception", side: "away", playerRosterId: "p-9" }, 1100),
+    ).toThrow();
+  });
+
+  it("throws outside a live match (wrong turn phase)", () => {
+    expect(() =>
+      applyScoredAction(
+        state({ status: "finished" }),
+        { kind: "landedSafe", side: "home", playerRosterId: "p-1" },
+        1100,
+      ),
+    ).toThrow();
+  });
+});
+
 describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
-  it("accepts exactly the 11 display kinds incl. the kickoff kinds and concede (start|td|completion|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede)", () => {
-    const displayKinds = ["start", "td", "completion", "casualty", "foul", "endHalf", "endMatch", "mvp", "expensive_mistake", "fan_factor", "concede"];
+  it("accepts exactly the 14 display kinds incl. the LM-13 acta vocabulary (start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede)", () => {
+    const displayKinds = [
+      "start",
+      "td",
+      "completion",
+      "interception",
+      "throwTeamMate",
+      "landedSafe",
+      "casualty",
+      "foul",
+      "endHalf",
+      "endMatch",
+      "mvp",
+      "expensive_mistake",
+      "fan_factor",
+      "concede",
+    ];
     for (const kind of displayKinds) {
       expect(isDisplayEvent(kind)).toBe(true);
     }
@@ -451,7 +508,7 @@ describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
   it("does NOT rely on a static allow-list for unknown future kinds (explicit rejection)", () => {
     // Unknown kinds are not display-worthy; the predicate must reject them so a
     // feed never leaks a new raw kind without a deliberate filter change.
-    expect(isDisplayEvent("interception")).toBe(false);
+    expect(isDisplayEvent("someFutureKind")).toBe(false);
     expect(isDisplayEvent("")).toBe(false);
     expect(isDisplayEvent("blitz")).toBe(false);
   });

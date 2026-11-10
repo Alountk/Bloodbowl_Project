@@ -54,6 +54,12 @@ describe("eventSpp — stars per event kind (LM-19)", () => {
     expect(eventSpp(ev("completion"))).toBe(1);
   });
 
+  it("the LM-13 scored actions follow the bb2025-rules PE table: interception ★2, throw-team-mate ★1, landed-safe ★1", () => {
+    expect(eventSpp(ev("interception"))).toBe(2);
+    expect(eventSpp(ev("throwTeamMate"))).toBe(1);
+    expect(eventSpp(ev("landedSafe"))).toBe(1);
+  });
+
   it("an mvp is ★4", () => {
     expect(eventSpp(ev("mvp"))).toBe(4);
   });
@@ -138,8 +144,14 @@ describe("liveEventLabel", () => {
     expect(liveEventLabel(ev("requestTurn"))).toBe("Te piden el turno");
   });
 
+  it("labels the LM-13 acta-vocabulary scored actions (Slice E) in the acta's own words", () => {
+    expect(liveEventLabel(ev("interception"))).toBe("Intercepción");
+    expect(liveEventLabel(ev("throwTeamMate"))).toBe("Lanzar compañero");
+    expect(liveEventLabel(ev("landedSafe"))).toBe("Aterrizar sano");
+  });
+
   it("passes through an unknown event kind unchanged", () => {
-    expect(liveEventLabel(ev("interception"))).toBe("interception");
+    expect(liveEventLabel(ev("someFutureKind"))).toBe("someFutureKind");
   });
 });
 
@@ -171,8 +183,12 @@ describe("EVENT_GLYPH — per-kind inline SVG icon map (MV-7, no icon lib)", () 
     expect(EVENT_GLYPH.mvp).toBe("trophy");
     // RAU-38: the concede (white-flag surrender) row uses the flag-variant glyph.
     expect(EVENT_GLYPH.concede).toBe("flag-variant");
+    // The LM-13 acta vocabulary (Slice E) maps to existing set glyphs.
+    expect(EVENT_GLYPH.interception).toBe("hand");
+    expect(EVENT_GLYPH.throwTeamMate).toBe("shirt");
+    expect(EVENT_GLYPH.landedSafe).toBe("check");
     // Unknown kinds have no glyph entry → the caller falls back to "football".
-    expect(EVENT_GLYPH["interception" as keyof typeof EVENT_GLYPH]).toBeUndefined();
+    expect(EVENT_GLYPH["someFutureKind" as keyof typeof EVENT_GLYPH]).toBeUndefined();
   });
 
   it("maps the kickoff icons exactly (v7): money-bag for expensive_mistake, account-group for the fan row", () => {
