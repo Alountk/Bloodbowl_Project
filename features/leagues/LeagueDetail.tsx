@@ -790,6 +790,7 @@ function MatchActaWizardFor({
       homeRoster={homeRoster}
       awayRoster={awayRoster}
       initial={initial}
+      fixtureId={fixture.id}
       onSubmit={onSubmit}
       onClose={onClose}
     />

@@ -680,6 +680,7 @@ function FinishedMatchBody({
           detail={detail}
           league={league}
           viewer={viewer}
+          fixtureId={detail.fixture.id}
           onClose={onCloseClosure}
           onSubmitted={onRefresh}
         />

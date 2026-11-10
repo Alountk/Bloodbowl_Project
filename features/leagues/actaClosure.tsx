@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { MAX_ATTENDANCE_FAN_FACTOR, MIN_ATTENDANCE_FAN_FACTOR } from "@/lib/rules";
 import { permanentAttribute } from "@/lib/rules/injuries";
@@ -26,6 +26,14 @@ import {
   setPermanentRoll,
   type BajasCasualty,
 } from "./acta/bajasPlan";
+import {
+  actaDraftKey,
+  clearActaDraft,
+  collectClosureInputs,
+  readActaDraft,
+  restoreClosureInputs,
+  writeActaDraft,
+} from "./acta/actaDraft";
 import { StepMvp } from "./acta/StepMvp";
 import { StepFinal } from "./acta/StepFinal";
 import { StepRevisar, validateActa } from "./acta/StepRevisar";
@@ -106,6 +114,15 @@ export interface ActaClosureProps {
   onClose: () => void;
   /** Refreshes the match detail after a successful submission. */
   onSubmitted: () => void | Promise<void>;
+  /**
+   * Enables per-fixture draft persistence (T6 · G1): the ASKED inputs (pending
+   * rolls, MVP, FF + fan 1D6) autosave to `bb-acta-draft:cierre:<fixtureId>` and
+   * restore on mount, so a refresh mid-closure never loses them (S3). The
+   * derived acta always re-derives from the live capture and the draft only
+   * restores answers that are still asked/valid. Cleared on successful submit
+   * (collapse/close keeps it — it is not a discard). Omitted → draft OFF.
+   */
+  fixtureId?: string;
 }
 
 /** The roster refs for one team: id/name (+ dorsal/positional for pickers). */
@@ -259,6 +276,7 @@ export function ActaClosure({
   viewer,
   onClose,
   onSubmitted,
+  fixtureId,
 }: ActaClosureProps) {
   const { t } = useI18n();
   // MAW-10 "Guards preserved": a fixture that is not playable by the current
@@ -266,10 +284,34 @@ export function ActaClosure({
   const allowed = canCloseActa(detail, league, viewer);
 
   // The DERIVED acta (Slice E pipeline), seeded once at mount; everything the
-  // capture already carries is read-only from here on.
-  const [state, setState] = useState<ActaState>(() =>
+  // capture already carries is read-only from here on. The draft layer (T6 · G1)
+  // persists ONLY the asked inputs on top of this seed: on a remount the seed
+  // re-derives from the live capture and recorded answers restore where they
+  // are still asked (a captured/renamed/vanished field drops the stale answer).
+  const draftKey = fixtureId ? actaDraftKey("cierre", fixtureId) : null;
+  const [seed] = useState<ActaState>(() =>
     detail.live ? actaPrefill(buildResultPrefill(detail.live)) : emptyActaState(),
   );
+  const [state, setState] = useState<ActaState>(() =>
+    draftKey
+      ? restoreClosureInputs(readActaDraft(draftKey, "cierre"), seed, {
+          home: mvpRosterOf(detail.homeTeam),
+          away: mvpRosterOf(detail.awayTeam),
+        })
+      : seed,
+  );
+  // M1: once the server owns the result the draft is spent for good. The latch
+  // stops the write effect dead, so an edit made while `onSubmitted()` is still
+  // pending (inputs stay enabled — only the save button locks) can never
+  // re-write and RESURRECT a draft that was just cleared (it would come back
+  // after a fixture reset).
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    if (!draftKey || submittedRef.current) return;
+    // Written on input change; self-healing — once nothing asked is left
+    // recorded the key is removed so nothing stale can ever restore.
+    writeActaDraft(draftKey, collectClosureInputs(seed, state));
+  }, [draftKey, seed, state]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -322,6 +364,10 @@ export function ActaClosure({
       // + `submitResult` (POST /result). Same request shape, same guards.
       const payload: ResultPayload = buildActaPayload(state);
       await submitResult(detail.fixture.leagueId, detail.fixture.id, payload);
+      // The draft is spent the moment the server owns the result (T6 · G1).
+      // Latch BEFORE the clear so nothing can re-write during `onSubmitted()`.
+      submittedRef.current = true;
+      if (draftKey) clearActaDraft(draftKey);
       await onSubmitted();
     } catch {
       setSubmitError(t("acta.saveError"));

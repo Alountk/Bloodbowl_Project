@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 import {
   buildActaPayload,
@@ -8,6 +8,14 @@ import {
   type ActaState,
   type ActaTeamDraft,
 } from "./acta/actaState";
+import {
+  actaDraftKey,
+  clearActaDraft,
+  collectActaInputs,
+  readActaDraft,
+  restoreActaInputs,
+  writeActaDraft,
+} from "./acta/actaDraft";
 import { reconcileRolls } from "./acta/bajasPlan";
 import { StepContexto } from "./acta/StepContexto";
 import { StepMarcador } from "./acta/StepMarcador";
@@ -61,6 +69,15 @@ export interface MatchActaWizardProps {
   /** Correct-mode prefill (S6 wires `actaPrefill`); read once at mount. */
   initial?: ActaState;
   /**
+   * Enables per-fixture draft persistence (T6 · G1): typed acta input is
+   * autosaved to `bb-acta-draft:acta:<fixtureId>` as it changes and restored on
+   * mount, so a refresh mid-flow keeps the acta (S3). Untouched fields re-derive
+   * from `initial`; the draft restores only user edits still valid for the
+   * current rosters/steps. Cleared on successful submit and on dismiss (close =
+   * the wizard's discard path). Omitted → the legacy in-memory behavior.
+   */
+  fixtureId?: string;
+  /**
    * Invoked by the Step-6 "Guardar acta" button with the assembled payload. The
    * shell calls it only when the acta validates (Σ anotaciones == marcador and
    * both MVPs selected); the app wiring lands in s4c. A rejected promise is
@@ -88,11 +105,35 @@ export function MatchActaWizard({
   awayRoster,
   onClose,
   initial,
+  fixtureId,
   onSubmit,
 }: MatchActaWizardProps) {
   const { t } = useI18n();
   const [step, setStep] = useState(0);
-  const [state, setState] = useState<ActaState>(() => initial ?? emptyActaState());
+  // Draft lifecycle (T6 · G1). The seed is the mount baseline (`initial`, read
+  // once): user edits autosave per fixture and restore on mount, while
+  // untouched fields always come from the freshly derived seed.
+  const draftKey = fixtureId ? actaDraftKey("acta", fixtureId) : null;
+  const [seed] = useState<ActaState>(() => initial ?? emptyActaState());
+  const [state, setState] = useState<ActaState>(() =>
+    draftKey
+      ? restoreActaInputs(readActaDraft(draftKey, "acta", mode), seed, {
+          home: homeRoster,
+          away: awayRoster,
+        })
+      : seed,
+  );
+  // A submitted or dismissed dialog discards the draft (closing the wizard
+  // already abandons the acta, so the draft follows the same semantics).
+  const clearDraft = useCallback(() => {
+    if (draftKey) clearActaDraft(draftKey);
+  }, [draftKey]);
+  useEffect(() => {
+    if (!draftKey) return;
+    // Written on input change; self-healing — once no user input is left the
+    // key is removed so nothing stale can ever restore.
+    writeActaDraft(draftKey, collectActaInputs(seed, state, mode));
+  }, [draftKey, mode, seed, state]);
   // A rejected submit (400/409) must never be swallowed: it is surfaced in the
   // alert below and cleared on the next attempt.
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -129,6 +170,7 @@ export function MatchActaWizard({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        clearDraft();
         onCloseRef.current();
         return;
       }
@@ -156,7 +198,7 @@ export function MatchActaWizard({
       document.removeEventListener("keydown", onKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [open]);
+  }, [open, clearDraft]);
 
   // Design requirement: focus-first-on-step-change. Runs after the `[open]`
   // effect (which focuses the first control on mount) so the step body wins
@@ -249,10 +291,15 @@ export function MatchActaWizard({
   // footer button, so an invalid acta can never reach `onSubmit` (MAW-8).
   const validation = validateActa(state, homeName, awayName);
 
+  const dismiss = () => {
+    clearDraft();
+    onClose();
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
+      onClick={dismiss}
     >
       <div
         ref={dialogRef}
@@ -267,7 +314,7 @@ export function MatchActaWizard({
           <h2 className="font-display text-sm font-bold">{title}</h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={dismiss}
             aria-label={t("acta.close")}
             className="text-xs font-semibold text-white/80 hover:text-white"
           >
@@ -349,8 +396,18 @@ export function MatchActaWizard({
                 if (maybe instanceof Promise) {
                   setSubmitting(true);
                   maybe
+                    // The draft is spent only on SUCCESS — a rejected submit
+                    // keeps every typed answer for a genuine retry.
+                    .then(() => clearDraft())
                     .catch(() => setSubmitError(t("acta.saveError")))
                     .finally(() => setSubmitting(false));
+                } else if (onSubmit) {
+                  // Contract (M4): a SYNCHRONOUS submitter has no failure signal
+                  // — its return IS the success signal, so the draft is spent
+                  // the moment it returns. Both production submitters are async
+                  // (LeagueDetail), so this branch is unreachable today; do NOT
+                  // "fix" it into clear-on-settle: there is nothing to settle.
+                  clearDraft();
                 }
               }}
               disabled={!validation.ok || submitting}

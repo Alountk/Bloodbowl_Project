@@ -46,5 +46,5 @@ Spec source: `odd/tasks/match-report-redesign.md` (S1-S5). Design source: `desig
 
 ## Slice G — Autosave (T6)
 
-- [ ] G1 Draft persistence for capture and close-out (replaces the in-memory `useState` at `features/leagues/MatchActaWizard.tsx:86`).
-- [ ] G2 Tests + focused verification.
+- [x] G1 Draft persistence for capture and close-out (replaces the in-memory `useState` at `features/leagues/MatchActaWizard.tsx:86`).
+- [x] G2 Tests + focused verification.
