@@ -28,9 +28,9 @@ Spec source: `odd/tasks/match-report-redesign.md` (S1-S5). Design source: `desig
 
 ## Slice D — Motion layer (branch `feat/match-live-acta-slice-d`)
 
-- [ ] D1 Apply the animada keyframes (fadeInUp, pulseGlow, badgePulse, diceShake, rowHighlightFlash, floatUpFade) to sheet elements.
-- [ ] D2 `prefers-reduced-motion: reduce` fallback disables them (MVA-6).
-- [ ] D3 Focused verification.
+- [x] D1 Apply the animada keyframes (fadeInUp, pulseGlow, badgePulse, diceShake, rowHighlightFlash, floatUpFade) to sheet elements.
+- [x] D2 `prefers-reduced-motion: reduce` fallback disables them (MVA-6).
+- [x] D3 Focused verification.
 
 ## Slice E — Event vocabulary + prefill (T4)
 

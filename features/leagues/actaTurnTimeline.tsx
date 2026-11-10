@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { resolveInjury } from "@/lib/rules/injuries";
 import { CASUALTY_CAUSES, eventAuthorSide, type CasualtyCause } from "@/lib/livePhase";
 import { isDisplayEvent } from "@/lib/liveMatch";
@@ -54,9 +54,38 @@ import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
  * new endpoint exists. Copy is Spanish per the match-section convention;
  * tokens stay rulebook-light (AGENTS.md rule 5) — the artboard's band tints
  * map 1:1 onto the existing `bruise-*…dead-*` tokens. Icons: inline Material
- * Symbols paths verbatim from artboard 08 (viewBox 0 0 960 960). No motion
- * (Slice D).
+ * Symbols paths verbatim from artboard 08 (viewBox 0 0 960 960). Motion (T10
+ * Slice D, MVA-6): the artboard 09 keyframes live in `app/globals.css` under
+ * the namespaced `.acta-motion-*` classes (reduced-motion fallback included)
+ * and are decorative only — see `actaMotion.test.tsx`.
  */
+
+/**
+ * MVA-6 row-highlight source: the seqs that JUST arrived in the feed (the
+ * artboard's `highlight-flash` on the appended row — it clears when the next
+ * capture lands). Purely presentational state: no timers, no animation-event
+ * dependency, nothing waits on frames.
+ */
+function useFreshSeqs(events: readonly LiveMatchEventDto[]): ReadonlySet<number> {
+  const seenMax = useRef<number | null>(null);
+  const [fresh, setFresh] = useState<ReadonlySet<number>>(() => new Set());
+  useEffect(() => {
+    const max = events.reduce((highest, event) => Math.max(highest, event.seq), 0);
+    if (seenMax.current == null) {
+      // First paint: every row is already there — none is "just arrived".
+      seenMax.current = max;
+      return;
+    }
+    if (max > seenMax.current) {
+      const added = new Set(
+        events.filter((event) => event.seq > (seenMax.current ?? 0)).map((event) => event.seq),
+      );
+      seenMax.current = max;
+      setFresh(added);
+    }
+  }, [events]);
+  return fresh;
+}
 
 /** Material Symbols paths (960 grid) copied from artboard 08 — inline SVG only. */
 const ICON_PATHS = {
@@ -485,10 +514,12 @@ function EventRow({
   event,
   teams,
   highlight,
+  fresh,
 }: {
   event: LiveMatchEventDto;
   teams: TeamMap;
   highlight: boolean;
+  fresh: boolean;
 }) {
   const badge = badgeFor(event);
   const marker = sppMarkerFor(event);
@@ -519,7 +550,7 @@ function EventRow({
       data-kind={event.kind}
       className={`flex items-start gap-2.5 rounded-sm border p-2 ${
         highlight ? "border-red/30 bg-red/5" : "border-border bg-white"
-      }`}
+      } ${fresh ? "acta-motion-row-flash" : ""}`}
     >
       <span
         className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${badge.className}`}
@@ -538,7 +569,15 @@ function EventRow({
 }
 
 /** Compact icon + sentence row (closed cards, T4 style). */
-function CompactRow({ event, teams }: { event: LiveMatchEventDto; teams: TeamMap }) {
+function CompactRow({
+  event,
+  teams,
+  fresh,
+}: {
+  event: LiveMatchEventDto;
+  teams: TeamMap;
+  fresh: boolean;
+}) {
   // The victim is the subject on a casualty row; the acting player otherwise.
   const subjectId = event.kind === "casualty" ? victimIdOf(event) : event.playerRosterId;
   const team = event.side ? teams[event.side] : null;
@@ -559,7 +598,9 @@ function CompactRow({ event, teams }: { event: LiveMatchEventDto; teams: TeamMap
       data-testid="acta-event-row"
       data-kind={event.kind}
       data-compact="true"
-      className="flex items-start gap-2 border-b border-border pb-2 text-sm text-ink last:border-0 last:pb-0"
+      className={`flex items-start gap-2 border-b border-border pb-2 text-sm text-ink last:border-0 last:pb-0 ${
+        fresh ? "acta-motion-row-flash" : ""
+      }`}
     >
       <ActaIcon name={icon} className="mt-0.5 shrink-0 text-base text-slate" />
       <p className="min-w-0 flex-1">
@@ -640,7 +681,7 @@ function InjuryRollCallout({
   return (
     <div
       data-testid="acta-injury-callout"
-      className="space-y-2.5 rounded-sm border-2 border-red bg-panel p-3"
+      className="acta-motion-pulse-glow space-y-2.5 rounded-sm border-2 border-red bg-panel p-3"
     >
       <div className="flex items-center gap-1.5 text-red">
         <ActaIcon name="warning" className="text-lg" />
@@ -664,7 +705,10 @@ function InjuryRollCallout({
             onClick={() => setOpen((value) => !value)}
             className="flex w-full items-center justify-center gap-2 rounded bg-navy px-3 py-2.5 text-sm font-bold uppercase tracking-wider text-white hover:bg-navy-hover"
           >
-            <ActaIcon name="dice" className="text-lg" />
+            <ActaIcon
+              name="dice"
+              className={`text-lg ${open ? "acta-motion-dice-shake" : ""}`}
+            />
             <span>TIRAR 1D16 DE LESIÓN</span>
           </button>
           {open ? (
@@ -740,9 +784,10 @@ export function ActaTurnTimeline({
 }: ActaTurnTimelineProps) {
   const teams: TeamMap = { home: homeTeam, away: awayTeam };
   const cards = turnCardsOf(events, active);
+  const fresh = useFreshSeqs(events);
   return (
     <div data-testid="acta-turn-timeline" className="flex flex-col gap-3 px-4 py-3">
-      {cards.map((card) => {
+      {cards.map((card, index) => {
         const chip = STATE_CHIP[card.state];
         const teamLabel = card.actingSide ? teams[card.actingSide].name : "AMBOS EQUIPOS";
         const minuteAt = card.state === "live" ? now : card.minuteAt;
@@ -754,7 +799,7 @@ export function ActaTurnTimeline({
             data-half={card.half}
             data-turn={card.turnNumber}
             data-state={card.state}
-            className={`overflow-hidden rounded-sm border border-border border-l-4 bg-panel shadow-sm ${
+            className={`acta-motion-fade-in-up acta-motion-stagger-${Math.min(index + 1, 5)} overflow-hidden rounded-sm border border-border border-l-4 bg-panel shadow-sm ${
               card.state === "live" ? "border-l-red" : "border-l-navy"
             }`}
           >
@@ -779,13 +824,19 @@ export function ActaTurnTimeline({
               <div className="space-y-2.5 p-3">
                 {card.events.map((event) =>
                   card.state === "closed" ? (
-                    <CompactRow key={event.seq} event={event} teams={teams} />
+                    <CompactRow
+                      key={event.seq}
+                      event={event}
+                      teams={teams}
+                      fresh={fresh.has(event.seq)}
+                    />
                   ) : (
                     <EventRow
                       key={event.seq}
                       event={event}
                       teams={teams}
                       highlight={card.state === "live"}
+                      fresh={fresh.has(event.seq)}
                     />
                   ),
                 )}
