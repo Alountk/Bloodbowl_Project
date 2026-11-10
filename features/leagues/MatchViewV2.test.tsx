@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useSession } from "next-auth/react";
 import { UiFlagProvider } from "@/lib/ui-flag";
 import Page from "@/app/leagues/[id]/fixtures/[fixtureId]/page";
 import type { MatchDetail, LiveMatchView } from "./api";
@@ -39,6 +40,12 @@ vi.mock("next-auth/react", () => ({
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
+/** A minimal session stub the mocked `useSession` may return (typed via cast:
+ *  the factory mock only ever carries the fields the surfaces read). */
+function sessionStub(id: string) {
+  return { data: { user: { id } } } as unknown as ReturnType<typeof useSession>;
+}
 
 /** A pending fixture (no scheduled date, no live row) — the consent baseline. */
 function pendingDetail(): MatchDetail {
@@ -297,7 +304,12 @@ describe("MatchViewV2 core (slice 1 — skeleton on the legacy channel)", () => 
     // variant (MVA-5) — V1 keeps the legacy chip bar (same atom, no variant).
     expect(content).toContain("LiveActionDock");
     expect(content).toContain('variant="acta"');
-    expect(content).toContain("MatchResolveModal");
+    // Slice F (T5): the V2 closure is the ONE Acta closure surface (MAW-10);
+    // the legacy `MatchResolveModal`/`MatchActaWizard` duplication stays V1-only
+    // (it may be named in comments — never imported or rendered here).
+    expect(content).not.toMatch(/import[^\n]*MatchResolveModal|<MatchResolveModal\b/);
+    expect(content).toContain("ActaClosure");
+    expect(content).toContain("canCloseActa");
     expect(content).toContain("ResetLiveMatchModal");
     expect(content).toContain("buildMatchSummary");
     expect(content).toContain("buildSummaryFeedRows");
@@ -567,15 +579,37 @@ describe("MatchViewV2 full surface (slice 2, task 2.1 — consent/acta/timeline/
     expect(document.querySelector('[data-testid="summary-row"]')).toBeNull();
   });
 
-  it("finished unresolved: the resume banner opens the shared resolve modal", async () => {
+  it("finished unresolved: the closure banner opens the ONE Acta closure surface (MAW-10), never the resolve modal", async () => {
     const base = detailWithLive(liveRow({ status: "finished", finishedAt: 999_000 }));
     await mountV2Detail({ ...base, result: null });
 
-    const banner = await screen.findByTestId("ui-v2-match-resolve-banner");
-    expect(banner.textContent).toContain("Informar del fin del partido");
-    fireEvent.click(within(banner).getByRole("button", { name: "Reanudar" }));
+    const banner = await screen.findByTestId("ui-v2-match-closure-banner");
+    expect(banner.textContent).toContain("Cierre del acta");
+    fireEvent.click(within(banner).getByRole("button", { name: "Cerrar el acta" }));
 
-    expect(await screen.findByRole("dialog", { name: "Resolver partido" })).toBeTruthy();
+    // ONE surface: the derived-acta closure (missing data only), and the
+    // legacy resolve modal is gone from V2 (Slice F / MAW-10).
+    expect(await screen.findByTestId("acta-closure")).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Resolver partido" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Guardar acta" })).toBeTruthy();
+  });
+
+  it("finished unresolved: a non-playable viewer gets no closure CTA (MAW-1 visibility guard)", async () => {
+    vi.mocked(useSession).mockReturnValue(sessionStub("u9"));
+    try {
+      const base = detailWithLive(liveRow({ status: "finished", finishedAt: 999_000 }));
+      await mountV2Detail({ ...base, result: null });
+
+      // MAW-1: the primary action is hidden from a viewer that cannot load the
+      // result (neither captain nor admin) — and the closure surface never
+      // mounts (its own `canCloseActa` guard would deny it too). Neither the
+      // new closure banner nor the retired resolve-era banner renders.
+      expect(document.querySelector('[data-testid="ui-v2-match-closure-banner"]')).toBeNull();
+      expect(document.querySelector('[data-testid="ui-v2-match-resolve-banner"]')).toBeNull();
+      expect(document.querySelector('[data-testid="acta-closure"]')).toBeNull();
+    } finally {
+      vi.mocked(useSession).mockReturnValue(sessionStub("u1"));
+    }
   });
 
   it("share/reset bar parity: share POSTs /share and flips Copiado; reset confirms through the shared modal", async () => {
@@ -702,5 +736,35 @@ describe("Acta quick-capture dock (MVA-5 — T9 Slice C)", () => {
     // Never both vocabularies on the V2 surface (the legacy chips stay V1).
     expect(within(dockZone).queryByRole("button", { name: "Dar el turno" })).toBeNull();
     expect(within(dockZone).queryByRole("button", { name: "Touchdown" })).toBeNull();
+  });
+});
+
+/**
+ * T5 Slice F (MAW-10 — `openspec/changes/match-live-acta`): "retire the
+ * duplication" happens on the V2 surface ONLY (S4 constraint). On flag OFF the
+ * legacy `MatchResolveModal` / `MatchActaWizard` flow stays byte-identical, so
+ * the finished-live resume banner must still open the legacy resolve modal.
+ */
+describe("Slice F (T5) — V1 pins: legacy closure modals unchanged on flag OFF", () => {
+  it("flag OFF: the finished-live resume banner still opens the legacy MatchResolveModal (unchanged)", async () => {
+    const detail = { ...detailWithLive(liveRow({ status: "finished", finishedAt: 999_000 })), result: null };
+    await renderSeam(undefined, { status: 200, body: detail });
+
+    expect(await screen.findByText("Informar del fin del partido")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reanudar" }));
+
+    expect(await screen.findByRole("dialog", { name: "Resolver partido" })).toBeTruthy();
+    // The V2 closure surface never renders on V1 (never both).
+    expect(document.querySelector('[data-testid="acta-closure"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ui-v2-match-closure-banner"]')).toBeNull();
+  });
+
+  it("flag OFF: the V2 closure surface never mounts even on a finished unresolved fixture", async () => {
+    const detail = { ...detailWithLive(liveRow({ status: "finished", finishedAt: 999_000 })), result: null };
+    await renderSeam(undefined, { status: 200, body: detail });
+
+    expect(await screen.findByText("Informar del fin del partido")).toBeTruthy();
+    expect(document.querySelector('[data-testid^="ui-v2-match-"]')).toBeNull();
+    expect(document.querySelector('[data-testid="acta-closure"]')).toBeNull();
   });
 });

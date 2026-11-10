@@ -40,9 +40,9 @@ Spec source: `odd/tasks/match-report-redesign.md` (S1-S5). Design source: `desig
 
 ## Slice F — Unified closure (T5)
 
-- [ ] F1 Closure runs from the sheet; derived acta asks only missing data (casualty rolls, MVP, fans) — MAW-10.
-- [ ] F2 Retire the `MatchResolveModal` / `MatchActaWizard` duplication (guards preserved per MAW-1).
-- [ ] F3 Tests + focused verification.
+- [x] F1 Closure runs from the sheet; derived acta asks only missing data (casualty rolls, MVP, fans) — MAW-10.
+- [x] F2 Retire the `MatchResolveModal` / `MatchActaWizard` duplication (guards preserved per MAW-1).
+- [x] F3 Tests + focused verification.
 
 ## Slice G — Autosave (T6)
 
