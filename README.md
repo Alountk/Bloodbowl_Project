@@ -94,15 +94,17 @@ pnpm playground          # migrate + seed + dev (playground)
 
 See [docs/auth.md](./docs/auth.md) for the full detail. Summary:
 
-- The image is built and published to **GHCR** from GitHub Actions (push to `main`); CI publishes date-versioned tags and a weekly workflow prunes the 10 oldest images.
-- `docker-compose.yml`: `web` service (image `ghcr.io/<org>/bloodbowl_project:latest`) + `postgres` on a shared network.
-- The container entrypoint runs `prisma migrate deploy` before starting.
+- The image is built and published to **GHCR** from GitHub Actions (push to `main`); CI publishes date-versioned tags and a weekly workflow prunes the 10 oldest images. Two targets are published: `:latest` (web runner) and `:migrate` (Prisma CLI only).
+- `docker-compose.yml`: `web` service (image `ghcr.io/<org>/bloodbowl_project:latest`) + `postgres` on a shared network, plus a one-shot `migrate` service (image `...:migrate`).
+- Migrations run in the `migrate` service (`prisma migrate deploy`), one-shot, before `web` (`depends_on: service_completed_successfully`) — automatic on every `docker compose up -d`.
 - Environment variables: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `AUTH_MODE=auth`, `POSTGRES_PORT` (default 5433).
 
 ```bash
-docker compose pull web
-docker compose up -d --force-recreate web
+docker compose pull
+docker compose up -d
 ```
+
+> **Deploy change:** the old `docker compose pull web && docker compose up -d --force-recreate web` command is scoped to `web` and would skip the new `migrate` service (leaving the DB unmigrated). Always run the full stack as shown above.
 
 ---
 

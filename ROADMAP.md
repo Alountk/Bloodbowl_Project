@@ -145,6 +145,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Coverage tooling** | No hay `@vitest/coverage` instalado; añadir para gatear ramas. |
 | **Dependabot / renovate** | No configurado aún. |
 | **Observabilidad** | Ya hay logger estructurado + captura de 500s (#272) y envío de email (#273). Falta centralización externa (Sentry opcional) y alertas. |
+| **Endpoint de health** | `GET /api/health` público (sin auth, respuesta mínima) para el `HEALTHCHECK` del contenedor, el compose y sondeos externos de liveness/readiness — hoy no hay forma de saber si el contenedor responde sin provocar una ruta de negocio. |
 | **QA mobile manual** | La iteración mobile quedó con una tarea de QA manual (375px) pendiente de verificación en dispositivo real. |
 | **Refactor `enrichFixture`** | Deuda técnica de live-match (D7): la ruta GET de fixture importa `enrichFixture` desde `app/api/leagues/[id]/route.ts` (cast estructural porque `FixtureWithMatchday` no se exporta). Extraer a `lib/fixtures.ts` y exportar el tipo — refactor no bloqueante, verificado en verify-report. |
 | **Ticker de `liveHub` sin parar** | `stopTicking` no tiene ningún llamador en producción y `channels` nunca se borra: queda un `setInterval` de 1s por fixture que haya jugado, para la vida del proceso, emitiendo frames que el cliente descarta (el reloj se deriva en local). |
@@ -193,6 +194,6 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 
 ## Notas de deploy
 
-- Cada merge a `main` reconstruye y publica la imagen en GHCR (GitHub Actions); los tags llevan fecha legible y un workflow semanal limpia las 10 imágenes más antiguas.
-- Las migraciones de Prisma se aplican solas en el contenedor (`prisma migrate deploy`).
-- En Arcane: mantener el contenedor al día con `docker compose pull web && docker compose up -d --force-recreate web` (los bugs "ya corregidos" que persisten suelen ser imagen vieja).
+- Cada merge a `main` reconstruye y publica la imagen en GHCR (GitHub Actions); los tags llevan fecha legible y un workflow semanal limpia las 10 imágenes más antiguas. Se publican DOS tags: `:latest` (runner) y `:migrate` (migraciones).
+- **Cambio de operativa (palanca A)**: las migraciones de Prisma ya NO las ejecuta el contenedor `web`. Ahora hay un servicio one-shot `migrate` (imagen `:migrate`, `prisma migrate deploy`) que compose ejecuta antes que `web` (`depends_on: service_completed_successfully`), así que siguen siendo automáticas con `docker compose up -d`.
+- En Arcane: mantener el contenedor al día con `docker compose pull && docker compose up -d` (sin scoping a `web`). Ojo: el comando antiguo `docker compose pull web && docker compose up -d --force-recreate web` YA NO SIRVE tal cual — al scoping a `web` se saltaría el nuevo servicio `migrate` y la base quedaría sin migrar (los bugs "ya corregidos" que persisten suelen ser imagen vieja; ahora también conviene comprobar que `migrate` corrió).

@@ -95,13 +95,13 @@ pnpm playground          # migrate + seed + dev (playground)
 Ver [docs/auth.md](./docs/auth.md) para el detalle completo. Resumen:
 
 - La imagen se construye y publica en **GHCR** desde GitHub Actions (push a `main`); la CI publica tags versionados por fecha y un workflow semanal limpia las 10 imágenes más antiguas.
-- `docker-compose.yml`: servicio `web` (imagen `ghcr.io/<org>/bloodbowl_project:latest`) + `postgres` en red compartida.
-- El entrypoint del contenedor aplica `prisma migrate deploy` antes de arrancar.
+- `docker-compose.yml`: servicio `web` (imagen `ghcr.io/<org>/bloodbowl_project:latest`) + servicio one-shot `migrate` (tag `:migrate`) + `postgres` en red compartida.
+- El servicio `migrate` aplica `prisma migrate deploy` antes de arrancar `web` (`depends_on`); el runner ya no lleva el CLI de Prisma.
 - Variables de entorno: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `AUTH_MODE=auth`, `POSTGRES_PORT` (default 5433).
 
 ```bash
-docker compose pull web
-docker compose up -d --force-recreate web
+docker compose pull
+docker compose up -d
 ```
 
 ---
