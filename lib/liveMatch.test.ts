@@ -16,6 +16,8 @@ import {
   isDisplayEvent,
   isTurnReason,
   parseResolutionState,
+  resolutionBegun,
+  resolutionSideBegun,
   EMPTY_RESOLUTION_STATE,
   type LiveMatchState,
   type LiveMatchTransitionEvent,
@@ -722,5 +724,36 @@ describe("parseResolutionState — the per-side resolution wizard cursor (additi
     });
     expect(parsed.home.step).toBe("done");
     expect(parsed.away).toEqual(EMPTY_RESOLUTION_STATE.away);
+  });
+});
+
+describe("resolutionBegun — the legacy wizard-progress signal (slice F fix C)", () => {
+  it("is false for a pristine cursor (the V2-closure baseline: nothing begun)", () => {
+    expect(resolutionBegun(EMPTY_RESOLUTION_STATE)).toBe(false);
+    expect(resolutionBegun(parseResolutionState(null))).toBe(false);
+  });
+
+  it("is true the moment either side takes step ≥ 1 or sets any wizard flag/roll", () => {
+    // `resolutionWinningsSeen` moved home to "fans".
+    expect(
+      resolutionBegun({
+        ...EMPTY_RESOLUTION_STATE,
+        home: { ...EMPTY_RESOLUTION_STATE.home, step: "fans" },
+      }),
+    ).toBe(true);
+    // A done-flag counts even on a stale "winnings" cursor.
+    expect(
+      resolutionBegun({
+        ...EMPTY_RESOLUTION_STATE,
+        away: { ...EMPTY_RESOLUTION_STATE.away, casualtiesDone: true },
+      }),
+    ).toBe(true);
+    // So does a persisted fan roll.
+    expect(
+      resolutionSideBegun({
+        ...EMPTY_RESOLUTION_STATE.home,
+        fans: { roll: 4, before: 1, after: 2, direction: "up" },
+      }),
+    ).toBe(true);
   });
 });

@@ -42,6 +42,20 @@ import {
   type CoachingStaff,
   type PlayerEntry,
 } from "@/features/teams/types";
+import { parseResolutionState, resolutionBegun } from "@/lib/liveMatch";
+
+/**
+ * Sentinel thrown inside the result `$transaction` when the legacy per-side
+ * resolution wizard has already BEGUN for the fixture (slice F fix C): its
+ * steps commit incremental mutations (treasury +winnings, dedicatedFans,
+ * injuries[] appends) that a result load would double-apply. Mapped to a 409
+ * (never a 500, never a partial write — the throw aborts the transaction).
+ */
+class ResolutionStartedError extends Error {
+  constructor() {
+    super("match resolution already started");
+  }
+}
 
 interface TeamResultBody {
   score: number;
@@ -532,6 +546,25 @@ export async function POST(
   let updated;
   try {
     updated = await prisma.$transaction(async (tx) => {
+      // Slice F fix C: the legacy per-side resolution wizard (RAU-52) commits
+      // INCREMENTAL, already-applied mutations per side — treasury +winnings
+      // (`resolutionWinningsSeen`), dedicatedFans (`resolutionFanRoll`),
+      // injuries[] appends (`resolutionCasualtiesDone`) — guarded only by its
+      // own in-tx `matchResult` check. Once ANY side has taken wizard step ≥ 1,
+      // this load would pass the outer already-reported pre-check and
+      // DOUBLE-APPLY them. The wizard-progress cursor is therefore re-read HERE
+      // — inside this transaction, never as a read-then-write outside it — and
+      // a begun wizard rejects with 409 before any mutation. (The reverse order
+      // is safe: the wizard's own `matchResult` guard 409s after this commit.)
+      if (fixture.liveMatch) {
+        const progress = await tx.liveMatch.findUnique({
+          where: { id: fixture.liveMatch.id },
+          select: { resolutionState: true },
+        });
+        if (resolutionBegun(parseResolutionState(progress?.resolutionState ?? null))) {
+          throw new ResolutionStartedError();
+        }
+      }
       // D20/LM-mvp: a fixture with a LiveMatch appends the home+away MJP grantee
       // `mvp` events to that LiveMatch's event list INSIDE this transaction. The
       // next seq is read as max(seq) in-tx and the row seq is bumped, so two
@@ -647,6 +680,14 @@ export async function POST(
       return report;
     });
   } catch (error) {
+    // Slice F fix C: the legacy resolution wizard already began — reject with
+    // 409 and NO mutation (the transaction aborted at the guard).
+    if (error instanceof ResolutionStartedError) {
+      return NextResponse.json(
+        { error: "Match resolution already in progress" },
+        { status: 409 },
+      );
+    }
     // D20: a concurrent double-submit trips `@@unique([liveMatchId, seq])`
     // (Prisma P2002) inside the transaction — map it to a 409 so no duplicate
     // mvp write ever persists.

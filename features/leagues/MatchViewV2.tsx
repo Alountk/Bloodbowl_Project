@@ -20,7 +20,7 @@ import { useLeague, type LeagueAccess } from "./useLeagueName";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { LiveActionDock } from "./liveActionDock";
-import { MatchResolveModal } from "./MatchResolveModal";
+import { ActaClosure, canCloseActa, type ActaClosureViewer } from "./actaClosure";
 import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
 import {
   buildMatchSummary,
@@ -45,9 +45,13 @@ interface MatchViewV2Props {
  * — supersedes the v4 event feed MVT-1/MVT-4 on this surface), the
  * shared `LiveActionDock` atom behind the Acta quick-capture variant (MVA-5,
  * artboard 08 dock; V1 keeps the legacy chip bar) and the
- * shared modals (`MatchResolveModal`, `ResetLiveMatchModal`) — and mirrors the
+ * shared `ResetLiveMatchModal` — and mirrors the
  * legacy state dispatch (pending/ready consent → live acta → finished summary,
- * walkover, reported sections) with `ui-v2-match-*` markers. No direct network
+ * walkover, reported sections) with `ui-v2-match-*` markers. Slice F (T5,
+ * MAW-10): the finished-live closure is the ONE `ActaClosure` surface (derived
+ * acta → missing data only → `submitResult`), so this surface never invokes
+ * `MatchResolveModal`/`MatchActaWizard` — that duplication stays V1-only.
+ * No direct network
  * calls here: the endpoint lives only in `features/leagues/api.ts`, which
  * legacy itself imports (presentation-only).
  */
@@ -84,28 +88,6 @@ function emptyPendingView(): LiveMatchViewState {
 /** ES coins format (mirror of MatchView's formatCoins). */
 function formatCoins(value: number): string {
   return value.toLocaleString("es-ES");
-}
-
-/** Resolution wizard step → i18n key (mirror of MatchView's helper). */
-function resolutionStepKey(step: string): string {
-  switch (step) {
-    case "winnings":
-      return "match.resolve.stepWinnings";
-    case "fans":
-      return "match.resolve.stepFans";
-    case "mvp":
-      return "match.resolve.stepMvp";
-    case "mvp-done":
-      return "match.resolve.stepMvpDone";
-    case "casualties":
-      return "match.resolve.stepCasualties";
-    case "journeymen":
-      return "match.resolve.stepJourneymen";
-    case "done":
-      return "match.resolve.stepDone";
-    default:
-      return "match.resolve.stepUnknown";
-  }
 }
 
 /** Clipboard copy (mirror of MatchView's helper): async API with a hidden-
@@ -589,35 +571,36 @@ function ActiveMatchBody({
   );
 }
 
-/** The finished state — summary rows + resume banner + shared resolve modal. */
+/** The finished state — summary rows + the ONE Acta closure surface (MAW-10). */
 function FinishedMatchBody({
   detail,
   league,
   viewerSide,
+  viewer,
+  canClose,
   onRefresh,
-  resolveOpen,
-  onResolve,
-  onResolveClose,
+  closureOpen,
+  onOpenClosure,
+  onCloseClosure,
 }: {
   detail: MatchDetail;
   league: LeagueAccess;
   viewerSide: "home" | "away" | null;
+  /** The session snapshot the MAW-1 actor guard mirrors (display only). */
+  viewer: ActaClosureViewer;
+  /** MAW-1 mirror (`canCloseActa`): only a playable viewer may close. */
+  canClose: boolean;
   onRefresh: () => Promise<void>;
-  resolveOpen: boolean;
-  onResolve: () => void;
-  onResolveClose: () => void;
+  closureOpen: boolean;
+  onOpenClosure: () => void;
+  onCloseClosure: () => void;
 }) {
-  const { t } = useI18n();
   const live = detail.live;
   // The parent only mounts this zone with a live row, so the fallback shape
   // never renders (kept as a defensive guard).
   if (live == null) return null;
   const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
   const rows = buildSummaryFeedRows(detail);
-  const ownStep = viewerSide
-    ? (live.resolutionState?.[viewerSide]?.step ?? "winnings")
-    : (live.resolutionState?.home?.step ?? "winnings");
-  const stepLabel = t(resolutionStepKey(ownStep));
 
   return (
     <>
@@ -643,24 +626,28 @@ function FinishedMatchBody({
         weather={detail.result?.weather ?? null}
         casualtyTurns={casualtyTurnsOf(live.events, live.half)}
       />
-      {detail.result == null ? (
+      {detail.result == null && canClose ? (
         <div
-          data-testid="ui-v2-match-resolve-banner"
+          data-testid="ui-v2-match-closure-banner"
           className="flex flex-wrap items-center justify-between gap-3 border-b border-red bg-background px-3.5 py-2"
         >
           <div className="min-w-0">
-            <p className="text-sm font-bold text-navy">{t("match.resolve.resumeTitle")}</p>
-            <p className="text-xs text-slate-600">{t("match.resolve.resumeHint")}</p>
-            <p className="mt-0.5 text-xs font-semibold text-slate-500">
-              {t("match.resolve.resumeStep", { step: stepLabel })}
+            {/* Slice F (T5): closure copy is Spanish by convention (the
+                creation/closure sections are; i18n keys land with the
+                dictionary seam). The banner IS the MAW-1 primary action:
+                hidden from a viewer that cannot load the result. */}
+            <p className="text-sm font-bold text-navy">Cierre del acta</p>
+            <p className="text-xs text-slate-600">
+              El acta se deriva de la captura en vivo. Revisa y completa solo
+              los datos pendientes para cerrar el partido.
             </p>
           </div>
           <button
             type="button"
-            onClick={onResolve}
+            onClick={onOpenClosure}
             className="rounded-sm bg-navy px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-hover"
           >
-            {t("match.resolve.resumeAction")}
+            Cerrar el acta
           </button>
         </div>
       ) : null}
@@ -684,12 +671,17 @@ function FinishedMatchBody({
           viewerSide={viewerSide}
         />
       </div>
-      {resolveOpen ? (
-        <MatchResolveModal
-          open={resolveOpen}
+      {/* Slice F (T5): ONE closure surface inside the sheet (MAW-10) — the
+          derived acta asks only the missing data and submits through the
+          existing acta/result path. The V1-only `MatchResolveModal` duplication
+          is retired on this surface. */}
+      {closureOpen && canClose ? (
+        <ActaClosure
           detail={detail}
-          onClose={onResolveClose}
-          onNominated={onRefresh}
+          league={league}
+          viewer={viewer}
+          onClose={onCloseClosure}
+          onSubmitted={onRefresh}
         />
       ) : null}
     </>
@@ -708,7 +700,7 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
   const [notFound, setNotFound] = useState(false);
   const [shareState, setShareState] = useState<"idle" | "copying" | "copied" | "error">("idle");
   const [resetOpen, setResetOpen] = useState(false);
-  const [resolveOpen, setResolveOpen] = useState(false);
+  const [closureOpen, setClosureOpen] = useState(false);
   const league = useLeague(leagueId);
 
   const refresh = useCallback(async () => {
@@ -755,15 +747,17 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
     };
   }, [leagueId, fixtureId, t]);
 
-  // RAU-49: auto-open the resolution flow once when the match TRANSITIONS to
+  // RAU-49: auto-open the closure flow once when the match TRANSITIONS to
   // finished via refresh (a page load that starts finished shows the banner).
+  // The mount is still gated by the MAW-1 guard below (never for a viewer that
+  // cannot load the result).
   const prevLiveStatusRef = useRef<string | null>(null);
   useEffect(() => {
     const liveStatus = detail?.live?.status ?? null;
     const prev = prevLiveStatusRef.current;
     prevLiveStatusRef.current = liveStatus;
     if (liveStatus === "finished" && prev != null && prev !== "finished") {
-      setResolveOpen(true);
+      setClosureOpen(true);
     }
   }, [detail?.live?.status]);
 
@@ -813,6 +807,14 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
           ? "away"
           : null;
   const sessionUser = session?.user;
+  // Slice F (T5): the MAW-1 actor/lifecycle guards for the closure request
+  // (`canCloseActa` mirrors MatchCard's `canLoadResult` — display only, the
+  // server re-validates every clause on POST /result).
+  const viewer: ActaClosureViewer = {
+    id: sessionUser?.id ?? null,
+    role: sessionUser?.role ?? null,
+  };
+  const canClose = canCloseActa(detail, league, viewer);
   const canShare =
     sessionUser?.id != null &&
     (viewerSide != null || league.ownerId === sessionUser.id || can(sessionUser.role, "live.manage"));
@@ -848,11 +850,13 @@ export function MatchViewV2({ leagueId, fixtureId }: MatchViewV2Props) {
         <FinishedMatchBody
           detail={detail}
           viewerSide={viewerSide}
+          viewer={viewer}
+          canClose={canClose}
           league={league}
           onRefresh={refresh}
-          resolveOpen={resolveOpen}
-          onResolve={() => setResolveOpen(true)}
-          onResolveClose={() => setResolveOpen(false)}
+          closureOpen={closureOpen}
+          onOpenClosure={() => setClosureOpen(true)}
+          onCloseClosure={() => setClosureOpen(false)}
         />
       );
     } else {

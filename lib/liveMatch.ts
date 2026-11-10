@@ -250,6 +250,30 @@ export const EMPTY_RESOLUTION_STATE: ResolutionState = {
 };
 
 /**
+ * True when ONE side has begun the legacy per-side resolution wizard (RAU-52):
+ * any cursor step past "winnings" or any set done-flag/roll. The wizard's
+ * commands commit INCREMENTAL, already-applied mutations per side (treasury
+ * +winnings, dedicatedFans, injuries[] appends), so "begun" is the signal the
+ * result load must refuse on (a load after it would double-apply them).
+ */
+export function resolutionSideBegun(side: ResolutionSideState): boolean {
+  return (
+    side.step !== "winnings" ||
+    side.fansDone ||
+    side.fans != null ||
+    side.mvpConfirmed ||
+    side.mvpRolled ||
+    side.casualtiesDone ||
+    side.journeymenDone
+  );
+}
+
+/** True when EITHER side has begun the legacy per-side resolution wizard. */
+export function resolutionBegun(state: ResolutionState): boolean {
+  return resolutionSideBegun(state.home) || resolutionSideBegun(state.away);
+}
+
+/**
  * Defensively parses a persisted `resolutionState` JSON value (additive): a
  * malformed or legacy shape (missing the wizard) collapses EACH side to the
  * empty per-side state (never crash). A side with partial progress keeps it.

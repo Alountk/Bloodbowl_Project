@@ -9,7 +9,7 @@ const prismaMock = vi.hoisted(() => ({
   matchResultCorrection: { create: vi.fn() },
   team: { update: vi.fn(), updateMany: vi.fn() },
   liveEvent: { aggregate: vi.fn(), createMany: vi.fn() },
-  liveMatch: { updateMany: vi.fn() },
+  liveMatch: { updateMany: vi.fn(), findUnique: vi.fn() },
   player: { createMany: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   league: { findUnique: vi.fn(), update: vi.fn() },
   $transaction: vi.fn(),
@@ -78,6 +78,10 @@ function buildFixture(overrides: Record<string, unknown> = {}) {
 }
 
 function stubTransaction() {
+  // Slice F fix C: every test starts with a wizard cursor that has NOT begun
+  // (null/empty `resolutionState` — the V2-closure baseline); the interleave
+  // tests override it per test.
+  prismaMock.liveMatch.findUnique.mockResolvedValue({ resolutionState: null });
   prismaMock.$transaction.mockImplementation(
     async (cb: (tx: Record<string, unknown>) => Promise<unknown>) => {
       const data = {
@@ -94,7 +98,7 @@ function stubTransaction() {
           aggregate: prismaMock.liveEvent.aggregate,
           createMany: prismaMock.liveEvent.createMany,
         },
-        liveMatch: { updateMany: prismaMock.liveMatch.updateMany },
+        liveMatch: { updateMany: prismaMock.liveMatch.updateMany, findUnique: prismaMock.liveMatch.findUnique },
         player: { findMany: prismaMock.player.findMany, updateMany: prismaMock.player.updateMany },
         league: { findUnique: prismaMock.league.findUnique, update: prismaMock.league.update },
       };
@@ -1835,5 +1839,135 @@ describe("POST /api/.../[fixtureId]/result — sparse roll payloads keep positio
       attribute: "ag",
     });
     expect(randomMock.rollD6).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Slice F fix C (verifier blocker): the legacy per-side resolution wizard
+ * commits INCREMENTAL mutations per side — treasury +winnings
+ * (`resolutionWinningsSeen`), dedicatedFans (`resolutionFanRoll`), injuries[]
+ * appends (`resolutionCasualtiesDone`) — guarded only by its own in-tx
+ * `matchResult` check. Once ANY side has taken wizard step ≥ 1, a result load
+ * would pass the outer already-reported pre-check and DOUBLE-APPLY them, so
+ * `POST /result` must reject with 409 and NO mutation. The wizard-progress
+ * cursor (`LiveMatch.resolutionState`) is re-read INSIDE the result
+ * `$transaction` — never as a read-then-write outside it. The reverse order
+ * stays safe through the wizard's own in-tx `matchResult` guard (pin:
+ * `lib/liveStore.wizard.test.ts` "rejects a finished match that is already
+ * resolved (409)").
+ */
+describe("POST /api/.../[fixtureId]/result — legacy resolution-wizard interleave guard (slice F fix C)", () => {
+  const wizardEmptySide = {
+    step: "winnings",
+    fansDone: false,
+    fans: null,
+    mvpConfirmed: false,
+    mvpRolled: false,
+    casualtiesDone: false,
+    journeymenDone: false,
+  };
+  /** The cursor right after `resolutionWinningsSeen` moved home to "fans". */
+  const wizardBegunState = {
+    home: { ...wizardEmptySide, step: "fans" },
+    away: { ...wizardEmptySide },
+  };
+
+  function fixtureWithLiveMatch(overrides: Record<string, unknown> = {}) {
+    return buildFixture({
+      liveMatch: {
+        id: "lm-1",
+        half: 2,
+        turnNumber: 8,
+        finishedAt: new Date("2026-01-15T12:00:00.000Z"),
+        ...overrides,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubTransaction();
+    requirePermissionMock.mockResolvedValue({ ok: false, status: 403, error: "Forbidden" });
+    prismaMock.fixture.update.mockResolvedValue({ id: "f1" });
+    prismaMock.matchResult.create.mockResolvedValue({ id: "r1" });
+    prismaMock.player.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.league.findUnique.mockResolvedValue({ status: "started" });
+    prismaMock.fixture.findMany.mockResolvedValue([]);
+  });
+
+  it("rejects the result load once the legacy wizard committed step ≥ 1 (409, treasury/injuries[] unchanged)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(fixtureWithLiveMatch());
+    // `resolutionWinningsSeen` ran: home is at step "fans" and its treasury
+    // winnings are already collected — the wizard HAS begun.
+    prismaMock.liveMatch.findUnique.mockResolvedValue({ resolutionState: wizardBegunState });
+
+    const res = await callRoute("POST", validBody);
+
+    expect(res.status).toBe(409);
+    // No mutation of ANY kind (mirrors the existing 409 no-re-award pins):
+    // no report, no scores, no treasury, no PE, no injuries[], no live writes.
+    expect(prismaMock.matchResult.create).not.toHaveBeenCalled();
+    expect(prismaMock.fixture.update).not.toHaveBeenCalled();
+    expect(prismaMock.team.update).not.toHaveBeenCalled();
+    expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.player.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.player.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.liveEvent.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.liveMatch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects on ANY begun side / later step (triangulate: away deep in the wizard with applied fans + injuries)", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(fixtureWithLiveMatch());
+    prismaMock.liveMatch.findUnique.mockResolvedValue({
+      resolutionState: {
+        home: { ...wizardEmptySide },
+        away: {
+          ...wizardEmptySide,
+          step: "casualties",
+          fansDone: true,
+          fans: { roll: 4, before: 1, after: 2, direction: "up" },
+          mvpConfirmed: true,
+          mvpRolled: true,
+          casualtiesDone: true,
+        },
+      },
+    });
+
+    const res = await callRoute("POST", validBody);
+
+    expect(res.status).toBe(409);
+    expect(prismaMock.matchResult.create).not.toHaveBeenCalled();
+    expect(prismaMock.team.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.player.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("the legitimate V2 closure (wizard never began) still loads; the cursor is read through the TX handle", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-admin" } });
+    prismaMock.fixture.findFirst.mockResolvedValue(fixtureWithLiveMatch());
+    stubFixedRolls();
+
+    const res = await callRoute("POST", validBody);
+
+    expect(res.status).toBe(200);
+    // The wizard-progress cursor is read through the tx handle inside the ONE
+    // result transaction (atomic with the writes it guards).
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.liveMatch.findUnique).toHaveBeenCalledTimes(1);
+    expect(prismaMock.matchResult.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("source pin: the wizard-progress guard reads through `tx.liveMatch`, never as a read-then-write outside the transaction", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const dir = path.dirname(fileURLToPath(import.meta.url));
+    const content = readFileSync(path.join(dir, "route.ts"), "utf8");
+
+    expect(content).toContain("tx.liveMatch.findUnique");
+    expect(content).not.toMatch(/prisma\.liveMatch\.findUnique/);
+    // The rejection is a 409 (never a silent pass or a 500).
+    expect(content).toMatch(/ResolutionStartedError[\s\S]{0,400}status: 409/);
   });
 });
