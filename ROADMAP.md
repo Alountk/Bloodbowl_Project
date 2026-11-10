@@ -145,6 +145,7 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 | **Coverage tooling** | No hay `@vitest/coverage` instalado; añadir para gatear ramas. |
 | **Dependabot / renovate** | No configurado aún. |
 | **Observabilidad** | Ya hay logger estructurado + captura de 500s (#272) y envío de email (#273). Falta centralización externa (Sentry opcional) y alertas. |
+| **Endpoint de health** | `GET /api/health` público (sin auth, respuesta mínima) para el `HEALTHCHECK` del contenedor, el compose y sondeos externos de liveness/readiness — hoy no hay forma de saber si el contenedor responde sin provocar una ruta de negocio. |
 | **QA mobile manual** | La iteración mobile quedó con una tarea de QA manual (375px) pendiente de verificación en dispositivo real. |
 | **Refactor `enrichFixture`** | Deuda técnica de live-match (D7): la ruta GET de fixture importa `enrichFixture` desde `app/api/leagues/[id]/route.ts` (cast estructural porque `FixtureWithMatchday` no se exporta). Extraer a `lib/fixtures.ts` y exportar el tipo — refactor no bloqueante, verificado en verify-report. |
 | **Ticker de `liveHub` sin parar** | `stopTicking` no tiene ningún llamador en producción y `channels` nunca se borra: queda un `setInterval` de 1s por fixture que haya jugado, para la vida del proceso, emitiendo frames que el cliente descarta (el reloj se deriva en local). |
