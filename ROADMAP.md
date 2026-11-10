@@ -194,6 +194,6 @@ Histórico de lo implementado, bugs resueltos y trabajo pendiente. Cada entrada 
 
 ## Notas de deploy
 
-- Cada merge a `main` reconstruye y publica la imagen en GHCR (GitHub Actions); los tags llevan fecha legible y un workflow semanal limpia las 10 imágenes más antiguas.
-- Las migraciones de Prisma se aplican solas en el contenedor (`prisma migrate deploy`).
-- En Arcane: mantener el contenedor al día con `docker compose pull web && docker compose up -d --force-recreate web` (los bugs "ya corregidos" que persisten suelen ser imagen vieja).
+- Cada merge a `main` reconstruye y publica la imagen en GHCR (GitHub Actions); los tags llevan fecha legible y un workflow semanal limpia las 10 imágenes más antiguas. Se publican DOS tags: `:latest` (runner) y `:migrate` (migraciones).
+- **Cambio de operativa (palanca A)**: las migraciones de Prisma ya NO las ejecuta el contenedor `web`. Ahora hay un servicio one-shot `migrate` (imagen `:migrate`, `prisma migrate deploy`) que compose ejecuta antes que `web` (`depends_on: service_completed_successfully`), así que siguen siendo automáticas con `docker compose up -d`.
+- En Arcane: mantener el contenedor al día con `docker compose pull && docker compose up -d` (sin scoping a `web`). Ojo: el comando antiguo `docker compose pull web && docker compose up -d --force-recreate web` YA NO SIRVE tal cual — al scoping a `web` se saltaría el nuevo servicio `migrate` y la base quedaría sin migrar (los bugs "ya corregidos" que persisten suelen ser imagen vieja; ahora también conviene comprobar que `migrate` corrió).

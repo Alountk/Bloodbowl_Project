@@ -1,8 +1,10 @@
 # Blood Bowl Web — runs the latest published image from GHCR.
 # Usage: docker compose up -d
 # `pull_policy: always` ensures every up pulls the newest `latest` image.
+# The stack has three services: `migrate` (one-shot `prisma migrate deploy`,
+# tag `:migrate`) runs to completion before `web` starts, then `postgres`.
 #
-# Connectivity: BOTH services live in this stack and share `arcane_net`, so the
+# Connectivity: ALL services live in this stack and share `arcane_net`, so the
 # web reaches postgres by its SERVICE NAME — no host hop, no published port
 # involved, and no dependency on how the host resolves `host.docker.internal`
 # (on a Linux Engine that alias is a bridge address, which cannot reach a
@@ -10,6 +12,24 @@
 # `extra_hosts` below stays as the escape hatch for a DATABASE_URL override that
 # deliberately targets the host instead.
 services:
+  # One-shot migrations (palanca A): `prisma migrate deploy` against the same
+  # DATABASE_URL as `web`, then exits 0. `restart: "no"` + `web.depends_on:
+  # condition: service_completed_successfully` means `docker compose up -d`
+  # always runs migrations before the server — the flow the runner entrypoint
+  # used to own, now without shipping the Prisma CLI in the runtime image.
+  migrate:
+    image: ghcr.io/alountk/bloodbowl_project:migrate
+    pull_policy: always
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Same connection string and override semantics as `web` below.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://bloodbowl:bloodbowl@postgres:5432/bloodbowl?schema=public}
+    networks:
+      - arcane_net
+
   web:
     image: ghcr.io/alountk/bloodbowl_project:latest
     pull_policy: always
@@ -21,6 +41,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Migrations run first, in the dedicated one-shot `migrate` image. The
+      # `service_completed_successfully` condition keeps migrations automatic:
+      # a plain `docker compose up -d` applies them before the server starts.
+      migrate:
+        condition: service_completed_successfully
     environment:
       # Full control from the environment: set DATABASE_URL in the .env when you
       # need a custom connection string. Unset, it falls back to the `postgres`

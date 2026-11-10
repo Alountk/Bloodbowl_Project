@@ -21,7 +21,7 @@ assignees: ""
 - [ ] Local (`pnpm dev`, http://localhost:3000)
 - [ ] Producción (Arcane / LAN) — **si marcás esto, verificá que el contenedor use la imagen `latest`**
 
-**Si solo pasa en producción:** probá `docker compose pull web && docker compose up -d --force-recreate web` antes de reportar (muchos bugs "persistentes" son imagen vieja).
+**Si solo pasa en producción:** probá `docker compose pull && docker compose up -d` antes de reportar (muchos bugs "persistentes" son imagen vieja; ojo: el comando va completo — uno `web`-scoped salta el servicio `migrate`).
 
 ## Comportamiento
 

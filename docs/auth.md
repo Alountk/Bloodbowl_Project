@@ -69,9 +69,10 @@ pnpm prisma migrate dev      # creates/checks a dev migration against a local DB
 ```
 
 - `pnpm db:generate` regenerates the Prisma client (`prisma generate`).
-- `pnpm db:migrate` runs `prisma migrate deploy` (the CI/deploy entrypoint).
-- The Docker image already runs `prisma migrate deploy` before starting the
-  server (`docker-entrypoint.sh`), so a fresh PG volume gets the schema.
+- `pnpm db:migrate` runs `prisma migrate deploy` (the CI/deploy wrapper).
+- The one-shot `migrate` compose service runs `prisma migrate deploy` before
+  `web` starts (`depends_on: service_completed_successfully`), so a fresh PG
+  volume gets the schema; the runner image no longer carries the Prisma CLI.
 
 ## Legacy localStorage migration
 
@@ -112,22 +113,23 @@ The default `pnpm run test:e2e` is unchanged and stays anonymous (`local`).
   `AUTH_SECRET`, and `AUTH_TRUST_HOST` into the `web` service (see
   `docker-compose.yml`). Without Postgres the auth signup/login/team APIs will
   not work.
-- Ensure the container entrypoint runs `prisma migrate deploy` before the server
-  accepts traffic (already in `docker-entrypoint.sh`); for an existing database,
-  run `pnpm prisma migrate deploy` against it during the rollout.
+- Ensure migrations run before the server accepts traffic (compose `migrate`
+  service, gated by `web.depends_on`); for an existing database, run
+  `pnpm prisma migrate deploy` against it during the rollout.
 - Set `AUTH_MODE=auth` in production and do **not** ship `local` — together
   with `RESEND_API_KEY` and `MAIL_FROM` set (see Environment variables above;
   auth mode cannot activate accounts without real mail delivery).
-- Confirm the runner/entrypoint runs migrations — either the image entrypoint or
-  an explicit deploy-invoked `pnpm prisma migrate deploy` (see the Open Question
-  in `design.md`).
+- Confirm the compose `migrate` service ran before `web` started (`web.depends_on`
+  gates it via `service_completed_successfully`) — the runner entrypoint no
+  longer runs migrations (see the Open Question in `design.md`).
 
 ### Deploy automation (webhook → Arcane)
 
 - A GitHub repo webhook (`web`) points at
   `https://arcane.androemda-surf.uk/api/webhooks/trigger/arc_wh_...` and fires
   on every push to `main`. The Arcane trigger must run
-  `docker compose pull web && docker compose up -d --force-recreate web`.
+  `docker compose pull && docker compose up -d` (full stack: `migrate` must run
+  before `web`, so a `web`-scoped command would skip migrations).
 - The `pull` step is **mandatory**: `up -d` alone can reuse a locally cached
   image, so a freshly published `latest` is missed until a manual pull. This
   caused a stale-image bug (old slug error kept running after the fix merged).
@@ -138,4 +140,5 @@ The default `pnpm run test:e2e` is unchanged and stays anonymous (`local`).
   `latest`, reference `ghcr.io/alountk/bloodbowl_project:<YYYY.MM.DD>-<n>`
   in `docker-compose.yml`.
 - If a "fixed" bug still reproduces in production, first check the running
-  image is current: `docker compose pull web && docker compose up -d --force-recreate web`.
+  image is current: `docker compose pull && docker compose up -d` (a `web`-scoped
+  command skips the `migrate` service).
