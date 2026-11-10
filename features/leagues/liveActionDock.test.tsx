@@ -284,3 +284,172 @@ describe("LiveActionDock — bottom 'Dar el turno' + reason modal (MVT-7/LM-28)"
     expect(dockAction(/Dar el turno/i)).toBeTruthy();
   });
 });
+
+/* -------------------------------------------------------------------------
+ * T9 Slice C (MVA-5 · `openspec/changes/match-live-acta`): the Acta en Vivo
+ * QUICK-CAPTURE dock (artboard 08 "FIXED BOTTOM QUICK-CAPTURE ACTION DOCK").
+ * The `variant="acta"` bar is a restyle over the SAME command machinery — the
+ * guided sheets (`live-action-modal` + pools + `RollStepper`) and the
+ * `liveActionEntry` builders fire exactly as the legacy dock does.
+ * Rules pinned here:
+ *  - C1: the five artboard actions render (icon + uppercase label): + TD,
+ *    + Pase, + Baja, + Evento, Fin Turno (high-contrast red), 5-col grid.
+ *  - C2: every action drives the EXISTING command through the existing sheet
+ *    (td / completion / foul / casualty / endTurn — nothing new).
+ *  - INTEGRITY (Slice B verification L12): "+ Baja" opens the ROLL-INCLUSIVE
+ *    guided casualty entry — no casualty command may ever fire without its
+ *    roll16 (+1D6 on the permanent band), so `deriveTeamStats` never
+ *    double-counts one victim. Never a roll-less casualty command.
+ *  - V1 unchanged: the legacy variant keeps its chip bar and never renders
+ *    the artboard vocabulary (and vice versa).
+ * ------------------------------------------------------------------------- */
+
+const renderActaDock = (props: Partial<Parameters<typeof LiveActionDock>[0]> = {}) =>
+  renderDock({ ...props, variant: "acta" });
+const actaDock = () => screen.getByTestId("acta-capture-dock");
+const actaAction = (name: string) => within(actaDock()).getByRole("button", { name });
+const actaPool = (id: "own" | "rival") => within(actaDock()).getByTestId(`dock-pool-${id}`);
+
+describe("Acta quick-capture dock (MVA-5 · T9 Slice C)", () => {
+  it("C1: renders the five artboard actions (button role + labels verbatim) in the 5-col grid", () => {
+    renderActaDock();
+    const bar = actaDock();
+    expect(bar).toBeTruthy();
+    for (const label of ["+ TD", "+ Pase", "+ Baja", "+ Evento", "Fin Turno"]) {
+      expect(within(bar).getByRole("button", { name: label })).toBeTruthy();
+    }
+    expect(within(bar).getByTestId("acta-capture-grid").className).toContain("grid-cols-5");
+  });
+
+  it("C2: + TD and + Pase fire the scored commands through the existing two-touch sheet", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    // + TD → pick the own scorer → fires instantly (existing machinery).
+    fireEvent.click(actaAction("+ TD"));
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "td",
+      side: "home",
+      playerRosterId: "p1",
+    } as LiveCommand);
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
+    // + Pase → pick the own thrower → completion command.
+    fireEvent.click(actaAction("+ Pase"));
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#2/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "completion",
+      side: "home",
+      playerRosterId: "p2",
+    } as LiveCommand);
+  });
+
+  it("C2: + Evento drives the guided Falta flow (aggressor → rival victim) and fires the foul command", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("+ Evento"));
+    const modalEl = screen.getByTestId("live-action-modal");
+    expect(modalEl.textContent).toContain("Agresor");
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
+    fireEvent.click(within(actaPool("rival")).getByRole("button", { name: /#2/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "foul",
+      side: "home",
+      playerRosterId: "p1",
+      victimRosterId: "o2",
+    } as LiveCommand);
+  });
+
+  it("INTEGRITY: + Baja opens the roll-inclusive guided entry — never a roll-less casualty command", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("+ Baja"));
+    // The EXISTING guided casualty entry: cause → own causer → rival victim.
+    const causes = within(actaDock()).getByTestId("dock-cause-pool");
+    fireEvent.click(within(causes).getByRole("button", { name: /Bloqueo/ }));
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#2/i }));
+    fireEvent.click(within(actaPool("rival")).getByRole("button", { name: /#1/i }));
+    // The 1D16 stage is REQUIRED: nothing may fire before the injury roll.
+    const stepper = within(actaDock()).getByTestId("dock-roll-stage");
+    expect(stepper).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+    // Permanent band (13-14) additionally requires the 1D6 — still silent.
+    fireEvent.click(within(stepper).getByTestId("roll-option-13"));
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByTestId("roll-stepper-6")).getByTestId("roll-option-4"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // The fired command is ROLL-INCLUSIVE (roll16 + roll6 travel to the server).
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o1",
+      causerRosterId: "p2",
+      cause: "block",
+      roll16: 13,
+      roll6: 4,
+    } as LiveCommand);
+    const fired = onSubmit.mock.calls[0][0] as Extract<LiveCommand, { type: "casualty" }>;
+    expect(typeof fired.roll16).toBe("number");
+  });
+
+  it("Fin Turno opens the existing reason sheet and fires the pass-turn command", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("Fin Turno"));
+    const modal = within(screen.getByTestId("live-action-modal"));
+    fireEvent.click(modal.getByRole("button", { name: /Voluntario/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "endTurn",
+      side: "home",
+      reason: "voluntary",
+    } as LiveCommand);
+  });
+
+  it("V1 unchanged: the legacy bar keeps its chips and neither variant leaks the other's vocabulary", () => {
+    // Legacy (default variant) — the V1 vocabulary stays byte-identical.
+    renderDock();
+    expect(dockAction(/Dar el turno/i)).toBeTruthy();
+    expect(dockAction(/Touchdown/)).toBeTruthy();
+    expect(dockAction(/Pase completo/)).toBeTruthy();
+    expect(dockAction(/Baja causada/)).toBeTruthy();
+    expect(dockAction(/Falta/)).toBeTruthy();
+    for (const label of ["+ TD", "+ Pase", "+ Baja", "+ Evento", "Fin Turno"]) {
+      expect(within(dock()).queryByRole("button", { name: label })).toBeNull();
+    }
+  });
+
+  it("V1 unchanged: the acta variant never renders the legacy chip vocabulary", () => {
+    renderActaDock();
+    for (const label of ["Dar el turno", "Touchdown", "Pase completo", "Baja causada", "Falta"]) {
+      expect(within(actaDock()).queryByRole("button", { name: label })).toBeNull();
+    }
+  });
+
+  it("TRIANGULATE: the non-active coach keeps only LM-12-legal casualty records (roll-inclusive)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit, activeSide: "away" });
+    // No 409 button ever renders for the non-active coach (MVA-4 principle).
+    expect(within(actaDock()).queryByRole("button", { name: "+ TD" })).toBeNull();
+    expect(within(actaDock()).queryByRole("button", { name: "Fin Turno" })).toBeNull();
+    expect(within(actaDock()).getByTestId("acta-capture-grid").className).toContain("grid-cols-2");
+    // "Baja propia" walks the SAME guided entry and carries its roll16.
+    fireEvent.click(actaAction("Baja propia"));
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
+    const causes = within(actaDock()).getByTestId("dock-cause-pool");
+    fireEvent.click(within(causes).getByRole("button", { name: /Esquivando — se cayó/ }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    const stepper = within(actaDock()).getByTestId("dock-roll-stage");
+    fireEvent.click(within(stepper).getByTestId("roll-option-7"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "casualty",
+      side: "home",
+      victimRosterId: "p1",
+      cause: "dodge",
+      roll16: 7,
+    } as LiveCommand);
+  });
+});

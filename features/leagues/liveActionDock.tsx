@@ -42,6 +42,15 @@ import type { LiveCommand, MatchPlayer } from "./api";
  *
  * The modal's chips mirror the strip's old pickers but are rebuilt here around
  * the action-first mental model (mockup Design A): who-before-what is gone.
+ *
+ * MVA-5 (T9 Slice C): `variant="acta"` swaps the BAR for the Acta en Vivo
+ * quick-capture dock (artboard 08 "FIXED BOTTOM QUICK-CAPTURE ACTION DOCK" —
+ * + TD / + Pase / + Baja / + Evento / Fin Turno, icon + uppercase label on
+ * square panels). It is a pure restyle: the buttons drive the SAME flows and
+ * the SAME guided sheets/machinery above; the legacy variant (default) stays
+ * byte-identical for V1. The artboard bar shows the full five actions to the
+ * ACTIVE coach; the NON-active coach keeps only their LM-12-legal casualty
+ * records (never a button whose command would 409 — MVA-4 principle).
  */
 
 type Flow =
@@ -89,6 +98,56 @@ export interface LiveActionDockProps {
   opponentRaceId: string;
   /** Wraps `act`: the `/api/.../live` POST command. */
   onSubmit: (cmd: LiveCommand) => Promise<void>;
+  /** "acta" = the Acta en Vivo quick-capture bar (artboard 08, MVA-5);
+   *  "legacy" (default) = the Design-A chip bar (V1 — never changes). */
+  variant?: "legacy" | "acta";
+}
+
+/** Artboard 08 quick-capture icons (Material Symbols paths on the 960 grid,
+ *  copied verbatim from the artboard — inline SVG only, no icon fonts). */
+const ACTA_ICONS = {
+  football:
+    "M480-480ZM362-202 202-362q-3 38-1.5 79t7.5 73q23 7 69.5 9t84.5-1Zm96-16q59-13 106-37t82-59q34-34 58-80.5T742-500L500-742q-57 14-103 38.5T316-644q-35 35-59.5 81.5T218-458l240 240Zm-62-122-56-56 224-224 56 56-224 224Zm362-256q4-39 2.5-81t-8.5-73q-23-8-69.5-10t-84.5 2l160 162ZM310-120q-57 0-104-8.5T148-148q-11-12-19.5-60T120-314q0-119 36-220.5T258-702q66-66 169-102t223-36q58 0 104.5 8.5T812-812q11 12 19.5 60t8.5 108q0 117-36 218.5T702-258q-65 65-168 101.5T310-120Z",
+  send: "M120-160v-640l760 320-760 320Zm80-120 474-200-474-200v140l240 60-240 60v140Zm0 0v-400 400Z",
+  medical:
+    "M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h160v-80q0-33 23.5-56.5T400-880h160q33 0 56.5 23.5T640-800v80h160q33 0 56.5 23.5T880-640v480q0 33-23.5 56.5T800-80H160Zm0-80h640v-480H160v480Zm240-560h160v-80H400v80ZM160-160v-480 480Zm280-200v120h80v-120h120v-80H520v-120h-80v120H320v80h120Z",
+  more: "M240-400q-33 0-56.5-23.5T160-480q0-33 23.5-56.5T240-560q33 0 56.5 23.5T320-480q0 33-23.5 56.5T240-400Zm240 0q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm240 0q-33 0-56.5-23.5T640-480q0-33 23.5-56.5T720-560q33 0 56.5 23.5T800-480q0 33-23.5 56.5T720-400Z",
+  flag: "M200-120v-680h360l16 80h224v400H520l-16-80H280v280h-80Zm300-440Zm86 160h134v-240H510l-16-80H280v240h290l16 80Z",
+} as const;
+
+/** The artboard panel tones (rulebook-light tokens only — AGENTS.md rule 5). */
+const ACTA_TONE = {
+  navy: "border-border bg-panel text-navy hover:bg-fill-hover",
+  red: "border-border bg-panel text-red hover:bg-fill-hover",
+  slate: "border-border bg-panel text-slate-strong hover:bg-fill-hover",
+  solidRed: "border-red bg-red text-white shadow-sm hover:bg-red-hover",
+} as const;
+
+/** One artboard quick-capture action: icon + uppercase label stacked on a
+ *  square-ish panel (hover/press feedback only — the motion layer is Slice D). */
+function ActaDockButton({
+  icon,
+  label,
+  tone,
+  onClick,
+}: {
+  icon: keyof typeof ACTA_ICONS;
+  label: string;
+  tone: keyof typeof ACTA_TONE;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center rounded-sm border px-1 py-1.5 ${ACTA_TONE[tone]}`}
+    >
+      <svg viewBox="0 0 960 960" aria-hidden="true" focusable="false" className="text-xl">
+        <path d={ACTA_ICONS[icon]} fill="currentColor" />
+      </svg>
+      <span className="mt-0.5 whitespace-nowrap text-[10px] font-bold uppercase">{label}</span>
+    </button>
+  );
 }
 
 /** A guided step inside the dock sheet: pick chips vs a RollStepper stage. */
@@ -161,6 +220,7 @@ export function LiveActionDock({
   rosterRaceId,
   opponentRaceId,
   onSubmit,
+  variant = "legacy",
 }: LiveActionDockProps) {
   const { t } = useI18n();
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -539,7 +599,7 @@ export function LiveActionDock({
 
   return (
     <section
-      data-testid="live-action-dock"
+      data-testid={variant === "acta" ? "acta-capture-dock" : "live-action-dock"}
       aria-label={t("match.dock.actions")}
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border"
     >
@@ -547,14 +607,54 @@ export function LiveActionDock({
           its backdrop blur never becomes the modal's containing block (which
           would collapse the overlay's `fixed inset-0`). */}
       {modalContent}
-      <div className="bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur">
-        {/* Align the bar's content with the app's main content (same horizontal
-            padding as the shell) so the chips line up with the event cards'
-            edges, and center them within that width. */}
-        <div className="flex w-full flex-wrap items-center justify-center gap-1.5 px-4 py-2 sm:px-6">
-          {dockButtons}
+      {variant === "acta" ? (
+        /* MVA-5 (artboard 08 "FIXED BOTTOM QUICK-CAPTURE ACTION DOCK"): white
+           panel bar with the 5-column icon+label grid. The artboard's `bottom-14`
+           (above the shared bottom nav) resolves to `bottom-0` here — the bottom
+           nav anchor is not part of the app shell yet. The full five actions
+           render for the ACTIVE coach; the non-active coach keeps only their
+           LM-12-legal casualty records (never a 409 button — MVA-4 principle). */
+        <div className="bg-panel px-2 py-2 shadow-[0_-4px_12px_rgba(18,34,90,0.08)]">
+          <div
+            data-testid="acta-capture-grid"
+            className={`grid gap-1.5 ${active ? "grid-cols-5" : "grid-cols-2"}`}
+          >
+            {active ? (
+              <>
+                <ActaDockButton icon="football" label="+ TD" tone="navy" onClick={() => begin("td")} />
+                <ActaDockButton icon="send" label="+ Pase" tone="navy" onClick={() => begin("completion")} />
+                <ActaDockButton icon="medical" label="+ Baja" tone="red" onClick={() => begin("casualtyCaused")} />
+                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("foul")} />
+                <ActaDockButton icon="flag" label="Fin Turno" tone="solidRed" onClick={() => begin("passTurn")} />
+              </>
+            ) : (
+              <>
+                <ActaDockButton
+                  icon="medical"
+                  label={t("match.strip.selfInflicted")}
+                  tone="navy"
+                  onClick={() => begin("selfInflicted")}
+                />
+                <ActaDockButton
+                  icon="medical"
+                  label={t("match.strip.bothDown")}
+                  tone="red"
+                  onClick={() => begin("bothDown")}
+                />
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur">
+          {/* Align the bar's content with the app's main content (same horizontal
+              padding as the shell) so the chips line up with the event cards'
+              edges, and center them within that width. */}
+          <div className="flex w-full flex-wrap items-center justify-center gap-1.5 px-4 py-2 sm:px-6">
+            {dockButtons}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -43,7 +43,8 @@ interface MatchViewV2Props {
  * the old sticky chrome MVT-2/MVT-3), the Acta en Vivo turn timeline
  * (`ActaTurnTimeline`, MVA-3 timeline half + MVA-4 pending injury-roll callout
  * — supersedes the v4 event feed MVT-1/MVT-4 on this surface), the
- * shared `LiveActionDock` atom and the
+ * shared `LiveActionDock` atom behind the Acta quick-capture variant (MVA-5,
+ * artboard 08 dock; V1 keeps the legacy chip bar) and the
  * shared modals (`MatchResolveModal`, `ResetLiveMatchModal`) — and mirrors the
  * legacy state dispatch (pending/ready consent → live acta → finished summary,
  * walkover, reported sections) with `ui-v2-match-*` markers. No direct network
@@ -565,9 +566,11 @@ function ActiveMatchBody({
               ) : null}
             </div>
           </div>
-          {/* MVT-7: the contextual action dock (fixed bottom bar). */}
+          {/* MVA-5 (T9 Slice C): the Acta en Vivo quick-capture dock (artboard
+              08) over the shared command machinery — V1 keeps the legacy bar. */}
           <div data-testid="ui-v2-match-dock">
             <LiveActionDock
+              variant="acta"
               viewerSide={state.viewerSide}
               activeSide={state.activeSide}
               status={state.status}
