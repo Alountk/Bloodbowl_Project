@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isCoachingStaff } from "@/features/teams/types";
 import { getLeagueDetail, type LeagueStatus } from "./api";
 
 /** The league-level access facts a match surface needs (LMR-7): the display
  * name, the owner id (to detect the owner) and the lifecycle status (to hide
- * recovery controls on a finished league). All optional until the fetch lands. */
+ * recovery controls on a finished league). All optional until the fetch lands.
+ * `teamRerolls` (MVA-2, Slice A) maps team id → purchased rerolls
+ * (`coaching.rerolls`) for the Acta scoreboard line; teams whose coaching JSON
+ * is not parseable stay unmapped so callers render "—". */
 export interface LeagueAccess {
   name?: string;
   ownerId?: string;
   status?: LeagueStatus;
+  teamRerolls?: Record<string, number>;
 }
 
 /**
@@ -30,7 +35,13 @@ export function useLeague(leagueId: string | null | undefined): LeagueAccess {
     getLeagueDetail(leagueId)
       .then((league) => {
         if (!cancelled) {
-          setAccess({ name: league.name, ownerId: league.ownerId, status: league.status });
+          // Runtime-defensive: older/minimal payloads may omit `teams`.
+          const teams = Array.isArray(league.teams) ? league.teams : [];
+          const teamRerolls: Record<string, number> = {};
+          for (const team of teams) {
+            if (isCoachingStaff(team.coaching)) teamRerolls[team.id] = team.coaching.rerolls;
+          }
+          setAccess({ name: league.name, ownerId: league.ownerId, status: league.status, teamRerolls });
         }
       })
       .catch(() => {
