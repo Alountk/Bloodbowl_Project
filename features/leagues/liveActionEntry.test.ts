@@ -57,6 +57,21 @@ describe("liveActionEntry — role sets + building shared commands (Design A doc
     });
   });
 
+  it("buildScoredCommand sends the LM-13 acta-vocabulary actions on the actor's own side (Slice E)", () => {
+    for (const [kind, playerRosterId] of [
+      ["interception", "h3"],
+      ["throwTeamMate", "a4"],
+      ["landedSafe", "h5"],
+    ] as const) {
+      const side = playerRosterId.startsWith("h") ? "home" : "away";
+      expect(buildScoredCommand(kind, side, playerRosterId)).toEqual({
+        type: kind,
+        side,
+        playerRosterId,
+      });
+    }
+  });
+
   it("buildGuidedCommand drops a self-inflicted dodge with NO causer", () => {
     const cmd = buildGuidedCommand("selfInflicted", "home", {
       cause: "dodge",

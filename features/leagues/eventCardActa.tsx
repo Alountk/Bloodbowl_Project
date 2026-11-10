@@ -249,7 +249,8 @@ function ActaCard({
  * The non-blocking acknowledgement row on an event card (Acta `.ack` line).
  * The user's ✓/✗ cotejo is DISABLED: the row renders ONLY the status badge
  * (pending until the timeout, then auto-verified). Only ackable kinds
- * (td/completion/casualty/foul) render it; the derived action card never does.
+ * (td/completion/casualty/foul + the LM-13 scored actions) render it; the
+ * derived action card never does.
  */
 function EventAckRow({
   event,
@@ -289,7 +290,19 @@ function EventAckRow({
   );
 }
 
-const PLAYER_EVENT_KINDS = new Set(["td", "completion", "mvp", "foul", "casualty"]);
+const PLAYER_EVENT_KINDS = new Set([
+  "td",
+  "completion",
+  "mvp",
+  "foul",
+  "casualty",
+  // LM-13 (Slice E, verifier defect 1): the acta-vocabulary scored actions are
+  // player events like a completion — they render the player + dorsal + ★SPP
+  // and the ack row (their `isAckableKind` gate already passes).
+  "interception",
+  "throwTeamMate",
+  "landedSafe",
+]);
 
 /**
  * The v4 Acta event feed: newest first (seq desc), `turn` skipped. Player
@@ -348,7 +361,8 @@ export function LiveEventCardsActa({
         // turn tag): the v4 sheet reads like the rulebook, not the compact feed.
         const turnMeta = `Turno ${event.turnNumber} · ${minute}`;
 
-        // ---- A. player events (td / completion / mvp / foul / casualty) ----
+        // ---- A. player events (td / completion / mvp / foul / casualty + the
+        //      LM-13 scored actions: interception / throwTeamMate / landedSafe) ----
         if (PLAYER_EVENT_KINDS.has(event.kind)) {
           const label = liveEventLabel(event, t);
           // The casualty INJURY card is the victim's card — it never carries the

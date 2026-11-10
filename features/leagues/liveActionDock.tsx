@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { resolveInjury } from "@/lib/rules/injuries";
-import { causeLabel } from "./liveEventLabels";
+import { causeLabel, liveEventLabel } from "./liveEventLabels";
 import { RollStepper } from "./rollStepper";
 import {
   ACTIVE_CAUSES,
@@ -51,6 +51,13 @@ import type { LiveCommand, MatchPlayer } from "./api";
  * byte-identical for V1. The artboard bar shows the full five actions to the
  * ACTIVE coach; the NON-active coach keeps only their LM-12-legal casualty
  * records (never a button whose command would 409 — MVA-4 principle).
+ *
+ * Slice E (T4 capture surface): the acta "+ Evento" opens a CHOICE step first
+ * — Falta · Intercepción · Lanzar compañero · Aterrizar sano (labels from the
+ * shared `liveEventLabels` taxonomy). Falta routes into the EXISTING guided
+ * flow; the LM-13 scored actions are two-touch `buildScoredCommand` captures
+ * like TD/Pase. The choice rides the SAME ACTIVE-coach window as its siblings
+ * (MVA-4), and V1's legacy Falta chip keeps opening the guided flow directly.
  */
 
 type Flow =
@@ -58,9 +65,32 @@ type Flow =
   | "completion"
   | "casualtyCaused"
   | "foul"
+  | "interception"
+  | "throwTeamMate"
+  | "landedSafe"
+  | "eventChoice"
   | "selfInflicted"
   | "bothDown"
   | "passTurn";
+
+/** The "+ Evento" choice step (Slice E): the recordable acta events — Falta
+ * plus the LM-13 scored actions. All four are ACTIVE-coach captures, so the
+ * choice rides exactly the window its entry button already gates (MVA-4). */
+const EVENT_CHOICES = ["foul", "interception", "throwTeamMate", "landedSafe"] as const;
+
+/** True for the instant two-touch scored actions (own player pick → fire).
+ *  Accepts the nullable flow state (a closed sheet is never a scored flow). */
+function isScoredFlow(
+  flow: Flow | null,
+): flow is "td" | "completion" | "interception" | "throwTeamMate" | "landedSafe" {
+  return (
+    flow === "td" ||
+    flow === "completion" ||
+    flow === "interception" ||
+    flow === "throwTeamMate" ||
+    flow === "landedSafe"
+  );
+}
 
 /** The end-turn reasons the active coach can pick (no preselection). */
 type TurnReason = "voluntary" | "turnover" | "injury";
@@ -124,12 +154,18 @@ const ACTA_TONE = {
 } as const;
 
 /** MVA-6 floating feedback (artboard 09 `data-label` values verbatim, keyed by
- *  the flow that fired — navy pill for captures, red for Fin Turno). */
+ *  the flow that fired — navy pill for captures, red for Fin Turno). The artboard
+ *  defines no per-kind label for the Slice E choice-sheet captures, so they float
+ *  the artboard's generic event feedback from the + Evento button. */
 const ACTA_FEEDBACK: Record<Flow, { text: string; tone: "navy" | "red" }> = {
   td: { text: "+3 SPP (TD)", tone: "navy" },
   completion: { text: "+1 SPP (Pase)", tone: "navy" },
   casualtyCaused: { text: "+2 SPP (Baja)", tone: "navy" },
   foul: { text: "Evento Registrado", tone: "navy" },
+  interception: { text: "Evento Registrado", tone: "navy" },
+  throwTeamMate: { text: "Evento Registrado", tone: "navy" },
+  landedSafe: { text: "Evento Registrado", tone: "navy" },
+  eventChoice: { text: "Evento Registrado", tone: "navy" },
   selfInflicted: { text: "+2 SPP (Baja)", tone: "navy" },
   bothDown: { text: "+2 SPP (Baja)", tone: "navy" },
   passTurn: { text: "Cambio de Turno", tone: "red" },
@@ -188,6 +224,7 @@ function ActaDockButton({
 /** A guided step inside the dock sheet: pick chips vs a RollStepper stage. */
 type GuidedStage =
   | { kind: "cause"; causes: typeof ACTIVE_CAUSES }
+  | { kind: "choice" }
   | { kind: "pickOwn" }
   | { kind: "pickRival" }
   | { kind: "selfCause" }
@@ -198,8 +235,14 @@ function stagesFor(flow: Flow): GuidedStage[] {
   switch (flow) {
     case "td":
     case "completion":
-      // Two-touch TD / Pase: the sheet only picks the own player → fires.
+    case "interception":
+    case "throwTeamMate":
+    case "landedSafe":
+      // Two-touch scored actions: the sheet only picks the own player → fires.
       return [{ kind: "pickOwn" }];
+    case "eventChoice":
+      // Slice E: the + Evento choice step (Falta / LM-13 scored actions).
+      return [{ kind: "choice" }];
     case "casualtyCaused":
       return [
         { kind: "cause", causes: ACTIVE_CAUSES },
@@ -344,8 +387,9 @@ export function LiveActionDock({
   const setRoll6 = (n: number) => applyGuided({ ...selections, roll6: n }, false);
 
   const pickPlayer = (p: MatchPlayer, side: "own" | "rival") => {
-    if (flow === "td" || flow === "completion") {
-      // Touch #2 fires immediately (2-touch TD / Pase). No modal, no roll.
+    if (isScoredFlow(flow)) {
+      // Touch #2 fires immediately (2-touch TD / Pase / LM-13 scored actions).
+      // No modal, no roll.
       submit(buildScoredCommand(flow, viewerSide, p.rosterPlayerId));
       return;
     }
@@ -383,7 +427,7 @@ export function LiveActionDock({
     // one (the cause and roll steps name themselves in the title below).
     const heading = (() => {
       if (stage?.kind === "pickOwn") {
-        if (flow === "td" || flow === "completion") return "";
+        if (isScoredFlow(flow)) return "";
         if (flow === "foul") return t("match.controls.aggressor");
         if (flow === "selfInflicted") return t("match.controls.victim");
         return t("match.controls.causer"); // casualty / both-down causer
@@ -450,6 +494,25 @@ export function LiveActionDock({
                   }`}
                 >
                   {causeLabel(c, t)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Slice E: the + Evento choice step — the recordable acta events,
+              labeled by the shared live-event taxonomy (never new copy). Picking
+              one routes into that event's EXISTING machinery below. */}
+          {stage?.kind === "choice" ? (
+            <div data-testid="dock-event-pool" className="flex flex-wrap gap-1.5">
+              {EVENT_CHOICES.map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  data-testid="dock-event-option"
+                  onClick={() => begin(choice)}
+                  className="rounded border border-border bg-panel px-2 py-1 text-xs font-bold text-navy hover:bg-background"
+                >
+                  {liveEventLabel({ kind: choice, half: 1, turnNumber: 1, payload: {} }, t)}
                 </button>
               ))}
             </div>
@@ -645,9 +708,10 @@ export function LiveActionDock({
     );
   })();
 
-  /** MVA-6: the float badge only on the button whose capture fired it. */
-  const floatFor = (action: Flow): ActaFloatFeedback | null =>
-    feedback != null && feedback.action === action ? feedback : null;
+  /** MVA-6: the float badge only on the button whose capture fired it — the
+   *  + Evento button also carries the captures fired from its choice sheet. */
+  const floatFor = (...actions: Flow[]): ActaFloatFeedback | null =>
+    feedback != null && actions.includes(feedback.action) ? feedback : null;
 
   return (
     <section
@@ -676,7 +740,7 @@ export function LiveActionDock({
                 <ActaDockButton icon="football" label="+ TD" tone="navy" onClick={() => begin("td")} feedback={floatFor("td")} />
                 <ActaDockButton icon="send" label="+ Pase" tone="navy" onClick={() => begin("completion")} feedback={floatFor("completion")} />
                 <ActaDockButton icon="medical" label="+ Baja" tone="red" onClick={() => begin("casualtyCaused")} feedback={floatFor("casualtyCaused")} />
-                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("foul")} feedback={floatFor("foul")} />
+                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("eventChoice")} feedback={floatFor("foul", "interception", "throwTeamMate", "landedSafe", "eventChoice")} />
                 <ActaDockButton icon="flag" label="Fin Turno" tone="solidRed" onClick={() => begin("passTurn")} feedback={floatFor("passTurn")} />
               </>
             ) : (

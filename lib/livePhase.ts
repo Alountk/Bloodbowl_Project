@@ -18,7 +18,15 @@
  * zero-mock testable.
  */
 
-export type EventKind = "td" | "foul" | "casualty" | "completion" | "passTurn";
+export type EventKind =
+  | "td"
+  | "foul"
+  | "casualty"
+  | "completion"
+  | "interception"
+  | "throwTeamMate"
+  | "landedSafe"
+  | "passTurn";
 
 export interface EventPermissionInput {
   /** The caller's team side, or null when they have no team (admin/spectator). */
@@ -205,6 +213,11 @@ export const ACKABLE_KINDS: ReadonlySet<string> = new Set([
   "completion",
   "casualty",
   "foul",
+  // LM-13 (Slice E): the added acta-vocabulary scored actions are coach-recorded
+  // play claims exactly like a completion — the rival verifies them the same way.
+  "interception",
+  "throwTeamMate",
+  "landedSafe",
 ]);
 
 /** Shorthand for the shared ackable-kind membership check (UI + server). */

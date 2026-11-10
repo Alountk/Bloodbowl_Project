@@ -345,10 +345,12 @@ describe("Acta quick-capture dock (MVA-5 · T9 Slice C)", () => {
     } as LiveCommand);
   });
 
-  it("C2: + Evento drives the guided Falta flow (aggressor → rival victim) and fires the foul command", async () => {
+  it("C2/E: + Evento opens the choice sheet first; the Falta option drives the guided flow (aggressor → rival victim) and fires the foul command", async () => {
     const onSubmit = vi.fn<MockControl>(async () => {});
     renderActaDock({ onSubmit });
     fireEvent.click(actaAction("+ Evento"));
+    // Slice E: the choice step comes first (four recordable events).
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Falta" }));
     const modalEl = screen.getByTestId("live-action-modal");
     expect(modalEl.textContent).toContain("Agresor");
     fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
@@ -451,5 +453,112 @@ describe("Acta quick-capture dock (MVA-5 · T9 Slice C)", () => {
       cause: "dodge",
       roll16: 7,
     } as LiveCommand);
+  });
+});
+
+/* ------------------------------------------------------------------------- *
+ * Slice E (T4 capture surface): "+ Evento" opens a CHOICE step with the four
+ * recordable acta events — Falta · Intercepción · Lanzar compañero · Aterrizar
+ * sano. Each option routes through the EXISTING machinery (guided Falta flow /
+ * `buildScoredCommand` two-touch) and fires through `sendCommand` like every
+ * other action. Labels come from the shared `liveEventLabels` taxonomy. The
+ * LM-12 windows (MVA-4) still decide what renders: only the ACTIVE coach on a
+ * live turn ever sees the sheet (never a button whose command would 409); V1's
+ * legacy chip bar keeps its byte-identical direct Falta flow (no choice step,
+ * no vocabulary leak).
+ * ------------------------------------------------------------------------- */
+
+describe("Acta + Evento choice sheet (MVA-4 capture surface, Slice E)", () => {
+  it("+ Evento opens the four-choice sheet on the acta variant", () => {
+    renderActaDock();
+    fireEvent.click(actaAction("+ Evento"));
+    const modal = within(screen.getByTestId("live-action-modal"));
+    const options = modal.getAllByTestId("dock-event-option");
+    expect(options.map((o) => o.textContent)).toEqual([
+      "Falta",
+      "Intercepción",
+      "Lanzar compañero",
+      "Aterrizar sano",
+    ]);
+  });
+
+  it("Intercepción fires the interception command with its modeled input (own intercepting player)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("+ Evento"));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Intercepción" }));
+    // Two-touch like TD/Pase: picking the player fires instantly.
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#2/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "interception",
+      side: "home",
+      playerRosterId: "p2",
+    } as LiveCommand);
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
+  });
+
+  it("Lanzar compañero fires the throw-team-mate command (the thrower)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("+ Evento"));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Lanzar compañero" }));
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "throwTeamMate",
+      side: "home",
+      playerRosterId: "p1",
+    } as LiveCommand);
+  });
+
+  it("Aterrizar sano fires the landed-safe command (the passenger who landed)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("+ Evento"));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Aterrizar sano" }));
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "landedSafe",
+      side: "home",
+      playerRosterId: "p1",
+    } as LiveCommand);
+    // The MVA-6 float surfaces on the + Evento button (the sheet's entry point).
+    const float = document.querySelector(".acta-motion-float-feedback") as HTMLElement | null;
+    expect(float?.textContent).toContain("Evento Registrado");
+    expect(float?.closest("button")).toBe(actaAction("+ Evento"));
+  });
+
+  it("windows filter the choice exactly like the server's LM-12 gates (non-active / wrong-turn / spectator)", () => {
+    // NON-active coach: the + Evento entry point itself is out of window, so no
+    // choice option can render (every one of them would 409 — MVA-4).
+    const nonActive = renderActaDock({ activeSide: "away" });
+    expect(within(actaDock()).queryByRole("button", { name: "+ Evento" })).toBeNull();
+    expect(screen.queryAllByTestId("dock-event-option")).toEqual([]);
+    nonActive.unmount();
+    // WRONG TURN (match not live): the dock does not render at all.
+    const notLive = renderActaDock({ status: "finished" });
+    expect(screen.queryByTestId("acta-capture-dock")).toBeNull();
+    expect(screen.queryAllByTestId("dock-event-option")).toEqual([]);
+    notLive.unmount();
+    // Spectator/admin (no side): nothing renders.
+    const spectator = renderActaDock({ viewerSide: null });
+    expect(screen.queryByTestId("acta-capture-dock")).toBeNull();
+    expect(screen.queryAllByTestId("dock-event-option")).toEqual([]);
+    spectator.unmount();
+  });
+
+  it("V1 legacy path unchanged: the Falta chip opens the guided flow directly and the new vocabulary never leaks", () => {
+    renderDock();
+    fireEvent.click(dockAction(/Falta/));
+    const modal = screen.getByTestId("live-action-modal");
+    // Byte-identical V1 flow: straight to the aggressor step — NO choice step.
+    expect(modal.textContent).toContain("Agresor");
+    expect(within(modal).queryAllByTestId("dock-event-option")).toEqual([]);
+    for (const label of ["Intercepción", "Lanzar compañero", "Aterrizar sano", "+ Evento"]) {
+      expect(within(dock()).queryByRole("button", { name: label })).toBeNull();
+      expect(within(modal).queryByRole("button", { name: label })).toBeNull();
+    }
   });
 });

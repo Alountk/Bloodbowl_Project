@@ -277,7 +277,17 @@ export interface ActaTurnCard {
 
 /** The side that ACTED on an event (turn-owning vote): acting player's side. */
 function actingSideOf(event: LiveMatchEventDto): "home" | "away" | null {
-  if (event.kind === "td" || event.kind === "completion" || event.kind === "foul") {
+  if (
+    event.kind === "td" ||
+    event.kind === "completion" ||
+    event.kind === "foul" ||
+    // LM-13 (Slice E, verifier defect 2): the acta-vocabulary scored actions
+    // are the acting side's own captures — they vote the turn exactly like a
+    // completion, never the AMBOS EQUIPOS fallback.
+    event.kind === "interception" ||
+    event.kind === "throwTeamMate" ||
+    event.kind === "landedSafe"
+  ) {
     return event.side;
   }
   if (event.kind === "casualty") {

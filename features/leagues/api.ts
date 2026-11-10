@@ -764,6 +764,15 @@ export type LiveCommand =
   | { type: "td"; side: "home" | "away"; playerRosterId: string }
   | { type: "completion"; side: "home" | "away"; playerRosterId: string }
   | {
+      /** LM-13 (Slice E): the acta-vocabulary scored actions — interception ★2,
+       * throw-team-mate ★1, landed-safe ★1 (bb2025-rules PE table). Same shape
+       * and same LM-12 authorization as `completion` (active coach, own side);
+       * the server also rejects a wrong-side/non-live record (409). */
+      type: "interception" | "throwTeamMate" | "landedSafe";
+      side: "home" | "away";
+      playerRosterId: string;
+    }
+  | {
       type: "casualty";
       side: "home" | "away";
       victimRosterId: string;

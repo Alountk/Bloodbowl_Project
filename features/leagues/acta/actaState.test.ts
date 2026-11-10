@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { awardPeForActions, PE_CASUALTY } from "@/lib/rules/pe";
 import type { MatchScoreboard, ResultPlayerAction } from "../api";
+import type { ResultTeamDraft } from "../resultPrefill";
+import { planBajas } from "./bajasPlan";
 import {
   actaPrefill,
   buildActaPayload,
@@ -406,5 +408,86 @@ describe("actaPrefill", () => {
     );
     expect(prefill.home.mvpGrantee).toBe("");
     expect(prefill.away.mvpGrantee).toBe("");
+  });
+});
+
+describe("actaPrefill — load path from the finished-live draft (LM-13, Slice E)", () => {
+  function loadDraft(
+    home: Partial<ResultTeamDraft> = {},
+    away: Partial<ResultTeamDraft> = {},
+  ): { home: ResultTeamDraft; away: ResultTeamDraft } {
+    const base: ResultTeamDraft = {
+      score: 0,
+      ballHeld: true,
+      players: {},
+      mvpNominations: [],
+      casualties: [],
+    };
+    return { home: { ...base, ...home }, away: { ...base, ...away } };
+  }
+
+  it("builds a victim-bound casualty line per carried victim with the captured 1D16 aligned", () => {
+    const prefill = actaPrefill(
+      loadDraft({
+        players: { h2: { tds: 0, casualties: 1, completions: 0, interceptions: 0, fouls: 0, throwTeamMates: 0, landedSafe: 0 } },
+        casualties: [
+          { team: "away", rosterPlayerId: "a1", causerRosterPlayerId: "h2", injuryRoll: 11, permanentRoll: null },
+        ],
+      }),
+    );
+    expect(prefill.home.actions).toEqual([
+      expect.objectContaining({
+        kind: "casualty",
+        rosterPlayerId: "h2",
+        victimTeam: "away",
+        victimRosterPlayerId: "a1",
+      }),
+    ]);
+    // Roll alignment (bajasPlan rule): injuryRoll[i] binds to the i-th casualty line.
+    expect(prefill.home.injuryRoll).toEqual([11]);
+    expect(prefill.home.permanentRoll).toEqual([]);
+  });
+
+  it("keeps a PENDING injury roll pending (no slot value) so the Bajas step asks it", () => {
+    const prefill = actaPrefill(
+      loadDraft({
+        casualties: [
+          { team: "away", rosterPlayerId: "a1", causerRosterPlayerId: "h2", injuryRoll: null, permanentRoll: null },
+        ],
+      }),
+    );
+    const plan = planBajas(prefill);
+    expect(plan.home[0]).toMatchObject({ injuryRoll: null, band: null, victimRosterPlayerId: "a1" });
+  });
+
+  it("compresses permanentRoll to the permanent-band lines, carrying the captured 1D6s", () => {
+    const prefill = actaPrefill(
+      loadDraft({
+        casualties: [
+          { team: "away", rosterPlayerId: "a1", causerRosterPlayerId: "h2", injuryRoll: 13, permanentRoll: 5 },
+          { team: "away", rosterPlayerId: "a2", causerRosterPlayerId: "h3", injuryRoll: 7, permanentRoll: null },
+          { team: "away", rosterPlayerId: "a3", causerRosterPlayerId: "h3", injuryRoll: 14, permanentRoll: 1 },
+        ],
+      }),
+    );
+    expect(prefill.home.injuryRoll).toEqual([13, 7, 14]);
+    expect(prefill.home.permanentRoll).toEqual([5, 1]);
+  });
+
+  it("a self-inflicted victim (no causer) keeps their Bajas entry but credits no player (bb2025: no PE)", () => {
+    const prefill = actaPrefill(
+      loadDraft({
+        casualties: [
+          { team: "home", rosterPlayerId: "p2", injuryRoll: 3, permanentRoll: null },
+        ],
+      }),
+    );
+    const [line] = prefill.home.actions;
+    expect(line).toMatchObject({ kind: "casualty", rosterPlayerId: "", victimTeam: "home", victimRosterPlayerId: "p2" });
+    // The payload credits nobody (empty player is skipped) but keeps the victim.
+    const payload = buildActaPayload(prefill);
+    expect(payload.home.players).toEqual([]);
+    expect(payload.home.casualties).toEqual([{ team: "home", rosterPlayerId: "p2" }]);
+    expect(prefill.home.injuryRoll).toEqual([3]);
   });
 });

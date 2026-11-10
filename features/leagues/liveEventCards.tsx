@@ -47,7 +47,22 @@ import styles from "./liveEventCards.module.css";
  * strings; the geometry therefore lives in the module, where it cannot be
  * mangled, and Tailwind only supplies simple spacing/alignment utilities.
  */
-const TEAM_EVENT_KINDS = new Set(["td", "completion", "casualty", "foul", "mvp", "expensive_mistake", "turnStart", "journeyman"]);
+const TEAM_EVENT_KINDS = new Set([
+  "td",
+  "completion",
+  "casualty",
+  "foul",
+  "mvp",
+  "expensive_mistake",
+  "turnStart",
+  "journeyman",
+  // LM-13 (Slice E, verifier defect 3): the acta-vocabulary scored actions are
+  // team/player cards like a completion — same widening as the acta chronology
+  // (`PLAYER_EVENT_KINDS`) so their player card + ★SPP + ack row cannot rot.
+  "interception",
+  "throwTeamMate",
+  "landedSafe",
+]);
 
 /** A roster player lookup for a side: id → { name, dorsal, positionalKey }. */
 type RosterLookup = { name: string; dorsal: number; positionalKey: string } | undefined;
@@ -220,7 +235,9 @@ function wallClockTime(at: number): string {
  * (and spectators) only see the status badge.
  *
  * KIND GATE (mobile bugfix): the cotejo applies ONLY to events a coach records
- * that the rival must verify — `td`/`completion`/`casualty`/`foul`. System and
+ * that the rival must verify — `td`/`completion`/`casualty`/`foul` and the
+ * LM-13 scored actions (`interception`/`throwTeamMate`/`landedSafe`, verifier
+ * defect 3). System and
  * state cards (`turnStart`, `start`, `endHalf`, `endMatch`, `turn`,
  * `requestTurn`, `mvp`, `expensive_mistake`, `fan_factor`, `journeyman`,
  * `concede`) have no recorder-author to verify → this row returns null (no ✓/✗
