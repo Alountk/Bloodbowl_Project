@@ -59,7 +59,9 @@ export default defineConfig({
   // remaining contention races (e.g. list re-render detach) without masking
   // real failures — a genuinely broken feature fails both attempts.
   retries: 1,
-  reporter: [["html", { outputFolder: "playwright-report-auth" }]],
+  // `list` keeps per-test durations visible in CI logs (the HTML report alone
+  // hides them unless its artifact is downloaded and parsed).
+  reporter: [["list"], ["html", { outputFolder: "playwright-report-auth" }]],
   globalSetup: "./e2e/global-setup-auth",
   // The cold-start signOut POST under 4 parallel workers can exceed 15s (dev
   // server compiles the Auth.js surface on first use). 30s only extends waits
@@ -73,9 +75,11 @@ export default defineConfig({
   projects: [
     {
       // Most specs: unique emails/league names per run (see e2e conventions), so
-      // they are safe to parallelize. Up to 3 browsers share the single `next
-      // dev` process locally and in CI (P3, validated on the ci/auth-workers
-      // canary run); sharding is a later step.
+      // they are safe to parallelize. Parallel workers share the single `next
+      // dev` process, which serializes them: measured 16.5m at 1 worker vs
+      // 18.3-18.9m at 3 (P3 canary #369 + follow-up runs). CI therefore runs 1
+      // worker per shard and gets parallelism from sharding across runners,
+      // not from workers inside one runner.
       name: "chromium",
       testIgnore: [
         "**/live-match.spec.ts",
@@ -83,7 +87,7 @@ export default defineConfig({
         "**/full-match-journey.spec.ts",
       ],
       fullyParallel: true,
-      workers: 3,
+      workers: process.env.CI ? 1 : 3,
       use: { ...devices["Desktop Chrome"] },
     },
     {
