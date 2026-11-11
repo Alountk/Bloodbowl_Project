@@ -202,7 +202,7 @@ function ActaDockButton({
       onClick={onClick}
       className={`relative flex flex-col items-center justify-center rounded-sm border px-1 py-1.5 ${ACTA_TONE[tone]}`}
     >
-      <svg viewBox="0 0 960 960" aria-hidden="true" focusable="false" className="text-xl">
+      <svg viewBox="0 0 960 960" aria-hidden="true" focusable="false" className="size-5">
         <path d={ACTA_ICONS[icon]} fill="currentColor" />
       </svg>
       <span className="mt-0.5 whitespace-nowrap text-[10px] font-bold uppercase">{label}</span>

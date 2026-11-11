@@ -163,7 +163,7 @@ function TurnChip({
   if (state === "done") {
     return (
       <li data-turn={turn} data-state={state} aria-label={`Turno ${turn}`} className={`${base} w-8 border border-border bg-fill-hover text-slate`}>
-        <ActaIcon name="check" className="text-sm text-navy" />
+        <ActaIcon name="check" className="size-3.5 text-navy" />
       </li>
     );
   }
@@ -241,7 +241,7 @@ export function ActaSheetHeader({
           aria-label="Abrir menú"
           className="shrink-0 rounded p-1 text-white transition-colors hover:bg-navy-hover"
         >
-          <ActaIcon name="menu" className="text-xl" />
+          <ActaIcon name="menu" className="size-5" />
         </button>
       </header>
 
@@ -270,7 +270,7 @@ export function ActaSheetHeader({
         </div>
         <div className="mt-2 flex items-center justify-between border-t border-border pt-1.5 text-[11px] text-slate">
           <span className="flex items-center gap-1">
-            <ActaIcon name="sun" className="text-sm" />
+            <ActaIcon name="sun" className="size-3.5" />
             <span>
               {halfLabel} • Clima: <strong className="font-medium text-ink">{weatherText}</strong>
             </span>
