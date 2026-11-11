@@ -167,7 +167,12 @@ jobs:
     env:
       CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
     steps:
+      # Chromatic computes baselines from the git history graph; actions/checkout
+      # clones shallow by default and Chromatic then fails with "Found only one
+      # commit" (docs/chromatic.md).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 8.6.6
