@@ -68,7 +68,21 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - run: pnpm exec playwright install --with-deps chromium
+      # Incident 2026-11-11: runner DNS to the Ubuntu mirrors broke for >45 min
+      # and `--with-deps` died with exit 100 on the FONT packages alone (the real
+      # shared libraries ship with the image). Retry once, then fall back to
+      # browsers-only so a transient apt/DNS outage cannot sink the suite.
+      - name: Install Playwright browsers and system deps
+        run: |
+          for attempt in 1 2; do
+            if pnpm exec playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::playwright install --with-deps attempt $attempt failed; retrying in 15s"
+            sleep 15
+          done
+          pnpm exec playwright install chromium
+          echo "::warning::system deps (fonts) could not be installed; continuing without them"
       - run: pnpm run test:e2e
       # A red run without evidence is undiagnosable; keep the HTML report
       # (traces included) only when something failed.
@@ -137,7 +151,17 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright browsers and system deps
+        run: |
+          for attempt in 1 2; do
+            if pnpm exec playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::playwright install --with-deps attempt $attempt failed; retrying in 15s"
+            sleep 15
+          done
+          pnpm exec playwright install chromium
+          echo "::warning::system deps (fonts) could not be installed; continuing without them"
       # `e2e/auth.spec.ts` "Auth flow regression (LAN host)" deliberately runs
       # the journey against a LAN IP — the cookie/redirect path differs from
       # localhost, which is exactly the production shape it pins (and why
