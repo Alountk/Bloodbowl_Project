@@ -6,8 +6,16 @@
 # Postgres. The app webServer (playwright.config.auth.ts) applies `prisma migrate
 # deploy` then boots `next dev` with the DB env.
 #
-# Usage: pnpm run test:e2e:auth
+# Usage: pnpm run test:e2e:auth [-- <extra playwright args>]
+#
+# Extra args are forwarded to `playwright test` (e.g. `-- --project=chromium
+# --shard=1/2`) so CI can shard the suite across runners, each with its own
+# Postgres and dev server.
 set -euo pipefail
+
+# pnpm forwards the `--` separator itself as the first argument; Playwright
+# would read it as end-of-options. Drop exactly one leading `--` if present.
+if [ "${1:-}" = "--" ]; then shift; fi
 
 docker compose up -d postgres
 
@@ -25,4 +33,4 @@ for i in $(seq 1 30); do
   fi
 done
 
-pnpm exec playwright test --config playwright.config.auth.ts
+pnpm exec playwright test --config playwright.config.auth.ts "$@"
