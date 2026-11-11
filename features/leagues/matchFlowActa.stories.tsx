@@ -1,3 +1,11 @@
+import { useReducer } from "react";
+
+import type { LiveMatchEventDto } from "./api";
+import {
+  actaDemoReducer,
+  demoState,
+  type DemoScenario,
+} from "./actaDemoReducer";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { ActaClosure, canCloseActa } from "./actaClosure";
@@ -24,13 +32,16 @@ function Flow({
   state,
   nowMin = 58,
   closureOpen = false,
+  events: eventsOverride,
 }: {
   state: ReturnType<typeof liveState>;
   nowMin?: number;
   closureOpen?: boolean;
+  /** Demo hook: overrides the fixture's events (the interactive story). */
+  events?: readonly LiveMatchEventDto[];
 }) {
   const detail = matchDetail();
-  const events = detail.live?.events ?? [];
+  const events = eventsOverride ?? detail.live?.events ?? [];
   const now = state.startedAt != null ? state.startedAt + nowMin * MIN : 0;
   const onSubmit = async () => undefined;
   const finished = state.status === "finished";
@@ -136,6 +147,115 @@ function Flow({
   );
 }
 
+/** Demo phase 1 controls: scenario jumps + event registration over the reducer. */
+const SCENARIOS: ReadonlyArray<{ key: DemoScenario; label: string }> = [
+  { key: "primer-tercio", label: "1T · turno 3" },
+  { key: "segundo-tercio", label: "2T · turno 5" },
+  { key: "finalizado", label: "Finalizado" },
+];
+
+function InteractiveFlow() {
+  const [state, dispatch] = useReducer(
+    actaDemoReducer,
+    "segundo-tercio" as DemoScenario,
+    demoState,
+  );
+
+  // Deterministic sample cycling (state-derived, never random) keeps the
+  // composition — and its Chromatic snapshots — stable.
+  const nextSample = (): LiveMatchEventDto => {
+    const sample = narrativeEvents[state.events.length % narrativeEvents.length];
+    return { ...sample, half: state.half, turnNumber: state.turnNumber };
+  };
+
+  const buttonClass =
+    "rounded-md border border-navy px-3 py-1.5 text-sm font-semibold text-navy hover:bg-background";
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3 bg-white px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-navy">
+          Demo · Fase 1
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Escenario">
+          {SCENARIOS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              className={buttonClass}
+              onClick={() => dispatch({ type: "reset", scenario: s.key })}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Acciones">
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => dispatch({ type: "registerEvent", event: nextSample() })}
+          >
+            Registrar evento
+          </button>
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() =>
+              dispatch({
+                type: "registerEvent",
+                event: nextSample(),
+                score: { side: "home" },
+              })
+            }
+          >
+            TD local
+          </button>
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() =>
+              dispatch({
+                type: "registerEvent",
+                event: nextSample(),
+                score: { side: "away" },
+              })
+            }
+          >
+            TD visitante
+          </button>
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => dispatch({ type: "endTurn" })}
+          >
+            Fin de turno
+          </button>
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => dispatch({ type: "finish" })}
+          >
+            Finalizar partido
+          </button>
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => dispatch({ type: "openClosure" })}
+          >
+            Abrir cierre
+          </button>
+        </div>
+      </div>
+      <Flow
+        state={state}
+        events={state.events}
+        nowMin={state.status === "finished" ? 92 : 58}
+        closureOpen={state.closureOpen}
+      />
+    </div>
+  );
+}
+
 export default {
   title: "Partido/New Styles/Flujo completo",
   component: Flow,
@@ -193,4 +313,14 @@ export const FinalizadoConCierre = {
       closureOpen
     />
   ),
+};
+
+/**
+ * Demo Fase 1: the flow driven by a pure demo reducer (no network). Scenario
+ * chips jump to key match states; the action buttons register events, bump
+ * scores, advance turns and open the closure — the acta derives live.
+ */
+export const FlujoInteractivo = {
+  name: "Flujo interactivo — demo (Fase 1)",
+  render: () => <InteractiveFlow />,
 };
