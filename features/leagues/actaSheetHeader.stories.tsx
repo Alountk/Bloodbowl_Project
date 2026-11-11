@@ -33,7 +33,7 @@ const teams = {
 };
 
 export default {
-  title: "Acta en vivo/Sheet Header",
+  title: "Live match/Acta en vivo/Cabecera",
   component: ActaSheetHeader,
   parameters: {
     docs: {

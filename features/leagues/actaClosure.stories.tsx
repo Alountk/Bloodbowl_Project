@@ -62,7 +62,7 @@ const finishedLive = () =>
   });
 
 export default {
-  title: "Acta en vivo/Cierre",
+  title: "Live match/Acta en vivo/Cierre",
   component: ActaClosure,
   parameters: {
     docs: {

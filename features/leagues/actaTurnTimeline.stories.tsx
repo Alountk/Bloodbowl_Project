@@ -50,7 +50,7 @@ function Timeline({
 }
 
 export default {
-  title: "Acta en vivo/Turn Timeline",
+  title: "Live match/Acta en vivo/Timeline de turnos",
   component: ActaTurnTimeline,
   parameters: {
     docs: {
