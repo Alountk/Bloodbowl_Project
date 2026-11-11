@@ -158,6 +158,33 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Visual regression + persistent Storybook hosting (see docs/chromatic.md).
+  # Not part of the publish gate (`docker` keeps needs: [test, e2e, e2e-auth]) —
+  # a visual diff must never block a release image.
+  storybook:
+    name: Storybook (Chromatic)
+    runs-on: ubuntu-latest
+    env:
+      CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.6.6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build-storybook
+      # Skipped while the secret is absent (see docs/chromatic.md): the job then
+      # passes trivially. On PRs, visual diffs block until accepted in the
+      # Chromatic UI; `--auto-accept-changes=main` re-baselines on every push to
+      # main so intentional changes do not pile up as pending reviews.
+      - name: Publish to Chromatic
+        if: ${{ env.CHROMATIC_PROJECT_TOKEN != '' }}
+        run: pnpm exec chromatic --auto-accept-changes=main
+
   # PR validation: builds both image stages with no push and no `needs`, so the
   # Dockerfile is validated in parallel with the test jobs. Wall clock becomes
   # max(jobs) instead of sum(jobs); publishing stays strictly gated below.

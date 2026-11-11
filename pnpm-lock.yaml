@@ -64,6 +64,9 @@ devDependencies:
   '@types/react-dom':
     specifier: ^19.2.4
     version: 19.2.4(@types/react@19.2.18)
+  chromatic:
+    specifier: ^18.14.3
+    version: 18.14.3
   eslint:
     specifier: ^9.39.5
     version: 9.39.5
@@ -3356,6 +3359,25 @@ packages:
     dependencies:
       readdirp: 4.1.2
     dev: false
+
+  /chromatic@18.14.3:
+    resolution: {integrity: sha512-xseyRMvmHGLC2AV99Ub1CMKMhwMFmlGY96Fy4uO5exyavp0hCixnb0ZhZMfbjS3PqVIzHhxyZ7NstCPhDXMdtA==}
+    engines: {node: '>=22.0.0'}
+    hasBin: true
+    peerDependencies:
+      '@chromatic-com/cypress': ^0.*.* || ^1.0.0
+      '@chromatic-com/playwright': ^0.*.* || ^1.0.0
+      '@chromatic-com/vitest': ^0.*.* || ^1.0.0
+    peerDependenciesMeta:
+      '@chromatic-com/cypress':
+        optional: true
+      '@chromatic-com/playwright':
+        optional: true
+      '@chromatic-com/vitest':
+        optional: true
+    dependencies:
+      semver: 7.8.5
+    dev: true
 
   /citty@0.1.6:
     resolution: {integrity: sha512-tskPPKEs8D2KPafUypv2gxwJP8h/OaJmC82QQGGDQcHvXX43xF2VDACcJVmZ0EuSxkpO9Kc4MlrA3q0+FG58AQ==}
