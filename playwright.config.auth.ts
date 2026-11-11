@@ -73,8 +73,9 @@ export default defineConfig({
   projects: [
     {
       // Most specs: unique emails/league names per run (see e2e conventions), so
-      // they are safe to parallelize. CI stays at 1 worker (sharding is a later
-      // step); locally up to 3 browsers share the single `next dev` process.
+      // they are safe to parallelize. Up to 3 browsers share the single `next
+      // dev` process locally and in CI (P3, validated on the ci/auth-workers
+      // canary run); sharding is a later step.
       name: "chromium",
       testIgnore: [
         "**/live-match.spec.ts",
@@ -82,7 +83,7 @@ export default defineConfig({
         "**/full-match-journey.spec.ts",
       ],
       fullyParallel: true,
-      workers: process.env.CI ? 1 : 3,
+      workers: 3,
       use: { ...devices["Desktop Chrome"] },
     },
     {
