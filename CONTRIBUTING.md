@@ -32,6 +32,25 @@ Para features/refactors sustanciales usamos **Spec-Driven Development (SDD)** �
 - Reglas duras (mínimo/máximo de jugadores, locks de liga) en el **servidor**.
 - Migraciones Prisma: aditivas; el contenedor aplica `prisma migrate deploy` solo.
 
+### Definition of Done (DoD)
+Checklist que toda tarea/PR debe cumplir antes de darse por hecha:
+- Issue vinculado y sus criterios de aceptación cumplidos.
+- Cambios de comportamiento escritos test-first: un test RED por regla pedida, observado fallando antes del fix.
+- `pnpm test`, `npx tsc --noEmit`, `pnpm lint` en verde; `AUTH_MODE=local pnpm exec playwright test` si el cambio toca UI; `pnpm run test:e2e:auth` si toca auth/ligas/jornadas.
+- Los tests verifican cada efecto observable por interfaces públicas: código de salida, stdout y stderr exactos, y que una entrada rechazada deja los datos y contadores almacenados sin cambios; se cubren los casos que la propia regla nombra (ejemplos, límites, errores).
+- Textos de ayuda y docs actualizados siempre que cambie un comando, opción o mensaje.
+- Línea de riesgo cerrada: `Risk: item N (motivo)` o `Risk: none` (items: 1 datos/irreversible, 2 seguridad, 3 contratos que otros consumen, 4 concurrencia, 5 entrega/entorno, 6 ningún test detectaría la regresión).
+
+### Tests intermitentes (flaky)
+Política para fallos sin causa de producto:
+- Un test que falla sin causa de producto recibe issue en 24 h, etiquetado `flaky`, nombrando la carrera sospechada, la evidencia (enlace al run) y un responsable.
+- Cuarentena con `test.skip` + enlace al issue; nunca se borra el test. Dos runs verdes consecutivos cierran el issue; un rerun es diagnóstico, no prueba.
+- Todo test en cuarentena se arregla o se mantiene visible dentro de un ciclo de release. Backlog actual: #368 (UI stale en `e2e/leagues.spec.ts`), #372 (carrera de locale).
+
+### Decisiones estructurales (ADR)
+- Las decisiones técnicas duraderas van a `docs/adr/` (plantilla en su README), no a los logs de tareas.
+- Un ADR sustituido marca `Status: Superseded by NNNN`, con enlaces en ambos sentidos entre el ADR viejo y el nuevo.
+
 ## Entorno local
 
 ```bash
