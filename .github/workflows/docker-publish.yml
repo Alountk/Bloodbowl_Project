@@ -80,14 +80,39 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Real-DB auth suite (71 specs) against Postgres. Same shape as the job above,
-  # but this is the one that covers the journeys users actually run — signup,
-  # league lifecycle, live match, resolution. It only became gateable once the
+  # Real-DB auth suite against Postgres. Same shape as the job above, but this
+  # is the one that covers the journeys users actually run — signup, league
+  # lifecycle, live match, resolution. It only became gateable once the
   # suite went green (#297 rate-limit, #270, #300, #301), which is precisely the
   # gap #271 opened: a broken flow used to surface at the next manual QA.
+  #
+  # Sharded across runners (P4): every run shares a single `next dev` process,
+  # so more workers inside one runner do not shorten it (measured 16.5m at 1
+  # worker vs 18.3-18.9m at 3 — P3 canary #369). Parallelism comes from
+  # separate runners, each with its own Postgres and dev server. The 3 SSE-heavy
+  # specs run alone, one per leg: their hub is process-wide, so they must never
+  # share a process — separate legs cannot contend at all. `--shard`
+  # auto-balances the core specs and picks up new spec files without touching
+  # this matrix.
   e2e-auth:
-    name: E2E (auth)
+    name: E2E (auth, ${{ matrix.id }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: core-1of3
+            args: --project=chromium --shard=1/3
+          - id: core-2of3
+            args: --project=chromium --shard=2/3
+          - id: core-3of3
+            args: --project=chromium --shard=3/3
+          - id: live-match
+            args: --project=chromium-sse-heavy e2e/live-match.spec.ts
+          - id: live-resolution
+            args: --project=chromium-sse-heavy e2e/live-resolution.spec.ts
+          - id: full-match-journey
+            args: --project=chromium-sse-heavy e2e/full-match-journey.spec.ts
     env:
       # `docker compose up -d postgres` (inside `pnpm run test:e2e:auth`)
       # interpolates the WHOLE compose file, and the `web` service declares
@@ -123,11 +148,12 @@ jobs:
         run: sudo ip addr add 111.111.111.100/32 dev lo
       # Starts compose Postgres on 127.0.0.1:5433, waits for `pg_isready`,
       # applies the schema, then boots `next dev` in AUTH_MODE=auth.
-      - run: pnpm run test:e2e:auth
+      # matrix.args selects this leg's project/shard (see the matrix above).
+      - run: pnpm run test:e2e:auth -- ${{ matrix.args }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report-auth
+          name: playwright-report-auth-${{ matrix.id }}
           path: playwright-report-auth/
           if-no-files-found: ignore
           retention-days: 7
