@@ -180,7 +180,7 @@ function Direction({ vars, title, note }: { vars: React.CSSProperties; title: st
 // ---------------------------------------------------------------------------
 
 export default {
-  title: "Rulebook Light/Direcciones (preview)",
+  title: "Exploraciones/Rulebook Light/Direcciones",
   parameters: {
     layout: "fullscreen",
     docs: {

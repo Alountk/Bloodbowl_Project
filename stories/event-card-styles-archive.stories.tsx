@@ -48,7 +48,7 @@ function Block({ num, name, note, children }: { num: string; name: string; note:
 }
 
 export default {
-  title: "Event Cards/Archivo · 4 estilos",
+  title: "Exploraciones/Archivo · 4 estilos",
   parameters: {
     layout: "fullscreen",
     docs: {

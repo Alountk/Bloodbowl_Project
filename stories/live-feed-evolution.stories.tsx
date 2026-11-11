@@ -19,7 +19,7 @@ function Phase({ tag, title, body }: { tag: string; title: string; body: ReactNo
 }
 
 export default {
-  title: "Rulebook Light/Evolución del live",
+  title: "Exploraciones/Evolución del live",
   parameters: {
     layout: "fullscreen",
     docs: {

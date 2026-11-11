@@ -137,7 +137,7 @@ function Flow({
 }
 
 export default {
-  title: "Acta en vivo/Flujo completo",
+  title: "Partido/Acta en vivo/Flujo completo",
   component: Flow,
   parameters: {
     layout: "fullscreen",

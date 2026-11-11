@@ -19,7 +19,7 @@ function InteractiveRollStepper({ roll16 = "", roll6 = "" }: { roll16?: number |
 }
 
 export default {
-  title: "Live match/RollStepper 1D16",
+  title: "Partido/RollStepper 1D16",
   component: RollStepper,
   parameters: {
     docs: {
