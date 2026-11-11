@@ -3,6 +3,12 @@ import "../app/globals.css";
 
 const preview: Preview = {
   parameters: {
+    // App Router context: without this the nextjs-vite framework mocks the
+    // pages router and `next/navigation` hooks throw "expected app router to
+    // be mounted" (Chromatic build 1, 2026-11-11).
+    nextjs: {
+      appDirectory: true,
+    },
     controls: {
       matchers: {
         color: /(background|color)$/i,
