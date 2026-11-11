@@ -1,0 +1,9 @@
+# CODEOWNERS
+
+# Default owner for everything in the repo. Used for review routing and as the
+# basis for code-owner review if it is ever required; note that requiring
+# code-owner approvals in branch protection is NOT enabled (a single-owner repo
+# could not satisfy it — the author cannot approve their own PR).
+# Add more owners per path below as the team grows.
+
+* @Alountk
