@@ -97,7 +97,7 @@ function Panel({ children }: { children: ReactNode }) {
 }
 
 export default {
-  title: "Tarjetas de evento/Acta (V4)",
+  title: "Partido/New Styles/Tarjetas · Acta (V4)",
   component: LiveEventCardsActa,
   parameters: {
     docs: {

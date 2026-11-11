@@ -62,7 +62,7 @@ const finishedLive = () =>
   });
 
 export default {
-  title: "Partido/Acta en vivo/Cierre",
+  title: "Partido/New Styles/Cierre",
   component: ActaClosure,
   parameters: {
     docs: {

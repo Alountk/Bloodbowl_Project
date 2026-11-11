@@ -98,7 +98,7 @@ function Panel({ children, max = "md" }: { children: ReactNode; max?: "md" | "lg
 }
 
 export default {
-  title: "Tarjetas de evento/Feed en vivo (V3)",
+  title: "Partido/Old Styles/Tarjetas · Feed en vivo (V3)",
   component: LiveEventCards,
   parameters: {
     docs: {

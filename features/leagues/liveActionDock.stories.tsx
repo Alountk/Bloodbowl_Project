@@ -78,7 +78,7 @@ const baseParams = {
 };
 
 export default {
-  title: "Partido/ActionDock",
+  title: "Partido/Old Styles/ActionDock",
   component: LiveActionDock,
   parameters: {
     docs: {

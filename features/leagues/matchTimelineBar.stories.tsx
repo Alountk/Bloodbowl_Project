@@ -92,7 +92,7 @@ function Panel({ children, label }: { children: ReactNode; label?: string }) {
 }
 
 export default {
-  title: "Partido/Timeline bar",
+  title: "Partido/Old Styles/Timeline bar",
   component: MatchTimelineBar,
   parameters: {
     docs: {
