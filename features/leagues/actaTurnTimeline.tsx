@@ -612,7 +612,7 @@ function CompactRow({
         fresh ? "acta-motion-row-flash" : ""
       }`}
     >
-      <ActaIcon name={icon} className="mt-0.5 shrink-0 text-base text-slate" />
+      <ActaIcon name={icon} className="mt-0.5 size-4 shrink-0 text-slate" />
       <p className="min-w-0 flex-1">
         <strong className="text-navy">{name}</strong> {compactSentence(event, teams)}
       </p>
@@ -694,7 +694,7 @@ function InjuryRollCallout({
       className="acta-motion-pulse-glow space-y-2.5 rounded-sm border-2 border-red bg-panel p-3"
     >
       <div className="flex items-center gap-1.5 text-red">
-        <ActaIcon name="warning" className="text-lg" />
+        <ActaIcon name="warning" className="size-4.5" />
         <span className="text-[10px] font-bold uppercase tracking-wider">
           TIRADA DE LESIÓN PENDIENTE (REGLAMENTO BB2025)
         </span>
@@ -717,7 +717,7 @@ function InjuryRollCallout({
           >
             <ActaIcon
               name="dice"
-              className={`text-lg ${open ? "acta-motion-dice-shake" : ""}`}
+              className={`size-4.5 ${open ? "acta-motion-dice-shake" : ""}`}
             />
             <span>TIRAR 1D16 DE LESIÓN</span>
           </button>
