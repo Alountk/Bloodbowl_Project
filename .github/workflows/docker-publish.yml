@@ -6,6 +6,13 @@ on:
   push:
     branches: [main]
 
+# One in-flight run per ref: a newer push cancels the superseded run instead of
+# queueing behind it. With rapid iteration only the latest push is validated,
+# so the wait is bounded by one run, not the whole queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
@@ -53,6 +60,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # `next dev` imports the generated Prisma client even in local mode.
       - run: pnpm db:generate
+      # Playwright browser binaries are ~150 MB per runner; the cache skips the
+      # download on every run but the first. OS deps still install via
+      # --with-deps. Keyed on the lockfile: it is what pins the Playwright
+      # version.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm run test:e2e
       # A red run without evidence is undiagnosable; keep the HTML report
@@ -92,6 +107,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
+      # Same browser cache as the local-e2e job (see above).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec playwright install --with-deps chromium
       # `e2e/auth.spec.ts` "Auth flow regression (LAN host)" deliberately runs
       # the journey against a LAN IP — the cookie/redirect path differs from
@@ -112,8 +132,44 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # PR validation: builds both image stages with no push and no `needs`, so the
+  # Dockerfile is validated in parallel with the test jobs. Wall clock becomes
+  # max(jobs) instead of sum(jobs); publishing stays strictly gated below.
+  docker-validate:
+    name: Docker Image (validate)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build runner image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          push: false
+          tags: pr-validate:runner
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build migrate image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrate
+          push: false
+          tags: pr-validate:migrate
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Publishing to GHCR happens only on pushes to main and only when the three
+  # quality gates are green: a released image must never come from a red run.
   docker:
     name: Docker Image
+    if: ${{ github.event_name == 'push' && success() }}
     needs: [test, e2e, e2e-auth]
     runs-on: ubuntu-latest
     steps:
