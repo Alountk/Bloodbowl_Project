@@ -208,14 +208,19 @@ async function archiveGuardArchive(page: import("@playwright/test").Page, name: 
 
   // Two assertions on purpose, in dependency order. In CI this test has timed
   // out on a card that was STILL visible right after a DELETE that the server
-  // answered 204 (issue #320) — a single "card still there" cannot say whether
-  // the server kept it or the client failed to drop it. The first check pins
-  // the server; only if it passes does the second one mean "client state".
+  // answered 204 (issues #320, #368) — a single "card still there" cannot say
+  // whether the server kept it or the client failed to drop it. The first
+  // check pins the server. The second one reloads before asserting the UI:
+  // the teams list does not revalidate after a delete, so a stale card can
+  // linger in the DOM under runner load (flaky #368). After the reload the
+  // check tests rendered server truth — "the card does not come back" — and
+  // no longer depends on an in-flight client re-render.
   const remaining = (await (await page.request.get("/api/teams")).json()) as {
     id: string;
   }[];
   expect(remaining.some((t) => t.id === id)).toBe(false);
 
+  await page.reload();
   await expect(card).not.toBeVisible();
 }
 

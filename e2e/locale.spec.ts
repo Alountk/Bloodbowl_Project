@@ -21,6 +21,13 @@ import { E2E_VERIFICATION_CODE } from "./verificationCode";
  */
 test.setTimeout(240_000);
 
+// Locale state is the shared theme of every spec below (cookies + account
+// PATCHes). Serial mode keeps them from interleaving if the suite is ever
+// re-parallelized: under `workers: 3` (#369) this file produced the locale
+// race of issue #372. P4 reverted to `workers: 1`; this is insurance so the
+// class cannot come back silently.
+test.describe.configure({ mode: "serial" });
+
 const PASSWORD = "password-123";
 const uniqueEmail = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
@@ -153,6 +160,10 @@ test.describe("anonymous: the cookie drives the locale", () => {
     page,
   }) => {
     // A non-English browser (fr) → English is the product default when no cookie is set.
+    // Start from an explicit no-cookie state (issue #372): if a future setup or
+    // shared storageState ever seeds `bb-locale`, this test would otherwise
+    // assert against the seeded value instead of the true default.
+    await page.context().clearCookies();
     await page.goto("/");
     const switcher = page
       .locator("header")
