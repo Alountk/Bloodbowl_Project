@@ -291,7 +291,7 @@ function StoryShell({
 }
 
 export default {
-  title: "Live match/MatchView",
+  title: "Partido/Old Styles/MatchView",
   component: MatchView,
   parameters: {
     docs: {

@@ -34,7 +34,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 const hex = (hex: string) => hex;
 
 export default {
-  title: "Rulebook Light/Tokens",
+  title: "Exploraciones/Rulebook Light/Tokens",
   parameters: {
     layout: "fullscreen",
     docs: {

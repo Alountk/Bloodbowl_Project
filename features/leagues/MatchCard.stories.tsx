@@ -67,7 +67,7 @@ function Card({ fixture: f, admin = false }: { fixture: FixtureDraft; admin?: bo
 }
 
 export default {
-  title: "Jornadas/MatchCard (Design B)",
+  title: "Jornadas/MatchCard",
   component: MatchCard,
   parameters: {
     docs: {
