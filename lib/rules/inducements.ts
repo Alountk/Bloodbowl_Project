@@ -63,6 +63,12 @@ export interface InducementEntry {
   id: InducementId;
   /** Spanish display name (IND-4 resolves snapshots from here at close time). */
   displayName: string;
+  /** The acta-facing standard price in M.O. (T3): always the standard base
+   * cost — never a rule override (see effectiveCost). */
+  price: number;
+  /** The acta-facing standard purchase cap (T3): always the standard limit —
+   * never a per-race override (see maxAllowed). */
+  max: number;
   /** Standard base cost in gold. */
   costGp: number;
   /** Purchase limit per match. */
@@ -89,9 +95,19 @@ export interface PersistedInducements {
   away: InducementCartItem[];
 }
 
-/** The catalog — all 16 common-inducement entries of the IND-1 table. Prices
- * and limits are pinned to that table; do not invent new values here. */
-export const COMMON_INDUCEMENTS: readonly InducementEntry[] = [
+/** Catalog input: the IND-1 rules values written ONCE per literal; the
+ * acta-facing `price`/`max` display fields (T3) derive from them so the
+ * standard values never exist twice in a literal. */
+type CatalogEntryInput = Omit<InducementEntry, "price" | "max">;
+
+/** Fills the T3 display fields: `price` = standard base cost, `max` =
+ * standard purchase cap (the INCENTIVOS COMUNES digest values, PDF p.150 /
+ * printed p.142 — same numbers costGp/maxPerMatch already pin). */
+function withDisplayFields(entry: CatalogEntryInput): InducementEntry {
+  return { ...entry, price: entry.costGp, max: entry.maxPerMatch };
+}
+
+const CATALOG: CatalogEntryInput[] = [
   { id: "prayers-to-nuffle", displayName: "Plegarias a Nuffle", costGp: 10_000, maxPerMatch: 3 },
   { id: "temporary-cheerleaders", displayName: "Animadoras temporales", costGp: 5_000, maxPerMatch: 5 },
   { id: "assistant-coaches", displayName: "Ayudantes de Entrenador", costGp: 20_000, maxPerMatch: 5 },
@@ -169,6 +185,10 @@ export const COMMON_INDUCEMENTS: readonly InducementEntry[] = [
   },
 ];
 
+/** The catalog — all 16 common-inducement entries of the IND-1 table. Prices
+ * and limits are pinned to that table; do not invent new values here. */
+export const COMMON_INDUCEMENTS: readonly InducementEntry[] = CATALOG.map(withDisplayFields);
+
 /** The `raceId → special-rule[]` map (IND-5) — the single source of truth the
  * IND-1 eligibility + costOverrides resolve against. The roster catalog does
  * NOT model inducement rules; this map owns the vocabulary. */
@@ -202,6 +222,13 @@ export function raceRules(raceId: string): readonly RuleId[] {
  * `validateCart` to enforce the purchasable-only rule. */
 export function getInducement(id: string): InducementEntry | undefined {
   return COMMON_INDUCEMENTS.find((entry) => entry.id === id);
+}
+
+/** Looks an entry up by its Spanish display name (the acta header renders
+ * name-based snapshot lines, not ids); undefined when no entry carries the
+ * name. Display-only resolution — never feed it to purchase validation. */
+export function inducementByDisplayName(displayName: string): InducementEntry | undefined {
+  return COMMON_INDUCEMENTS.find((entry) => entry.displayName === displayName);
 }
 
 /** The PURCHASABLE catalog (excludes the reserved dynamic-cost mercenaries) —
