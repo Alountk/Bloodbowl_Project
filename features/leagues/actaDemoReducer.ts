@@ -1,5 +1,8 @@
+import { weatherFromRoll } from "@/lib/rules/weather";
+
 import type { LiveCommand, LiveMatchEventDto, LiveMatchViewState } from "./api";
 import { MIN, liveState, narrativeEvents } from "./actaFlow.fixtures";
+import { fanFactorOf, type FanFactorLine } from "./actaPreMatch";
 import type { PreMatchCommit } from "./actaPreMatchFlow";
 
 /**
@@ -26,9 +29,21 @@ export type DemoScenario =
  * itself: the appended narrative events, the closure toggle, the auto-follow
  * camera, the single acta submitter and the monotonic event counter.
  */
-/** Fase 1 · Pre-partido capture (S5): per-step completion + kicking side. */
+/**
+ * Fase 1 · Pre-partido capture (S5 + S2c): PER-SIDE progress — each coach
+ * commits ONLY their own rolls and inducement cart («cada usuario deberia ver
+ * el suyo»). The shared acta events derive from these per-side marks.
+ */
 export interface ActaDemoPreMatch {
-  inducementsDone: boolean;
+  /** Confirmed fan lines per side (merged into `fan_factor` events). */
+  fans: { home: FanFactorLine | null; away: FanFactorLine | null };
+  /** Per-side confirmed weather dice (the 2D6 sum resolves the weather). */
+  weatherDice: { home: number | null; away: number | null };
+  /** Per-side confirmed kick dice (the opposed 1D6). */
+  kickDice: { home: number | null; away: number | null };
+  /** Per-side inducement confirmation. */
+  inducementsDone: { home: boolean; away: boolean };
+  /** Winner's decision: who kicks. */
   kicking: "home" | "away" | null;
 }
 
@@ -187,6 +202,17 @@ function scoreBump(
   return {};
 }
 
+/** The neutral start of a pre-match capture (nothing confirmed). */
+function emptyPreMatch(): ActaDemoPreMatch {
+  return {
+    fans: { home: null, away: null },
+    weatherDice: { home: null, away: null },
+    kickDice: { home: null, away: null },
+    inducementsDone: { home: false, away: false },
+    kicking: null,
+  };
+}
+
 function asSide(value: unknown): "home" | "away" | null {
   if (value === "home") return "home";
   if (value === "away") return "away";
@@ -335,52 +361,104 @@ export function actaDemoReducer(
       };
     }
     case "commitPreMatch": {
+      // PER-SIDE capture (S2c): one commit touches ONLY the committing side;
+      // the shared acta events (`fan_factor` merged, `weather` on the 2D6 sum)
+      // derive from the merged per-side marks.
       const commit = action.commit;
-      const preMatch: ActaDemoPreMatch = {
-        inducementsDone:
-          commit.step === "inducements"
-            ? true
-            : (state.preMatch?.inducementsDone ?? false),
-        kicking:
-          commit.step === "kicking"
-            ? commit.kicking
-            : (state.preMatch?.kicking ?? null),
-      };
-      if (commit.step === "fans") {
+      const preMatch = state.preMatch ?? emptyPreMatch();
+
+      if (commit.step === "fanRoll") {
+        const rival: "home" | "away" = commit.side === "home" ? "away" : "home";
+        const fans = { home: preMatch.fans.home, away: preMatch.fans.away };
+        fans[commit.side] = commit.line;
+        // The rival keeps their confirmed line, else the per-side line of the
+        // LATEST `fan_factor` event payload (the demo's kickoff fixture).
+        fans[rival] = fans[rival] ?? fanFactorOf(state.events, rival);
         return {
           ...appendEvents(state, [
             {
               kind: "fan_factor",
               side: null,
-              payload: { home: commit.fans.home, away: commit.fans.away },
+              payload: { home: fans.home, away: fans.away },
             },
           ]),
-          preMatch,
+          preMatch: { ...preMatch, fans },
         };
       }
-      if (commit.step === "weather") {
-        return {
-          ...appendEvents(state, [
-            {
-              kind: "weather",
-              side: null,
-              payload: { value: commit.weather.value, roll: commit.weather.roll },
-            },
-          ]),
-          preMatch,
+
+      if (commit.step === "weatherRoll") {
+        const weatherDice = {
+          home: preMatch.weatherDice.home,
+          away: preMatch.weatherDice.away,
         };
+        weatherDice[commit.side] = commit.die;
+        const nextPreMatch = { ...preMatch, weatherDice };
+        // The 2D6 weather resolves only when BOTH coaches confirmed a die.
+        if (weatherDice.home != null && weatherDice.away != null) {
+          const roll = weatherDice.home + weatherDice.away;
+          return {
+            ...appendEvents(state, [
+              {
+                kind: "weather",
+                side: null,
+                payload: { value: weatherFromRoll(roll).kind, roll },
+              },
+            ]),
+            preMatch: nextPreMatch,
+          };
+        }
+        return { ...state, preMatch: nextPreMatch };
       }
+
       if (commit.step === "inducements") {
+        const carts = state.inducements ?? { home: [], away: [] };
+        const items = commit.items.map((item) => ({ ...item }));
         return {
           ...state,
+          // ONLY the committing side's cart is replaced — the rival's is kept.
           inducements: {
-            home: commit.inducements.home.map((item) => ({ ...item })),
-            away: commit.inducements.away.map((item) => ({ ...item })),
+            home:
+              commit.side === "home"
+                ? items
+                : carts.home.map((item) => ({ ...item })),
+            away:
+              commit.side === "away"
+                ? items
+                : carts.away.map((item) => ({ ...item })),
           },
-          preMatch,
+          preMatch: {
+            ...preMatch,
+            inducementsDone: {
+              home: preMatch.inducementsDone.home || commit.side === "home",
+              away: preMatch.inducementsDone.away || commit.side === "away",
+            },
+          },
         };
       }
-      return { ...state, preMatch };
+
+      if (commit.step === "kickRoll") {
+        const kickDice = {
+          home: preMatch.kickDice.home,
+          away: preMatch.kickDice.away,
+        };
+        kickDice[commit.side] = commit.die;
+        return { ...state, preMatch: { ...preMatch, kickDice } };
+      }
+
+      if (commit.step === "kickTie") {
+        // A committed tie clears BOTH dice for the shared re-roll.
+        return {
+          ...state,
+          preMatch: {
+            ...preMatch,
+            kickDice: { home: null, away: null },
+            kicking: null,
+          },
+        };
+      }
+
+      // commit.step === "kicking": the winner's decision.
+      return { ...state, preMatch: { ...preMatch, kicking: commit.kicking } };
     }
     case "submitCommand":
       return applyCommand(state, action.command);

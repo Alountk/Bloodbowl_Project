@@ -1,9 +1,4 @@
-import {
-  useState,
-  type Dispatch,
-  type ReactNode,
-  type SetStateAction,
-} from "react";
+import { useState, type ReactNode } from "react";
 
 import { rollD3, rollD6 } from "@/lib/random";
 import {
@@ -17,20 +12,20 @@ import type { FanFactorLine } from "./actaPreMatch";
 import { formatMo } from "./actaSheetHeader";
 
 /**
- * Fase 1 · Pre-partido (S5): the rulebook pre-match sequence captured INSIDE
- * the acta sequence, so the acta (header + timeline) derives from the capture
- * (direction A). Rulebook order (digest §B «Secuencia Anterior al Partido»):
- * 1) Los Hinchas (dedicated fans + 1D3), 2) El Clima (1D6 per coach → 2D6
- * table), 3) Contratar Sustitutos (league-only — note here), 4) Incentivos
- * (the coaches SELECT them), 5) Determinar Equipo Pateador (opposed 1D6, ties
- * re-rolled, winner decides). Every roll step defaults to MANUAL entry with an
- * Auto option (S5: «Todo manual con opcion a automatico en cada step»).
+ * Antes del partido (S5 + S2c): the rulebook pre-match sequence captured
+ * INSIDE the acta's opening, scoped PER SIDE — each coach fills only their
+ * own rolls and inducements («cada usuario deberia ver el suyo… las Águilas
+ * de Khemri no deberian ver las cosas de Colmillos del Caos y viceversa») —
+ * while the «Lo que ha sucedido» report informs every CONFIRMED fact of both
+ * sides («segun nuestras tiradas se informaran en esa parte de lo que ha
+ * sucedido»). Rulebook order (digest §B): 1) Los Hinchas (dedicated fans +
+ * 1D3), 2) El Clima (1D6 per coach → 2D6 table), 3) Contratar Sustitutos
+ * (league-only — note here), 4) Incentivos (the coaches SELECT them),
+ * 5) Determinar Equipo Pateador (opposed 1D6, ties re-rolled, winner
+ * decides). Every roll defaults to MANUAL entry with an Auto option (S5:
+ * «Todo manual con opcion a automatico en cada step»). The acta (header +
+ * timeline) derives from these commits — direction A.
  */
-
-export interface PreMatchFans {
-  home: FanFactorLine;
-  away: FanFactorLine;
-}
 
 export interface PreMatchWeather {
   /** The 2D6 sum (one 1D6 per coach). */
@@ -40,17 +35,32 @@ export interface PreMatchWeather {
 }
 
 export interface ActaPreMatchSnapshot {
-  fans: PreMatchFans | null;
+  /** Confirmed fan lines per side (derived acta feed). */
+  fans: { home: FanFactorLine | null; away: FanFactorLine | null };
+  /** Resolved weather (both dice confirmed), else null. */
   weather: PreMatchWeather | null;
+  /** Per-side confirmed weather dice (capture progress). */
+  weatherDice: { home: number | null; away: number | null };
+  /** Confirmed inducement carts per side. */
   inducements: PersistedInducements;
-  inducementsDone: boolean;
+  /** Per-side inducement confirmation. */
+  inducementsDone: { home: boolean; away: boolean };
+  /** Per-side confirmed kick dice (the opposed 1D6). */
+  kickDice: { home: number | null; away: number | null };
+  /** Winner's decision: who kicks. */
   kicking: "home" | "away" | null;
 }
 
 export type PreMatchCommit =
-  | { step: "fans"; fans: PreMatchFans }
-  | { step: "weather"; weather: PreMatchWeather }
-  | { step: "inducements"; inducements: PersistedInducements }
+  | { step: "fanRoll"; side: "home" | "away"; line: FanFactorLine }
+  | { step: "weatherRoll"; side: "home" | "away"; die: number }
+  | {
+      step: "inducements";
+      side: "home" | "away";
+      items: InducementCartItem[];
+    }
+  | { step: "kickRoll"; side: "home" | "away"; die: number }
+  | { step: "kickTie" }
   | { step: "kicking"; kicking: "home" | "away" };
 
 export interface ActaPreMatchFlowProps {
@@ -59,6 +69,8 @@ export interface ActaPreMatchFlowProps {
   /** Dedicated-fans attribute per side (the +N in the attendance roll). */
   homeBase: number;
   awayBase: number;
+  /** Which coach is viewing: the capture shows ONLY this side. */
+  viewerSide: "home" | "away";
   snapshot: ActaPreMatchSnapshot;
   onCommit: (commit: PreMatchCommit) => void;
   /** Injectable dice (Auto mode); defaults to the real dice in lib/random. */
@@ -167,11 +179,17 @@ function StepGroup({
   );
 }
 
+function clampDie(raw: string, max: number): number | null {
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(1, parsed)) : null;
+}
+
 export function ActaPreMatchFlow({
   homeName,
   awayName,
   homeBase,
   awayBase,
+  viewerSide,
   snapshot,
   onCommit,
   dice = { d3: rollD3, d6: rollD6 },
@@ -179,16 +197,9 @@ export function ActaPreMatchFlow({
   const [fanMode, setFanMode] = useState<RollMode>("manual");
   const [weatherMode, setWeatherMode] = useState<RollMode>("manual");
   const [kickMode, setKickMode] = useState<RollMode>("manual");
-  const [fanDice, setFanDice] = useState<{ home: number | null; away: number | null }>(
-    { home: null, away: null },
-  );
-  const [weatherDice, setWeatherDice] = useState<{
-    home: number | null;
-    away: number | null;
-  }>({ home: null, away: null });
-  const [kickDice, setKickDice] = useState<{ home: number | null; away: number | null }>(
-    { home: null, away: null },
-  );
+  const [fanDie, setFanDie] = useState<number | null>(null);
+  const [weatherDie, setWeatherDie] = useState<number | null>(null);
+  const [kickDie, setKickDie] = useState<number | null>(null);
   const [kickChoice, setKickChoice] = useState<Side | null>(null);
   const [cart, setCart] = useState<PersistedInducements>(() => ({
     home: snapshot.inducements.home.map((item) => ({ ...item })),
@@ -197,27 +208,14 @@ export function ActaPreMatchFlow({
 
   const nameOf = (side: Side) => (side === "home" ? homeName : awayName);
   const baseOf = (side: Side) => (side === "home" ? homeBase : awayBase);
+  const rivalSide: Side = viewerSide === "home" ? "away" : "home";
 
-  const clampInto =
-    (setter: Dispatch<
-      SetStateAction<{ home: number | null; away: number | null }>
-    >, max: number) =>
-    (side: Side, raw: string) => {
-      const parsed = Number.parseInt(raw, 10);
-      const value = Number.isFinite(parsed)
-        ? Math.min(max, Math.max(1, parsed))
-        : null;
-      setter((prev) => ({ ...prev, [side]: value }));
-    };
-
-  const setFanDie = clampInto(setFanDice, 3);
-  const setWeatherDie = clampInto(setWeatherDice, 6);
-  const setKickDie = clampInto(setKickDice, 6);
-
-  const bumpCart = (side: Side, id: string, delta: number) => {
+  const bumpCart = (id: string, delta: number) => {
     const max = listInducements().find((entry) => entry.id === id)?.max ?? 1;
     setCart((prev) => {
-      const items: InducementCartItem[] = prev[side].map((item) => ({ ...item }));
+      const items: InducementCartItem[] = prev[viewerSide].map((item) => ({
+        ...item,
+      }));
       const index = items.findIndex((item) => item.id === id);
       const current = index >= 0 ? items[index].count : 0;
       const next = Math.max(0, Math.min(max, current + delta));
@@ -227,76 +225,140 @@ export function ActaPreMatchFlow({
       } else if (next > 0) {
         items.push({ id, count: next });
       }
-      return { ...prev, [side]: items };
+      return { ...prev, [viewerSide]: items };
     });
   };
 
-  const fanReady = fanDice.home != null && fanDice.away != null;
-  const weatherReady = weatherDice.home != null && weatherDice.away != null;
-  const kickBoth = kickDice.home != null && kickDice.away != null;
-  const kickTie = kickBoth && kickDice.home === kickDice.away;
+  const myFanDie = fanDie;
+  const myWeatherDie = weatherDie ?? snapshot.weatherDice[viewerSide];
+  const rivalWeatherDie = snapshot.weatherDice[rivalSide];
+  const weatherSum =
+    myWeatherDie != null && rivalWeatherDie != null
+      ? myWeatherDie + rivalWeatherDie
+      : null;
+  const myKickDie = kickDie ?? snapshot.kickDice[viewerSide];
+  const kickBoth =
+    snapshot.kickDice.home != null && snapshot.kickDice.away != null;
+  const kickTie =
+    kickBoth && snapshot.kickDice.home === snapshot.kickDice.away;
   const kickWinner: Side | null =
-    kickBoth && !kickTie ? (kickDice.home! > kickDice.away! ? "home" : "away") : null;
-  const weatherSum = weatherReady ? weatherDice.home! + weatherDice.away! : null;
+    kickBoth && !kickTie
+      ? snapshot.kickDice.home! > snapshot.kickDice.away!
+        ? "home"
+        : "away"
+      : null;
+
+  const reportLines: ReactNode[] = [];
+  if (snapshot.weather != null) {
+    reportLines.push(
+      <p key="weather" className="text-sm text-navy">
+        Clima: 2D6 = {snapshot.weather.roll} ·{" "}
+        {weatherFromRoll(snapshot.weather.roll).label}
+      </p>,
+    );
+  }
+  for (const side of ["home", "away"] as const) {
+    const fan = snapshot.fans[side];
+    if (fan != null) {
+      reportLines.push(
+        <p key={`fan-${side}`} className="text-sm text-navy">
+          Afición — {nameOf(side)}: {fan.base} + 🎲{fan.dice} = {fan.total}
+        </p>,
+      );
+    }
+  }
+  for (const side of ["home", "away"] as const) {
+    if (!snapshot.inducementsDone[side]) continue;
+    const items = snapshot.inducements[side];
+    const joined =
+      items.length === 0
+        ? "Ninguno"
+        : items
+            .map((item) => {
+              const entry = listInducements().find((e) => e.id === item.id);
+              return `${entry?.displayName ?? item.id} ×${item.count}`;
+            })
+            .join(", ");
+    reportLines.push(
+      <p key={`ind-${side}`} className="text-sm text-navy">
+        Incentivos — {nameOf(side)}: {joined}
+      </p>,
+    );
+  }
+  if (kickTie) {
+    reportLines.push(
+      <p key="kick" className="text-sm text-navy">
+        Pateador: empate 🎲{snapshot.kickDice.home} — repetir tirada
+      </p>,
+    );
+  } else if (kickWinner != null) {
+    reportLines.push(
+      <p key="kick" className="text-sm text-navy">
+        Pateador: 🎲{snapshot.kickDice.home} vs 🎲{snapshot.kickDice.away} —
+        gana {nameOf(kickWinner)}
+      </p>,
+    );
+  }
+  if (snapshot.kicking != null) {
+    reportLines.push(
+      <p key="kicking" className="text-sm text-navy">
+        Quién patea: {nameOf(snapshot.kicking)}
+      </p>,
+    );
+  }
 
   return (
     <section
-      aria-label="Fase 1 · Pre-partido"
+      aria-label="Antes del partido"
       className="mt-4 border border-navy/20 bg-white p-4"
     >
-      <h2 className="text-lg font-bold text-navy">Fase 1 · Pre-partido</h2>
+      <h2 className="text-lg font-bold text-navy">Antes del partido</h2>
+      <p className="text-sm text-navy">
+        Solo rellenas tu parte; el acta informa de lo que ha sucedido.
+      </p>
 
       <StepGroup
         label="Paso 1 · Los Hinchas"
         title="1 · Los Hinchas"
-        done={snapshot.fans != null}
+        done={snapshot.fans[viewerSide] != null}
       >
         <p className="text-sm text-navy">
           Afición ocasional: aficionados dedicados + 1D3.
         </p>
         <ModeToggle mode={fanMode} onChange={setFanMode} />
-        {(["home", "away"] as const).map((side) => (
-          <div key={side} className="mt-1 flex items-center gap-3">
-            <DieField
-              label={`D3 afición ${nameOf(side)}`}
-              rollLabel={`Tirar afición ${nameOf(side)}`}
-              mode={fanMode}
-              value={fanDice[side]}
-              max={3}
-              onManual={(raw) => setFanDie(side, raw)}
-              onRoll={() =>
-                setFanDice((prev) => ({ ...prev, [side]: dice.d3() }))
-              }
-            />
-            <p className="text-sm text-navy">
-              {baseOf(side)} + {fanDice[side] ?? "?"} ={" "}
-              {fanDice[side] != null ? baseOf(side) + fanDice[side]! : "?"}
-            </p>
-          </div>
-        ))}
+        <div className="mt-1 flex items-center gap-3">
+          <DieField
+            label={`D3 afición (${nameOf(viewerSide)})`}
+            rollLabel="Tirar afición"
+            mode={fanMode}
+            value={myFanDie}
+            max={3}
+            onManual={(raw) => setFanDie(clampDie(raw, 3))}
+            onRoll={() => setFanDie(dice.d3())}
+          />
+          <p className="text-sm text-navy">
+            {baseOf(viewerSide)} + {myFanDie ?? "?"} ={" "}
+            {myFanDie != null ? baseOf(viewerSide) + myFanDie : "?"}
+          </p>
+        </div>
         <button
           type="button"
           className={`${BUTTON} mt-2`}
-          disabled={!fanReady}
+          disabled={myFanDie == null}
           onClick={() =>
+            myFanDie != null &&
             onCommit({
-              step: "fans",
-              fans: {
-                home: {
-                  base: homeBase,
-                  dice: fanDice.home!,
-                  total: homeBase + fanDice.home!,
-                },
-                away: {
-                  base: awayBase,
-                  dice: fanDice.away!,
-                  total: awayBase + fanDice.away!,
-                },
+              step: "fanRoll",
+              side: viewerSide,
+              line: {
+                base: baseOf(viewerSide),
+                dice: myFanDie,
+                total: baseOf(viewerSide) + myFanDie,
               },
             })
           }
         >
-          Confirmar hinchas
+          Confirmar mi tirada de hinchas
         </button>
       </StepGroup>
 
@@ -309,20 +371,15 @@ export function ActaPreMatchFlow({
           Cada entrenador tira 1D6; la suma (2D6) marca el clima.
         </p>
         <ModeToggle mode={weatherMode} onChange={setWeatherMode} />
-        {(["home", "away"] as const).map((side) => (
-          <DieField
-            key={side}
-            label={`D6 clima ${nameOf(side)}`}
-            rollLabel={`Tirar clima ${nameOf(side)}`}
-            mode={weatherMode}
-            value={weatherDice[side]}
-            max={6}
-            onManual={(raw) => setWeatherDie(side, raw)}
-            onRoll={() =>
-              setWeatherDice((prev) => ({ ...prev, [side]: dice.d6() }))
-            }
-          />
-        ))}
+        <DieField
+          label={`D6 clima (${nameOf(viewerSide)})`}
+          rollLabel="Tirar clima"
+          mode={weatherMode}
+          value={weatherDie}
+          max={6}
+          onManual={(raw) => setWeatherDie(clampDie(raw, 6))}
+          onRoll={() => setWeatherDie(dice.d6())}
+        />
         {weatherSum != null ? (
           <p className="text-sm font-semibold text-navy">
             2D6 = {weatherSum} · {weatherFromRoll(weatherSum).label}
@@ -331,70 +388,65 @@ export function ActaPreMatchFlow({
         <button
           type="button"
           className={`${BUTTON} mt-2`}
-          disabled={!weatherReady}
+          disabled={weatherDie == null}
           onClick={() =>
+            weatherDie != null &&
             onCommit({
-              step: "weather",
-              weather: {
-                roll: weatherSum!,
-                value: weatherFromRoll(weatherSum!).kind,
-              },
+              step: "weatherRoll",
+              side: viewerSide,
+              die: weatherDie,
             })
           }
         >
-          Confirmar clima
+          Confirmar mi dado de clima
         </button>
       </StepGroup>
 
       <StepGroup
         label="Paso 3 · Incentivos"
         title="3 · Incentivos"
-        done={snapshot.inducementsDone}
+        done={snapshot.inducementsDone[viewerSide]}
       >
         <p className="text-sm text-navy">
-          Los entrenadores seleccionan los incentivos (caja menor / VAE).
+          Selecciona tus incentivos (caja menor / VAE).
         </p>
-        {(["home", "away"] as const).map((side) => (
-          <div
-            key={side}
-            role="group"
-            aria-label={`Incentivos ${nameOf(side)}`}
-            className="mt-2"
-          >
-            <p className="text-sm font-semibold text-navy">{nameOf(side)}</p>
-            {listInducements().map((entry) => {
-              const count =
-                cart[side].find((item) => item.id === entry.id)?.count ?? 0;
-              return (
-                <div key={entry.id} className="flex items-center gap-2">
-                  <span className="text-sm text-navy">
-                    {entry.displayName}
-                    {count > 0 ? ` ×${count}` : ""} — {formatMo(entry.price)}{" "}
-                    M.O. (máx. {entry.max})
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`Añadir ${entry.displayName}`}
-                    className={BUTTON}
-                    disabled={count >= entry.max}
-                    onClick={() => bumpCart(side, entry.id, 1)}
-                  >
-                    +
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Quitar ${entry.displayName}`}
-                    className={BUTTON}
-                    disabled={count <= 0}
-                    onClick={() => bumpCart(side, entry.id, -1)}
-                  >
-                    −
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+        <div
+          role="group"
+          aria-label={`Incentivos ${nameOf(viewerSide)}`}
+          className="mt-2"
+        >
+          {listInducements().map((entry) => {
+            const count =
+              cart[viewerSide].find((item) => item.id === entry.id)?.count ?? 0;
+            return (
+              <div key={entry.id} className="flex items-center gap-2">
+                <span className="text-sm text-navy">
+                  {entry.displayName}
+                  {count > 0 ? ` ×${count}` : ""} — {formatMo(entry.price)}{" "}
+                  M.O. (máx. {entry.max})
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Añadir ${entry.displayName}`}
+                  className={BUTTON}
+                  disabled={count >= entry.max}
+                  onClick={() => bumpCart(entry.id, 1)}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Quitar ${entry.displayName}`}
+                  className={BUTTON}
+                  disabled={count <= 0}
+                  onClick={() => bumpCart(entry.id, -1)}
+                >
+                  −
+                </button>
+              </div>
+            );
+          })}
+        </div>
         <p className="mt-2 text-sm text-navy">
           Caja menor: diferencia de VAE + gasto rival en incentivos (máx.
           +50.000 M.O. de tesorería)
@@ -405,14 +457,12 @@ export function ActaPreMatchFlow({
           onClick={() =>
             onCommit({
               step: "inducements",
-              inducements: {
-                home: cart.home.map((item) => ({ ...item })),
-                away: cart.away.map((item) => ({ ...item })),
-              },
+              side: viewerSide,
+              items: cart[viewerSide].map((item) => ({ ...item })),
             })
           }
         >
-          Confirmar incentivos
+          Confirmar mis incentivos
         </button>
       </StepGroup>
 
@@ -425,20 +475,26 @@ export function ActaPreMatchFlow({
           1D6 enfrentado; el ganador decide quién patea (empate: se repite).
         </p>
         <ModeToggle mode={kickMode} onChange={setKickMode} />
-        {(["home", "away"] as const).map((side) => (
-          <DieField
-            key={side}
-            label={`D6 pateador ${nameOf(side)}`}
-            rollLabel={`Tirar pateador ${nameOf(side)}`}
-            mode={kickMode}
-            value={kickDice[side]}
-            max={6}
-            onManual={(raw) => setKickDie(side, raw)}
-            onRoll={() =>
-              setKickDice((prev) => ({ ...prev, [side]: dice.d6() }))
-            }
-          />
-        ))}
+        <DieField
+          label={`D6 pateador (${nameOf(viewerSide)})`}
+          rollLabel="Tirar pateador"
+          mode={kickMode}
+          value={myKickDie}
+          max={6}
+          onManual={(raw) => setKickDie(clampDie(raw, 6))}
+          onRoll={() => setKickDie(dice.d6())}
+        />
+        <button
+          type="button"
+          className={`${BUTTON} mt-2`}
+          disabled={kickDie == null}
+          onClick={() =>
+            kickDie != null &&
+            onCommit({ step: "kickRoll", side: viewerSide, die: kickDie })
+          }
+        >
+          Confirmar mi tirada de pateador
+        </button>
         {kickTie ? (
           <div className="mt-1 flex items-center gap-2">
             <p className="text-sm font-semibold text-navy">
@@ -448,8 +504,9 @@ export function ActaPreMatchFlow({
               type="button"
               className={BUTTON}
               onClick={() => {
-                setKickDice({ home: null, away: null });
+                setKickDie(null);
                 setKickChoice(null);
+                onCommit({ step: "kickTie" });
               }}
             >
               Repetir tirada
@@ -461,7 +518,7 @@ export function ActaPreMatchFlow({
             Gana {nameOf(kickWinner)}
           </p>
         ) : null}
-        {kickBoth && !kickTie ? (
+        {kickWinner === viewerSide && snapshot.kicking == null ? (
           <div role="group" aria-label="Quién patea" className="mt-1 flex gap-2">
             {(["home", "away"] as const).map((side) => (
               <button
@@ -479,8 +536,11 @@ export function ActaPreMatchFlow({
         <button
           type="button"
           className={`${BUTTON} mt-2`}
-          disabled={kickChoice == null || kickTie || !kickBoth}
-          onClick={() => onCommit({ step: "kicking", kicking: kickChoice! })}
+          disabled={kickChoice == null || kickWinner !== viewerSide}
+          onClick={() =>
+            kickChoice != null &&
+            onCommit({ step: "kicking", kicking: kickChoice })
+          }
         >
           Confirmar pateador
         </button>
@@ -489,6 +549,19 @@ export function ActaPreMatchFlow({
       <p className="mt-3 text-sm text-navy">
         Sustitutos: solo en liga — no aplica en esta demo
       </p>
+
+      <div
+        role="region"
+        aria-label="Lo que ha sucedido"
+        className="mt-4 border-t border-navy/15 pt-3"
+      >
+        <h3 className="font-semibold text-navy">Lo que ha sucedido</h3>
+        {reportLines.length === 0 ? (
+          <p className="text-sm text-navy">Aún no hay nada confirmado.</p>
+        ) : (
+          reportLines
+        )}
+      </div>
     </section>
   );
 }

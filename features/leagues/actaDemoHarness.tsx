@@ -65,10 +65,6 @@ export function ActaFlow({
   const now = state.startedAt != null ? state.startedAt + nowMin * MIN : 0;
   const finished = state.status === "finished";
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
-  const homeFan = fanFactorOf(events, "home");
-  const awayFan = fanFactorOf(events, "away");
-  const fansNow =
-    homeFan != null && awayFan != null ? { home: homeFan, away: awayFan } : null;
 
   return (
     <div className="w-full px-4 pb-32 sm:px-6">
@@ -105,8 +101,12 @@ export function ActaFlow({
           awayName={detail.awayTeam.name}
           homeBase={DEMO_FAN_BASES.home}
           awayBase={DEMO_FAN_BASES.away}
+          viewerSide={state.viewerSide ?? "home"}
           snapshot={{
-            fans: fansNow,
+            fans: {
+              home: fanFactorOf(events, "home"),
+              away: fanFactorOf(events, "away"),
+            },
             weather:
               weatherNow.roll != null
                 ? {
@@ -115,12 +115,18 @@ export function ActaFlow({
                       weatherNow.value ?? weatherFromRoll(weatherNow.roll).kind,
                   }
                 : null,
+            weatherDice: preMatch?.weatherDice ?? { home: null, away: null },
             inducements: state.inducements ?? { home: [], away: [] },
-            inducementsDone: preMatch?.inducementsDone ?? false,
+            inducementsDone: preMatch?.inducementsDone ?? {
+              home: false,
+              away: false,
+            },
+            kickDice: preMatch?.kickDice ?? { home: null, away: null },
             kicking: preMatch?.kicking ?? null,
           }}
           onCommit={onCommitPreMatch}
         />
+        <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
         {events.length > 0 ? (
           <div className="bg-background">
             <ActaTurnTimeline
@@ -211,16 +217,20 @@ const SCENARIOS: ReadonlyArray<{ key: DemoScenario; label: string }> = [
 /** Demo rosters' dedicated-fans attribute (the +N in the attendance roll). */
 const DEMO_FAN_BASES = { home: 4, away: 3 } as const;
 
-/** localStorage persistence: one versioned blob, `bb-demo-partido` v3. */
+/**
+ * localStorage persistence: one versioned blob, `bb-demo-partido` v4 (the v3
+ * save contract is intentionally invalidated — the S2c per-side capture
+ * changed the `preMatch` shape).
+ */
 const STORAGE_KEY = "bb-demo-partido";
-const STORAGE_VERSION = 3;
+const STORAGE_VERSION = 4;
 
 /**
  * Interactive DUAL-VIEW demo sandbox driven by the pure `actaDemoReducer`
  * (no network): two rival coach perspectives over ONE shared match state,
  * switched manually ("Ver como:") or auto-followed turn by turn ("Seguir al
  * turno activo"). The REAL `LiveActionDock`/timeline capture lands in the
- * reducer via `submitCommand`; the state persists to localStorage (v3) so an
+ * reducer via `submitCommand`; the state persists to localStorage (v4) so an
  * iteration survives a reload, and "Restablecer" replays from the kickoff.
  * Deterministic by design: no `Date.now()`, no `Math.random()` — the fetch
  * shim and localStorage are runtime concerns only.
@@ -268,7 +278,7 @@ export function ActaDemoHarness({
     }
   }, []);
 
-  // 2) Persist every state change as `{ v: 3, state }` (the pristine initial
+  // 2) Persist every state change as `{ v: 4, state }` (the pristine initial
   // state is never written — see `initialStateRef`).
   useEffect(() => {
     if (state === initialStateRef.current) return;
