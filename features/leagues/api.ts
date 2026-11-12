@@ -798,6 +798,15 @@ export type LiveCommand =
       status: "ok" | "nok";
     }
   | { type: "foul"; side: "home" | "away"; playerRosterId: string; victimRosterId: string }
+  | {
+      /** S2: the "Cambiar clima" capture — a kickoff can change the weather, so
+       * the events capture records the new kind (a `weatherLabel` code) plus
+       * the optional d6 that produced it. Side-less (`side: null` on the event):
+       * the route lets the ACTIVE coach record it live-only. */
+      type: "weather";
+      value: string;
+      roll?: number;
+    }
   | { type: "requestTurn" }
   | { type: "endMatch" }
   | { type: "concede" }

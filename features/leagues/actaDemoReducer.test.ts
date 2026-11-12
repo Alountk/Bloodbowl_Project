@@ -92,6 +92,31 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.awayScore).toBe(0);
   });
 
+  it("submitCommand weather records a side-less weather event with the value + d6 payload (S2)", () => {
+    const s = reduce(state(), {
+      type: "submitCommand",
+      command: { type: "weather", value: "rain", roll: 5 },
+    });
+    const e = s.events[s.events.length - 1];
+    expect(e.kind).toBe("weather");
+    expect(e.side).toBeNull();
+    expect(e.playerRosterId).toBeNull();
+    expect(e.payload).toEqual({ value: "rain", roll: 5 });
+    // Weather never touches the scoreboard.
+    expect(s.homeScore).toBe(0);
+    expect(s.awayScore).toBe(0);
+  });
+
+  it("submitCommand weather without a d6 keeps the payload value-only (roll optional)", () => {
+    const s = reduce(state(), {
+      type: "submitCommand",
+      command: { type: "weather", value: "blizzard" },
+    });
+    const e = s.events[s.events.length - 1];
+    expect(e.kind).toBe("weather");
+    expect(e.payload).toEqual({ value: "blizzard" });
+  });
+
   it("endTurn command advances the turn, flips the active side and records the reason", () => {
     const s0 = state({ half: 1, turnNumber: 2, activeSide: "home", autoFollow: false, viewerSide: "home" });
     const s = reduce(s0, {
@@ -204,6 +229,9 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.homeScore).toBe(0);
     expect(s.awayScore).toBe(0);
     expect(s.events.map((e) => e.kind)).toEqual(["start", "weather", "fan_factor"]);
+    // The kickoff weather event carries the CANONICAL kind for its recorded
+    // 2D6 (lib/rules/weather `weatherFromRoll(4)` → "perfect"), never an alias.
+    expect(s.events[1].payload).toEqual({ value: "perfect", roll: 4 });
     expect(s.closureOpen).toBe(false);
     expect(s.submittedBy).toBeNull();
     expect(s.nextSeq).toBeGreaterThan(MAX_FIXTURE_SEQ);

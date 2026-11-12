@@ -125,7 +125,7 @@ export function liveState(
 /** A narrative feed: kickoff → jugadas → TDs → bajas → 2T. */
 export const narrativeEvents: LiveMatchEventDto[] = [
   ev(0, { seq: 1, kind: "start", side: null, playerRosterId: null, payload: {} }),
-  ev(0, { seq: 2, kind: "weather", side: null, playerRosterId: null, payload: { value: "sun", roll: 4 } }),
+  ev(0, { seq: 2, kind: "weather", side: null, playerRosterId: null, payload: { value: "perfect", roll: 4 } }),
   ev(0, {
     seq: 3,
     kind: "fan_factor",

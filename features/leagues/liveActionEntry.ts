@@ -71,6 +71,8 @@ export interface GuidedSelections {
   victimId?: string;
   roll16?: number | "";
   roll6?: number | "";
+  /** S2 (Cambiar clima): the picked `WEATHER_KINDS` code ("" = none yet). */
+  weather?: string;
 }
 
 /**
@@ -162,6 +164,21 @@ export function buildScoredCommand(
   playerRosterId: string,
 ): LiveCommand {
   return { type: kind, side: viewerSide, playerRosterId };
+}
+
+/**
+ * Builds the S2 "Cambiar clima" command from the dock's kind pick (+ the
+ * optional recorded d6). Pure: `null` until a weather kind is picked, and the
+ * roll travels ONLY when one was recorded — the server validates both fields.
+ */
+export function buildWeatherCommand(
+  value: string | "",
+  roll: number | "" = "",
+): LiveCommand | null {
+  if (!value) return null;
+  const cmd: Extract<LiveCommand, { type: "weather" }> = { type: "weather", value };
+  if (roll !== "" && roll != null) cmd.roll = roll;
+  return cmd;
 }
 
 /** True when the viewer is the ACTIVE (current turn) side's coach. */

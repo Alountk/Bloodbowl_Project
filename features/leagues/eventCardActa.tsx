@@ -16,6 +16,7 @@ import {
   type TFunc,
 } from "./liveEventLabels";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
+import { weatherLabel } from "./matchSummary";
 import styles from "./eventCardActa.module.css";
 
 /**
@@ -673,6 +674,38 @@ export function LiveEventCardsActa({
                     {`👥${away.base} + 🎲${away.dice} = `}
                     <b>{away.total}</b>
                   </ActaRow>,
+                ]}
+              />
+            </li>
+          );
+        }
+
+        // S2 (Cambiar clima): the resulting weather + the recorded d6 (roll
+        // row ONLY when one was recorded — the roll stays optional).
+        if (event.kind === "weather") {
+          const value = typeof event.payload.value === "string" ? event.payload.value : null;
+          const roll = typeof event.payload.roll === "number" ? event.payload.roll : null;
+          return (
+            <li key={event.seq} data-testid="live-event-row">
+              <ActaCard
+                sideClass={styles.neutral}
+                tag={liveEventLabel(event, t)}
+                meta={turnMeta}
+                rows={[
+                  ...(value != null
+                    ? [
+                        <ActaRow key="result" label="Resultado">
+                          <b>{weatherLabel(value, t)}</b>
+                        </ActaRow>,
+                      ]
+                    : []),
+                  ...(roll != null
+                    ? [
+                        <ActaRow key="roll" label="Tirada" num>
+                          {`🎲${roll}`}
+                        </ActaRow>,
+                      ]
+                    : []),
                 ]}
               />
             </li>

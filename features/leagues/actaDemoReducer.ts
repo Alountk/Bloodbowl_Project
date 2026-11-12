@@ -237,6 +237,17 @@ function applyCommand(state: ActaDemoState, raw: unknown): ActaDemoState {
           payload: { victimRosterId: cmd.victimRosterId ?? null },
         },
       ]);
+    case "weather": {
+      // S2 (Cambiar clima): a side-less weather event carrying the FIXED T1
+      // payload contract — `{ value, roll? }` (the generic fallback would map
+      // the kind but drop the payload). A malformed command is dropped whole.
+      if (typeof cmd.value !== "string") return state;
+      const payload: Record<string, unknown> = { value: cmd.value };
+      if (typeof cmd.roll === "number") payload.roll = cmd.roll;
+      return appendEvents(state, [
+        { kind: "weather", side: null, playerRosterId: null, payload },
+      ]);
+    }
     case "endTurn": {
       const reason = cmd.reason ?? "voluntary";
       const drafts: EventDraft[] = [
