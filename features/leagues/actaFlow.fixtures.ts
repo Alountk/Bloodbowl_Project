@@ -8,6 +8,7 @@ import type {
 } from "./api";
 import type { ActaClosureViewer } from "./actaClosure";
 import type { LeagueAccess } from "./useLeagueName";
+import type { PersistedInducements } from "@/lib/rules/inducements";
 
 /**
  * Mock builders shared by the "Acta en vivo" flow stories (Storybook only).
@@ -93,6 +94,16 @@ function sideState(): ResolutionSideState {
   };
 }
 
+/** The demo's purchased inducement cart (real IND-1 catalog ids — `getInducement`
+ *  resolves them to «Sobornos», «Barriles de Bloodweiser», «Mago del Clima»). */
+const demoInducements: PersistedInducements = {
+  home: [
+    { id: "bribes", count: 1 },
+    { id: "bloodweiser-kegs", count: 2 },
+  ],
+  away: [{ id: "weather-mage", count: 1 }],
+};
+
 /** Mid-game live state (2T, turno 3; the viewer coaches "home"). */
 export function liveState(
   overrides: Partial<LiveMatchViewState> = {},
@@ -116,6 +127,7 @@ export function liveState(
     finishedAt: null,
     concedeProposedBy: null,
     mvpNominations: { home: null, away: null },
+    inducements: demoInducements,
     resolutionState: { home: sideState(), away: sideState() },
     lastTurnReason: "voluntary",
     ...overrides,

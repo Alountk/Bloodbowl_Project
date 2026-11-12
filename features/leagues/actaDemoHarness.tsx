@@ -10,6 +10,7 @@ import {
   type DemoScenario,
 } from "./actaDemoReducer";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
+import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
 import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { ActaClosure, canCloseActa } from "./actaClosure";
@@ -54,6 +55,7 @@ export function ActaFlow({
   });
   const now = state.startedAt != null ? state.startedAt + nowMin * MIN : 0;
   const finished = state.status === "finished";
+  const weatherNow = latestWeather(events, detail.result?.weather ?? null);
 
   return (
     <div className="w-full px-4 pb-32 sm:px-6">
@@ -69,14 +71,19 @@ export function ActaFlow({
             score: state.homeScore,
             rerolls: league.teamRerolls?.[detail.homeTeam.id] ?? null,
             bribes: bribesOf(detail, "home"),
+            fanFactor: fanFactorOf(events, "home"),
+            inducements: inducementsOf(detail, "home"),
           }}
           away={{
             name: detail.awayTeam.name,
             score: state.awayScore,
             rerolls: league.teamRerolls?.[detail.awayTeam.id] ?? null,
             bribes: bribesOf(detail, "away"),
+            fanFactor: fanFactorOf(events, "away"),
+            inducements: inducementsOf(detail, "away"),
           }}
-          weather={detail.result?.weather ?? null}
+          weather={weatherNow.value}
+          weatherRoll={weatherNow.roll}
           casualtyTurns={casualtyTurnsOf(events, state.half)}
           turnSides={turnSidesOf(events, state.half, state)}
         />
@@ -167,16 +174,16 @@ const SCENARIOS: ReadonlyArray<{ key: DemoScenario; label: string }> = [
   { key: "finalizado", label: "Finalizado" },
 ];
 
-/** localStorage persistence: one versioned blob, `bb-demo-partido` v1. */
+/** localStorage persistence: one versioned blob, `bb-demo-partido` v2. */
 const STORAGE_KEY = "bb-demo-partido";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 /**
  * Interactive DUAL-VIEW demo sandbox driven by the pure `actaDemoReducer`
  * (no network): two rival coach perspectives over ONE shared match state,
  * switched manually ("Ver como:") or auto-followed turn by turn ("Seguir al
  * turno activo"). The REAL `LiveActionDock`/timeline capture lands in the
- * reducer via `submitCommand`; the state persists to localStorage (v1) so an
+ * reducer via `submitCommand`; the state persists to localStorage (v2) so an
  * iteration survives a reload, and "Restablecer" replays from the kickoff.
  * Deterministic by design: no `Date.now()`, no `Math.random()` — the fetch
  * shim and localStorage are runtime concerns only.
@@ -224,7 +231,7 @@ export function ActaDemoHarness({
     }
   }, []);
 
-  // 2) Persist every state change as `{ v: 1, state }` (the pristine initial
+  // 2) Persist every state change as `{ v: 2, state }` (the pristine initial
   // state is never written — see `initialStateRef`).
   useEffect(() => {
     if (state === initialStateRef.current) return;
