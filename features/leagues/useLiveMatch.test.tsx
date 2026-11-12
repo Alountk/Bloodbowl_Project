@@ -284,3 +284,67 @@ describe("useLiveMatch — connect / snapshot-first / reconnect / control", () =
     expect(es.close).toHaveBeenCalled();
   });
 });
+
+describe("useLiveMatch — LM-30 cart merge (an omitted `inducements` key means UNCHANGED)", () => {
+  const instances: FakeEventSource[] = [];
+
+  beforeEach(() => {
+    instances.length = 0;
+    vi.stubGlobal(
+      "EventSource",
+      class extends FakeEventSource {
+        constructor(url: string) {
+          super(url);
+          instances.push(this);
+        }
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the snapshot's cart when `state`/`event` frames omit the key (the first match steps must not drop it)", async () => {
+    const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
+    const es = instances[0];
+    const cart = { home: [{ id: "bribes", count: 1 }], away: [{ id: "weather-mage", count: 1 }] };
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 9, inducements: cart })));
+    });
+    expect(result.current.live?.inducements).toEqual(cart);
+
+    // LM-30: frames of transitions that never touch the cart OMIT the key and
+    // that omission means "unchanged" — the cart must survive the first steps.
+    await act(async () => {
+      es.dispatch("state", liveFrame(10, { activeSide: "away", turnNumber: 4 }), "10");
+    });
+    expect(result.current.live?.seq).toBe(10);
+    expect(result.current.live?.inducements).toEqual(cart);
+
+    await act(async () => {
+      es.dispatch("event", liveFrame(11, {}, [liveEvent(11, "requestTurn")]), "11");
+    });
+    expect(result.current.live?.inducements).toEqual(cart);
+    unmount();
+  });
+
+  it("applies an EXPLICIT null cart from a frame (the row never persisted one)", async () => {
+    const { result, unmount } = renderHook(() => useLiveMatch({ leagueId: "lg-1", fixtureId: "f-1" }));
+    const es = instances[0];
+    const cart = { home: [{ id: "bribes", count: 1 }], away: [] };
+    await act(async () => {
+      es.dispatch("snapshot", JSON.stringify(liveSnapshot({ seq: 9, inducements: cart })));
+    });
+    await act(async () => {
+      es.dispatch(
+        "state",
+        JSON.stringify({ ...liveSnapshot({ seq: 10 }), inducements: null, events: [] }),
+        "10",
+      );
+    });
+    expect(result.current.live?.inducements).toBeNull();
+    unmount();
+  });
+});
