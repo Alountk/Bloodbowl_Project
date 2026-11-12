@@ -1,60 +1,190 @@
-import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ActaDemoHarness } from "./actaDemoHarness";
 
-describe("ActaDemoHarness — interactive demo sandbox (Phase 2)", () => {
-  it("renders the scenario chips and demo actions", () => {
+/**
+ * The DUAL-VIEW demo harness behind `/demo/partido` + the Storybook "Flujo
+ * interactivo" story: two rival coach perspectives over ONE shared match state
+ * (`actaDemoReducer`), with the REAL `LiveActionDock` capture wired in (no
+ * omniscient demo buttons) and v1 localStorage persistence (`bb-demo-partido`).
+ *
+ * Assertions run in the repo's ES dictionary + the demo's Spanish copy (no
+ * jest-dom matchers — `.textContent` / regex / role queries only). The TD
+ * capture selectors mirror `liveActionDock.test.tsx` (action button → own
+ * player chip) so both suites pin the same guided-capture path.
+ */
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+const heading = () => screen.getByRole("heading", { level: 1 });
+const demoButton = (name: string | RegExp) => screen.getByRole("button", { name });
+const perspectiveGroup = () => screen.getByRole("group", { name: "Ver como:" });
+const perspective = (team: string) =>
+  within(perspectiveGroup()).getByRole("button", { name: team });
+const pressed = (team: string) => perspective(team).getAttribute("aria-pressed");
+
+describe("ActaDemoHarness — dual-view demo (perspective, real capture, persistence)", () => {
+  it("the perspective control shows both REAL team names and reflects the viewer side", () => {
     render(<ActaDemoHarness />);
-    for (const name of ["1T · turno 3", "2T · turno 5", "Finalizado"]) {
-      expect(screen.getByRole("button", { name })).toBeTruthy();
-    }
-    for (const name of [
-      "Registrar evento",
-      "TD local",
-      "TD visitante",
-      "Fin de turno",
-      "Finalizar partido",
-      "Abrir cierre",
-    ]) {
-      expect(screen.getByRole("button", { name })).toBeTruthy();
-    }
+    expect(perspective("Águilas de Khemri")).toBeTruthy();
+    expect(perspective("Colmillos del Caos")).toBeTruthy();
+    // The demo opens as the home coach (the fixture's viewer context).
+    expect(pressed("Águilas de Khemri")).toBe("true");
+    expect(pressed("Colmillos del Caos")).toBe("false");
+
+    fireEvent.click(perspective("Colmillos del Caos"));
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    expect(pressed("Águilas de Khemri")).toBe("false");
   });
 
-  it("registers touchdowns: the score line advances only on the acting side", () => {
+  it("viewing as the NON-active side shows Solicitar turno and hides the active dock actions; switching back restores them", () => {
     render(<ActaDemoHarness />);
-    const heading = screen.getByRole("heading", { level: 1 });
-    expect(heading.textContent).toBe(
-      "Águilas de Khemri 2 - 1 Colmillos del Caos",
-    );
+    // 1T turn 3: the home coach is ACTIVE — the full capture dock is up.
+    fireEvent.click(demoButton("1T · turno 3"));
+    expect(demoButton("+ TD")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "TD local" }));
-    expect(heading.textContent).toBe(
-      "Águilas de Khemri 3 - 1 Colmillos del Caos",
-    );
+    // Watch as the rival: request-turn row + only their LM-12-legal records.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    expect(screen.getByRole("button", { name: "Solicitar turno" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "+ TD" })).toBeNull();
+    expect(screen.getByRole("button", { name: /Baja propia/ })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "TD visitante" }));
-    expect(heading.textContent).toBe(
-      "Águilas de Khemri 3 - 2 Colmillos del Caos",
-    );
+    // Back to the active coach: the full dock is restored.
+    fireEvent.click(perspective("Águilas de Khemri"));
+    expect(demoButton("+ TD")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
   });
 
-  it("ends the turn: the active-turn badge advances", () => {
+  it("Fin de turno advances the active-turn badge", () => {
     render(<ActaDemoHarness />);
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+
+    fireEvent.click(demoButton("Fin de turno"));
+    expect(screen.queryByText(/TURNO 1 EN JUEGO/)).toBeNull();
+    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+  });
+
+  it("auto-follow moves the perspective on Fin de turno and can be disabled", () => {
+    render(<ActaDemoHarness />);
+    const follow = screen.getByRole("checkbox", {
+      name: "Seguir al turno activo",
+    }) as HTMLInputElement;
+    expect(follow.checked).toBe(true);
+
+    fireEvent.click(demoButton("1T · turno 3"));
+    expect(pressed("Águilas de Khemri")).toBe("true"); // home coach's turn
+
+    fireEvent.click(demoButton("Fin de turno"));
+    expect(screen.getByText(/TURNO 4 EN JUEGO/)).toBeTruthy();
+    expect(pressed("Colmillos del Caos")).toBe("true"); // camera followed the active side
+
+    fireEvent.click(follow);
+    expect(follow.checked).toBe(false);
+    fireEvent.click(demoButton("Fin de turno"));
     expect(screen.getByText(/TURNO 5 EN JUEGO/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Fin de turno" }));
-    expect(screen.queryByText(/TURNO 5 EN JUEGO/)).toBeNull();
-    expect(screen.getByText(/TURNO 6 EN JUEGO/)).toBeTruthy();
+    // Perspective no longer dragged along — the viewer is now the non-active
+    // coach and gets the request-turn row.
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    expect(screen.getByRole("button", { name: "Solicitar turno" })).toBeTruthy();
   });
 
-  it("scenario chips jump to the named match state", () => {
+  it("REAL capture: the dock's TD flow advances the header score line and appends an event card", () => {
     render(<ActaDemoHarness />);
+    // The kickoff handover puts the home coach in the active turn (auto-follow).
+    fireEvent.click(demoButton("Fin de turno"));
+    expect(demoButton("+ TD")).toBeTruthy();
+    expect(heading().textContent).toBe("Águilas de Khemri 0 - 0 Colmillos del Caos");
 
-    fireEvent.click(screen.getByRole("button", { name: "1T · turno 3" }));
+    // Two-touch capture, mirroring liveActionDock.test.tsx: action → player chip.
+    fireEvent.click(demoButton("+ TD"));
+    const modal = screen.getByTestId("live-action-modal");
+    fireEvent.click(
+      within(within(modal).getByTestId("dock-pool-own")).getByRole("button", {
+        name: /#1/i,
+      }),
+    );
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
+    expect(heading().textContent).toBe("Águilas de Khemri 1 - 0 Colmillos del Caos");
+    const rows = screen.getAllByTestId("acta-event-row");
+    expect(rows.some((row) => row.getAttribute("data-kind") === "td")).toBe(true);
+  });
+
+  it("persists the demo state across remounts (v1) and Restablecer returns to kickoff", () => {
+    const first = render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("Fin de turno"));
+    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+    const saved = JSON.parse(window.localStorage.getItem("bb-demo-partido") ?? "null") as {
+      v: number;
+      state: { turnNumber: number };
+    } | null;
+    expect(saved?.v).toBe(1);
+    expect(saved?.state.turnNumber).toBe(2);
+    first.unmount();
+
+    render(<ActaDemoHarness />);
+    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+
+    fireEvent.click(demoButton("Restablecer"));
+    expect(screen.queryByText(/TURNO 2 EN JUEGO/)).toBeNull();
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+  });
+
+  it("the scenario chips jump to the named match state", () => {
+    render(<ActaDemoHarness />);
+    for (const name of ["Inicio", "1T · turno 3", "2T · turno 5", "Finalizado"]) {
+      expect(demoButton(name)).toBeTruthy();
+    }
+
+    fireEvent.click(demoButton("1T · turno 3"));
     expect(screen.getByText(/TURNO 3 EN JUEGO/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Finalizado" }));
+    fireEvent.click(demoButton("2T · turno 5"));
+    expect(screen.getByText(/TURNO 5 EN JUEGO/)).toBeTruthy();
+
+    fireEvent.click(demoButton("Finalizado"));
     expect(screen.queryByText(/EN JUEGO/)).toBeNull();
+
+    fireEvent.click(demoButton("Inicio"));
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+  });
+
+  it("the closure save shim answers the demo result POST without network and marks the result reported", async () => {
+    const passthrough = vi.fn(() =>
+      Promise.resolve({ ok: true, status: 200, json: async () => ({}) }),
+    );
+    vi.stubGlobal("fetch", passthrough);
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("Finalizado"));
+    fireEvent.click(demoButton("Abrir cierre"));
+    expect(screen.getByTestId("acta-closure")).toBeTruthy();
+
+    let outcome: { status?: string } = {};
+    await act(async () => {
+      const res = await window.fetch("/api/leagues/lg-story/fixtures/fx-story-1/result", {
+        method: "POST",
+        body: "{}",
+      });
+      outcome = (await res.json()) as { status?: string };
+    });
+    expect(outcome.status).toBe("played");
+    // The POST never left the page; the closure is closed and the banner names
+    // the single submitter (the demo stands in for `detail.result`).
+    expect(passthrough).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("acta-closure")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Abrir cierre" })).toBeNull();
+    expect(screen.getByText(/Resultado reportado por Águilas de Khemri/)).toBeTruthy();
+
+    // Every other request passes through untouched.
+    await window.fetch("/api/leagues/otra/ruta", { method: "GET" });
+    expect(passthrough).toHaveBeenCalledTimes(1);
+    expect(passthrough).toHaveBeenCalledWith("/api/leagues/otra/ruta", { method: "GET" });
   });
 });

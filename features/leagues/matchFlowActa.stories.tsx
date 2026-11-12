@@ -72,9 +72,11 @@ export const FinalizadoConCierre = {
 
 /**
  * Demo (Fase 1 in Storybook, Fase 2 on /demo/partido): the flow driven by a
- * pure demo reducer (no network). Scenario chips jump to key match states; the
- * action buttons register events, bump scores, advance turns and open the
- * closure — the acta derives live.
+ * pure demo reducer (no network) over the REAL capture surfaces. The two rival
+ * coach perspectives share one match state (manual switch + auto-follow);
+ * scenario chips jump to key match states, the dock's guided modals record the
+ * events, "Fin de turno" advances the turn, and "Restablecer" replays from the
+ * kickoff (progress persists in localStorage).
  */
 export const FlujoInteractivo = {
   name: "Flujo interactivo — demo (Fase 1)",
