@@ -252,8 +252,12 @@ describe("ActaDemoHarness — pre-match surface (stale saves, header wiring)", (
 
   it("the header surfaces the pre-match data: inducements, fan factor and the weather roll", () => {
     const { container } = render(<ActaDemoHarness />);
-    expect(screen.queryAllByText(/Inducements: Sobornos ×1/).length).toBeGreaterThan(0);
-    expect(screen.queryAllByText(/Inducements: Mago del Clima ×1/).length).toBeGreaterThan(0);
+    expect(
+      screen.queryAllByText(/Inducements: Sobornos ×1 — 100\.000 M\.O\. \(máx\. 3\)/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryAllByText(/Inducements: Mago del Clima ×1 — 25\.000 M\.O\. \(máx\. 1\)/).length,
+    ).toBeGreaterThan(0);
     // The fan-factor line ends in <b>{total}</b> and the weather line wraps its
     // value in <strong> — `queryAllByText` only reads an element's DIRECT text
     // nodes, so these two split-text lines assert via `.textContent` (the

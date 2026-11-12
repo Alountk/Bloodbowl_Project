@@ -42,9 +42,26 @@ function renderHeader(overrides: Partial<Parameters<typeof ActaSheetHeader>[0]> 
 describe("ActaSheetHeader — pre-match data lines (S1)", () => {
   it("renders the inducement list per team and omits the line when a team has none", () => {
     const { container } = renderHeader();
-    expect(container.textContent).toContain("Inducements: Sobornos ×1, Barriles de Bloodweiser ×2");
+    expect(container.textContent).toContain(
+      "Inducements: Sobornos ×1 — 100.000 M.O. (máx. 3), Barriles de Bloodweiser ×2 — 50.000 M.O. (máx. 2)",
+    );
     // The away team has no inducements — its block must not render the line.
     expect(container.textContent?.match(/Inducements:/g)).toHaveLength(1);
+  });
+
+  it("formats each inducement line as «{name} ×{count} — {price} M.O. (máx. {max})» (T3)", () => {
+    const { container } = renderHeader();
+    expect(container.textContent).toContain("Sobornos ×1 — 100.000 M.O. (máx. 3)");
+    expect(container.textContent).toContain(
+      "Barriles de Bloodweiser ×2 — 50.000 M.O. (máx. 2)",
+    );
+  });
+
+  it("shows the petty-cash reference line in the pre-match block (T3)", () => {
+    const { container } = renderHeader();
+    expect(container.textContent).toContain(
+      "Caja menor: diferencia de VAE + gasto rival en incentivos (máx. +50.000 M.O. de tesorería)",
+    );
   });
 
   it("renders the fan factor roll as base + dice = total when known", () => {
