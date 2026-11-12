@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { resolveInjury } from "@/lib/rules/injuries";
-import { CASUALTY_CAUSES, eventAuthorSide, type CasualtyCause } from "@/lib/livePhase";
+import { CASUALTY_CAUSES, type CasualtyCause } from "@/lib/livePhase";
 import { isDisplayEvent } from "@/lib/liveMatch";
 import { deriveMinute } from "@/lib/liveFeed";
 import {
@@ -20,6 +20,12 @@ import {
   type GuidedSelections,
 } from "./liveActionEntry";
 import { RollStepper } from "./rollStepper";
+import {
+  causerIdOf,
+  TURNS_PER_HALF,
+  turnSideOfEvents,
+  type TurnSide,
+} from "./actaTurnSides";
 import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
 
 /**
@@ -30,7 +36,8 @@ import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
  *
  *   - card header: "T6 • GOUGED EYE" (per-half turn tag + acting team) with
  *     the EN JUEGO / COMPLETADO / CERRADO state chip and "Min N'" label;
- *     left accent red on the active card, navy on the rest;
+ *     left accent in the ACTING TEAM's color (S3: home navy · away red ·
+ *     AMBOS EQUIPOS slate — never state-coded; the chips carry the state);
  *   - event rows (live/completed cards): kind badge (+1 TD / CASUALTY /
  *     +1 SPP…), bold player + muted role/number, one-line description and
  *     the SPP marker on the right — captured data renders WITHOUT re-entry
@@ -164,12 +171,6 @@ function victimIdOf(event: LiveMatchEventDto): string | null {
   return event.playerRosterId;
 }
 
-/** The casualty causer's roster id, or null for self-inflicted (dodge/crowd). */
-function causerIdOf(event: LiveMatchEventDto): string | null {
-  const causer = event.payload.causerRosterId;
-  return typeof causer === "string" && causer ? causer : null;
-}
-
 /**
  * B4: rebuilds the RECORDED casualty's own `casualty` command shape plus the
  * rolled 1D16(+1D6) — the EXISTING pending-roll resolution flow. The command
@@ -265,8 +266,8 @@ export interface ActaTurnCard {
   half: number;
   turnNumber: number;
   state: TurnCardState;
-  /** The side whose turn this was (author votes) — null = "AMBOS EQUIPOS". */
-  actingSide: "home" | "away" | null;
+  /** The side whose turn this was (`actaTurnSides` vote) — null = "AMBOS EQUIPOS". */
+  actingSide: TurnSide;
   /** The latest capture timestamp of the turn (the card's minute). */
   minuteAt: number;
   /** Display events in capture order (seq asc). */
@@ -274,30 +275,6 @@ export interface ActaTurnCard {
   /** Casualties of this turn still awaiting their 1D16 (MVA-4). */
   pendingInjuries: LiveMatchEventDto[];
 }
-
-/** The side that ACTED on an event (turn-owning vote): acting player's side. */
-function actingSideOf(event: LiveMatchEventDto): "home" | "away" | null {
-  if (
-    event.kind === "td" ||
-    event.kind === "completion" ||
-    event.kind === "foul" ||
-    // LM-13 (Slice E, verifier defect 2): the acta-vocabulary scored actions
-    // are the acting side's own captures — they vote the turn exactly like a
-    // completion, never the AMBOS EQUIPOS fallback.
-    event.kind === "interception" ||
-    event.kind === "throwTeamMate" ||
-    event.kind === "landedSafe"
-  ) {
-    return event.side;
-  }
-  if (event.kind === "casualty") {
-    return eventAuthorSide(event.kind, event.side, causerIdOf(event));
-  }
-  return null;
-}
-
-/** BB2025: a half is 8 team-turn rounds (parity with the acta stepper). */
-const TURNS_PER_HALF = 8;
 
 /**
  * B1: groups the feed into per-turn cards, NEWEST TURN FIRST. Turns with no
@@ -355,14 +332,13 @@ export function turnCardsOf(
   for (const card of byTurn.values()) {
     if (card.key === activeKey) {
       card.state = active.status === "live" ? "live" : "completed";
-      if (card.state === "live") card.actingSide = active.activeSide;
     } else if (active.status === "live" && card.key === predecessorKey) {
       card.state = "completed";
     }
-    if (card.actingSide == null && card.state !== "live") {
-      const votes = new Set(card.events.map(actingSideOf).filter((side) => side != null));
-      card.actingSide = votes.size === 1 ? [...votes][0] : null;
-    }
+    // S3: TEAM-coded side — the live turn belongs to the active coach, every
+    // other turn to the shared unanimous event vote (null → AMBOS EQUIPOS).
+    card.actingSide =
+      card.state === "live" ? active.activeSide : turnSideOfEvents(card.events);
   }
 
   // Pending casualties cleared by a later resolved capture of the same victim.
@@ -782,6 +758,19 @@ const STATE_CHIP: Record<TurnCardState, { label: string; className: string }> = 
   closed: { label: "CERRADO", className: "border border-border bg-fill-hover text-slate" },
 };
 
+/**
+ * S3: the left accent is TEAM-coded (never state-coded) — the side palette:
+ * home navy · away red · both/unknown slate neutral. The state stays visible
+ * through the EN JUEGO / COMPLETADO / CERRADO chips above.
+ */
+function accentOf(side: TurnSide): string {
+  return side === "home"
+    ? "border-l-navy"
+    : side === "away"
+      ? "border-l-red"
+      : "border-l-slate";
+}
+
 export function ActaTurnTimeline({
   events,
   homeTeam,
@@ -809,9 +798,7 @@ export function ActaTurnTimeline({
             data-half={card.half}
             data-turn={card.turnNumber}
             data-state={card.state}
-            className={`acta-motion-fade-in-up acta-motion-stagger-${Math.min(index + 1, 5)} overflow-hidden rounded-sm border border-border border-l-4 bg-panel shadow-sm ${
-              card.state === "live" ? "border-l-red" : "border-l-navy"
-            }`}
+            className={`acta-motion-fade-in-up acta-motion-stagger-${Math.min(index + 1, 5)} overflow-hidden rounded-sm border border-border border-l-4 bg-panel shadow-sm ${accentOf(card.actingSide)}`}
           >
             <div className="flex items-center justify-between gap-2 border-b border-border bg-fill-hover px-3 py-2">
               <div className="flex min-w-0 items-center gap-2">

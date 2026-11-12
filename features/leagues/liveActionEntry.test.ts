@@ -4,6 +4,7 @@ import {
   SELF_CAUSES,
   buildGuidedCommand,
   buildScoredCommand,
+  buildWeatherCommand,
   eligiblePlayers,
   positionName,
 } from "./liveActionEntry";
@@ -112,5 +113,26 @@ describe("liveActionEntry — role sets + building shared commands (Design A doc
     expect(buildGuidedCommand("casualty", "home", { cause: "block" })).toBeNull();
     expect(buildGuidedCommand("foul", "home", { causerId: "h1" })).toBeNull();
     expect(buildGuidedCommand("bothDown", "home", { victimId: "a1" })).toBeNull();
+  });
+});
+
+describe("liveActionEntry — buildWeatherCommand (S2: Cambiar clima)", () => {
+  it("returns null when no weather kind was picked", () => {
+    expect(buildWeatherCommand("")).toBeNull();
+    expect(buildWeatherCommand("", 4)).toBeNull();
+  });
+
+  it("builds a value-only weather command when no d6 was recorded (roll stays optional)", () => {
+    const cmd = buildWeatherCommand("rain");
+    expect(cmd).toEqual({ type: "weather", value: "rain" });
+    expect("roll" in (cmd ?? {})).toBe(false);
+  });
+
+  it("travels the recorded d6 alongside the kind", () => {
+    expect(buildWeatherCommand("blizzard", 6)).toEqual({
+      type: "weather",
+      value: "blizzard",
+      roll: 6,
+    });
   });
 });

@@ -3,6 +3,7 @@
 import { useI18n } from "@/lib/i18n";
 import { getInducement } from "@/lib/rules/inducements";
 import { weatherLabel, type SummaryTFunc } from "./matchSummary";
+import type { TurnSide } from "./actaTurnSides";
 import type { LiveMatchEventDto, MatchDetail } from "./api";
 
 /**
@@ -15,7 +16,11 @@ import type { LiveMatchEventDto, MatchDetail } from "./api";
  *      league name comes from `league.name`, NEVER hardcoded), "Oficial" chip,
  *      per-team RR/bribes/score blocks, weather + referee line;
  *   3. horizontal T1-T8 turn stepper — done (✓), casualty-marked, active (+
- *      "TURNO N EN JUEGO" badge) and upcoming states.
+ *      "TURNO N EN JUEGO" badge) and upcoming states. S3: when the caller
+ *      passes the derived `turnSides` map, the pills tint by the OWNING
+ *      team's color (home navy · away red · both/unknown slate — the side
+ *      palette `actaTurnSides` derives); the casualty marker keeps its red
+ *      semantics and absent/unknown sides keep the legacy state styling.
  *
  * Tokens: existing rulebook-light tokens only (AGENTS.md rule 5) — the
  * artboard's `surface-*`/`on-primary`/`error-container` palette maps onto
@@ -40,6 +45,10 @@ export interface ActaTeamLine {
   rerolls: number | null;
   /** Bribes ("Sobornos") recorded for the match (inducement cart/snapshot). */
   bribes: number;
+  /** Pre-match fan factor roll (kickoff `fan_factor` event): base + dice = total. */
+  fanFactor?: { base: number; dice: number; total: number } | null;
+  /** Inducements recorded for the match (live cart, else result snapshot). */
+  inducements?: readonly { name: string; count: number }[];
 }
 
 export interface ActaSheetHeaderProps {
@@ -53,8 +62,15 @@ export interface ActaSheetHeaderProps {
   away: ActaTeamLine;
   /** BB2025 weather kind (result snapshot) or null before it is rolled. */
   weather: string | null;
+  /** The d6 that produced the current weather (kickoff `weather` event). */
+  weatherRoll?: number | null;
   /** Turn numbers (current half) carrying a casualty event. */
   casualtyTurns: readonly number[];
+  /**
+   * S3 tint source: the derived owning side per turn (index = turn - 1,
+   * `turnSidesOf` in `actaTurnSides`). Absent → legacy state styling.
+   */
+  turnSides?: readonly TurnSide[];
 }
 
 export type ActaTurnState = "done" | "casualty" | "active" | "upcoming";
@@ -144,6 +160,16 @@ function TeamBlock({ team, tone }: { team: ActaTeamLine; tone: "navy" | "red" })
         <span className="text-[10px] font-medium text-slate-strong">
           RR: {team.rerolls ?? "—"} • Soborno: {team.bribes}
         </span>
+        {team.inducements != null && team.inducements.length > 0 ? (
+          <span className="block truncate text-[10px] text-slate-strong">
+            Inducements: {team.inducements.map((item) => `${item.name} ×${item.count}`).join(", ")}
+          </span>
+        ) : null}
+        {team.fanFactor != null ? (
+          <span className="block text-[10px] text-slate-strong">
+            Afición: {team.fanFactor.base} + 🎲{team.fanFactor.dice} = <b>{team.fanFactor.total}</b>
+          </span>
+        ) : null}
       </div>
       <span className={`font-display text-2xl leading-none ${tone === "navy" ? "text-navy" : "text-red"}`}>
         {team.score}
@@ -155,15 +181,22 @@ function TeamBlock({ team, tone }: { team: ActaTeamLine; tone: "navy" | "red" })
 function TurnChip({
   turn,
   state,
+  side,
 }: {
   turn: number;
   state: ActaTurnState;
+  /** Derived owning side (S3 tint source); undefined → legacy state styling. */
+  side?: TurnSide;
 }) {
   const base = "flex h-8 shrink-0 items-center justify-center rounded-sm text-[10px] font-bold";
   if (state === "done") {
+    // S3: the check carries the OWNING side's color — home navy · away red ·
+    // both/unknown slate; no derived side → the legacy navy check.
+    const checkTint =
+      side === "away" ? "text-red" : side === null ? "text-slate" : "text-navy";
     return (
       <li data-turn={turn} data-state={state} aria-label={`Turno ${turn}`} className={`${base} w-8 border border-border bg-fill-hover text-slate`}>
-        <ActaIcon name="check" className="size-3.5 text-navy" />
+        <ActaIcon name="check" className={`size-3.5 ${checkTint}`} />
       </li>
     );
   }
@@ -181,12 +214,19 @@ function TurnChip({
     );
   }
   if (state === "active") {
+    // S3: the active pill backgrounds (and rings) by the owning side's color.
+    const tint =
+      side === "away"
+        ? "bg-red ring-red/20"
+        : side === null
+          ? "bg-slate ring-slate/20"
+          : "bg-navy ring-navy/20";
     return (
       <li
         data-turn={turn}
         data-state={state}
         aria-label={`Turno ${turn}`}
-        className={`${base} w-9 flex-col bg-navy text-white ring-2 ring-navy/20`}
+        className={`${base} w-9 flex-col ${tint} text-white ring-2`}
       >
         <span>T{turn}</span>
         <span aria-hidden className="mt-0.5 h-1 w-1 rounded-full bg-white" />
@@ -214,7 +254,9 @@ export function ActaSheetHeader({
   home,
   away,
   weather,
+  weatherRoll = null,
   casualtyTurns,
+  turnSides,
 }: ActaSheetHeaderProps) {
   const { t } = useI18n();
   const live = status === "live";
@@ -223,6 +265,7 @@ export function ActaSheetHeader({
     : t("match.jornada", { round });
   const halfLabel = half === 2 ? "2ª Mitad" : "1ª Mitad";
   const weatherText = weather ? weatherLabel(weather, t as SummaryTFunc) : "Estándar";
+  const weatherRollPrefix = weatherRoll != null ? `tirada ${weatherRoll} → ` : "";
   return (
     <>
       {/* 1. Sticky top bar (artboard: fixed app bar) — score line + menu. */}
@@ -272,7 +315,11 @@ export function ActaSheetHeader({
           <span className="flex items-center gap-1">
             <ActaIcon name="sun" className="size-3.5" />
             <span>
-              {halfLabel} • Clima: <strong className="font-medium text-ink">{weatherText}</strong>
+              {halfLabel} • Clima:{" "}
+              <strong className="font-medium text-ink">
+                {weatherRollPrefix}
+                {weatherText}
+              </strong>
             </span>
           </span>
           <span className="font-medium text-ink">Árbitro: —</span>
@@ -299,6 +346,7 @@ export function ActaSheetHeader({
               key={turn}
               turn={turn}
               state={turnStateOf(turn, status, turnNumber, casualtyTurns)}
+              side={turnSides?.[turn - 1]}
             />
           ))}
         </ol>

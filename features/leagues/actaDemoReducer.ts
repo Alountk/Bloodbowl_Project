@@ -89,6 +89,9 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         turnNumber: 1,
         homeScore: 0,
         awayScore: 0,
+        // S1: every scenario starts past kickoff — the weather roll and both
+        // fan factor rolls are already on the feed.
+        events: narrativeEvents.slice(0, 3),
       };
     case "primer-tercio":
       return {
@@ -99,7 +102,7 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         activeSide: "home",
         homeScore: 1,
         awayScore: 0,
-        events: narrativeEvents.slice(0, 1),
+        events: narrativeEvents.slice(0, 6),
       };
     case "segundo-tercio":
       return {
@@ -109,7 +112,7 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         turnNumber: 5,
         homeScore: 2,
         awayScore: 1,
-        events: narrativeEvents.slice(0, 3),
+        events: narrativeEvents.slice(0, 10),
       };
     case "finalizado":
       return {
@@ -234,6 +237,17 @@ function applyCommand(state: ActaDemoState, raw: unknown): ActaDemoState {
           payload: { victimRosterId: cmd.victimRosterId ?? null },
         },
       ]);
+    case "weather": {
+      // S2 (Cambiar clima): a side-less weather event carrying the FIXED T1
+      // payload contract — `{ value, roll? }` (the generic fallback would map
+      // the kind but drop the payload). A malformed command is dropped whole.
+      if (typeof cmd.value !== "string") return state;
+      const payload: Record<string, unknown> = { value: cmd.value };
+      if (typeof cmd.roll === "number") payload.roll = cmd.roll;
+      return appendEvents(state, [
+        { kind: "weather", side: null, playerRosterId: null, payload },
+      ]);
+    }
     case "endTurn": {
       const reason = cmd.reason ?? "voluntary";
       const drafts: EventDraft[] = [

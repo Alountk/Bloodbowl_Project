@@ -2595,3 +2595,122 @@ describe("GET .../live — LM-30 SSE snapshot exposes the persisted inducement c
     await reader.cancel();
   });
 });
+
+describe("POST .../live — weather change capture (S2: Cambiar clima)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /** Home is active (liveState.activeSide = home). */
+  function liveSetup(sessionId: string, state: Record<string, unknown> = liveState) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(state);
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+  }
+
+  function post(body: unknown) {
+    return POST(
+      new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+      }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+  }
+
+  it("200 + appends a side-less weather event with value + recorded 2D6 (no turn flip)", async () => {
+    liveSetup("coach-home");
+    const res = await post({ type: "weather", value: "rain", roll: 5 });
+    expect(res.status).toBe(200);
+    const transitionArg = applyTransitionMock.mock.calls[0][0];
+    const event = transitionArg.next.events[0];
+    expect(event.kind).toBe("weather");
+    expect(event.side).toBeNull();
+    expect(event.playerRosterId).toBeNull();
+    expect(event.payload).toEqual({ value: "rain", roll: 5 });
+    // A weather capture never flips the turn or touches the clock/score.
+    expect(transitionArg.next.activeSide).toBe("home");
+    expect(transitionArg.next.turnNumber).toBe(liveState.turnNumber);
+    expect(transitionArg.next.homeScore).toBe(0);
+    expect(transitionArg.next.awayScore).toBe(0);
+  });
+
+  it("200 + the 2D6 is optional — the payload carries only the value", async () => {
+    liveSetup("coach-home");
+    const res = await post({ type: "weather", value: "blizzard" });
+    expect(res.status).toBe(200);
+    const event = applyTransitionMock.mock.calls[0][0].next.events[0];
+    expect(event.kind).toBe("weather");
+    expect(event.payload).toEqual({ value: "blizzard" });
+  });
+
+  it("400 (no mutation) for an unknown weather kind", async () => {
+    liveSetup("coach-home");
+    const res = await post({ type: "weather", value: "tsunami" });
+    expect(res.status).toBe(400);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("400 (no mutation) when the value is missing or not a string", async () => {
+    for (const body of [{ type: "weather" }, { type: "weather", value: 3 }]) {
+      vi.clearAllMocks();
+      liveSetup("coach-home");
+      const res = await post(body);
+      expect(res.status, JSON.stringify(body)).toBe(400);
+      expect(applyTransitionMock).not.toHaveBeenCalled();
+    }
+  });
+
+  it("400 (no mutation) for a malformed or out-of-range 2D6 (2..12 integer only)", async () => {
+    for (const roll of [0, 1, 13, 2.5, "5", true]) {
+      vi.clearAllMocks();
+      liveSetup("coach-home");
+      const res = await post({ type: "weather", value: "rain", roll });
+      expect(res.status, String(roll)).toBe(400);
+      expect(applyTransitionMock).not.toHaveBeenCalled();
+    }
+  });
+
+  it("200 for the 2D6 boundaries (2 and 12) — the rulebook weather roll range", async () => {
+    for (const [value, roll] of [["heat", 2], ["blizzard", 12]] as const) {
+      vi.clearAllMocks();
+      liveSetup("coach-home");
+      const res = await post({ type: "weather", value, roll });
+      expect(res.status, String(roll)).toBe(200);
+      const event = applyTransitionMock.mock.calls[0][0].next.events[0];
+      expect(event.payload).toEqual({ value, roll });
+    }
+  });
+
+  it("409 (no mutation) when the NON-active coach records a weather change", async () => {
+    liveSetup("coach-away");
+    const res = await post({ type: "weather", value: "rain", roll: 2 });
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when the league admin (no side) records a weather change (D14)", async () => {
+    liveSetup("owner-1");
+    const res = await post({ type: "weather", value: "rain" });
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+
+  it("409 (no mutation) when recorded outside a live match (wrong state)", async () => {
+    liveSetup("coach-home", readyState);
+    const res = await post({ type: "weather", value: "rain", roll: 5 });
+    expect(res.status).toBe(409);
+    expect(applyTransitionMock).not.toHaveBeenCalled();
+  });
+});

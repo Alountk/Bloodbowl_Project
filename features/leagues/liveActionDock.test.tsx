@@ -469,7 +469,7 @@ describe("Acta quick-capture dock (MVA-5 · T9 Slice C)", () => {
  * ------------------------------------------------------------------------- */
 
 describe("Acta + Evento choice sheet (MVA-4 capture surface, Slice E)", () => {
-  it("+ Evento opens the four-choice sheet on the acta variant", () => {
+  it("+ Evento opens the five-choice sheet on the acta variant (S2: + Cambiar clima)", () => {
     renderActaDock();
     fireEvent.click(actaAction("+ Evento"));
     const modal = within(screen.getByTestId("live-action-modal"));
@@ -479,6 +479,7 @@ describe("Acta + Evento choice sheet (MVA-4 capture surface, Slice E)", () => {
       "Intercepción",
       "Lanzar compañero",
       "Aterrizar sano",
+      "Cambiar clima",
     ]);
   });
 
@@ -556,9 +557,77 @@ describe("Acta + Evento choice sheet (MVA-4 capture surface, Slice E)", () => {
     // Byte-identical V1 flow: straight to the aggressor step — NO choice step.
     expect(modal.textContent).toContain("Agresor");
     expect(within(modal).queryAllByTestId("dock-event-option")).toEqual([]);
-    for (const label of ["Intercepción", "Lanzar compañero", "Aterrizar sano", "+ Evento"]) {
+    for (const label of ["Intercepción", "Lanzar compañero", "Aterrizar sano", "Cambiar clima", "+ Evento"]) {
       expect(within(dock()).queryByRole("button", { name: label })).toBeNull();
       expect(within(modal).queryByRole("button", { name: label })).toBeNull();
     }
+  });
+});
+
+/* ------------------------------------------------------------------------- *
+ * S2 (T2 capture): "Cambiar clima" in the + Evento choice sheet — pick the
+ * new weather kind (labeled via the shared `weatherLabel` taxonomy), then
+ * optionally record the 2D6 that produced it (the rulebook weather roll is
+ * 2D6 — 2-12; mirror of the guided roll steppers; "Sin tirada" fires without
+ * one). The command rides the SAME
+ * onSubmit path as every other capture; the server stays authoritative.
+ * ------------------------------------------------------------------------- */
+
+describe("Acta + Evento → Cambiar clima (S2 weather capture)", () => {
+  it("walks kind → optional d6 and fires the weather command with the recorded roll", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("+ Evento"));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Cambiar clima" }));
+    // The known weather kinds, labeled via weatherLabel (matchSummary taxonomy).
+    const kinds = within(actaDock()).getAllByTestId("dock-weather-option");
+    expect(kinds.map((k) => k.textContent)).toEqual([
+      "Calor asfixiante",
+      "Muy soleado",
+      "Perfecto",
+      "Lluvioso",
+      "Ventisca",
+    ]);
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Lluvioso" }));
+    // The optional 2D6 stage mirrors the guided roll steppers (rulebook: 2-12).
+    const rollStage = within(actaDock()).getByTestId("dock-weather-roll");
+    fireEvent.click(within(rollStage).getByRole("button", { name: "5" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "weather",
+      value: "rain",
+      roll: 5,
+    } as LiveCommand);
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
+    // The MVA-6 float surfaces on the + Evento entry button.
+    const float = document.querySelector(".acta-motion-float-feedback") as HTMLElement | null;
+    expect(float?.textContent).toContain("Evento Registrado");
+  });
+
+  it("offers the rulebook 2D6 outcomes (2-12), never the 1D6 band", async () => {
+    renderActaDock({ onSubmit: vi.fn<MockControl>(async () => {}) });
+    fireEvent.click(actaAction("+ Evento"));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Cambiar clima" }));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Lluvioso" }));
+    const rollStage = within(actaDock()).getByTestId("dock-weather-roll");
+    const chips = within(rollStage).getAllByTestId("dock-weather-roll-option");
+    expect(chips.map((c) => c.textContent)).toEqual([
+      "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12",
+    ]);
+  });
+
+  it("'Sin tirada' fires the weather command without a roll (the d6 stays optional)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    fireEvent.click(actaAction("+ Evento"));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Cambiar clima" }));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Ventisca" }));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Sin tirada" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const cmd = onSubmit.mock.calls[0][0] as Extract<LiveCommand, { type: "weather" }>;
+    expect(cmd.type).toBe("weather");
+    expect(cmd.value).toBe("blizzard");
+    expect("roll" in cmd).toBe(false);
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
   });
 });

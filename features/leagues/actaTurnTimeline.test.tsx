@@ -248,6 +248,63 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
   );
 });
 
+describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
+  it("the left accent follows the acting team, not the state (a live home card is navy)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            // T5: an away touchdown — the away coach's turn.
+            event({
+              kind: "td",
+              side: "away",
+              playerRosterId: "a1",
+              turnNumber: 5,
+              at: STARTED + 44 * MIN,
+            }),
+            // T4: home captures — the home coach's turn.
+            ...closedTurnEvents(),
+          ],
+          // The LIVE turn is the HOME coach's — team-coded, never state-coded.
+          active: { status: "live", half: 1, turnNumber: 6, activeSide: "home" },
+        })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    // T6 live + home-owned → navy (the accent no longer encodes "live").
+    expect(cards[0].className).toContain("border-l-navy");
+    expect(cards[0].className).not.toContain("border-l-red");
+    // T5 completed away turn → red.
+    expect(cards[1].className).toContain("border-l-red");
+    // T4 closed home turn → navy.
+    expect(cards[2].className).toContain("border-l-navy");
+  });
+
+  it("a mixed turn (AMBOS EQUIPOS) gets the neutral slate accent", () => {
+    seqCounter = 0;
+    const mixed = [
+      casualtyEvent(false), // authored by the home causer
+      event({
+        kind: "completion",
+        side: "away", // authored by the away side — the turn mixes both
+        playerRosterId: "a1",
+        turnNumber: 5,
+        at: STARTED + 43 * MIN,
+      }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: mixed, active: { ...liveActive(), turnNumber: 6 } })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    expect(cards[1].className).toContain("border-l-slate");
+  });
+});
+
 describe("ActaTurnTimeline — event rows (MVA-3 / B2)", () => {
   it("event rows show kind badge, player name + role/number, description and the SPP marker", () => {
     seqCounter = 0;

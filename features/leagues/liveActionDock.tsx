@@ -10,6 +10,7 @@ import {
   SELF_CAUSES,
   buildGuidedCommand,
   buildScoredCommand,
+  buildWeatherCommand,
   dorsalMap,
   eligiblePlayers,
   isActiveActor,
@@ -17,6 +18,8 @@ import {
   shortName,
   type GuidedSelections,
 } from "./liveActionEntry";
+import { weatherLabel } from "./matchSummary";
+import { WEATHER_KINDS } from "@/lib/rules/weather";
 import type { LiveCommand, MatchPlayer } from "./api";
 
 /**
@@ -68,15 +71,17 @@ type Flow =
   | "interception"
   | "throwTeamMate"
   | "landedSafe"
+  | "weather"
   | "eventChoice"
   | "selfInflicted"
   | "bothDown"
   | "passTurn";
 
 /** The "+ Evento" choice step (Slice E): the recordable acta events — Falta
- * plus the LM-13 scored actions. All four are ACTIVE-coach captures, so the
- * choice rides exactly the window its entry button already gates (MVA-4). */
-const EVENT_CHOICES = ["foul", "interception", "throwTeamMate", "landedSafe"] as const;
+ * plus the LM-13 scored actions, and the S2 "Cambiar clima" capture. All are
+ * ACTIVE-coach captures, so the choice rides exactly the window its entry
+ * button already gates (MVA-4). */
+const EVENT_CHOICES = ["foul", "interception", "throwTeamMate", "landedSafe", "weather"] as const;
 
 /** True for the instant two-touch scored actions (own player pick → fire).
  *  Accepts the nullable flow state (a closed sheet is never a scored flow). */
@@ -165,6 +170,7 @@ const ACTA_FEEDBACK: Record<Flow, { text: string; tone: "navy" | "red" }> = {
   interception: { text: "Evento Registrado", tone: "navy" },
   throwTeamMate: { text: "Evento Registrado", tone: "navy" },
   landedSafe: { text: "Evento Registrado", tone: "navy" },
+  weather: { text: "Evento Registrado", tone: "navy" },
   eventChoice: { text: "Evento Registrado", tone: "navy" },
   selfInflicted: { text: "+2 SPP (Baja)", tone: "navy" },
   bothDown: { text: "+2 SPP (Baja)", tone: "navy" },
@@ -228,7 +234,9 @@ type GuidedStage =
   | { kind: "pickOwn" }
   | { kind: "pickRival" }
   | { kind: "selfCause" }
-  | { kind: "roll" };
+  | { kind: "roll" }
+  | { kind: "weatherKind" }
+  | { kind: "weatherRoll" };
 
 /** The ordered stages a guided flow walks (based on the mockup stepper). */
 function stagesFor(flow: Flow): GuidedStage[] {
@@ -241,8 +249,13 @@ function stagesFor(flow: Flow): GuidedStage[] {
       // Two-touch scored actions: the sheet only picks the own player → fires.
       return [{ kind: "pickOwn" }];
     case "eventChoice":
-      // Slice E: the + Evento choice step (Falta / LM-13 scored actions).
+      // Slice E: the + Evento choice step (Falta / LM-13 scored actions / S2
+      // weather).
       return [{ kind: "choice" }];
+    case "weather":
+      // S2 (Cambiar clima): pick the new weather kind, then optionally record
+      // the 2D6 that produced it ("Sin tirada" skips it).
+      return [{ kind: "weatherKind" }, { kind: "weatherRoll" }];
     case "casualtyCaused":
       return [
         { kind: "cause", causes: ACTIVE_CAUSES },
@@ -420,6 +433,13 @@ export function LiveActionDock({
     submit({ type: "endTurn", side: viewerSide, reason: value });
   };
 
+  /** S2: fires the "Cambiar clima" capture with the recorded d6 — `null` skips
+   *  it (the roll stays optional, exactly like the command contract). */
+  const fireWeather = (roll: number | null) => {
+    const cmd = buildWeatherCommand(selections.weather ?? "", roll ?? "");
+    if (cmd) submit(cmd);
+  };
+
   // The centered modal that hosts the open flow (the dock bar stays underneath).
   const modalContent = (() => {
     if (!openFlow) return null;
@@ -449,7 +469,11 @@ export function LiveActionDock({
           ? t("match.dock.rollTitle")
           : stage?.kind === "cause" || stage?.kind === "selfCause"
             ? t("match.controls.injuryCause")
-            : t("match.dock.sheetTitle");
+            : stage?.kind === "weatherKind"
+              ? "Cambiar clima"
+              : stage?.kind === "weatherRoll"
+                ? "Tirada de clima"
+                : t("match.dock.sheetTitle");
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -501,7 +525,9 @@ export function LiveActionDock({
 
           {/* Slice E: the + Evento choice step — the recordable acta events,
               labeled by the shared live-event taxonomy (never new copy). Picking
-              one routes into that event's EXISTING machinery below. */}
+              one routes into that event's EXISTING machinery below. The S2
+              "Cambiar clima" entry is the deliberate capture-side literal (its
+              event label stays "Clima" via the taxonomy). */}
           {stage?.kind === "choice" ? (
             <div data-testid="dock-event-pool" className="flex flex-wrap gap-1.5">
               {EVENT_CHOICES.map((choice) => (
@@ -512,9 +538,64 @@ export function LiveActionDock({
                   onClick={() => begin(choice)}
                   className="rounded border border-border bg-panel px-2 py-1 text-xs font-bold text-navy hover:bg-background"
                 >
-                  {liveEventLabel({ kind: choice, half: 1, turnNumber: 1, payload: {} }, t)}
+                  {choice === "weather"
+                    ? "Cambiar clima"
+                    : liveEventLabel({ kind: choice, half: 1, turnNumber: 1, payload: {} }, t)}
                 </button>
               ))}
+            </div>
+          ) : null}
+
+          {/* S2 (Cambiar clima): the weather-kind chips (the known BB2025
+              kinds, labeled via the shared `weatherLabel` taxonomy). Picking
+              one advances to the optional d6 stage — the capture fires there. */}
+          {stage?.kind === "weatherKind" ? (
+            <div data-testid="dock-weather-pool" className="flex flex-wrap gap-1.5">
+              {WEATHER_KINDS.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  data-testid="dock-weather-option"
+                  aria-pressed={selections.weather === kind}
+                  onClick={() => applyGuided({ ...selections, weather: kind }, true)}
+                  className={`rounded border px-2 py-1 text-xs font-bold ${
+                    selections.weather === kind
+                      ? "border-navy bg-navy text-white"
+                      : "border-border bg-panel text-navy hover:bg-background"
+                  }`}
+                >
+                  {weatherLabel(kind, t)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {/* S2: the optional 2D6 stage (mirror of the guided roll steppers).
+              The rulebook weather roll is 2D6 — lib/rules/weather
+              `weatherFromRoll` maps the 2-12 band — so the chips offer every
+              2..12 outcome. A value chip fires the capture WITH the roll;
+              "Sin tirada" fires it without one — no Registrar button
+              (guided-flow principle). */}
+          {stage?.kind === "weatherRoll" ? (
+            <div data-testid="dock-weather-roll" className="flex flex-wrap gap-1.5">
+              {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  data-testid="dock-weather-roll-option"
+                  onClick={() => fireWeather(n)}
+                  className="rounded border border-border bg-panel px-2 py-1 text-xs font-bold text-navy hover:bg-background"
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => fireWeather(null)}
+                className="rounded border border-border bg-panel px-2 py-1 text-xs font-bold text-navy hover:bg-background"
+              >
+                Sin tirada
+              </button>
             </div>
           ) : null}
 
@@ -740,7 +821,7 @@ export function LiveActionDock({
                 <ActaDockButton icon="football" label="+ TD" tone="navy" onClick={() => begin("td")} feedback={floatFor("td")} />
                 <ActaDockButton icon="send" label="+ Pase" tone="navy" onClick={() => begin("completion")} feedback={floatFor("completion")} />
                 <ActaDockButton icon="medical" label="+ Baja" tone="red" onClick={() => begin("casualtyCaused")} feedback={floatFor("casualtyCaused")} />
-                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("eventChoice")} feedback={floatFor("foul", "interception", "throwTeamMate", "landedSafe", "eventChoice")} />
+                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("eventChoice")} feedback={floatFor("foul", "interception", "throwTeamMate", "landedSafe", "weather", "eventChoice")} />
                 <ActaDockButton icon="flag" label="Fin Turno" tone="solidRed" onClick={() => begin("passTurn")} feedback={floatFor("passTurn")} />
               </>
             ) : (

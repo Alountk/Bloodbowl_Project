@@ -109,3 +109,40 @@ describe("LiveEventCardsActa — LM-13 scored kinds render like any player card 
     expect(screen.getByText(/Sin cotejar/)).toBeTruthy();
   });
 });
+
+describe("LiveEventCardsActa — S2 weather card (Clima)", () => {
+  it("renders the resulting weather label + the recorded d6 row", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        seq: 2,
+        payload: { value: "rain", roll: 5 },
+      }),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    // Tag resolves to "Clima"; rows show the RESULT + the recorded d6.
+    expect(row.textContent).toContain("Clima");
+    expect(row.textContent).toContain("Lluvioso");
+    expect(row.textContent).toContain("Tirada");
+    expect(row.textContent).toContain("🎲5");
+  });
+
+  it("renders just the result row when no d6 was recorded (roll stays optional)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        seq: 2,
+        payload: { value: "blizzard" },
+      }),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.textContent).toContain("Clima");
+    expect(row.textContent).toContain("Ventisca");
+    expect(row.textContent).not.toContain("Tirada");
+    expect(row.textContent).not.toContain("🎲");
+  });
+});

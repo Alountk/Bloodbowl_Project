@@ -32,11 +32,13 @@ import {
   purchaseInducements,
 } from "@/lib/liveStore";
 import { parsePersistedInducements } from "@/lib/rules/inducements";
+import { WEATHER_KINDS } from "@/lib/rules/weather";
 import {
   applyEndTurn,
   applyTD,
   applyCompletion,
   applyScoredAction,
+  applyWeatherChange,
   applyEndMatch,
   applyRequestTurn,
   REQUEST_TURN_COOLDOWN_MS,
@@ -592,6 +594,16 @@ type ControlCommand =
       status: "ok" | "nok";
     }
   | { type: "foul"; side: TeamSide; playerRosterId: string; victimRosterId: string }
+  | {
+      /** S2: the "Cambiar clima" capture — a kickoff can change the weather, so
+       * the coach records the new kind (`WEATHER_KINDS` code) plus the optional
+       * recorded 2D6 (the rulebook weather roll, 2-12). Side-less like the
+       * kickoff events (`side: null` on the appended event); the route keeps it
+       * to the ACTIVE coach, live-only. */
+      type: "weather";
+      value: string;
+      roll?: number;
+    }
   | { type: "requestTurn" }
   | { type: "endMatch" }
   | { type: "concede" }
@@ -728,6 +740,19 @@ function isControlCommand(value: unknown): value is ControlCommand {
         (c.side === "home" || c.side === "away") &&
         typeof c.playerRosterId === "string" &&
         typeof c.victimRosterId === "string"
+      );
+    case "weather":
+      // S2: a KNOWN weather kind (lib/rules/weather `WEATHER_KINDS`) plus an
+      // optional recorded 2D6 (integer 2..12). The rulebook weather roll is
+      // 2D6 — lib/rules/weather `weatherFromRoll` maps the whole 2-12 band —
+      // so the recorded roll must land in that canonical range (1 and 13 are
+      // impossible outcomes). The roll is recorded metadata, never an input —
+      // the server never derives the kind from a body roll.
+      return (
+        typeof c.value === "string" &&
+        (WEATHER_KINDS as readonly string[]).includes(c.value) &&
+        (c.roll == null ||
+          (typeof c.roll === "number" && Number.isInteger(c.roll) && c.roll >= 2 && c.roll <= 12))
       );
     case "endMatch":
       return true;
@@ -1348,6 +1373,14 @@ export async function POST(
     }
   }
 
+  // S2 weather capture ("Cambiar clima"): the side-less weather event rides
+  // the SAME ACTIVE-coach window as its "+ Evento" siblings (MVA-4) — a
+  // side-less admin (D14 lifecycle-only) or the non-active coach may not
+  // record it (409, no mutation).
+  if (command.type === "weather" && (side === null || side !== current.activeSide)) {
+    return Response.json({ error: "Not your turn" }, { status: 409 });
+  }
+
   // Side-aware event gate (LM-12/D14): only run the pure side matrix for the
   // event commands (endTurn/pass, TD, completion, casualty, foul); a deny maps
   // to 409 (the only callers reaching here are fixture coaches or the no-team
@@ -1524,6 +1557,15 @@ export async function POST(
     }
   } else if (command.type === "foul") {
     next = recordFoul(current, command, now);
+  } else if (command.type === "weather") {
+    // S2: appends the side-less weather event like every recorded event, with
+    // NO turn flip. The LIVE guard throws and maps to 409 (no mutation) like
+    // the scored actions.
+    try {
+      next = applyWeatherChange(current, { value: command.value, roll: command.roll }, now);
+    } catch {
+      return Response.json({ error: "Invalid transition" }, { status: 409 });
+    }
   } else if (command.type === "endMatch") {
     try {
       next = applyEndMatch(current, now);

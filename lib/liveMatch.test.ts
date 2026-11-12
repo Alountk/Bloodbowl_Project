@@ -7,6 +7,7 @@ import {
   applyTD,
   applyCompletion,
   applyScoredAction,
+  applyWeatherChange,
   applyEndMatch,
   proposeConcede,
   declineConcede,
@@ -480,8 +481,39 @@ describe("applyScoredAction — LM-13 acta-vocabulary scored actions (Slice E)",
   });
 });
 
+describe("applyWeatherChange — S2 side-less weather capture (Cambiar clima)", () => {
+  it("appends a side-less weather event with value + recorded d6, flipping nothing", () => {
+    const base = state();
+    const next = applyWeatherChange(base, { value: "rain", roll: 5 }, 1100);
+    expect(next.events).toHaveLength(base.events.length + 1);
+    const event = next.events[next.events.length - 1];
+    expect(event.kind).toBe("weather");
+    expect(event.side).toBeNull();
+    expect(event.playerRosterId).toBeNull();
+    expect(event.payload).toEqual({ value: "rain", roll: 5 });
+    expect(event.half).toBe(base.half);
+    expect(event.turnNumber).toBe(base.turnNumber);
+    // Monotonic seq; no turn flip, no score/clock change (applyCompletion parity).
+    expect(event.seq).toBe(base.seq + 1);
+    expect(next.activeSide).toBe("home");
+    expect(next.seq).toBe(base.seq);
+    expect(next.homeScore).toBe(0);
+  });
+
+  it("keeps the d6 OPTIONAL — the payload carries only the value when none was recorded", () => {
+    const next = applyWeatherChange(state(), { value: "blizzard" }, 1100);
+    expect(next.events[0].payload).toEqual({ value: "blizzard" });
+  });
+
+  it("throws outside a live match (the route maps it to 409, no mutation)", () => {
+    expect(() =>
+      applyWeatherChange(state({ status: "finished" }), { value: "rain", roll: 2 }, 1100),
+    ).toThrow();
+  });
+});
+
 describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
-  it("accepts exactly the 14 display kinds incl. the LM-13 acta vocabulary (start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede)", () => {
+  it("accepts the display kinds incl. the LM-13 acta vocabulary and the S2 weather capture (start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede|weather)", () => {
     const displayKinds = [
       "start",
       "td",
@@ -497,6 +529,10 @@ describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
       "expensive_mistake",
       "fan_factor",
       "concede",
+      // S2: the weather capture must REACH the feed DTOs — the acta derives
+      // its current weather line from the latest such event (deliberate filter
+      // change, same as the LM-13 additions).
+      "weather",
     ];
     for (const kind of displayKinds) {
       expect(isDisplayEvent(kind)).toBe(true);

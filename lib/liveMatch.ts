@@ -53,13 +53,15 @@ export type LiveEventKind =
   | "mvp"
   | "expensive_mistake"
   | "fan_factor"
+  | "weather"
   | "concede"
   | "journeyman";
 
 /**
  * The display-worthy kinds that reach the feed DTOs (LM-16): the history shows
  * `start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|
- * endHalf|endMatch|mvp|concede|journeyman`. `turn`, `turnStart` and
+ * endHalf|endMatch|mvp|concede|journeyman` (and `expensive_mistake|fan_factor|
+ * weather` — the kickoff/pre-match and S2 weather captures). `turn`, `turnStart` and
  * `requestTurn` stay in the DB (audit/replay) and live-only (nudge banner) but
  * MUST NEVER appear in a feed DTO. Shared by BOTH serializers (`toEventDtos` in
  * the live route and `serializeLive` in the fixture GET) so the feed and the
@@ -83,6 +85,7 @@ export function isDisplayEvent(kind: string): boolean {
     case "mvp":
     case "expensive_mistake":
     case "fan_factor":
+    case "weather":
     case "concede":
     case "journeyman":
       return true;
@@ -859,6 +862,41 @@ export function applyScoredAction(
         half: state.half,
         turnNumber: state.turnNumber,
         payload: { spp: SCORED_ACTION_SPP[cmd.kind] },
+        at: now,
+      },
+    ],
+  };
+}
+
+/**
+ * S2: the "Cambiar clima" capture — a kickoff can change the weather mid-match,
+ * so the events capture appends a SIDE-LESS `weather` event (the T1 acta header
+ * derives its current-weather line from the latest one). The payload contract
+ * is FIXED: `{ value, roll? }` — `value` is a `WEATHER_KINDS` code (validated
+ * at the route shape gate), `roll` the optional recorded 1D6. Like
+ * `applyScoredAction` it guards the LIVE state (the route maps the throw to 409
+ * "Invalid transition") and flips no turn/clock/score state.
+ */
+export function applyWeatherChange(
+  state: LiveMatchState,
+  cmd: { value: string; roll?: number },
+  now: number,
+): LiveMatchState {
+  if (state.status !== "live") throwInvalid("weather change only while live");
+  const payload: Record<string, unknown> = { value: cmd.value };
+  if (cmd.roll != null) payload.roll = cmd.roll;
+  return {
+    ...state,
+    events: [
+      ...state.events,
+      {
+        seq: state.seq + 1,
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        half: state.half,
+        turnNumber: state.turnNumber,
+        payload,
         at: now,
       },
     ],

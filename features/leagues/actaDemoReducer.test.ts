@@ -51,8 +51,9 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s2.homeScore).toBe(initialHome + 1);
     expect(s2.awayScore).toBe(s0.awayScore);
 
-    // The reducer is pure: the source state is never mutated.
-    expect(s0.events).toHaveLength(0);
+    // The reducer is pure: the source state is never mutated. The "inicio"
+    // preset carries the kickoff trio (start + weather + fan_factor).
+    expect(s0.events).toHaveLength(3);
     expect(s0.homeScore).toBe(initialHome);
   });
 
@@ -89,6 +90,31 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     });
     expect(s.homeScore).toBe(0);
     expect(s.awayScore).toBe(0);
+  });
+
+  it("submitCommand weather records a side-less weather event with the value + d6 payload (S2)", () => {
+    const s = reduce(state(), {
+      type: "submitCommand",
+      command: { type: "weather", value: "rain", roll: 5 },
+    });
+    const e = s.events[s.events.length - 1];
+    expect(e.kind).toBe("weather");
+    expect(e.side).toBeNull();
+    expect(e.playerRosterId).toBeNull();
+    expect(e.payload).toEqual({ value: "rain", roll: 5 });
+    // Weather never touches the scoreboard.
+    expect(s.homeScore).toBe(0);
+    expect(s.awayScore).toBe(0);
+  });
+
+  it("submitCommand weather without a d6 keeps the payload value-only (roll optional)", () => {
+    const s = reduce(state(), {
+      type: "submitCommand",
+      command: { type: "weather", value: "blizzard" },
+    });
+    const e = s.events[s.events.length - 1];
+    expect(e.kind).toBe("weather");
+    expect(e.payload).toEqual({ value: "blizzard" });
   });
 
   it("endTurn command advances the turn, flips the active side and records the reason", () => {
@@ -187,7 +213,7 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.submittedBy).toBe("away");
   });
 
-  it("reset(inicio) returns a clean kickoff: 1T turn 1, 0-0, no events", () => {
+  it("reset(inicio) returns a clean kickoff: 1T turn 1, 0-0, kickoff events only", () => {
     const dirty = reduce(
       state(),
       { type: "submitCommand", command: { type: "td", side: "home", playerRosterId: "p1" } },
@@ -202,7 +228,10 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.turnNumber).toBe(1);
     expect(s.homeScore).toBe(0);
     expect(s.awayScore).toBe(0);
-    expect(s.events).toHaveLength(0);
+    expect(s.events.map((e) => e.kind)).toEqual(["start", "weather", "fan_factor"]);
+    // The kickoff weather event carries the CANONICAL kind for its recorded
+    // 2D6 (lib/rules/weather `weatherFromRoll(4)` → "perfect"), never an alias.
+    expect(s.events[1].payload).toEqual({ value: "perfect", roll: 4 });
     expect(s.closureOpen).toBe(false);
     expect(s.submittedBy).toBeNull();
     expect(s.nextSeq).toBeGreaterThan(MAX_FIXTURE_SEQ);
