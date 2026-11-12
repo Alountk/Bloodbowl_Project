@@ -89,6 +89,9 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         turnNumber: 1,
         homeScore: 0,
         awayScore: 0,
+        // S1: every scenario starts past kickoff — the weather roll and both
+        // fan factor rolls are already on the feed.
+        events: narrativeEvents.slice(0, 3),
       };
     case "primer-tercio":
       return {
@@ -99,7 +102,7 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         activeSide: "home",
         homeScore: 1,
         awayScore: 0,
-        events: narrativeEvents.slice(0, 1),
+        events: narrativeEvents.slice(0, 6),
       };
     case "segundo-tercio":
       return {
@@ -109,7 +112,7 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         turnNumber: 5,
         homeScore: 2,
         awayScore: 1,
-        events: narrativeEvents.slice(0, 3),
+        events: narrativeEvents.slice(0, 10),
       };
     case "finalizado":
       return {

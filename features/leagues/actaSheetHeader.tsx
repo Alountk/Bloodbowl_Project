@@ -40,6 +40,10 @@ export interface ActaTeamLine {
   rerolls: number | null;
   /** Bribes ("Sobornos") recorded for the match (inducement cart/snapshot). */
   bribes: number;
+  /** Pre-match fan factor roll (kickoff `fan_factor` event): base + dice = total. */
+  fanFactor?: { base: number; dice: number; total: number } | null;
+  /** Inducements recorded for the match (live cart, else result snapshot). */
+  inducements?: readonly { name: string; count: number }[];
 }
 
 export interface ActaSheetHeaderProps {
@@ -53,6 +57,8 @@ export interface ActaSheetHeaderProps {
   away: ActaTeamLine;
   /** BB2025 weather kind (result snapshot) or null before it is rolled. */
   weather: string | null;
+  /** The d6 that produced the current weather (kickoff `weather` event). */
+  weatherRoll?: number | null;
   /** Turn numbers (current half) carrying a casualty event. */
   casualtyTurns: readonly number[];
 }
@@ -144,6 +150,16 @@ function TeamBlock({ team, tone }: { team: ActaTeamLine; tone: "navy" | "red" })
         <span className="text-[10px] font-medium text-slate-strong">
           RR: {team.rerolls ?? "—"} • Soborno: {team.bribes}
         </span>
+        {team.inducements != null && team.inducements.length > 0 ? (
+          <span className="block truncate text-[10px] text-slate-strong">
+            Inducements: {team.inducements.map((item) => `${item.name} ×${item.count}`).join(", ")}
+          </span>
+        ) : null}
+        {team.fanFactor != null ? (
+          <span className="block text-[10px] text-slate-strong">
+            Afición: {team.fanFactor.base} + 🎲{team.fanFactor.dice} = <b>{team.fanFactor.total}</b>
+          </span>
+        ) : null}
       </div>
       <span className={`font-display text-2xl leading-none ${tone === "navy" ? "text-navy" : "text-red"}`}>
         {team.score}
@@ -214,6 +230,7 @@ export function ActaSheetHeader({
   home,
   away,
   weather,
+  weatherRoll = null,
   casualtyTurns,
 }: ActaSheetHeaderProps) {
   const { t } = useI18n();
@@ -223,6 +240,7 @@ export function ActaSheetHeader({
     : t("match.jornada", { round });
   const halfLabel = half === 2 ? "2ª Mitad" : "1ª Mitad";
   const weatherText = weather ? weatherLabel(weather, t as SummaryTFunc) : "Estándar";
+  const weatherRollPrefix = weatherRoll != null ? `tirada ${weatherRoll} → ` : "";
   return (
     <>
       {/* 1. Sticky top bar (artboard: fixed app bar) — score line + menu. */}
@@ -272,7 +290,11 @@ export function ActaSheetHeader({
           <span className="flex items-center gap-1">
             <ActaIcon name="sun" className="size-3.5" />
             <span>
-              {halfLabel} • Clima: <strong className="font-medium text-ink">{weatherText}</strong>
+              {halfLabel} • Clima:{" "}
+              <strong className="font-medium text-ink">
+                {weatherRollPrefix}
+                {weatherText}
+              </strong>
             </span>
           </span>
           <span className="font-medium text-ink">Árbitro: —</span>

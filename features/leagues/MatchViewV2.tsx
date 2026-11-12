@@ -18,6 +18,7 @@ import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock } from "./useLiveClock";
 import { useLeague, type LeagueAccess } from "./useLeagueName";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
+import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { LiveActionDock } from "./liveActionDock";
 import { ActaClosure, canCloseActa, type ActaClosureViewer } from "./actaClosure";
@@ -471,6 +472,7 @@ function ActiveMatchBody({
   const events = hookLive != null && hookLive.events.length > 0 ? hookLive.events : detail.live?.events ?? [];
   const now = state.startedAt != null ? state.startedAt + clock.elapsed : 0;
   const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
+  const weatherNow = latestWeather(events, detail.result?.weather ?? null);
   const pendingOrReady = state.status === "pending" || state.status === "ready";
 
   return (
@@ -487,14 +489,19 @@ function ActiveMatchBody({
           score: state.homeScore,
           rerolls: league.teamRerolls?.[detail.homeTeam.id] ?? null,
           bribes: bribesOf(detail, "home"),
+          fanFactor: fanFactorOf(events, "home"),
+          inducements: inducementsOf(detail, "home"),
         }}
         away={{
           name: detail.awayTeam.name,
           score: state.awayScore,
           rerolls: league.teamRerolls?.[detail.awayTeam.id] ?? null,
           bribes: bribesOf(detail, "away"),
+          fanFactor: fanFactorOf(events, "away"),
+          inducements: inducementsOf(detail, "away"),
         }}
-        weather={detail.result?.weather ?? null}
+        weather={weatherNow.value}
+        weatherRoll={weatherNow.roll}
         casualtyTurns={casualtyTurnsOf(events, state.half)}
       />
       {pendingOrReady ? (
@@ -601,6 +608,7 @@ function FinishedMatchBody({
   if (live == null) return null;
   const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
   const rows = buildSummaryFeedRows(detail);
+  const weatherNow = latestWeather(live.events, detail.result?.weather ?? null);
 
   return (
     <>
@@ -616,14 +624,19 @@ function FinishedMatchBody({
           score: detail.result?.scores.home.score ?? live.homeScore,
           rerolls: league.teamRerolls?.[detail.homeTeam.id] ?? null,
           bribes: bribesOf(detail, "home"),
+          fanFactor: fanFactorOf(live.events, "home"),
+          inducements: inducementsOf(detail, "home"),
         }}
         away={{
           name: detail.awayTeam.name,
           score: detail.result?.scores.away.score ?? live.awayScore,
           rerolls: league.teamRerolls?.[detail.awayTeam.id] ?? null,
           bribes: bribesOf(detail, "away"),
+          fanFactor: fanFactorOf(live.events, "away"),
+          inducements: inducementsOf(detail, "away"),
         }}
-        weather={detail.result?.weather ?? null}
+        weather={weatherNow.value}
+        weatherRoll={weatherNow.roll}
         casualtyTurns={casualtyTurnsOf(live.events, live.half)}
       />
       {detail.result == null && canClose ? (

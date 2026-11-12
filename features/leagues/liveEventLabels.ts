@@ -338,6 +338,8 @@ export function liveEventLabel(event: LiveEventLabelInput, fn: TFunc = esT): str
       return fn("match.event.expensiveMistake");
     case "fan_factor":
       return fn("match.event.fanFactor");
+    case "weather":
+      return fn("match.event.weather");
     case "endHalf":
       return fn("match.event.endHalf");
     case "endMatch":

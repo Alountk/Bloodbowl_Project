@@ -125,17 +125,26 @@ export function liveState(
 /** A narrative feed: kickoff → jugadas → TDs → bajas → 2T. */
 export const narrativeEvents: LiveMatchEventDto[] = [
   ev(0, { seq: 1, kind: "start", side: null, playerRosterId: null, payload: {} }),
+  ev(0, { seq: 2, kind: "weather", side: null, playerRosterId: null, payload: { value: "sun", roll: 4 } }),
+  ev(0, {
+    seq: 3,
+    kind: "fan_factor",
+    side: null,
+    playerRosterId: null,
+    turn: 1,
+    payload: { home: { base: 4, dice: 3, total: 7 }, away: { base: 3, dice: 2, total: 5 } },
+  }),
   ev(2, {
-    seq: 2,
+    seq: 4,
     kind: "turnStart",
     side: "home",
     playerRosterId: null,
     turn: 1,
     payload: { reason: "voluntary" },
   }),
-  ev(6, { seq: 3, kind: "completion", side: "home", playerRosterId: "k2", turn: 1, payload: {} }),
+  ev(6, { seq: 5, kind: "completion", side: "home", playerRosterId: "k2", turn: 1, payload: {} }),
   ev(9, {
-    seq: 4,
+    seq: 6,
     kind: "turnStart",
     side: "away",
     playerRosterId: null,
@@ -143,7 +152,7 @@ export const narrativeEvents: LiveMatchEventDto[] = [
     payload: { reason: "turnover" },
   }),
   ev(14, {
-    seq: 5,
+    seq: 7,
     kind: "casualty",
     side: "away",
     playerRosterId: "k5",
@@ -151,17 +160,17 @@ export const narrativeEvents: LiveMatchEventDto[] = [
     payload: { victimRosterId: "k5", causerRosterId: "o1", cause: "block", roll16: 13, roll6: 3 },
   }),
   ev(18, {
-    seq: 6,
+    seq: 8,
     kind: "turnStart",
     side: "home",
     playerRosterId: null,
     turn: 2,
     payload: { reason: "voluntary" },
   }),
-  ev(23, { seq: 7, kind: "td", side: "home", playerRosterId: "k3", turn: 2, payload: {} }),
-  ev(31, { seq: 8, kind: "td", side: "away", playerRosterId: "o1", turn: 2, payload: {} }),
+  ev(23, { seq: 9, kind: "td", side: "home", playerRosterId: "k3", turn: 2, payload: {} }),
+  ev(31, { seq: 10, kind: "td", side: "away", playerRosterId: "o1", turn: 2, payload: {} }),
   ev(38, {
-    seq: 9,
+    seq: 11,
     kind: "turnStart",
     side: "home",
     playerRosterId: null,
@@ -170,7 +179,7 @@ export const narrativeEvents: LiveMatchEventDto[] = [
     payload: { reason: "voluntary" },
   }),
   ev(47, {
-    seq: 10,
+    seq: 12,
     kind: "foul",
     side: "home",
     playerRosterId: "k1",
@@ -179,7 +188,7 @@ export const narrativeEvents: LiveMatchEventDto[] = [
     payload: { victimRosterId: "o2" },
   }),
   ev(52, {
-    seq: 11,
+    seq: 13,
     kind: "casualty",
     side: "home",
     playerRosterId: "o2",
@@ -188,7 +197,7 @@ export const narrativeEvents: LiveMatchEventDto[] = [
     payload: { victimRosterId: "o2", causerRosterId: "k1", cause: "foul", roll16: 6 },
   }),
   ev(56, {
-    seq: 12,
+    seq: 14,
     kind: "turnStart",
     side: "away",
     playerRosterId: null,
