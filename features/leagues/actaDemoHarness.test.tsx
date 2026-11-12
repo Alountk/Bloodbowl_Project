@@ -7,7 +7,7 @@ import { ActaDemoHarness } from "./actaDemoHarness";
  * The DUAL-VIEW demo harness behind `/demo/partido` + the Storybook "Flujo
  * interactivo" story: two rival coach perspectives over ONE shared match state
  * (`actaDemoReducer`), with the REAL `LiveActionDock` capture wired in (no
- * omniscient demo buttons) and v2 localStorage persistence (`bb-demo-partido`).
+ * omniscient demo buttons) and v4 localStorage persistence (`bb-demo-partido`).
  *
  * Assertions run in the repo's ES dictionary + the demo's Spanish copy (no
  * jest-dom matchers — `.textContent` / regex / role queries only). The TD
@@ -117,7 +117,7 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(rows.some((row) => row.getAttribute("data-kind") === "td")).toBe(true);
   });
 
-  it("persists the demo state across remounts (v2) and Restablecer returns to kickoff", () => {
+  it("persists the demo state across remounts (v4) and Restablecer returns to kickoff", () => {
     const first = render(<ActaDemoHarness />);
     fireEvent.click(demoButton("Fin de turno"));
     expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
@@ -125,7 +125,7 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
       v: number;
       state: { turnNumber: number };
     } | null;
-    expect(saved?.v).toBe(2);
+    expect(saved?.v).toBe(4);
     expect(saved?.state.turnNumber).toBe(2);
     first.unmount();
 
