@@ -156,6 +156,27 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
   });
 
+  it("turn accents and stepper pills tint by team color in the demo flow (S3)", () => {
+    const { container } = render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("1T · turno 3"));
+
+    // Home is the active coach in this scenario: the LIVE card is navy —
+    // the accent is TEAM-coded and no longer encodes the live state.
+    const liveCard = container.querySelector(
+      '[data-testid="acta-turn-card"][data-turn="3"]',
+    );
+    expect(liveCard?.className).toContain("border-l-navy");
+
+    fireEvent.click(demoButton("Fin de turno"));
+
+    // Away's turn 4 now: the active pill takes the away team's red background
+    // (it used to be navy for every team).
+    const activePill = container.querySelector(
+      '[data-testid="ui-v2-match-stepper"] [data-turn="4"]',
+    );
+    expect(activePill?.className).toContain("bg-red");
+  });
+
   it("the closure save shim answers the demo result POST without network and marks the result reported", async () => {
     const passthrough = vi.fn(() =>
       Promise.resolve({ ok: true, status: 200, json: async () => ({}) }),

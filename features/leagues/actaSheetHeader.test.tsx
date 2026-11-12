@@ -65,3 +65,50 @@ describe("ActaSheetHeader — pre-match data lines (S1)", () => {
     expect(container.textContent).not.toContain("tirada");
   });
 });
+
+/** One stepper pill of the current half (the TurnChip carries data-turn). */
+function pill(container: HTMLElement, turn: number): HTMLElement | null {
+  return container.querySelector(`[data-testid="ui-v2-match-stepper"] [data-turn="${turn}"]`);
+}
+
+describe("ActaSheetHeader — turn pills tinted by owning side (S3)", () => {
+  it("tints done checks and the active background by the owning side when turnSides is provided", () => {
+    // T1 home · T2 away · T3 both/unknown · T4 (active) away.
+    const { container } = renderHeader({
+      turnSides: ["home", "away", null, "away", null, null, null, null],
+    });
+
+    // The check icon is an SVG — jsdom exposes its class via the attribute.
+    const checkOf = (turn: number) =>
+      pill(container, turn)?.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(checkOf(1)).toContain("text-navy");
+    expect(checkOf(2)).toContain("text-red");
+    expect(checkOf(3)).toContain("text-slate");
+    // The active pill backgrounds by the ACTIVE side's color (away = red).
+    expect(pill(container, 4)?.className).toContain("bg-red");
+    expect(pill(container, 4)?.className).not.toContain("bg-navy");
+  });
+
+  it("keeps the legacy state styling when turnSides is absent (backwards compatible)", () => {
+    const { container } = renderHeader();
+
+    const checkOf = (turn: number) =>
+      pill(container, turn)?.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(checkOf(1)).toContain("text-navy");
+    expect(pill(container, 4)?.className).toContain("bg-navy");
+  });
+
+  it("casualty pills keep the red marker semantics regardless of the owning side", () => {
+    const { container } = renderHeader({
+      casualtyTurns: [2],
+      turnSides: ["home", "away", null, "away", null, null, null, null],
+    });
+
+    const casualty = pill(container, 2);
+    expect(casualty?.className).toContain("border-red/40");
+    expect(casualty?.className).toContain("bg-red/10");
+    expect(casualty?.className).toContain("text-red");
+    // The corner marker dot keeps its red semantics (it marks a casualty).
+    expect(casualty?.querySelector("span[aria-hidden]")?.className).toContain("bg-red");
+  });
+});

@@ -18,6 +18,7 @@ import { useLiveMatch } from "./useLiveMatch";
 import { useLiveClock } from "./useLiveClock";
 import { useLeague, type LeagueAccess } from "./useLeagueName";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
+import { turnSidesOf } from "./actaTurnSides";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { LiveActionDock } from "./liveActionDock";
@@ -503,6 +504,7 @@ function ActiveMatchBody({
         weather={weatherNow.value}
         weatherRoll={weatherNow.roll}
         casualtyTurns={casualtyTurnsOf(events, state.half)}
+        turnSides={turnSidesOf(events, state.half, state)}
       />
       {pendingOrReady ? (
         <div data-testid="ui-v2-match-consent">
@@ -638,6 +640,7 @@ function FinishedMatchBody({
         weather={weatherNow.value}
         weatherRoll={weatherNow.roll}
         casualtyTurns={casualtyTurnsOf(live.events, live.half)}
+        turnSides={turnSidesOf(live.events, live.half, live)}
       />
       {detail.result == null && canClose ? (
         <div

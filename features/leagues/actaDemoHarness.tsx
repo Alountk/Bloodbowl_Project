@@ -10,6 +10,7 @@ import {
   type DemoScenario,
 } from "./actaDemoReducer";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
+import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { ActaClosure, canCloseActa } from "./actaClosure";
 import { LiveActionDock } from "./liveActionDock";
@@ -77,6 +78,7 @@ export function ActaFlow({
           }}
           weather={detail.result?.weather ?? null}
           casualtyTurns={casualtyTurnsOf(events, state.half)}
+          turnSides={turnSidesOf(events, state.half, state)}
         />
         {events.length > 0 ? (
           <div className="bg-background">
