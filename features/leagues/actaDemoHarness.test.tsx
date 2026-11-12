@@ -7,7 +7,7 @@ import { ActaDemoHarness } from "./actaDemoHarness";
  * The DUAL-VIEW demo harness behind `/demo/partido` + the Storybook "Flujo
  * interactivo" story: two rival coach perspectives over ONE shared match state
  * (`actaDemoReducer`), with the REAL `LiveActionDock` capture wired in (no
- * omniscient demo buttons) and v1 localStorage persistence (`bb-demo-partido`).
+ * omniscient demo buttons) and v2 localStorage persistence (`bb-demo-partido`).
  *
  * Assertions run in the repo's ES dictionary + the demo's Spanish copy (no
  * jest-dom matchers — `.textContent` / regex / role queries only). The TD
@@ -117,7 +117,7 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(rows.some((row) => row.getAttribute("data-kind") === "td")).toBe(true);
   });
 
-  it("persists the demo state across remounts (v1) and Restablecer returns to kickoff", () => {
+  it("persists the demo state across remounts (v2) and Restablecer returns to kickoff", () => {
     const first = render(<ActaDemoHarness />);
     fireEvent.click(demoButton("Fin de turno"));
     expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
@@ -125,7 +125,7 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
       v: number;
       state: { turnNumber: number };
     } | null;
-    expect(saved?.v).toBe(1);
+    expect(saved?.v).toBe(2);
     expect(saved?.state.turnNumber).toBe(2);
     first.unmount();
 
@@ -207,5 +207,58 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     await window.fetch("/api/leagues/otra/ruta", { method: "GET" });
     expect(passthrough).toHaveBeenCalledTimes(1);
     expect(passthrough).toHaveBeenCalledWith("/api/leagues/otra/ruta", { method: "GET" });
+  });
+});
+
+describe("ActaDemoHarness — pre-match surface (stale saves, header wiring)", () => {
+  it("a STALE v1 save never wipes the kickoff pre-match data on load", () => {
+    // A save from BEFORE the kickoff events existed: it passes the v1 shape
+    // guard (events array + status string) but carries no kickoff trio.
+    window.localStorage.setItem(
+      "bb-demo-partido",
+      JSON.stringify({
+        v: 1,
+        state: {
+          events: [
+            {
+              seq: 1,
+              kind: "start",
+              side: null,
+              playerRosterId: null,
+              half: 1,
+              turnNumber: 1,
+              payload: {},
+              at: 0,
+            },
+          ],
+          status: "live",
+          half: 1,
+          turnNumber: 1,
+          activeSide: "home",
+          viewerSide: "home",
+          nextSeq: 100,
+          closureOpen: false,
+          autoFollow: true,
+          submittedBy: null,
+        },
+      }),
+    );
+    render(<ActaDemoHarness />);
+    // The kickoff trio (clima + factor de aficionados) must survive the load.
+    expect(screen.queryAllByText(/Factor de aficionados/).length).toBeGreaterThan(0);
+    // The weather card's tag renders exactly «Clima» (no trailing period).
+    expect(screen.queryAllByText(/^Clima$/).length).toBeGreaterThan(0);
+  });
+
+  it("the header surfaces the pre-match data: inducements, fan factor and the weather roll", () => {
+    const { container } = render(<ActaDemoHarness />);
+    expect(screen.queryAllByText(/Inducements: Sobornos ×1/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/Inducements: Mago del Clima ×1/).length).toBeGreaterThan(0);
+    // The fan-factor line ends in <b>{total}</b> and the weather line wraps its
+    // value in <strong> — `queryAllByText` only reads an element's DIRECT text
+    // nodes, so these two split-text lines assert via `.textContent` (the
+    // `actaSheetHeader.test.tsx` convention for these exact strings).
+    expect(container.textContent).toContain("Afición: 4 + 🎲3 = 7");
+    expect(container.textContent).toContain("Clima: tirada 4 → Perfecto");
   });
 });

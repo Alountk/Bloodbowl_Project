@@ -32,6 +32,17 @@ const MAX_EVENTS = 200;
  * without touching the match state. */
 type LiveFrame = LiveMatchViewState & { events?: LiveMatchEventDto[]; kind?: string; event?: LiveMatchEventDto };
 
+/** LM-30 cart merge: a frame that OMITS `inducements` means "unchanged" — only
+ * an EXPLICIT value applies (`null` = the row never persisted a cart). Without
+ * this, `{...frame}` drops the previously known cart on every transition frame
+ * that never touched it (the header's inducement lines vanished). */
+function mergedInducements(
+  frame: Pick<LiveMatchViewState, "inducements">,
+  prev: Pick<LiveMatchViewState, "inducements"> | null | undefined,
+): LiveMatchViewState["inducements"] {
+  return "inducements" in frame ? frame.inducements : (prev?.inducements ?? null);
+}
+
 /** Merges a frame's delta events into the accumulated timeline (upsert by seq). */
 function upsertEvents(existing: LiveMatchEventDto[], incoming: LiveMatchEventDto[]): LiveMatchEventDto[] {
   if (incoming.length === 0) return existing;
@@ -88,6 +99,7 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
         const frame = parsed as LiveFrame;
         setLive((prev) => ({
           ...frame,
+          inducements: mergedInducements(frame, prev),
           // The snapshot is the authoritative persisted timeline → replaces.
           events: frame.events ?? (prev != null ? prev.events : []),
         }));
@@ -126,6 +138,7 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
       }
       setLive((prev) => ({
         ...frame,
+        inducements: mergedInducements(frame, prev),
         // Hub frames carry only the DELTA events of their transition; merge so
         // a `state` frame never wipes the accumulated timeline.
         events: prev != null ? upsertEvents(prev.events, frame.events ?? []) : (frame.events ?? []),
@@ -159,8 +172,13 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
       const view = await sendLiveCommand(leagueId, fixtureId, command);
       // The server's hub will push the authoritative `state`; optimistically
       // reflect the returned view so the issuing coach sees it immediately.
-      // The view has no events — keep the accumulated timeline.
-      setLive((prev) => ({ ...view, events: prev != null ? prev.events : [] }));
+      // The view has no events — keep the accumulated timeline (and, when the
+      // response omits the cart, the previously known one — LM-30).
+      setLive((prev) => ({
+        ...view,
+        inducements: mergedInducements(view, prev),
+        events: prev != null ? prev.events : [],
+      }));
       return view;
     },
     [leagueId, fixtureId],
