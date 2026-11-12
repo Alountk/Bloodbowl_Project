@@ -1,5 +1,6 @@
 import type { LiveCommand, LiveMatchEventDto, LiveMatchViewState } from "./api";
 import { MIN, liveState, narrativeEvents } from "./actaFlow.fixtures";
+import type { PreMatchCommit } from "./actaPreMatchFlow";
 
 /**
  * Pure demo state machine behind the dual-view match demo ("Flujo
@@ -25,12 +26,20 @@ export type DemoScenario =
  * itself: the appended narrative events, the closure toggle, the auto-follow
  * camera, the single acta submitter and the monotonic event counter.
  */
+/** Fase 1 · Pre-partido capture (S5): per-step completion + kicking side. */
+export interface ActaDemoPreMatch {
+  inducementsDone: boolean;
+  kicking: "home" | "away" | null;
+}
+
 export interface ActaDemoState extends LiveMatchViewState {
   events: LiveMatchEventDto[];
   closureOpen: boolean;
   autoFollow: boolean;
   submittedBy: "home" | "away" | null;
   nextSeq: number;
+  /** Fase 1 · Pre-partido capture (S5) — see `ActaDemoPreMatch`. */
+  preMatch: ActaDemoPreMatch | null;
 }
 
 export type ActaDemoAction =
@@ -50,6 +59,7 @@ export type ActaDemoAction =
   | { type: "openClosure" }
   | { type: "finish" }
   | { type: "reset"; scenario: DemoScenario }
+  | { type: "commitPreMatch"; commit: PreMatchCommit }
   | { type: "hydrate"; saved: ActaDemoState };
 
 /** Turns per half in Blood Bowl; `endTurn` rolls 1T8 → 2T1 and 2T8 → finished. */
@@ -78,6 +88,7 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
     autoFollow: true,
     submittedBy: null,
     nextSeq: MAX_FIXTURE_SEQ + 1,
+    preMatch: null,
   };
 
   switch (scenario) {
@@ -322,6 +333,54 @@ export function actaDemoReducer(
         ...appendEvents(state, [draft]),
         ...scoreBump(state, action.score?.side),
       };
+    }
+    case "commitPreMatch": {
+      const commit = action.commit;
+      const preMatch: ActaDemoPreMatch = {
+        inducementsDone:
+          commit.step === "inducements"
+            ? true
+            : (state.preMatch?.inducementsDone ?? false),
+        kicking:
+          commit.step === "kicking"
+            ? commit.kicking
+            : (state.preMatch?.kicking ?? null),
+      };
+      if (commit.step === "fans") {
+        return {
+          ...appendEvents(state, [
+            {
+              kind: "fan_factor",
+              side: null,
+              payload: { home: commit.fans.home, away: commit.fans.away },
+            },
+          ]),
+          preMatch,
+        };
+      }
+      if (commit.step === "weather") {
+        return {
+          ...appendEvents(state, [
+            {
+              kind: "weather",
+              side: null,
+              payload: { value: commit.weather.value, roll: commit.weather.roll },
+            },
+          ]),
+          preMatch,
+        };
+      }
+      if (commit.step === "inducements") {
+        return {
+          ...state,
+          inducements: {
+            home: commit.inducements.home.map((item) => ({ ...item })),
+            away: commit.inducements.away.map((item) => ({ ...item })),
+          },
+          preMatch,
+        };
+      }
+      return { ...state, preMatch };
     }
     case "submitCommand":
       return applyCommand(state, action.command);

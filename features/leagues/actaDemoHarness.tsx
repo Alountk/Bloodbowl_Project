@@ -6,11 +6,14 @@ import type { LiveCommand, LiveMatchEventDto } from "./api";
 import {
   actaDemoReducer,
   demoState,
+  type ActaDemoPreMatch,
   type ActaDemoState,
   type DemoScenario,
 } from "./actaDemoReducer";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
+import { ActaPreMatchFlow, type PreMatchCommit } from "./actaPreMatchFlow";
+import { weatherFromRoll } from "@/lib/rules/weather";
 import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { ActaClosure, canCloseActa } from "./actaClosure";
@@ -39,6 +42,8 @@ export function ActaFlow({
   closureOpen = false,
   events: eventsOverride,
   onSubmit = () => undefined,
+  onCommitPreMatch = () => undefined,
+  preMatch = null,
 }: {
   state: ReturnType<typeof liveState>;
   nowMin?: number;
@@ -47,6 +52,10 @@ export function ActaFlow({
   events?: readonly LiveMatchEventDto[];
   /** The real command pathway (dock + timeline capture). Default: no-op. */
   onSubmit?: (cmd: LiveCommand) => Promise<void> | void;
+  /** The real Fase 1 · Pre-partido capture (S5). Default: no-op. */
+  onCommitPreMatch?: (commit: PreMatchCommit) => void;
+  /** Fase 1 capture marks (S5). Default: none. */
+  preMatch?: ActaDemoPreMatch | null;
 }) {
   const fixture = matchDetail();
   const events = eventsOverride ?? fixture.live?.events ?? [];
@@ -56,6 +65,10 @@ export function ActaFlow({
   const now = state.startedAt != null ? state.startedAt + nowMin * MIN : 0;
   const finished = state.status === "finished";
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
+  const homeFan = fanFactorOf(events, "home");
+  const awayFan = fanFactorOf(events, "away");
+  const fansNow =
+    homeFan != null && awayFan != null ? { home: homeFan, away: awayFan } : null;
 
   return (
     <div className="w-full px-4 pb-32 sm:px-6">
@@ -86,6 +99,27 @@ export function ActaFlow({
           weatherRoll={weatherNow.roll}
           casualtyTurns={casualtyTurnsOf(events, state.half)}
           turnSides={turnSidesOf(events, state.half, state)}
+        />
+        <ActaPreMatchFlow
+          homeName={detail.homeTeam.name}
+          awayName={detail.awayTeam.name}
+          homeBase={DEMO_FAN_BASES.home}
+          awayBase={DEMO_FAN_BASES.away}
+          snapshot={{
+            fans: fansNow,
+            weather:
+              weatherNow.roll != null
+                ? {
+                    roll: weatherNow.roll,
+                    value:
+                      weatherNow.value ?? weatherFromRoll(weatherNow.roll).kind,
+                  }
+                : null,
+            inducements: state.inducements ?? { home: [], away: [] },
+            inducementsDone: preMatch?.inducementsDone ?? false,
+            kicking: preMatch?.kicking ?? null,
+          }}
+          onCommit={onCommitPreMatch}
         />
         {events.length > 0 ? (
           <div className="bg-background">
@@ -174,16 +208,19 @@ const SCENARIOS: ReadonlyArray<{ key: DemoScenario; label: string }> = [
   { key: "finalizado", label: "Finalizado" },
 ];
 
-/** localStorage persistence: one versioned blob, `bb-demo-partido` v2. */
+/** Demo rosters' dedicated-fans attribute (the +N in the attendance roll). */
+const DEMO_FAN_BASES = { home: 4, away: 3 } as const;
+
+/** localStorage persistence: one versioned blob, `bb-demo-partido` v3. */
 const STORAGE_KEY = "bb-demo-partido";
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 
 /**
  * Interactive DUAL-VIEW demo sandbox driven by the pure `actaDemoReducer`
  * (no network): two rival coach perspectives over ONE shared match state,
  * switched manually ("Ver como:") or auto-followed turn by turn ("Seguir al
  * turno activo"). The REAL `LiveActionDock`/timeline capture lands in the
- * reducer via `submitCommand`; the state persists to localStorage (v2) so an
+ * reducer via `submitCommand`; the state persists to localStorage (v3) so an
  * iteration survives a reload, and "Restablecer" replays from the kickoff.
  * Deterministic by design: no `Date.now()`, no `Math.random()` — the fetch
  * shim and localStorage are runtime concerns only.
@@ -231,7 +268,7 @@ export function ActaDemoHarness({
     }
   }, []);
 
-  // 2) Persist every state change as `{ v: 2, state }` (the pristine initial
+  // 2) Persist every state change as `{ v: 3, state }` (the pristine initial
   // state is never written — see `initialStateRef`).
   useEffect(() => {
     if (state === initialStateRef.current) return;
@@ -423,6 +460,10 @@ export function ActaDemoHarness({
         nowMin={state.status === "finished" ? 92 : 58}
         closureOpen={state.closureOpen && state.submittedBy == null}
         onSubmit={(cmd) => dispatch({ type: "submitCommand", command: cmd })}
+        onCommitPreMatch={(commit) =>
+          dispatch({ type: "commitPreMatch", commit })
+        }
+        preMatch={state.preMatch}
       />
     </div>
   );
