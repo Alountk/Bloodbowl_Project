@@ -194,13 +194,13 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(fresh.textContent).toContain("Aún no hay nada confirmado.");
   });
 
-  it("the pre-match wizard modal scrolls on its own", () => {
+  it("the pre-match wizard modal fills the screen and scrolls on its own", () => {
     render(<ActaDemoHarness />);
     fireEvent.click(demoButton("Restablecer"));
     const dialog = screen.getByRole("dialog", { name: "Antes del partido" });
-    // Fixed frame with a max height + a scrollable body: long steps (the
-    // inducement table) scroll INSIDE the modal, never the page behind it.
-    expect(dialog.className).toMatch(/max-h-/);
+    // Full-screen frame (the close button is the way out) + a scrollable body:
+    // long steps (the inducement table) scroll INSIDE the modal.
+    expect(dialog.className).toMatch(/h-full/);
     expect(dialog.querySelector(".overflow-y-auto")).toBeTruthy();
   });
 

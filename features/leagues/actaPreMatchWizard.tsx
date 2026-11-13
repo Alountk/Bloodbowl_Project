@@ -367,12 +367,12 @@ export function ActaPreMatchWizard({
     kickRecorded != null || snapshot.kickDice[viewerSide] != null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink/50 p-4">
+    <div className="fixed inset-0 z-40 bg-ink/50">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Antes del partido"
-        className="flex max-h-[85dvh] w-full max-w-2xl flex-col border border-navy/20 bg-panel"
+        className="flex h-full w-full flex-col bg-panel"
       >
         <header className="flex items-start justify-between gap-4 border-b border-navy/15 px-5 py-4">
           <div>
