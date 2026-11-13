@@ -221,11 +221,19 @@ export function ActaPreMatchWizard({
   onDismiss,
   onFinish,
 }: ActaPreMatchWizardProps) {
+  const rivalSide: Side = viewerSide === "home" ? "away" : "home";
+  // Step 4 (the toss) is done for MY side once my die is in and no shared
+  // tie re-roll is pending — who receives is decided AFTER the wizard (S7.9).
+  const myKickDie = snapshot.kickDice[viewerSide];
+  const tiePending =
+    myKickDie != null &&
+    snapshot.kickDice[rivalSide] != null &&
+    myKickDie === snapshot.kickDice[rivalSide];
   const stepDone = [
     snapshot.fans[viewerSide] != null,
     snapshot.weather != null,
     snapshot.inducementsDone[viewerSide],
-    snapshot.kicking != null,
+    myKickDie != null && !tiePending,
   ];
   const pendingIndex = stepDone.findIndex((done) => !done);
   const firstPending = pendingIndex === -1 ? STEPS.length - 1 : pendingIndex;
@@ -235,7 +243,6 @@ export function ActaPreMatchWizard({
   const [fanRecorded, setFanRecorded] = useState<number | null>(null);
   const [weatherRecorded, setWeatherRecorded] = useState<number | null>(null);
   const [kickRecorded, setKickRecorded] = useState<number | null>(null);
-  const [kickChoice, setKickChoice] = useState<Side | null>(null);
   const [cart, setCart] = useState<PersistedInducements>(() => ({
     home: snapshot.inducements.home.map((item) => ({ ...item })),
     away: snapshot.inducements.away.map((item) => ({ ...item })),
@@ -243,7 +250,6 @@ export function ActaPreMatchWizard({
 
   const nameOf = (side: Side) => (side === "home" ? homeName : awayName);
   const baseOf = (side: Side) => (side === "home" ? homeBase : awayBase);
-  const rivalSide: Side = viewerSide === "home" ? "away" : "home";
 
   // Reopen at the first step still pending for my side (render-phase state
   // adjustment: runs once per open transition, never mid-flow).
@@ -254,7 +260,6 @@ export function ActaPreMatchWizard({
       setFanRecorded(null);
       setWeatherRecorded(null);
       setKickRecorded(null);
-      setKickChoice(null);
       setCart({
         home: snapshot.inducements.home.map((item) => ({ ...item })),
         away: snapshot.inducements.away.map((item) => ({ ...item })),
@@ -301,8 +306,8 @@ export function ActaPreMatchWizard({
   };
 
   // S7 rules: a roll is entered ONCE (the die locks), and the forward button
-  // only unlocks when this step's marks are in — the kick step also needs a
-  // resolved toss and, for the winner, the kicking pick.
+  // only unlocks when this step's marks are in — the kick step needs my die
+  // and a resolved toss; who receives is decided AFTER the wizard (S7.9).
   const recordedFan = fanRecorded != null || snapshot.fans[viewerSide] != null;
   const recordedWeather =
     weatherRecorded != null || snapshot.weatherDice[viewerSide] != null;
@@ -315,11 +320,7 @@ export function ActaPreMatchWizard({
         ? recordedWeather
         : stepIndex === 2
           ? true
-          : recordedKick &&
-            !kickTie &&
-            (kickWinner !== viewerSide ||
-              snapshot.kicking != null ||
-              kickChoice != null);
+          : recordedKick && !kickTie;
 
   const advance = () => {
     if (!canAdvance) return;
@@ -331,9 +332,6 @@ export function ActaPreMatchWizard({
       });
     }
     if (stepIndex === STEPS.length - 1) {
-      if (kickChoice != null && kickWinner === viewerSide && snapshot.kicking == null) {
-        onCommit({ step: "kicking", kicking: kickChoice });
-      }
       onFinish();
       return;
     }
@@ -407,7 +405,7 @@ export function ActaPreMatchWizard({
                   ? "Cada entrenador lanza 1D6; la suma (2D6) resuelve el clima."
                   : stepIndex === 2
                     ? "Selecciona tus incentivos (precio y límite del reglamento)."
-                    : "1D6 enfrentado; el ganador decide quién patea (empate: se repite)."}
+                    : "1D6 enfrentado; el ganador del sorteo decide quién recibe (empate: se repite)."}
             </p>
           </div>
 
@@ -597,7 +595,6 @@ export function ActaPreMatchWizard({
               className={`${BTN} mt-3`}
               onClick={() => {
                 setKickRecorded(null);
-                setKickChoice(null);
                 onCommit({ step: "kickTie" });
               }}
             >
@@ -605,29 +602,9 @@ export function ActaPreMatchWizard({
             </button>
           ) : null}
 
-          {stepIndex === 3 && kickWinner === viewerSide && snapshot.kicking == null ? (
-            <div
-              role="group"
-              aria-label="Quién patea"
-              className="mt-3 flex gap-2"
-            >
-              {(["home", "away"] as const).map((side) => (
-                <button
-                  key={side}
-                  type="button"
-                  aria-pressed={kickChoice === side}
-                  className={BTN}
-                  onClick={() => setKickChoice(side)}
-                >
-                  Patea {nameOf(side)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
           {stepIndex === 3 && snapshot.kicking != null ? (
             <p className="mt-3 text-sm font-semibold text-navy">
-              Patea: {nameOf(snapshot.kicking)}
+              Sorteo resuelto — quién recibe se decide fuera del wizard
             </p>
           ) : null}
         </section>
@@ -716,13 +693,13 @@ export function ActaPreMatchReport({
   if (kickTie) {
     lines.push(
       <p key="kick" className="text-sm text-navy">
-        Pateador: empate 🎲{snapshot.kickDice.home} — repetir tirada
+        Sorteo: empate 🎲{snapshot.kickDice.home} — repetir tirada
       </p>,
     );
   } else if (kickWinner != null) {
     lines.push(
       <p key="kick" className="text-sm text-navy">
-        Pateador: 🎲{snapshot.kickDice.home} vs 🎲{snapshot.kickDice.away} — gana{" "}
+        Sorteo: 🎲{snapshot.kickDice.home} vs 🎲{snapshot.kickDice.away} — gana{" "}
         {nameOf(kickWinner)}
       </p>,
     );
@@ -730,7 +707,7 @@ export function ActaPreMatchReport({
   if (snapshot.kicking != null) {
     lines.push(
       <p key="kicking" className="text-sm text-navy">
-        Quién patea: {nameOf(snapshot.kicking)}
+        Recibe: {nameOf(snapshot.kicking === "home" ? "away" : "home")}
       </p>,
     );
   }
@@ -881,9 +858,78 @@ export function ActaPreMatchSummary({
       </p>
       {snapshot.kicking != null ? (
         <p className="text-sm font-semibold text-navy">
-          Patea: {nameOf(snapshot.kicking)}
+          Recibe: {nameOf(snapshot.kicking === "home" ? "away" : "home")}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * S7.9 — the POST-sequence receiver decision: only the toss WINNER gets it,
+ * rendered as RADIO inputs styled like the wizard's buttons (real inputs,
+ * button look — «input checkbox con diseño como si fuera un botón», in
+ * radio flavor because the choice is single). «Aceptar» records who KICKS:
+ * the rival of the selected receiver.
+ */
+export function ActaReceiverPicker({
+  homeName,
+  awayName,
+  onCommit,
+}: {
+  homeName: string;
+  awayName: string;
+  onCommit: ActaPreMatchCaptureProps["onCommit"];
+}) {
+  const [receiver, setReceiver] = useState<Side | null>(null);
+  const nameOf = (side: Side) => (side === "home" ? homeName : awayName);
+  return (
+    <div
+      role="group"
+      aria-label="¿Quién recibe el balón?"
+      className="mt-3 border border-red/40 px-4 py-4"
+    >
+      <p className="font-display text-sm font-bold uppercase tracking-[0.16em] text-red">
+        ¿Quién recibe el balón?
+      </p>
+      <p className="mt-1 text-xs text-ink">
+        Ganaste el sorteo: elige el equipo que recibe el balón.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(["home", "away"] as const).map((side) => (
+          <label
+            key={side}
+            className={`cursor-pointer rounded-sm border px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-red ${
+              receiver === side
+                ? "border-navy bg-navy text-white hover:bg-navy"
+                : "border-navy/30 text-navy hover:bg-fill-hover"
+            }`}
+          >
+            <input
+              type="radio"
+              name="bb-receiver"
+              className="sr-only"
+              checked={receiver === side}
+              onChange={() => setReceiver(side)}
+            />
+            Recibe {nameOf(side)}
+          </label>
+        ))}
+      </div>
+      <button
+        type="button"
+        className={`${PRIMARY} mt-3`}
+        disabled={receiver == null}
+        onClick={() => {
+          if (receiver == null) return;
+          onCommit({
+            step: "kicking",
+            kicking: receiver === "home" ? "away" : "home",
+          });
+        }}
+      >
+        Aceptar
+      </button>
     </div>
   );
 }
@@ -895,6 +941,9 @@ export function ActaPreMatchSummary({
  * - `mine && !theirs` (S7.4) — «Esperando al contrincante…»; my finished
  *   sequence is CLOSED (S7.3: no edit trigger).
  * - `mine && theirs` (S7.5) — the final grouped display; no edit trigger.
+ *   Plus S7.9: while the toss winner has not picked who receives, the winner
+ *   gets the receiver picker and the loser a waiting line (the pick gates
+ *   the MATCH via `preMatchComplete`).
  */
 export interface ActaPreMatchSectionProps extends ActaPreMatchCaptureProps {
   /** Controlled modal state; uncontrolled (closed) when omitted. */
@@ -917,6 +966,16 @@ export function ActaPreMatchSection(props: ActaPreMatchSectionProps) {
     side === "home" ? props.homeName : props.awayName;
   const mine = sideCompleteOf(snapshot, viewerSide);
   const theirs = sideCompleteOf(snapshot, rivalSide);
+  const kickBoth =
+    snapshot.kickDice.home != null && snapshot.kickDice.away != null;
+  const kickTie =
+    kickBoth && snapshot.kickDice.home === snapshot.kickDice.away;
+  const kickWinner: Side | null =
+    kickBoth && !kickTie
+      ? snapshot.kickDice.home! > snapshot.kickDice.away!
+        ? "home"
+        : "away"
+      : null;
   const hasCapture =
     snapshot.fans[viewerSide] != null ||
     snapshot.weatherDice[viewerSide] != null ||
@@ -962,11 +1021,31 @@ export function ActaPreMatchSection(props: ActaPreMatchSectionProps) {
         </div>
       ) : (
         /* S7.5 — both finished: every roll bundled Tourplay-style. */
-        <ActaPreMatchSummary
-          homeName={props.homeName}
-          awayName={props.awayName}
-          snapshot={snapshot}
-        />
+        <>
+          {/* S7.9 — after the sequence, the toss WINNER picks who receives. */}
+          {kickWinner != null && snapshot.kicking == null ? (
+            kickWinner === viewerSide ? (
+              <ActaReceiverPicker
+                homeName={props.homeName}
+                awayName={props.awayName}
+                onCommit={props.onCommit}
+              />
+            ) : (
+              <p
+                role="status"
+                className="mt-3 border border-navy/20 px-4 py-3 text-sm text-navy"
+              >
+                Esperando a que {nameOf(kickWinner)} decida quién recibe el
+                balón.
+              </p>
+            )
+          ) : null}
+          <ActaPreMatchSummary
+            homeName={props.homeName}
+            awayName={props.awayName}
+            snapshot={snapshot}
+          />
+        </>
       )}
       {/* The wizard modal renders nothing while closed. It stays mounted in
           every state so the coach can still press «Finalizar» after the last

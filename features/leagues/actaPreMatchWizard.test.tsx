@@ -213,15 +213,20 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
     expect(finish().disabled).toBe(false);
   });
 
-  it("the winner cannot finish before choosing who kicks", () => {
+  it("the winner finishes the kick step without picking who receives (that comes after)", () => {
     const snapshot = readySnapshot();
     snapshot.kickDice = { home: 5, away: 3 };
-    renderWizard({ snapshot });
+    const { onCommit, onFinish } = renderWizard({ snapshot });
     const finish = () =>
       screen.getByRole("button", { name: "Finalizar" }) as HTMLButtonElement;
-    expect(finish().disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Patea Colmillos del Caos" }));
+    // Die in + toss resolved → nothing else gates the wizard's last step.
     expect(finish().disabled).toBe(false);
+    fireEvent.click(finish());
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onCommit).not.toHaveBeenCalledWith({
+      step: "kicking",
+      kicking: expect.anything(),
+    });
   });
 
   it("capture stays per side: my single die control, no rival controls", () => {
@@ -273,20 +278,15 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
     });
   });
 
-  it("the kick step: the winner's coach decides who kicks and Finalizar closes the wizard", () => {
+  it("the kick step shows the toss only: the receiver choice lives OUTSIDE the wizard", () => {
     const snapshot = readySnapshot();
     snapshot.kickDice = { home: 5, away: 3 };
-    const { onCommit, onFinish } = renderWizard({ snapshot });
+    const { onFinish } = renderWizard({ snapshot });
     const kick = step(4, "Equipo pateador");
     expect(kick.textContent).toMatch(/Gana/);
-    fireEvent.click(
-      within(kick).getByRole("button", { name: "Patea Colmillos del Caos" }),
-    );
+    expect(screen.queryByRole("group", { name: "Quién patea" })).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /^Patea / })).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
-    expect(onCommit).toHaveBeenCalledWith({
-      step: "kicking",
-      kicking: "away",
-    });
     expect(onFinish).toHaveBeenCalledTimes(1);
   });
 
@@ -356,10 +356,93 @@ describe("ActaPreMatchSection — S7 derived states (derived only, no new flags)
       expect(summary.textContent).toMatch(new RegExp(phase));
     }
     expect(summary.textContent).toMatch(/gana Águilas de Khemri/);
-    expect(summary.textContent).toMatch(/Patea: Colmillos del Caos/);
+    expect(summary.textContent).toMatch(/Recibe: Águilas de Khemri/);
     // S7.3: no trigger once my sequence is complete.
     expect(
       screen.queryByRole("button", { name: /secuencia pre-partido/ }),
     ).toBeNull();
+    // The receiver was already decided here → no pending picker.
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
+  });
+
+  it("only the toss WINNER gets the receiver picker after the sequence (inputs styled as buttons)", () => {
+    const snapshot = completeSnapshot();
+    snapshot.kicking = null;
+    render(
+      <ActaPreMatchSection
+        homeName={HOME}
+        awayName={AWAY}
+        homeBase={4}
+        awayBase={3}
+        viewerSide="home"
+        snapshot={snapshot}
+        onCommit={() => undefined}
+      />,
+    );
+    const picker = screen.getByRole("group", {
+      name: "¿Quién recibe el balón?",
+    });
+    expect(within(picker).getAllByRole("radio")).toHaveLength(2);
+    expect(within(picker).getByRole("radio", { name: `Recibe ${HOME}` })).toBeTruthy();
+    expect(within(picker).getByRole("radio", { name: `Recibe ${AWAY}` })).toBeTruthy();
+    const accept = within(picker).getByRole("button", {
+      name: "Aceptar",
+    }) as HTMLButtonElement;
+    expect(accept.disabled).toBe(true);
+    // The grouped display stays; the sequence remains closed (S7.3).
+    expect(screen.getByRole("region", { name: "Lo que ha sucedido" })).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /secuencia pre-partido/ }),
+    ).toBeNull();
+  });
+
+  it("picking who receives and pressing Aceptar records who KICKS", () => {
+    const snapshot = completeSnapshot();
+    snapshot.kicking = null;
+    const onCommit = vi.fn();
+    render(
+      <ActaPreMatchSection
+        homeName={HOME}
+        awayName={AWAY}
+        homeBase={4}
+        awayBase={3}
+        viewerSide="home"
+        snapshot={snapshot}
+        onCommit={onCommit}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: `Recibe ${AWAY}` }));
+    const accept = screen.getByRole("button", {
+      name: "Aceptar",
+    }) as HTMLButtonElement;
+    expect(accept.disabled).toBe(false);
+    fireEvent.click(accept);
+    // The receiver's rival is the team that kicks.
+    expect(onCommit).toHaveBeenCalledWith({ step: "kicking", kicking: "home" });
+  });
+
+  it("the toss loser waits for the winner's receiver decision instead of picking", () => {
+    const snapshot = completeSnapshot();
+    snapshot.kicking = null;
+    render(
+      <ActaPreMatchSection
+        homeName={HOME}
+        awayName={AWAY}
+        homeBase={4}
+        awayBase={3}
+        viewerSide="away"
+        snapshot={snapshot}
+        onCommit={() => undefined}
+      />,
+    );
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
+    expect(
+      screen.getByText(
+        /Esperando a que Águilas de Khemri decida quién recibe el balón/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Lo que ha sucedido" })).toBeTruthy();
   });
 });

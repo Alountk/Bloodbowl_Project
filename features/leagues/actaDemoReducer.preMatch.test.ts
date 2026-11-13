@@ -123,19 +123,21 @@ describe("sideCompleteOf — ONE side's derived completion (S7.3/S7.4)", () => {
     ).toBe(true);
   });
 
-  it("the toss resolution: only the WINNING side waits for the kicking decision", () => {
-    // Home wins 6–2 but the winner has not decided yet (kicking null).
+  it("the receiver decision comes AFTER the sequence: no side waits on `kicking`", () => {
+    // Home wins 6–2 and the winner has not picked the receiver yet.
     const undecided: ActaDemoPreMatch = {
       ...full,
       kickDice: { home: 6, away: 2 },
       kicking: null,
     };
-    expect(sideCompleteOf(undecided, "home")).toBe(false);
-    // The loser is complete regardless of the winner's decision.
+    // Both sides read complete from their own marks alone (S7.9): the
+    // receiver picker lives outside the sequence.
+    expect(sideCompleteOf(undecided, "home")).toBe(true);
     expect(sideCompleteOf(undecided, "away")).toBe(true);
-    // The winner completes the moment the decision lands (whoever kicks).
     expect(sideCompleteOf({ ...undecided, kicking: "away" }, "home")).toBe(true);
     expect(sideCompleteOf({ ...undecided, kicking: "home" }, "home")).toBe(true);
+    // The MATCH, however, still waits for the receiver decision.
+    expect(preMatchComplete(undecided)).toBe(false);
   });
 
   it("a kick tie leaves the toss undecided: neither side waits on `kicking`", () => {
