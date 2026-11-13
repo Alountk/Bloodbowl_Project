@@ -177,6 +177,23 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     ).toBeTruthy();
   });
 
+  it("Restablecer starts the pre-match from scratch: wizard at Paso 1 and a clean acta", () => {
+    render(<ActaDemoHarness />);
+    // The fixture narrative pre-captures both coaches' rolls.
+    expect(document.body.textContent).toMatch(/Afición: 4 \+ 🎲3 = 7/);
+    expect(document.body.textContent).toMatch(/Sobornos ×1/);
+
+    fireEvent.click(demoButton("Restablecer"));
+    // The wizard opens at the very first step (empty capture)…
+    expect(screen.getByRole("button", { name: "Tirar 1D3" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Avanzar al Clima" })).toBeTruthy();
+    // …and the acta holds no pre-match facts until they are captured again.
+    expect(document.body.textContent).not.toMatch(/Afición: 4 \+ 🎲3 = 7/);
+    expect(document.body.textContent).not.toMatch(/Sobornos ×1/);
+    const fresh = screen.getByRole("region", { name: "Lo que ha sucedido" });
+    expect(fresh.textContent).toContain("Aún no hay nada confirmado.");
+  });
+
   it("mid-match preset chips keep their direct jump (no wizard modal)", () => {
     render(<ActaDemoHarness />);
     fireEvent.click(demoButton("2T · turno 5"));

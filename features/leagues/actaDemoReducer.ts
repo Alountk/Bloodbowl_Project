@@ -476,8 +476,21 @@ export function actaDemoReducer(
       return state.status === "finished"
         ? state
         : { ...state, status: "finished" };
-    case "reset":
-      return demoState(action.scenario);
+    case "reset": {
+      const base = demoState(action.scenario);
+      if (action.scenario !== "inicio") return base;
+      // Restablecer = a FRESH match (user decision, 2026-11-13): the pre-match
+      // capture starts from scratch (the wizard walks from Paso 1) and the acta
+      // holds no pre-match facts until they are captured again.
+      return {
+        ...base,
+        inducements: { home: [], away: [] },
+        preMatch: emptyPreMatch(),
+        events: base.events.filter(
+          (event) => event.kind !== "weather" && event.kind !== "fan_factor",
+        ),
+      };
+    }
     case "hydrate":
       return { ...demoState("inicio"), ...action.saved };
   }
