@@ -204,6 +204,16 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(dialog.querySelector(".overflow-y-auto")).toBeTruthy();
   });
 
+  it("the turn timeline shows only when the match has really started", () => {
+    render(<ActaDemoHarness />);
+    // The fixture narrative is a match underway → its turn timeline is there.
+    expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
+    fireEvent.click(demoButton("Restablecer"));
+    // A fresh match (pre-match pending) shows no turn timeline yet — only the
+    // «Antes del partido» section to complete it.
+    expect(screen.queryByTestId("acta-turn-timeline")).toBeNull();
+  });
+
   it("the dock action bar shows only when the match has really started", () => {
     render(<ActaDemoHarness />);
     // The fixture narrative is a match underway → the capture actions are there.

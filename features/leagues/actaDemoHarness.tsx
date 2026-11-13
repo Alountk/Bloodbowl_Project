@@ -141,7 +141,7 @@ export function ActaFlow({
           onCommit={onCommitPreMatch}
         />
         <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
-        {events.length > 0 ? (
+        {matchStarted && events.length > 0 ? (
           <div className="bg-background">
             <ActaTurnTimeline
               events={events}
