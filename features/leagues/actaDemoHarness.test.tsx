@@ -44,16 +44,17 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(pressed("Águilas de Khemri")).toBe("false");
   });
 
-  it("viewing as the NON-active side shows Solicitar turno and hides the active dock actions; switching back restores them", () => {
+  it("viewing as the NON-active side hides the active dock actions and shows no request-turn UI; switching back restores them", () => {
     render(<ActaDemoHarness />);
     // 1T turn 3: the home coach is ACTIVE — the full capture dock is up.
     fireEvent.click(demoButton("1T · turno 3"));
     expect(demoButton("+ TD")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
 
-    // Watch as the rival: request-turn row + only their LM-12-legal records.
+    // Watch as the rival: no request-turn UI (deprecated) + only their
+    // LM-12-legal records.
     fireEvent.click(perspective("Colmillos del Caos"));
-    expect(screen.getByRole("button", { name: "Solicitar turno" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+ TD" })).toBeNull();
     expect(screen.getByRole("button", { name: /Baja propia/ })).toBeTruthy();
 
@@ -93,7 +94,9 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     // Perspective no longer dragged along — the viewer is now the non-active
     // coach and gets the request-turn row.
     expect(pressed("Colmillos del Caos")).toBe("true");
-    expect(screen.getByRole("button", { name: "Solicitar turno" })).toBeTruthy();
+    // The request-turn UI is gone (deprecated): the perspective switch is
+    // evidenced by the pressed state above.
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
   });
 
   it("REAL capture: the dock's TD flow advances the header score line and appends an event card", () => {
@@ -222,15 +225,13 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.queryByRole("heading", { name: "Partido", level: 2 })).toBeNull();
   });
 
-  it("the «Solicitar turno» button is visibly marked as deprecated (face-to-face play)", () => {
+  it("the «Solicitar turno» button is gone from the view: the flow is deprecated (face-to-face play)", () => {
     render(<ActaDemoHarness />);
     fireEvent.click(demoButton("1T · turno 3"));
     fireEvent.click(perspective("Colmillos del Caos"));
-    const button = screen.getByRole("button", { name: "Solicitar turno" });
-    // Deprecated: the button itself is flagged and the UI says why, visibly.
-    expect(button.getAttribute("data-deprecated")).toBe("true");
-    expect(screen.getByText("Deprecado")).toBeTruthy();
-    expect(screen.getByText(/no aplica.*cara a cara/i)).toBeTruthy();
+    // Deprecated for face-to-face play: the request-turn UI is not rendered at
+    // all (the flow behind is marked @deprecated in code).
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
   });
 
   it("the dock action bar shows only when the match has really started", () => {

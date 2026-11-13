@@ -169,31 +169,12 @@ export function ActaFlow({
           ) : null
         ) : (
           <>
-            {/* Mirrors ActiveMatchBody's request-turn row (t("match.requestTurn")). */}
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-              <div className="min-w-0" />
-              <div className="flex flex-wrap gap-3">
-                {state.viewerSide !== null &&
-                state.viewerSide !== state.activeSide ? (
-                  <>
-                    <button
-                      type="button"
-                      data-deprecated="true"
-                      title="No aplica cara a cara: los dos jugadores comparten mesa."
-                      className="rounded-md border border-navy px-4 py-2 text-sm font-semibold text-navy opacity-60 hover:bg-background"
-                    >
-                      <span className="line-through">Solicitar turno</span>
-                    </button>
-                    <span className="inline-flex items-center rounded-full bg-navy/10 px-2 py-1 text-xs font-semibold text-navy">
-                      Deprecado
-                    </span>
-                    <span className="self-center text-xs text-navy/70">
-                      No aplica cara a cara: los dos jugadores comparten mesa.
-                    </span>
-                  </>
-                ) : null}
-              </div>
-            </div>
+            {/* DEPRECATED (2026-11-13): the "Solicitar turno" request-turn row is
+                GONE from the view — requesting the turn is pointless when both
+                players share a table (face-to-face). The whole requestTurn flow
+                behind it is marked @deprecated in code (api.ts action,
+                rivalRequestsTurn nudge, MatchView/MatchViewV2 buttons,
+                liveEventLabels case). */}
             <LiveActionDock
               variant="acta"
               matchStarted={matchStarted}

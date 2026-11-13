@@ -309,6 +309,8 @@ export function liveEventLabel(event: LiveEventLabelInput, fn: TFunc = esT): str
       return fn("match.event.turn");
     case "turnStart":
       return fn("match.event.turnStart");
+    // DEPRECATED (2026-11-13): the requestTurn flow is deprecated (face-to-face
+    // play makes the remote turn request pointless).
     case "requestTurn":
       return fn("match.event.requestTurn");
     case "td":
