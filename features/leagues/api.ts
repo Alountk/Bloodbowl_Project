@@ -807,6 +807,8 @@ export type LiveCommand =
       value: string;
       roll?: number;
     }
+  /** @deprecated Face-to-face play (2026-11-13): the remote turn request is
+   * pointless when both players share a table. Kept working for compatibility. */
   | { type: "requestTurn" }
   | { type: "endMatch" }
   | { type: "concede" }

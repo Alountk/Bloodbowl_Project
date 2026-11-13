@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 import type { LiveCommand, LiveMatchEventDto } from "./api";
 import {
   actaDemoReducer,
   demoState,
+  preMatchComplete,
   type ActaDemoPreMatch,
   type ActaDemoState,
   type DemoScenario,
 } from "./actaDemoReducer";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
-import { ActaPreMatchFlow, type PreMatchCommit } from "./actaPreMatchFlow";
+import { ActaPreMatchSection, type PreMatchCommit } from "./actaPreMatchWizard";
 import { weatherFromRoll } from "@/lib/rules/weather";
 import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
@@ -44,8 +45,10 @@ export function ActaFlow({
   onSubmit = () => undefined,
   onCommitPreMatch = () => undefined,
   preMatch = null,
+  preMatchOpen = false,
+  onPreMatchOpenChange = () => undefined,
 }: {
-  state: ReturnType<typeof liveState>;
+  state: ReturnType<typeof liveState> & { matchStarted?: boolean };
   nowMin?: number;
   closureOpen?: boolean;
   /** Demo hook: overrides the fixture's events (the interactive harness). */
@@ -56,6 +59,9 @@ export function ActaFlow({
   onCommitPreMatch?: (commit: PreMatchCommit) => void;
   /** Fase 1 capture marks (S5). Default: none. */
   preMatch?: ActaDemoPreMatch | null;
+  /** Controlled «Antes del partido» wizard modal (demo reset opens it). */
+  preMatchOpen?: boolean;
+  onPreMatchOpenChange?: (open: boolean) => void;
 }) {
   const fixture = matchDetail();
   const events = eventsOverride ?? fixture.live?.events ?? [];
@@ -64,6 +70,12 @@ export function ActaFlow({
   });
   const now = state.startedAt != null ? state.startedAt + nowMin * MIN : 0;
   const finished = state.status === "finished";
+  // S6: the in-game capture bar renders only when the match has really
+  // started. Fixture presets (and old saved states without the flag) are
+  // matches underway; a fresh pre-match hides the bar until every mark of
+  // the «Antes del partido» sequence is captured on BOTH sides.
+  const matchStarted =
+    (state.matchStarted ?? true) || preMatchComplete(preMatch);
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
 
   return (
@@ -96,12 +108,14 @@ export function ActaFlow({
           casualtyTurns={casualtyTurnsOf(events, state.half)}
           turnSides={turnSidesOf(events, state.half, state)}
         />
-        <ActaPreMatchFlow
+        <ActaPreMatchSection
           homeName={detail.homeTeam.name}
           awayName={detail.awayTeam.name}
           homeBase={DEMO_FAN_BASES.home}
           awayBase={DEMO_FAN_BASES.away}
           viewerSide={state.viewerSide ?? "home"}
+          open={preMatchOpen}
+          onOpenChange={onPreMatchOpenChange}
           snapshot={{
             fans: {
               home: fanFactorOf(events, "home"),
@@ -126,8 +140,10 @@ export function ActaFlow({
           }}
           onCommit={onCommitPreMatch}
         />
-        <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
-        {events.length > 0 ? (
+        {matchStarted ? (
+          <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
+        ) : null}
+        {matchStarted && events.length > 0 ? (
           <div className="bg-background">
             <ActaTurnTimeline
               events={events}
@@ -153,23 +169,15 @@ export function ActaFlow({
           ) : null
         ) : (
           <>
-            {/* Mirrors ActiveMatchBody's request-turn row (t("match.requestTurn")). */}
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-              <div className="min-w-0" />
-              <div className="flex flex-wrap gap-3">
-                {state.viewerSide !== null &&
-                state.viewerSide !== state.activeSide ? (
-                  <button
-                    type="button"
-                    className="rounded-md border border-navy px-4 py-2 text-sm font-semibold text-navy hover:bg-background"
-                  >
-                    Solicitar turno
-                  </button>
-                ) : null}
-              </div>
-            </div>
+            {/* DEPRECATED (2026-11-13): the "Solicitar turno" request-turn row is
+                GONE from the view — requesting the turn is pointless when both
+                players share a table (face-to-face). The whole requestTurn flow
+                behind it is marked @deprecated in code (api.ts action,
+                rivalRequestsTurn nudge, MatchView/MatchViewV2 buttons,
+                liveEventLabels case). */}
             <LiveActionDock
               variant="acta"
+              matchStarted={matchStarted}
               viewerSide={state.viewerSide}
               activeSide={state.activeSide}
               status={state.status}
@@ -242,6 +250,7 @@ export function ActaDemoHarness({
   label?: string;
 }) {
   const [state, dispatch] = useReducer(actaDemoReducer, demoState("inicio"));
+  const [preMatchOpen, setPreMatchOpen] = useState(false);
   const detail = matchDetail();
 
   // Pristine first-render state: the persistence effect below never rewrites
@@ -400,7 +409,10 @@ export function ActaDemoHarness({
               key={s.key}
               type="button"
               className={buttonClass}
-              onClick={() => dispatch({ type: "reset", scenario: s.key })}
+              onClick={() => {
+                dispatch({ type: "reset", scenario: s.key });
+                setPreMatchOpen(s.key === "inicio");
+              }}
             >
               {s.label}
             </button>
@@ -443,7 +455,10 @@ export function ActaDemoHarness({
           <button
             type="button"
             className={buttonClass}
-            onClick={() => dispatch({ type: "reset", scenario: "inicio" })}
+            onClick={() => {
+              dispatch({ type: "reset", scenario: "inicio" });
+              setPreMatchOpen(true);
+            }}
           >
             Restablecer
           </button>
@@ -465,6 +480,8 @@ export function ActaDemoHarness({
         ) : null}
       </div>
       <ActaFlow
+        preMatchOpen={preMatchOpen}
+        onPreMatchOpenChange={setPreMatchOpen}
         state={state}
         events={state.events}
         nowMin={state.status === "finished" ? 92 : 58}

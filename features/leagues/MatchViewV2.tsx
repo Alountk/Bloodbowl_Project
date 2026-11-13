@@ -544,7 +544,9 @@ function ActiveMatchBody({
               ) : null}
             </div>
             <div className="flex flex-wrap gap-3">
-              {/* LM-13/D14: the non-active coach may request the turn. */}
+              {/* DEPRECATED (2026-11-13): face-to-face play makes the remote turn
+                  request pointless — the requestTurn flow is deprecated (kept for
+                  compatibility). LM-13/D14: the non-active coach may request the turn. */}
               {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
                 <button
                   type="button"

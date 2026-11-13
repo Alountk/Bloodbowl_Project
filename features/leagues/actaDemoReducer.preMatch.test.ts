@@ -5,9 +5,12 @@ import { weatherFromRoll } from "@/lib/rules/weather";
 import {
   actaDemoReducer,
   demoState,
+  preMatchComplete,
+  sideCompleteOf,
+  type ActaDemoPreMatch,
   type ActaDemoState,
 } from "./actaDemoReducer";
-import type { PreMatchCommit } from "./actaPreMatchFlow";
+import type { PreMatchCommit } from "./actaPreMatchWizard";
 
 /**
  * commitPreMatch — per-side capture (S2c): each coach commits ONLY their own
@@ -81,5 +84,102 @@ describe("commitPreMatch — per-side capture (S2c)", () => {
     next = run({ step: "kickTie" }, next);
     expect(next.preMatch?.kickDice).toMatchObject({ home: null, away: null });
     expect(next.preMatch?.kicking).toBeNull();
+  });
+});
+
+describe("sideCompleteOf — ONE side's derived completion (S7.3/S7.4)", () => {
+  const full: ActaDemoPreMatch = {
+    fans: {
+      home: { base: 4, dice: 2, total: 6 },
+      away: { base: 3, dice: 1, total: 4 },
+    },
+    weatherDice: { home: 3, away: 5 },
+    kickDice: { home: 6, away: 2 },
+    inducementsDone: { home: true, away: true },
+    kicking: "away",
+  };
+
+  it("is true only when THAT side holds every mark; each single miss is incomplete", () => {
+    expect(sideCompleteOf(full, "home")).toBe(true);
+    expect(sideCompleteOf(full, "away")).toBe(true);
+    // null is never complete.
+    expect(sideCompleteOf(null, "home")).toBe(false);
+    // Each single missing mark on MY side keeps my side incomplete.
+    expect(
+      sideCompleteOf({ ...full, fans: { home: null, away: full.fans.away } }, "home"),
+    ).toBe(false);
+    expect(
+      sideCompleteOf({ ...full, weatherDice: { home: null, away: 5 } }, "home"),
+    ).toBe(false);
+    expect(
+      sideCompleteOf({ ...full, inducementsDone: { home: false, away: true } }, "home"),
+    ).toBe(false);
+    expect(
+      sideCompleteOf({ ...full, kickDice: { home: null, away: 2 } }, "home"),
+    ).toBe(false);
+    // A missing mark on the RIVAL side never blocks MY side.
+    expect(
+      sideCompleteOf({ ...full, fans: { home: full.fans.home, away: null } }, "home"),
+    ).toBe(true);
+  });
+
+  it("the receiver decision comes AFTER the sequence: no side waits on `kicking`", () => {
+    // Home wins 6–2 and the winner has not picked the receiver yet.
+    const undecided: ActaDemoPreMatch = {
+      ...full,
+      kickDice: { home: 6, away: 2 },
+      kicking: null,
+    };
+    // Both sides read complete from their own marks alone (S7.9): the
+    // receiver picker lives outside the sequence.
+    expect(sideCompleteOf(undecided, "home")).toBe(true);
+    expect(sideCompleteOf(undecided, "away")).toBe(true);
+    expect(sideCompleteOf({ ...undecided, kicking: "away" }, "home")).toBe(true);
+    expect(sideCompleteOf({ ...undecided, kicking: "home" }, "home")).toBe(true);
+    // The MATCH, however, still waits for the receiver decision.
+    expect(preMatchComplete(undecided)).toBe(false);
+  });
+
+  it("a kick tie leaves the toss undecided: neither side waits on `kicking`", () => {
+    const tied: ActaDemoPreMatch = {
+      ...full,
+      kickDice: { home: 4, away: 4 },
+      kicking: null,
+    };
+    expect(sideCompleteOf(tied, "home")).toBe(true);
+    expect(sideCompleteOf(tied, "away")).toBe(true);
+  });
+});
+
+describe("preMatchComplete — the match really starts only when every mark is captured", () => {
+  const full: ActaDemoPreMatch = {
+    fans: {
+      home: { base: 4, dice: 2, total: 6 },
+      away: { base: 3, dice: 1, total: 4 },
+    },
+    weatherDice: { home: 3, away: 5 },
+    kickDice: { home: 6, away: 2 },
+    inducementsDone: { home: true, away: true },
+    kicking: "home",
+  };
+
+  it("is true only when BOTH sides hold every mark; any single miss is incomplete", () => {
+    expect(preMatchComplete(full)).toBe(true);
+    // null is never complete.
+    expect(preMatchComplete(null)).toBe(false);
+    // Each single missing mark is enough to keep the match unstarted.
+    expect(preMatchComplete({ ...full, kicking: null })).toBe(false);
+    expect(
+      preMatchComplete({ ...full, inducementsDone: { home: true, away: false } }),
+    ).toBe(false);
+    expect(preMatchComplete({ ...full, kickDice: { home: 6, away: null } })).toBe(
+      false,
+    );
+    expect(
+      preMatchComplete({ ...full, weatherDice: { home: null, away: 5 } }),
+    ).toBe(false);
+    expect(
+      preMatchComplete({ ...full, fans: { home: null, away: full.fans.away } }),
+    ).toBe(false);
   });
 });

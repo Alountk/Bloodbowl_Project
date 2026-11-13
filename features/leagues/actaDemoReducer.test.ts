@@ -213,7 +213,7 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.submittedBy).toBe("away");
   });
 
-  it("reset(inicio) returns a clean kickoff: 1T turn 1, 0-0, kickoff events only", () => {
+  it("reset(inicio) returns a FRESH match: 1T turn 1, 0-0, start event only (pre-match wiped)", () => {
     const dirty = reduce(
       state(),
       { type: "submitCommand", command: { type: "td", side: "home", playerRosterId: "p1" } },
@@ -228,10 +228,23 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.turnNumber).toBe(1);
     expect(s.homeScore).toBe(0);
     expect(s.awayScore).toBe(0);
-    expect(s.events.map((e) => e.kind)).toEqual(["start", "weather", "fan_factor"]);
-    // The kickoff weather event carries the CANONICAL kind for its recorded
-    // 2D6 (lib/rules/weather `weatherFromRoll(4)` → "perfect"), never an alias.
-    expect(s.events[1].payload).toEqual({ value: "perfect", roll: 4 });
+    // Restablecer = a FRESH match: every pre-match fact is gone until it is
+    // captured again (the wizard walks from Paso 1) — user decision 2026-11-13.
+    expect(s.events.map((e) => e.kind)).toEqual(["start"]);
+    expect(s.inducements).toEqual({ home: [], away: [] });
+    expect(s.preMatch?.fans).toEqual({ home: null, away: null });
+    // The fixture's kickoff weather event still carries the CANONICAL kind for
+    // its recorded 2D6 (lib/rules/weather `weatherFromRoll(4)` → "perfect"),
+    // never an alias — reset simply drops it with the other pre-match facts.
+    expect(demoState("inicio").events.map((e) => e.kind)).toEqual([
+      "start",
+      "weather",
+      "fan_factor",
+    ]);
+    expect(demoState("inicio").events[1].payload).toEqual({
+      value: "perfect",
+      roll: 4,
+    });
     expect(s.closureOpen).toBe(false);
     expect(s.submittedBy).toBeNull();
     expect(s.nextSeq).toBeGreaterThan(MAX_FIXTURE_SEQ);
