@@ -139,7 +139,9 @@ function WeatherTable({ sum }: { sum: number | null }) {
   );
 }
 
-/** Editorial die card: face + dice BUTTON (roll records directly) with the roll animation. */
+/** Editorial die card: face + dice BUTTON (roll records directly) with the
+ * roll animation — LOCKED once recorded: a finished roll never re-rolls (the
+ * only re-roll path is the kick tie's «Repetir tirada»). */
 function DieCard({
   teamLabel,
   value,
@@ -178,6 +180,7 @@ function DieCard({
         <button
           type="button"
           className={BTN}
+          disabled={recorded}
           onClick={() => {
             setRollSeq((seq) => seq + 1);
             onRoll();
@@ -297,7 +300,29 @@ export function ActaPreMatchWizard({
     });
   };
 
+  // S7 rules: a roll is entered ONCE (the die locks), and the forward button
+  // only unlocks when this step's marks are in — the kick step also needs a
+  // resolved toss and, for the winner, the kicking pick.
+  const recordedFan = fanRecorded != null || snapshot.fans[viewerSide] != null;
+  const recordedWeather =
+    weatherRecorded != null || snapshot.weatherDice[viewerSide] != null;
+  const recordedKick =
+    kickRecorded != null || snapshot.kickDice[viewerSide] != null;
+  const canAdvance =
+    stepIndex === 0
+      ? recordedFan
+      : stepIndex === 1
+        ? recordedWeather
+        : stepIndex === 2
+          ? true
+          : recordedKick &&
+            !kickTie &&
+            (kickWinner !== viewerSide ||
+              snapshot.kicking != null ||
+              kickChoice != null);
+
   const advance = () => {
+    if (!canAdvance) return;
     if (stepIndex === 2) {
       onCommit({
         step: "inducements",
@@ -318,11 +343,6 @@ export function ActaPreMatchWizard({
   if (!open) return null;
 
   const step = STEPS[stepIndex];
-  const recordedFan = fanRecorded != null || snapshot.fans[viewerSide] != null;
-  const recordedWeather =
-    weatherRecorded != null || snapshot.weatherDice[viewerSide] != null;
-  const recordedKick =
-    kickRecorded != null || snapshot.kickDice[viewerSide] != null;
 
   return (
     <div className="fixed inset-0 z-40 bg-ink/50">
@@ -616,24 +636,17 @@ export function ActaPreMatchWizard({
           Sustitutos: solo en liga — no aplica en esta demo
         </p>
 
+        {/* S7: forward-only — once a step is behind you, there is no way back. */}
         <footer className="flex items-center justify-between gap-3 border-t border-navy/15 px-5 py-4">
-          {stepIndex > 0 ? (
-            <button
-              type="button"
-              className={BTN}
-              onClick={() => setStepIndex((index) => Math.max(0, index - 1))}
-            >
-              Atrás
-            </button>
-          ) : (
-            <button type="button" className={BTN} disabled>
-              Atrás
-            </button>
-          )}
-          <p className="text-xs text-ink">
+          <p className="flex-1 text-center text-xs text-ink">
             Paso {stepIndex + 1} de {STEPS.length}
           </p>
-          <button type="button" className={PRIMARY} onClick={advance}>
+          <button
+            type="button"
+            className={PRIMARY}
+            disabled={!canAdvance}
+            onClick={advance}
+          >
             {step.next}
           </button>
         </footer>

@@ -43,23 +43,25 @@ function renderWizard(
   const onDismiss = vi.fn();
   const onFinish = vi.fn();
   const dice = { d3: vi.fn(() => 2), d6: vi.fn(() => 5) };
-  render(
-    <ActaPreMatchWizard
-      open
-      homeName={HOME}
-      awayName={AWAY}
-      homeBase={4}
-      awayBase={3}
-      viewerSide="home"
-      snapshot={emptySnapshot()}
-      onCommit={onCommit}
-      onDismiss={onDismiss}
-      onFinish={onFinish}
-      dice={dice}
-      {...overrides}
-    />,
-  );
-  return { onCommit, onDismiss, onFinish, dice };
+  const props: ComponentProps<typeof ActaPreMatchWizard> = {
+    open: true,
+    homeName: HOME,
+    awayName: AWAY,
+    homeBase: 4,
+    awayBase: 3,
+    viewerSide: "home",
+    snapshot: emptySnapshot(),
+    onCommit,
+    onDismiss,
+    onFinish,
+    dice,
+    ...overrides,
+  };
+  const view = render(<ActaPreMatchWizard {...props} />);
+  const rerender = (
+    next: Partial<ComponentProps<typeof ActaPreMatchWizard>> = {},
+  ) => view.rerender(<ActaPreMatchWizard {...props} {...next} />);
+  return { onCommit, onDismiss, onFinish, dice, rerender };
 }
 
 const dialog = () => screen.getByRole("dialog", { name: "Antes del partido" });
@@ -147,12 +149,79 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
     expect(screen.getByRole("status").className).toMatch(/dice-reveal/);
   });
 
-  it("Atrás returns to the previous step without recording anything", () => {
-    const { onCommit } = renderWizard();
+  it("the die cannot be rolled again once it has been recorded", () => {
+    renderWizard();
+    const die = screen.getByRole("button", { name: "Tirar 1D3" });
+    expect((die as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(die);
+    const after = screen.getByRole("button", { name: "Tirar 1D3" });
+    expect((after as HTMLButtonElement).disabled).toBe(true);
+    expect(step(1, "Los Hinchas").textContent).toMatch(/Registrado/);
+  });
+
+  it("the wizard cannot advance until the die of the step is rolled", () => {
+    renderWizard();
+    expect(
+      (
+        screen.getByRole("button", { name: "Avanzar al Clima" }) as
+          | HTMLButtonElement
+          | null
+      )?.disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D3" }));
+    expect(
+      (screen.getByRole("button", { name: "Avanzar al Clima" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
-    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
-    expect(step(1, "Los Hinchas")).toBeTruthy();
-    expect(onCommit).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole("button", { name: "Avanzar a Incentivos" }) as
+          HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6" }));
+    expect(
+      (
+        screen.getByRole("button", { name: "Avanzar a Incentivos" }) as
+          HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it("the wizard only moves forward: after a step there is no way back", () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+    expect(step(2, "El Clima")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Atrás" })).toBeNull();
+  });
+
+  it("the kick step cannot finish on a tie: re-roll first, then it unlocks", () => {
+    const snapshot = readySnapshot();
+    snapshot.kickDice = { home: 5, away: 5 };
+    const { rerender } = renderWizard({ snapshot });
+    const finish = () =>
+      screen.getByRole("button", { name: "Finalizar" }) as HTMLButtonElement;
+    expect(finish().disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Repetir tirada" }));
+    // The reducer clears BOTH dice on kickTie — model that transition, then
+    // the die unlocks for the shared re-roll.
+    rerender({ snapshot: { ...snapshot, kickDice: { home: null, away: null } } });
+    expect(finish().disabled).toBe(true); // dice cleared — nothing to finish on
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6" }));
+    expect(finish().disabled).toBe(false);
+  });
+
+  it("the winner cannot finish before choosing who kicks", () => {
+    const snapshot = readySnapshot();
+    snapshot.kickDice = { home: 5, away: 3 };
+    renderWizard({ snapshot });
+    const finish = () =>
+      screen.getByRole("button", { name: "Finalizar" }) as HTMLButtonElement;
+    expect(finish().disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Patea Colmillos del Caos" }));
+    expect(finish().disabled).toBe(false);
   });
 
   it("capture stays per side: my single die control, no rival controls", () => {

@@ -71,19 +71,15 @@ describe("ActaDemoHarness — Antes del partido (S6 · modal wizard)", () => {
 
   it("recording MY fan roll in the wizard derives my header Afición line and leaves the rival's alone", () => {
     render(<ActaDemoHarness />);
-    // The demo fixture already captured both sides' rolls.
-    expect(document.body.textContent).toMatch(/Afición: 4 \+ 🎲3 = 7/);
-    expect(document.body.textContent).toMatch(/Afición: 3 \+ 🎲2 = 5/);
-    openWizard();
-    // The fixture captured my steps 1-2 → the wizard resumes at Paso 3.
-    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
-    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
+    // S7 (forward-only, roll-locked): reach Paso 1 through a fresh sequence
+    // instead of walking backwards — the rival never gets a line of its own.
+    freshSequence();
     fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
     fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
     expect(document.body.textContent).toMatch(/Afición: 4 \+ 🎲2 = 6/);
     expect(document.body.textContent).not.toMatch(/Afición: 4 \+ 🎲3 = 7/);
-    // The rival's confirmed line stays untouched (per-side capture).
-    expect(document.body.textContent).toMatch(/Afición: 3 \+ 🎲2 = 5/);
+    // The rival's side stays untouched: nothing was recorded for them.
+    expect(document.body.textContent).not.toMatch(/Afición: 3 \+ 🎲/);
   });
 
   it("switching «Ver como:» swaps the wizard capture to the other coach's own side", () => {
@@ -112,8 +108,10 @@ describe("ActaDemoHarness — Antes del partido (S6 · modal wizard)", () => {
         name: "Incentivos Águilas de Khemri",
       }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
-    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
+    // S7: forward-only — reach the die step by advancing, never backwards.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Avanzar al Equipo pateador" }),
+    );
     expect(within(wizard()).getByText(/Tu tirada · Colmillos del Caos/)).toBeTruthy();
     expect(within(wizard()).queryByText(/Tu tirada · Águilas de Khemri/)).toBeNull();
   });
@@ -138,9 +136,8 @@ describe("ActaDemoHarness — Antes del partido (S6 · modal wizard)", () => {
 
   it("keeps the per-side capture across a reload (v4 persistence)", () => {
     const first = render(<ActaDemoHarness />);
-    openWizard();
-    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
-    fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
+    // S7: forward-only — reach Paso 1 via a fresh sequence, then roll.
+    freshSequence();
     fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
     fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
     first.unmount();
