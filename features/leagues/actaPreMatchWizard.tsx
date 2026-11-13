@@ -1,0 +1,661 @@
+import { useState, type ReactNode } from "react";
+
+import { rollD3, rollD6 } from "@/lib/random";
+import {
+  listInducements,
+  type InducementCartItem,
+  type PersistedInducements,
+} from "@/lib/rules/inducements";
+import { weatherFromRoll } from "@/lib/rules/weather";
+
+import type { ActaPreMatchFlowProps } from "./actaPreMatchFlow";
+import { formatMo } from "./actaSheetHeader";
+
+export type {
+  ActaPreMatchSnapshot,
+  PreMatchCommit,
+  PreMatchWeather,
+} from "./actaPreMatchFlow";
+
+/**
+ * S6 · Modal wizard «Antes del partido» (design «Opción 5 · Editorial
+ * Minimalista», Stitch screen b021a39ac4dc47dc9b856786bb5f58e6).
+ *
+ * Contract (user, 2026-11-13): the pre-match capture is a MODAL that shows
+ * ONE step at a time («las steps no deberian verse de golpe, deberia ir por
+ * pasos»); the automatic roll is a DICE BUTTON — clicking it rolls and
+ * records the result directly («si le dan hara una tirada automatica y la
+ * apuntara directamente, en vez de tener lo que tenemos ahora»), replacing
+ * the Manual/Auto toggle; the manual field stays as the quiet physical-die
+ * override; after the LAST step the modal closes and everything derives into
+ * the acta («todo saldra como debiera (en la informacion de arriba y
+ * abajo)»). Capture stays PER SIDE (S2c): the coach records only their own
+ * rolls; the rival appears read-only, confirmed facts only.
+ */
+
+export interface ActaPreMatchWizardProps extends ActaPreMatchFlowProps {
+  /** Renders nothing while closed. */
+  open: boolean;
+  /** «Cerrar» — close without finishing. */
+  onDismiss: () => void;
+  /** «Finalizar» — the last step is done; the parent closes and derives. */
+  onFinish: () => void;
+}
+
+type Side = "home" | "away";
+
+const STEPS = [
+  { name: "Los Hinchas", next: "Avanzar al Clima" },
+  { name: "El Clima", next: "Avanzar a Incentivos" },
+  { name: "Incentivos", next: "Avanzar al Equipo pateador" },
+  { name: "Equipo pateador", next: "Finalizar" },
+] as const;
+
+const BTN =
+  "rounded-sm border border-navy/30 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-navy hover:bg-fill-hover disabled:cursor-not-allowed disabled:opacity-40";
+const PRIMARY =
+  "rounded-sm bg-navy px-4 py-2 font-display text-xs font-bold uppercase tracking-wide text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-40";
+const INPUT =
+  "w-20 rounded-sm border border-navy/30 bg-white px-2 py-1 text-sm text-ink";
+
+function clampDie(raw: string, max: number): number | null {
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(1, parsed)) : null;
+}
+
+/** Official BB2025 weather table (digest §B); the resolved row is marked. */
+function WeatherTable({ sum }: { sum: number | null }) {
+  const rows: [string, string, string][] = [
+    ["2 – 3", "Frío glacial", "−1 a tiradas de A Por Ellos"],
+    ["4 – 5", "Ventisca / nieve", "Pases limitados a Pase Rápido"],
+    ["6 – 8", "Clima perfecto", "Sin modificadores"],
+    ["9 – 10", "Lluvia torrencial", "−1 a la tirada de Atrapar"],
+    ["11 – 12", "Calor asfixiante", "Posible desmayo 1D6 tras TD"],
+  ];
+  const activeIndex = sum == null ? -1 : sum <= 3 ? 0 : sum <= 5 ? 1 : sum <= 8 ? 2 : sum <= 10 ? 3 : 4;
+  return (
+    <table
+      aria-label="Tabla oficial de clima"
+      className="mt-3 w-full border-collapse text-left text-xs text-ink"
+    >
+      <thead>
+        <tr className="border-b border-navy/20 font-display uppercase tracking-wide text-navy">
+          <th className="py-1 pr-2 font-bold">2D6</th>
+          <th className="py-1 pr-2 font-bold">Clima</th>
+          <th className="py-1 text-right font-bold">Modificador</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([range, name, mod], index) => (
+          <tr
+            key={range}
+            className={
+              index === activeIndex
+                ? "border-b border-navy/10 bg-red text-white"
+                : "border-b border-navy/10"
+            }
+          >
+            <td className="py-1 pr-2 font-display font-bold">{range}</td>
+            <td className="py-1 pr-2">{name}</td>
+            <td className="py-1 text-right">{mod}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Editorial die card: face + dice BUTTON (roll records directly) + quiet manual override. */
+function DieCard({
+  teamLabel,
+  value,
+  dieLabel,
+  recorded,
+  manualLabel,
+  max,
+  manual,
+  onManual,
+  onRoll,
+  totalLine,
+  rivalLine,
+}: {
+  teamLabel: string;
+  value: number | null;
+  dieLabel: string;
+  recorded: boolean;
+  manualLabel: string;
+  max: number;
+  manual: number | null;
+  onManual: (value: number | null) => void;
+  onRoll: () => void;
+  totalLine: ReactNode;
+  rivalLine: ReactNode;
+}) {
+  return (
+    <div className="mt-3 border border-navy/15 bg-white px-4 py-3">
+      <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-navy">
+        {teamLabel}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy"
+        >
+          {value ?? "–"}
+        </span>
+        <button type="button" className={BTN} onClick={onRoll}>
+          {dieLabel}
+        </button>
+        <span
+          role="status"
+          className={
+            recorded
+              ? "font-display text-xs font-bold uppercase tracking-wide text-red"
+              : "font-display text-xs font-bold uppercase tracking-wide text-ink/60"
+          }
+        >
+          {recorded ? "Registrado" : "Pendiente"}
+        </span>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <label className="flex items-center gap-2 text-xs text-ink">
+          Manual
+          <input
+            type="number"
+            min={1}
+            max={max}
+            aria-label={manualLabel}
+            value={manual ?? ""}
+            onChange={(event) => onManual(clampDie(event.target.value, max))}
+            className={INPUT}
+          />
+        </label>
+        <p className="text-sm text-navy">{totalLine}</p>
+      </div>
+      {rivalLine}
+    </div>
+  );
+}
+
+export function ActaPreMatchWizard({
+  homeName,
+  awayName,
+  homeBase,
+  awayBase,
+  viewerSide,
+  snapshot,
+  onCommit,
+  dice = { d3: rollD3, d6: rollD6 },
+  open,
+  onDismiss,
+  onFinish,
+}: ActaPreMatchWizardProps) {
+  const stepDone = [
+    snapshot.fans[viewerSide] != null,
+    snapshot.weather != null,
+    snapshot.inducementsDone[viewerSide],
+    snapshot.kicking != null,
+  ];
+  const pendingIndex = stepDone.findIndex((done) => !done);
+  const firstPending = pendingIndex === -1 ? STEPS.length - 1 : pendingIndex;
+
+  const [lastOpen, setLastOpen] = useState(open);
+  const [stepIndex, setStepIndex] = useState(firstPending);
+  const [fanDraft, setFanDraft] = useState<number | null>(null);
+  const [fanRecorded, setFanRecorded] = useState<number | null>(null);
+  const [weatherDraft, setWeatherDraft] = useState<number | null>(null);
+  const [weatherRecorded, setWeatherRecorded] = useState<number | null>(null);
+  const [kickDraft, setKickDraft] = useState<number | null>(null);
+  const [kickRecorded, setKickRecorded] = useState<number | null>(null);
+  const [kickChoice, setKickChoice] = useState<Side | null>(null);
+  const [cart, setCart] = useState<PersistedInducements>(() => ({
+    home: snapshot.inducements.home.map((item) => ({ ...item })),
+    away: snapshot.inducements.away.map((item) => ({ ...item })),
+  }));
+
+  const nameOf = (side: Side) => (side === "home" ? homeName : awayName);
+  const baseOf = (side: Side) => (side === "home" ? homeBase : awayBase);
+  const rivalSide: Side = viewerSide === "home" ? "away" : "home";
+
+  // Reopen at the first step still pending for my side (render-phase state
+  // adjustment: runs once per open transition, never mid-flow).
+  if (open !== lastOpen) {
+    setLastOpen(open);
+    if (open) {
+      setStepIndex(firstPending);
+      setFanDraft(null);
+      setFanRecorded(null);
+      setWeatherDraft(null);
+      setWeatherRecorded(null);
+      setKickDraft(null);
+      setKickRecorded(null);
+      setKickChoice(null);
+      setCart({
+        home: snapshot.inducements.home.map((item) => ({ ...item })),
+        away: snapshot.inducements.away.map((item) => ({ ...item })),
+      });
+    }
+  }
+
+  const shownFan = fanDraft ?? fanRecorded ?? snapshot.fans[viewerSide]?.dice ?? null;
+  const shownWeather =
+    weatherDraft ?? weatherRecorded ?? snapshot.weatherDice[viewerSide];
+  const rivalWeatherDie = snapshot.weatherDice[rivalSide];
+  const weatherSum =
+    shownWeather != null && rivalWeatherDie != null
+      ? shownWeather + rivalWeatherDie
+      : null;
+  const shownKick = kickDraft ?? kickRecorded ?? snapshot.kickDice[viewerSide];
+  const kickBoth =
+    snapshot.kickDice.home != null && snapshot.kickDice.away != null;
+  const kickTie =
+    kickBoth && snapshot.kickDice.home === snapshot.kickDice.away;
+  const kickWinner: Side | null =
+    kickBoth && !kickTie
+      ? snapshot.kickDice.home! > snapshot.kickDice.away!
+        ? "home"
+        : "away"
+      : null;
+
+  const bumpCart = (id: string, delta: number) => {
+    const max = listInducements().find((entry) => entry.id === id)?.max ?? 1;
+    setCart((prev) => {
+      const items: InducementCartItem[] = prev[viewerSide].map((item) => ({
+        ...item,
+      }));
+      const index = items.findIndex((item) => item.id === id);
+      const current = index >= 0 ? items[index].count : 0;
+      const next = Math.max(0, Math.min(max, current + delta));
+      if (index >= 0) {
+        if (next === 0) items.splice(index, 1);
+        else items[index].count = next;
+      } else if (next > 0) {
+        items.push({ id, count: next });
+      }
+      return { ...prev, [viewerSide]: items };
+    });
+  };
+
+  const advance = () => {
+    if (stepIndex === 0 && fanDraft != null) {
+      onCommit({
+        step: "fanRoll",
+        side: viewerSide,
+        line: {
+          base: baseOf(viewerSide),
+          dice: fanDraft,
+          total: baseOf(viewerSide) + fanDraft,
+        },
+      });
+      setFanRecorded(fanDraft);
+      setFanDraft(null);
+    }
+    if (stepIndex === 1 && weatherDraft != null) {
+      onCommit({ step: "weatherRoll", side: viewerSide, die: weatherDraft });
+      setWeatherRecorded(weatherDraft);
+      setWeatherDraft(null);
+    }
+    if (stepIndex === 2) {
+      onCommit({
+        step: "inducements",
+        side: viewerSide,
+        items: cart[viewerSide].map((item) => ({ ...item })),
+      });
+    }
+    if (stepIndex === STEPS.length - 1) {
+      if (kickDraft != null) {
+        onCommit({ step: "kickRoll", side: viewerSide, die: kickDraft });
+        setKickRecorded(kickDraft);
+        setKickDraft(null);
+      }
+      if (kickChoice != null && kickWinner === viewerSide && snapshot.kicking == null) {
+        onCommit({ step: "kicking", kicking: kickChoice });
+      }
+      onFinish();
+      return;
+    }
+    setStepIndex((index) => Math.min(STEPS.length - 1, index + 1));
+  };
+
+  if (!open) return null;
+
+  const step = STEPS[stepIndex];
+  const recordedFan = fanRecorded != null || snapshot.fans[viewerSide] != null;
+  const recordedWeather =
+    weatherRecorded != null || snapshot.weatherDice[viewerSide] != null;
+  const recordedKick =
+    kickRecorded != null || snapshot.kickDice[viewerSide] != null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink/50 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Antes del partido"
+        className="w-full max-w-2xl border border-navy/20 bg-panel"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-navy/15 px-5 py-4">
+          <div>
+            <p className="font-display text-xs font-bold uppercase tracking-[0.18em] text-red">
+              Secuencia oficial BB2025
+            </p>
+            <h2 className="font-display text-2xl font-bold text-navy">
+              Antes del partido
+            </h2>
+          </div>
+          <button type="button" className={BTN} onClick={onDismiss}>
+            Cerrar
+          </button>
+        </header>
+
+        <ol
+          aria-label="Secuencia pre-partido"
+          className="flex divide-x divide-navy/15 border-b border-navy/15"
+        >
+          {STEPS.map((entry, index) => (
+            <li
+              key={entry.name}
+              aria-current={index === stepIndex ? "step" : undefined}
+              className={`flex-1 px-3 py-2 font-display text-xs font-bold uppercase tracking-wide ${
+                index === stepIndex
+                  ? "text-red"
+                  : stepDone[index]
+                    ? "text-navy"
+                    : "text-ink/50"
+              }`}
+            >
+              {stepDone[index] ? "✓ " : ""}
+              {index + 1} · {entry.name}
+            </li>
+          ))}
+        </ol>
+
+        <section
+          role="group"
+          aria-label={`Paso ${stepIndex + 1} · ${step.name}`}
+          className="px-5 py-4"
+        >
+          <div className="border-l-2 border-red pl-3">
+            <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-red">
+              Paso {stepIndex + 1} de 4
+            </p>
+            <h3 className="font-display text-lg font-bold text-navy">
+              {step.name}
+            </h3>
+            <p className="text-sm text-ink">
+              {stepIndex === 0
+                ? "La afición ocasional: aficionados dedicados + 1D3."
+                : stepIndex === 1
+                  ? "Cada entrenador lanza 1D6; la suma (2D6) resuelve el clima."
+                  : stepIndex === 2
+                    ? "Selecciona tus incentivos (precio y límite del reglamento)."
+                    : "1D6 enfrentado; el ganador decide quién patea (empate: se repite)."}
+            </p>
+          </div>
+
+          {stepIndex === 0 ? (
+            <DieCard
+              teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
+              value={shownFan}
+              dieLabel="Tirar 1D3"
+              recorded={recordedFan}
+              manualLabel="Manual 1D3 afición"
+              max={3}
+              manual={fanDraft}
+              onManual={setFanDraft}
+              onRoll={() => {
+                const value = dice.d3();
+                setFanRecorded(value);
+                setFanDraft(null);
+                onCommit({
+                  step: "fanRoll",
+                  side: viewerSide,
+                  line: {
+                    base: baseOf(viewerSide),
+                    dice: value,
+                    total: baseOf(viewerSide) + value,
+                  },
+                });
+              }}
+              totalLine={`${baseOf(viewerSide)} + ${shownFan ?? "?"} = ${
+                shownFan != null ? baseOf(viewerSide) + shownFan : "?"
+              }`}
+              rivalLine={
+                snapshot.fans[rivalSide] != null ? (
+                  <p className="mt-2 text-sm text-ink">
+                    Afición rival · {nameOf(rivalSide)}:{" "}
+                    {snapshot.fans[rivalSide]!.total} · Confirmado
+                  </p>
+                ) : null
+              }
+            />
+          ) : null}
+
+          {stepIndex === 1 ? (
+            <>
+              <DieCard
+                teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
+                value={shownWeather}
+                dieLabel="Tirar 1D6"
+                recorded={recordedWeather}
+                manualLabel="Manual 1D6 clima"
+                max={6}
+                manual={weatherDraft}
+                onManual={setWeatherDraft}
+                onRoll={() => {
+                  const value = dice.d6();
+                  setWeatherRecorded(value);
+                  setWeatherDraft(null);
+                  onCommit({ step: "weatherRoll", side: viewerSide, die: value });
+                }}
+                totalLine={
+                  weatherSum != null
+                    ? `2D6 = ${weatherSum} · ${weatherFromRoll(weatherSum).label}`
+                    : "2D6 = ? · falta el dado rival"
+                }
+                rivalLine={
+                  rivalWeatherDie != null ? (
+                    <p className="mt-2 text-sm text-ink">
+                      Tirada rival · {nameOf(rivalSide)}: {rivalWeatherDie} ·
+                      Confirmado
+                    </p>
+                  ) : null
+                }
+              />
+              {weatherSum != null ? (
+                <div className="mt-3 border border-red bg-red px-4 py-3 text-white">
+                  <p className="font-display text-xs font-bold uppercase tracking-[0.16em]">
+                    Resolución oficial 2D6
+                  </p>
+                  <p className="font-display text-xl font-bold">
+                    2D6 = {weatherSum} · {weatherFromRoll(weatherSum).label}
+                  </p>
+                </div>
+              ) : null}
+              <WeatherTable sum={weatherSum} />
+            </>
+          ) : null}
+
+          {stepIndex === 2 ? (
+            <>
+              <div
+                role="group"
+                aria-label={`Incentivos ${nameOf(viewerSide)}`}
+                className="mt-3 border border-navy/15 bg-white"
+              >
+                {listInducements().map((entry) => {
+                  const count =
+                    cart[viewerSide].find((item) => item.id === entry.id)
+                      ?.count ?? 0;
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-center gap-3 border-b border-navy/10 px-4 py-2 last:border-b-0"
+                    >
+                      <span className="flex-1 text-sm text-ink">
+                        {entry.displayName}
+                        {count > 0 ? (
+                          <span className="font-display font-bold text-red">
+                            {" "}
+                            ×{count}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="font-display text-sm font-bold text-navy">
+                        {formatMo(entry.price)} M.O.
+                      </span>
+                      <span className="text-xs text-ink/60">
+                        máx. {entry.max}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Añadir ${entry.displayName}`}
+                        className={BTN}
+                        disabled={count >= entry.max}
+                        onClick={() => bumpCart(entry.id, 1)}
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Quitar ${entry.displayName}`}
+                        className={BTN}
+                        disabled={count <= 0}
+                        onClick={() => bumpCart(entry.id, -1)}
+                      >
+                        −
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-ink">
+                Caja menor: diferencia de VAE + gasto rival en incentivos
+                (máx. +50.000 M.O. de tesorería).
+              </p>
+              {snapshot.inducementsDone[rivalSide] ? (
+                <p className="mt-2 text-sm text-ink">
+                  Incentivos rival · {nameOf(rivalSide)}:{" "}
+                  {snapshot.inducements[rivalSide].length === 0
+                    ? "Ninguno"
+                    : snapshot.inducements[rivalSide]
+                        .map(
+                          (item) =>
+                            `${
+                              listInducements().find(
+                                (entry) => entry.id === item.id,
+                              )?.displayName ?? item.id
+                            } ×${item.count}`,
+                        )
+                        .join(", ")}{" "}
+                  · Confirmado
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
+          {stepIndex === 3 ? (
+            <DieCard
+              teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
+              value={shownKick}
+              dieLabel="Tirar 1D6"
+              recorded={recordedKick}
+              manualLabel="Manual 1D6 pateador"
+              max={6}
+              manual={kickDraft}
+              onManual={setKickDraft}
+              onRoll={() => {
+                const value = dice.d6();
+                setKickRecorded(value);
+                setKickDraft(null);
+                onCommit({ step: "kickRoll", side: viewerSide, die: value });
+              }}
+              totalLine={
+                kickTie
+                  ? `Empate: 🎲${snapshot.kickDice.home} — repetir tirada`
+                  : kickWinner != null
+                    ? `Gana ${nameOf(kickWinner)}`
+                    : "1D6 enfrentado · pendiente"
+              }
+              rivalLine={
+                snapshot.kickDice[rivalSide] != null ? (
+                  <p className="mt-2 text-sm text-ink">
+                    Tirada rival · {nameOf(rivalSide)}:{" "}
+                    {snapshot.kickDice[rivalSide]} · Confirmado
+                  </p>
+                ) : null
+              }
+            />
+          ) : null}
+
+          {stepIndex === 3 && kickTie ? (
+            <button
+              type="button"
+              className={`${BTN} mt-3`}
+              onClick={() => {
+                setKickDraft(null);
+                setKickRecorded(null);
+                setKickChoice(null);
+                onCommit({ step: "kickTie" });
+              }}
+            >
+              Repetir tirada
+            </button>
+          ) : null}
+
+          {stepIndex === 3 && kickWinner === viewerSide && snapshot.kicking == null ? (
+            <div
+              role="group"
+              aria-label="Quién patea"
+              className="mt-3 flex gap-2"
+            >
+              {(["home", "away"] as const).map((side) => (
+                <button
+                  key={side}
+                  type="button"
+                  aria-pressed={kickChoice === side}
+                  className={BTN}
+                  onClick={() => setKickChoice(side)}
+                >
+                  Patea {nameOf(side)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {stepIndex === 3 && snapshot.kicking != null ? (
+            <p className="mt-3 text-sm font-semibold text-navy">
+              Patea: {nameOf(snapshot.kicking)}
+            </p>
+          ) : null}
+        </section>
+
+        <p className="border-t border-navy/10 px-5 py-2 text-xs text-ink">
+          Sustitutos: solo en liga — no aplica en esta demo
+        </p>
+
+        <footer className="flex items-center justify-between gap-3 border-t border-navy/15 px-5 py-4">
+          {stepIndex > 0 ? (
+            <button
+              type="button"
+              className={BTN}
+              onClick={() => setStepIndex((index) => Math.max(0, index - 1))}
+            >
+              Atrás
+            </button>
+          ) : (
+            <button type="button" className={BTN} disabled>
+              Atrás
+            </button>
+          )}
+          <p className="text-xs text-ink">
+            Paso {stepIndex + 1} de {STEPS.length}
+          </p>
+          <button type="button" className={PRIMARY} onClick={advance}>
+            {step.next}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
