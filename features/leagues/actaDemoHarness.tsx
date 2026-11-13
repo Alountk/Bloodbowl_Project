@@ -12,7 +12,7 @@ import {
 } from "./actaDemoReducer";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
-import { ActaPreMatchFlow, type PreMatchCommit } from "./actaPreMatchFlow";
+import { ActaPreMatchSection, type PreMatchCommit } from "./actaPreMatchWizard";
 import { weatherFromRoll } from "@/lib/rules/weather";
 import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
@@ -96,7 +96,7 @@ export function ActaFlow({
           casualtyTurns={casualtyTurnsOf(events, state.half)}
           turnSides={turnSidesOf(events, state.half, state)}
         />
-        <ActaPreMatchFlow
+        <ActaPreMatchSection
           homeName={detail.homeTeam.name}
           awayName={detail.awayTeam.name}
           homeBase={DEMO_FAN_BASES.home}

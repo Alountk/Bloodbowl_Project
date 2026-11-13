@@ -8,14 +8,54 @@ import {
 } from "@/lib/rules/inducements";
 import { weatherFromRoll } from "@/lib/rules/weather";
 
-import type { ActaPreMatchFlowProps } from "./actaPreMatchFlow";
+import type { FanFactorLine } from "./actaPreMatch";
 import { formatMo } from "./actaSheetHeader";
 
-export type {
-  ActaPreMatchSnapshot,
-  PreMatchCommit,
-  PreMatchWeather,
-} from "./actaPreMatchFlow";
+export interface PreMatchWeather {
+  /** The 2D6 sum (one 1D6 per coach). */
+  roll: number;
+  /** The weather kind resolved from the roll (lib/rules/weather). */
+  value: string;
+}
+
+export interface ActaPreMatchSnapshot {
+  /** Confirmed fan lines per side (derived acta feed). */
+  fans: { home: FanFactorLine | null; away: FanFactorLine | null };
+  /** Resolved weather (both dice confirmed), else null. */
+  weather: PreMatchWeather | null;
+  /** Per-side confirmed weather dice (capture progress). */
+  weatherDice: { home: number | null; away: number | null };
+  /** Confirmed inducement carts per side. */
+  inducements: PersistedInducements;
+  /** Per-side inducement confirmation. */
+  inducementsDone: { home: boolean; away: boolean };
+  /** Per-side confirmed kick dice (the opposed 1D6). */
+  kickDice: { home: number | null; away: number | null };
+  /** Winner's decision: who kicks. */
+  kicking: "home" | "away" | null;
+}
+
+export type PreMatchCommit =
+  | { step: "fanRoll"; side: "home" | "away"; line: FanFactorLine }
+  | { step: "weatherRoll"; side: "home" | "away"; die: number }
+  | { step: "inducements"; side: "home" | "away"; items: InducementCartItem[] }
+  | { step: "kickRoll"; side: "home" | "away"; die: number }
+  | { step: "kickTie" }
+  | { step: "kicking"; kicking: "home" | "away" };
+
+export interface ActaPreMatchCaptureProps {
+  homeName: string;
+  awayName: string;
+  /** Dedicated-fans attribute per side (the +N in the attendance roll). */
+  homeBase: number;
+  awayBase: number;
+  /** Which coach is viewing: the capture shows ONLY this side. */
+  viewerSide: "home" | "away";
+  snapshot: ActaPreMatchSnapshot;
+  onCommit: (commit: PreMatchCommit) => void;
+  /** Injectable dice (auto roll); defaults to the real dice in lib/random. */
+  dice?: { d3: () => number; d6: () => number };
+}
 
 /**
  * S6 · Modal wizard «Antes del partido» (design «Opción 5 · Editorial
@@ -33,7 +73,7 @@ export type {
  * rolls; the rival appears read-only, confirmed facts only.
  */
 
-export interface ActaPreMatchWizardProps extends ActaPreMatchFlowProps {
+export interface ActaPreMatchWizardProps extends ActaPreMatchCaptureProps {
   /** Renders nothing while closed. */
   open: boolean;
   /** «Cerrar» — close without finishing. */
@@ -657,5 +697,143 @@ export function ActaPreMatchWizard({
         </footer>
       </div>
     </div>
+  );
+}
+
+/** «Lo que ha sucedido» — the derived report of every CONFIRMED fact (S2c). */
+export function ActaPreMatchReport({
+  homeName,
+  awayName,
+  snapshot,
+}: {
+  homeName: string;
+  awayName: string;
+  snapshot: ActaPreMatchSnapshot;
+}) {
+  const nameOf = (side: Side) => (side === "home" ? homeName : awayName);
+  const lines: ReactNode[] = [];
+  if (snapshot.weather != null) {
+    lines.push(
+      <p key="weather" className="text-sm text-navy">
+        Clima: 2D6 = {snapshot.weather.roll} ·{" "}
+        {weatherFromRoll(snapshot.weather.roll).label}
+      </p>,
+    );
+  }
+  for (const side of ["home", "away"] as const) {
+    const fan = snapshot.fans[side];
+    if (fan != null) {
+      lines.push(
+        <p key={`fan-${side}`} className="text-sm text-navy">
+          Afición — {nameOf(side)}: {fan.base} + 🎲{fan.dice} = {fan.total}
+        </p>,
+      );
+    }
+  }
+  for (const side of ["home", "away"] as const) {
+    if (!snapshot.inducementsDone[side]) continue;
+    const items = snapshot.inducements[side];
+    const joined =
+      items.length === 0
+        ? "Ninguno"
+        : items
+            .map((item) => {
+              const entry = listInducements().find((e) => e.id === item.id);
+              return `${entry?.displayName ?? item.id} ×${item.count}`;
+            })
+            .join(", ");
+    lines.push(
+      <p key={`ind-${side}`} className="text-sm text-navy">
+        Incentivos — {nameOf(side)}: {joined}
+      </p>,
+    );
+  }
+  const kickBoth =
+    snapshot.kickDice.home != null && snapshot.kickDice.away != null;
+  const kickTie =
+    kickBoth && snapshot.kickDice.home === snapshot.kickDice.away;
+  const kickWinner: Side | null =
+    kickBoth && !kickTie
+      ? snapshot.kickDice.home! > snapshot.kickDice.away!
+        ? "home"
+        : "away"
+      : null;
+  if (kickTie) {
+    lines.push(
+      <p key="kick" className="text-sm text-navy">
+        Pateador: empate 🎲{snapshot.kickDice.home} — repetir tirada
+      </p>,
+    );
+  } else if (kickWinner != null) {
+    lines.push(
+      <p key="kick" className="text-sm text-navy">
+        Pateador: 🎲{snapshot.kickDice.home} vs 🎲{snapshot.kickDice.away} — gana{" "}
+        {nameOf(kickWinner)}
+      </p>,
+    );
+  }
+  if (snapshot.kicking != null) {
+    lines.push(
+      <p key="kicking" className="text-sm text-navy">
+        Quién patea: {nameOf(snapshot.kicking)}
+      </p>,
+    );
+  }
+  return (
+    <div
+      role="region"
+      aria-label="Lo que ha sucedido"
+      className="mt-4 border-t border-navy/15 pt-3"
+    >
+      <h3 className="font-semibold text-navy">Lo que ha sucedido</h3>
+      {lines.length === 0 ? (
+        <p className="text-sm text-navy">Aún no hay nada confirmado.</p>
+      ) : (
+        lines
+      )}
+    </div>
+  );
+}
+
+/** The acta's opening section: trigger + derived report + the wizard modal. */
+export function ActaPreMatchSection(props: ActaPreMatchCaptureProps) {
+  const [open, setOpen] = useState(false);
+  const { snapshot, viewerSide } = props;
+  const hasCapture =
+    snapshot.fans[viewerSide] != null ||
+    snapshot.weatherDice[viewerSide] != null ||
+    snapshot.inducementsDone[viewerSide] ||
+    snapshot.kickDice[viewerSide] != null ||
+    snapshot.kicking != null;
+  return (
+    <section
+      aria-label="Antes del partido"
+      className="mt-4 border border-navy/20 bg-white p-4"
+    >
+      <h2 className="text-lg font-bold text-navy">Antes del partido</h2>
+      <p className="text-sm text-navy">
+        Solo rellenas tu parte; el acta informa de lo que ha sucedido.
+      </p>
+      <button
+        type="button"
+        className="mt-2 rounded-sm bg-navy px-4 py-2 font-display text-xs font-bold uppercase tracking-wide text-white hover:bg-navy-hover"
+        onClick={() => setOpen(true)}
+      >
+        {hasCapture
+          ? "Editar secuencia pre-partido"
+          : "Completar secuencia pre-partido"}
+      </button>
+      <ActaPreMatchReport
+        homeName={props.homeName}
+        awayName={props.awayName}
+        snapshot={snapshot}
+      />
+      <ActaPreMatchWizard
+        {...props}
+        open={open}
+        onDismiss={() => setOpen(false)}
+        onFinish={() => setOpen(false)}
+      />
+    </section>
   );
 }

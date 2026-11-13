@@ -7,7 +7,7 @@ import {
   demoState,
   type ActaDemoState,
 } from "./actaDemoReducer";
-import type { PreMatchCommit } from "./actaPreMatchFlow";
+import type { PreMatchCommit } from "./actaPreMatchWizard";
 
 /**
  * commitPreMatch — per-side capture (S2c): each coach commits ONLY their own

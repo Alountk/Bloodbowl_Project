@@ -3,7 +3,7 @@ import { weatherFromRoll } from "@/lib/rules/weather";
 import type { LiveCommand, LiveMatchEventDto, LiveMatchViewState } from "./api";
 import { MIN, liveState, narrativeEvents } from "./actaFlow.fixtures";
 import { fanFactorOf, type FanFactorLine } from "./actaPreMatch";
-import type { PreMatchCommit } from "./actaPreMatchFlow";
+import type { PreMatchCommit } from "./actaPreMatchWizard";
 
 /**
  * Pure demo state machine behind the dual-view match demo ("Flujo
