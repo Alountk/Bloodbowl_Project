@@ -372,7 +372,7 @@ export function ActaPreMatchWizard({
         role="dialog"
         aria-modal="true"
         aria-label="Antes del partido"
-        className="w-full max-w-2xl border border-navy/20 bg-panel"
+        className="flex max-h-[85dvh] w-full max-w-2xl flex-col border border-navy/20 bg-panel"
       >
         <header className="flex items-start justify-between gap-4 border-b border-navy/15 px-5 py-4">
           <div>
@@ -413,7 +413,7 @@ export function ActaPreMatchWizard({
         <section
           role="group"
           aria-label={`Paso ${stepIndex + 1} · ${step.name}`}
-          className="px-5 py-4"
+          className="flex-1 overflow-y-auto px-5 py-4"
         >
           <div className="border-l-2 border-red pl-3">
             <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-red">

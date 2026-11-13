@@ -136,6 +136,9 @@ export interface LiveActionDockProps {
   /** "acta" = the Acta en Vivo quick-capture bar (artboard 08, MVA-5);
    *  "legacy" (default) = the Design-A chip bar (V1 — never changes). */
   variant?: "legacy" | "acta";
+  /** S6: the acta capture bar renders only once the match has really started
+   *  (pre-match sequence finished). Default true — served matches are underway. */
+  matchStarted?: boolean;
 }
 
 /** Artboard 08 quick-capture icons (Material Symbols paths on the 960 grid,
@@ -312,6 +315,7 @@ export function LiveActionDock({
   opponentRaceId,
   onSubmit,
   variant = "legacy",
+  matchStarted = true,
 }: LiveActionDockProps) {
   const { t } = useI18n();
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -805,6 +809,7 @@ export function LiveActionDock({
           would collapse the overlay's `fixed inset-0`). */}
       {modalContent}
       {variant === "acta" ? (
+        matchStarted ? (
         /* MVA-5 (artboard 08 "FIXED BOTTOM QUICK-CAPTURE ACTION DOCK"): white
            panel bar with the 5-column icon+label grid. The artboard's `bottom-14`
            (above the shared bottom nav) resolves to `bottom-0` here — the bottom
@@ -844,6 +849,7 @@ export function LiveActionDock({
             )}
           </div>
         </div>
+        ) : null
       ) : (
         <div className="bg-white/95 shadow-[0_-2px_10px_rgba(18,34,90,0.08)] backdrop-blur">
           {/* Align the bar's content with the app's main content (same horizontal

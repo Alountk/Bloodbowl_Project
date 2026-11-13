@@ -55,6 +55,10 @@ export interface ActaDemoState extends LiveMatchViewState {
   nextSeq: number;
   /** Fase 1 · Pre-partido capture (S5) — see `ActaDemoPreMatch`. */
   preMatch: ActaDemoPreMatch | null;
+  /** S6: the in-game capture bar renders only when the match has really
+   *  started (every fixture preset is a match underway; only a fresh
+   *  pre-match sequence keeps this false). */
+  matchStarted: boolean;
 }
 
 export type ActaDemoAction =
@@ -104,6 +108,9 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
     submittedBy: null,
     nextSeq: MAX_FIXTURE_SEQ + 1,
     preMatch: null,
+    // Every fixture preset is a match underway — only the reset-to-"inicio"
+    // wipe (below) represents a fresh, unstarted match.
+    matchStarted: true,
   };
 
   switch (scenario) {
@@ -211,6 +218,26 @@ function emptyPreMatch(): ActaDemoPreMatch {
     inducementsDone: { home: false, away: false },
     kicking: null,
   };
+}
+
+/**
+ * True only when BOTH sides hold every pre-match mark (S6): both fan lines,
+ * both weather dice, both inducement confirmations, both kick dice and the
+ * kicking decision. A null capture is always incomplete.
+ */
+export function preMatchComplete(preMatch: ActaDemoPreMatch | null): boolean {
+  if (preMatch == null) return false;
+  return (
+    preMatch.fans.home != null &&
+    preMatch.fans.away != null &&
+    preMatch.weatherDice.home != null &&
+    preMatch.weatherDice.away != null &&
+    preMatch.inducementsDone.home &&
+    preMatch.inducementsDone.away &&
+    preMatch.kickDice.home != null &&
+    preMatch.kickDice.away != null &&
+    preMatch.kicking != null
+  );
 }
 
 function asSide(value: unknown): "home" | "away" | null {
@@ -486,12 +513,19 @@ export function actaDemoReducer(
         ...base,
         inducements: { home: [], away: [] },
         preMatch: emptyPreMatch(),
+        matchStarted: false,
         events: base.events.filter(
           (event) => event.kind !== "weather" && event.kind !== "fan_factor",
         ),
       };
     }
     case "hydrate":
-      return { ...demoState("inicio"), ...action.saved };
+      // Old saves predate `matchStarted` — they were matches underway, so a
+      // missing flag keeps the old behavior (the capture bar stays up).
+      return {
+        ...demoState("inicio"),
+        ...action.saved,
+        matchStarted: action.saved.matchStarted ?? true,
+      };
   }
 }

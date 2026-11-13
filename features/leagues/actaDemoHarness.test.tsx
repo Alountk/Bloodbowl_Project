@@ -194,6 +194,25 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(fresh.textContent).toContain("Aún no hay nada confirmado.");
   });
 
+  it("the pre-match wizard modal scrolls on its own", () => {
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("Restablecer"));
+    const dialog = screen.getByRole("dialog", { name: "Antes del partido" });
+    // Fixed frame with a max height + a scrollable body: long steps (the
+    // inducement table) scroll INSIDE the modal, never the page behind it.
+    expect(dialog.className).toMatch(/max-h-/);
+    expect(dialog.querySelector(".overflow-y-auto")).toBeTruthy();
+  });
+
+  it("the dock action bar shows only when the match has really started", () => {
+    render(<ActaDemoHarness />);
+    // The fixture narrative is a match underway → the capture actions are there.
+    expect(screen.getByTestId("acta-capture-grid")).toBeTruthy();
+    fireEvent.click(demoButton("Restablecer"));
+    // A fresh match (pre-match pending) shows no in-game actions yet.
+    expect(screen.queryByTestId("acta-capture-grid")).toBeNull();
+  });
+
   it("mid-match preset chips keep their direct jump (no wizard modal)", () => {
     render(<ActaDemoHarness />);
     fireEvent.click(demoButton("2T · turno 5"));

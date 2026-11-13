@@ -5,6 +5,8 @@ import { weatherFromRoll } from "@/lib/rules/weather";
 import {
   actaDemoReducer,
   demoState,
+  preMatchComplete,
+  type ActaDemoPreMatch,
   type ActaDemoState,
 } from "./actaDemoReducer";
 import type { PreMatchCommit } from "./actaPreMatchWizard";
@@ -81,5 +83,38 @@ describe("commitPreMatch — per-side capture (S2c)", () => {
     next = run({ step: "kickTie" }, next);
     expect(next.preMatch?.kickDice).toMatchObject({ home: null, away: null });
     expect(next.preMatch?.kicking).toBeNull();
+  });
+});
+
+describe("preMatchComplete — the match really starts only when every mark is captured", () => {
+  const full: ActaDemoPreMatch = {
+    fans: {
+      home: { base: 4, dice: 2, total: 6 },
+      away: { base: 3, dice: 1, total: 4 },
+    },
+    weatherDice: { home: 3, away: 5 },
+    kickDice: { home: 6, away: 2 },
+    inducementsDone: { home: true, away: true },
+    kicking: "home",
+  };
+
+  it("is true only when BOTH sides hold every mark; any single miss is incomplete", () => {
+    expect(preMatchComplete(full)).toBe(true);
+    // null is never complete.
+    expect(preMatchComplete(null)).toBe(false);
+    // Each single missing mark is enough to keep the match unstarted.
+    expect(preMatchComplete({ ...full, kicking: null })).toBe(false);
+    expect(
+      preMatchComplete({ ...full, inducementsDone: { home: true, away: false } }),
+    ).toBe(false);
+    expect(preMatchComplete({ ...full, kickDice: { home: 6, away: null } })).toBe(
+      false,
+    );
+    expect(
+      preMatchComplete({ ...full, weatherDice: { home: null, away: 5 } }),
+    ).toBe(false);
+    expect(
+      preMatchComplete({ ...full, fans: { home: null, away: full.fans.away } }),
+    ).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import type { LiveCommand, LiveMatchEventDto } from "./api";
 import {
   actaDemoReducer,
   demoState,
+  preMatchComplete,
   type ActaDemoPreMatch,
   type ActaDemoState,
   type DemoScenario,
@@ -47,7 +48,7 @@ export function ActaFlow({
   preMatchOpen = false,
   onPreMatchOpenChange = () => undefined,
 }: {
-  state: ReturnType<typeof liveState>;
+  state: ReturnType<typeof liveState> & { matchStarted?: boolean };
   nowMin?: number;
   closureOpen?: boolean;
   /** Demo hook: overrides the fixture's events (the interactive harness). */
@@ -69,6 +70,12 @@ export function ActaFlow({
   });
   const now = state.startedAt != null ? state.startedAt + nowMin * MIN : 0;
   const finished = state.status === "finished";
+  // S6: the in-game capture bar renders only when the match has really
+  // started. Fixture presets (and old saved states without the flag) are
+  // matches underway; a fresh pre-match hides the bar until every mark of
+  // the «Antes del partido» sequence is captured on BOTH sides.
+  const matchStarted =
+    (state.matchStarted ?? true) || preMatchComplete(preMatch);
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
 
   return (
@@ -177,6 +184,7 @@ export function ActaFlow({
             </div>
             <LiveActionDock
               variant="acta"
+              matchStarted={matchStarted}
               viewerSide={state.viewerSide}
               activeSide={state.activeSide}
               status={state.status}
