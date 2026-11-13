@@ -156,6 +156,36 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
   });
 
+  it("Restablecer (and the Inicio preset) opens the pre-match wizard modal", () => {
+    render(<ActaDemoHarness />);
+    expect(
+      screen.queryByRole("dialog", { name: "Antes del partido" }),
+    ).toBeNull();
+
+    fireEvent.click(demoButton("Restablecer"));
+    expect(
+      screen.getByRole("dialog", { name: "Antes del partido" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    expect(
+      screen.queryByRole("dialog", { name: "Antes del partido" }),
+    ).toBeNull();
+
+    fireEvent.click(demoButton("Inicio"));
+    expect(
+      screen.getByRole("dialog", { name: "Antes del partido" }),
+    ).toBeTruthy();
+  });
+
+  it("mid-match preset chips keep their direct jump (no wizard modal)", () => {
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("2T · turno 5"));
+    expect(
+      screen.queryByRole("dialog", { name: "Antes del partido" }),
+    ).toBeNull();
+    expect(screen.getByText(/TURNO 5 EN JUEGO/)).toBeTruthy();
+  });
+
   it("turn accents and stepper pills tint by team color in the demo flow (S3)", () => {
     const { container } = render(<ActaDemoHarness />);
     fireEvent.click(demoButton("1T · turno 3"));

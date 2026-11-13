@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 import type { LiveCommand, LiveMatchEventDto } from "./api";
 import {
@@ -44,6 +44,8 @@ export function ActaFlow({
   onSubmit = () => undefined,
   onCommitPreMatch = () => undefined,
   preMatch = null,
+  preMatchOpen = false,
+  onPreMatchOpenChange = () => undefined,
 }: {
   state: ReturnType<typeof liveState>;
   nowMin?: number;
@@ -56,6 +58,9 @@ export function ActaFlow({
   onCommitPreMatch?: (commit: PreMatchCommit) => void;
   /** Fase 1 capture marks (S5). Default: none. */
   preMatch?: ActaDemoPreMatch | null;
+  /** Controlled «Antes del partido» wizard modal (demo reset opens it). */
+  preMatchOpen?: boolean;
+  onPreMatchOpenChange?: (open: boolean) => void;
 }) {
   const fixture = matchDetail();
   const events = eventsOverride ?? fixture.live?.events ?? [];
@@ -102,6 +107,8 @@ export function ActaFlow({
           homeBase={DEMO_FAN_BASES.home}
           awayBase={DEMO_FAN_BASES.away}
           viewerSide={state.viewerSide ?? "home"}
+          open={preMatchOpen}
+          onOpenChange={onPreMatchOpenChange}
           snapshot={{
             fans: {
               home: fanFactorOf(events, "home"),
@@ -242,6 +249,7 @@ export function ActaDemoHarness({
   label?: string;
 }) {
   const [state, dispatch] = useReducer(actaDemoReducer, demoState("inicio"));
+  const [preMatchOpen, setPreMatchOpen] = useState(false);
   const detail = matchDetail();
 
   // Pristine first-render state: the persistence effect below never rewrites
@@ -400,7 +408,10 @@ export function ActaDemoHarness({
               key={s.key}
               type="button"
               className={buttonClass}
-              onClick={() => dispatch({ type: "reset", scenario: s.key })}
+              onClick={() => {
+                dispatch({ type: "reset", scenario: s.key });
+                setPreMatchOpen(s.key === "inicio");
+              }}
             >
               {s.label}
             </button>
@@ -443,7 +454,10 @@ export function ActaDemoHarness({
           <button
             type="button"
             className={buttonClass}
-            onClick={() => dispatch({ type: "reset", scenario: "inicio" })}
+            onClick={() => {
+              dispatch({ type: "reset", scenario: "inicio" });
+              setPreMatchOpen(true);
+            }}
           >
             Restablecer
           </button>
@@ -465,6 +479,8 @@ export function ActaDemoHarness({
         ) : null}
       </div>
       <ActaFlow
+        preMatchOpen={preMatchOpen}
+        onPreMatchOpenChange={setPreMatchOpen}
         state={state}
         events={state.events}
         nowMin={state.status === "finished" ? 92 : 58}

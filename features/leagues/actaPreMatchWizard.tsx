@@ -796,8 +796,21 @@ export function ActaPreMatchReport({
 }
 
 /** The acta's opening section: trigger + derived report + the wizard modal. */
-export function ActaPreMatchSection(props: ActaPreMatchCaptureProps) {
-  const [open, setOpen] = useState(false);
+export interface ActaPreMatchSectionProps extends ActaPreMatchCaptureProps {
+  /** Controlled modal state; uncontrolled (closed) when omitted. */
+  open?: boolean;
+  /** Called whenever the modal wants to open/close (controlled mode). */
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function ActaPreMatchSection(props: ActaPreMatchSectionProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const controlled = props.open !== undefined;
+  const open = props.open ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (!controlled) setInternalOpen(next);
+    props.onOpenChange?.(next);
+  };
   const { snapshot, viewerSide } = props;
   const hasCapture =
     snapshot.fans[viewerSide] != null ||
