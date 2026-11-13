@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  ActaPreMatchSection,
   ActaPreMatchWizard,
   type ActaPreMatchSnapshot,
 } from "./actaPreMatchWizard";
@@ -245,5 +246,51 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
     fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(onFinish).not.toHaveBeenCalled();
+  });
+});
+
+/** Both sides complete with a DECIDED toss (6–2, the winner sends the rival
+ * to kick) — the state the mocked demo dice can never reach on their own. */
+function completeSnapshot(): ActaPreMatchSnapshot {
+  return {
+    fans: {
+      home: { base: 4, dice: 2, total: 6 },
+      away: { base: 3, dice: 1, total: 4 },
+    },
+    weather: { roll: 8, value: "perfect" },
+    weatherDice: { home: 5, away: 3 },
+    inducements: {
+      home: [{ id: "bribes", count: 1 }],
+      away: [{ id: "weather-mage", count: 1 }],
+    },
+    inducementsDone: { home: true, away: true },
+    kickDice: { home: 6, away: 2 },
+    kicking: "away",
+  };
+}
+
+describe("ActaPreMatchSection — S7 derived states (derived only, no new flags)", () => {
+  it("both complete + decided toss: ONE grouped display with every phase, the winner and who kicks — and no edit trigger", () => {
+    render(
+      <ActaPreMatchSection
+        homeName={HOME}
+        awayName={AWAY}
+        homeBase={4}
+        awayBase={3}
+        viewerSide="home"
+        snapshot={completeSnapshot()}
+        onCommit={() => undefined}
+      />,
+    );
+    const summary = screen.getByRole("region", { name: "Lo que ha sucedido" });
+    for (const phase of ["Afición", "Clima", "Incentivos", "Sorteo"]) {
+      expect(summary.textContent).toMatch(new RegExp(phase));
+    }
+    expect(summary.textContent).toMatch(/gana Águilas de Khemri/);
+    expect(summary.textContent).toMatch(/Patea: Colmillos del Caos/);
+    // S7.3: no trigger once my sequence is complete.
+    expect(
+      screen.queryByRole("button", { name: /secuencia pre-partido/ }),
+    ).toBeNull();
   });
 });

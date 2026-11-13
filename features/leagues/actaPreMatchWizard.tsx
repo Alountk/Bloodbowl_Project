@@ -9,6 +9,7 @@ import {
 import { weatherFromRoll } from "@/lib/rules/weather";
 
 import type { FanFactorLine } from "./actaPreMatch";
+import { sideCompleteOf } from "./actaDemoReducer";
 import { formatMo } from "./actaSheetHeader";
 
 export interface PreMatchWeather {
@@ -736,7 +737,152 @@ export function ActaPreMatchReport({
   );
 }
 
-/** The acta's opening section: trigger + derived report + the wizard modal. */
+/**
+ * S7.5 — the FINAL grouped display («Tourplay»-style): once BOTH coaches
+ * finished their sequence, every pre-match roll is bundled in ONE compact
+ * block that groups the four phases with both teams side by side («mostraremos
+ * por pantalla todas las tiradas englobadas como hace tourplay»).
+ */
+export function ActaPreMatchSummary({
+  homeName,
+  awayName,
+  snapshot,
+}: {
+  homeName: string;
+  awayName: string;
+  snapshot: ActaPreMatchSnapshot;
+}) {
+  const nameOf = (side: Side) => (side === "home" ? homeName : awayName);
+  const fanCell = (side: Side) => {
+    const fan = snapshot.fans[side];
+    return fan == null ? "—" : `${fan.base} + 🎲${fan.dice} = ${fan.total}`;
+  };
+  const cartLines = (side: Side) => {
+    const items = snapshot.inducements[side];
+    if (items.length === 0) return ["Ninguno"];
+    return items.map((item) => {
+      const entry = listInducements().find((e) => e.id === item.id);
+      return entry == null
+        ? `${item.id} ×${item.count}`
+        : `${entry.displayName} ×${item.count} — ${formatMo(entry.price)} M.O.`;
+    });
+  };
+  const kickBoth =
+    snapshot.kickDice.home != null && snapshot.kickDice.away != null;
+  const kickTie =
+    kickBoth && snapshot.kickDice.home === snapshot.kickDice.away;
+  const kickWinner: Side | null =
+    kickBoth && !kickTie
+      ? snapshot.kickDice.home! > snapshot.kickDice.away!
+        ? "home"
+        : "away"
+      : null;
+  return (
+    <div
+      role="region"
+      aria-label="Lo que ha sucedido"
+      className="mt-4 border-t border-navy/15 pt-3"
+    >
+      <h3 className="font-semibold text-navy">Lo que ha sucedido</h3>
+      <table
+        aria-label="Resumen pre-partido"
+        className="mt-2 w-full border-collapse text-left text-xs text-ink"
+      >
+        <thead>
+          <tr className="border-b border-navy/20 font-display uppercase tracking-wide text-navy">
+            <th className="py-1 pr-2 font-bold">Fase</th>
+            <th className="py-1 pr-2 font-bold">{homeName}</th>
+            <th className="py-1 font-bold">{awayName}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="border-b border-navy/10">
+            <th
+              scope="row"
+              className="py-1 pr-2 font-display font-bold text-navy"
+            >
+              Afición
+            </th>
+            <td className="py-1 pr-2">{fanCell("home")}</td>
+            <td className="py-1">{fanCell("away")}</td>
+          </tr>
+          <tr className="border-b border-navy/10">
+            <th
+              scope="row"
+              className="py-1 pr-2 font-display font-bold text-navy"
+            >
+              Clima
+            </th>
+            <td className="py-1" colSpan={2}>
+              {snapshot.weather == null
+                ? "—"
+                : `2D6 = ${snapshot.weather.roll} · ${
+                    weatherFromRoll(snapshot.weather.roll).label
+                  }`}
+            </td>
+          </tr>
+          <tr className="border-b border-navy/10">
+            <th
+              scope="row"
+              className="py-1 pr-2 font-display font-bold text-navy"
+            >
+              Incentivos
+            </th>
+            <td className="py-1 pr-2">
+              {cartLines("home").map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </td>
+            <td className="py-1">
+              {cartLines("away").map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </td>
+          </tr>
+          <tr className="border-b border-navy/10">
+            <td className="py-1 text-xs text-ink/70" colSpan={3}>
+              Caja menor: diferencia de VAE + gasto rival en incentivos (máx.
+              +50.000 M.O. de tesorería).
+            </td>
+          </tr>
+          <tr>
+            <th
+              scope="row"
+              className="py-1 pr-2 font-display font-bold text-navy"
+            >
+              Sorteo
+            </th>
+            <td className="py-1 pr-2">🎲{snapshot.kickDice.home ?? "—"}</td>
+            <td className="py-1">🎲{snapshot.kickDice.away ?? "—"}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="mt-2 text-sm font-semibold text-navy">
+        Sorteo: 🎲{snapshot.kickDice.home ?? "?"} vs 🎲
+        {snapshot.kickDice.away ?? "?"} —{" "}
+        {kickTie
+          ? "empate (repetir tirada)"
+          : kickWinner != null
+            ? `gana ${nameOf(kickWinner)}`
+            : "pendiente"}
+      </p>
+      {snapshot.kicking != null ? (
+        <p className="text-sm font-semibold text-navy">
+          Patea: {nameOf(snapshot.kicking)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The acta's opening section — THREE states derived from the capture itself
+ * (S7.3–S7.5, no new state flags; `sideCompleteOf` is the only gate):
+ * - `!mine` — the current report + «Completar/Editar» trigger (wizard modal).
+ * - `mine && !theirs` (S7.4) — «Esperando al contrincante…»; my finished
+ *   sequence is CLOSED (S7.3: no edit trigger).
+ * - `mine && theirs` (S7.5) — the final grouped display; no edit trigger.
+ */
 export interface ActaPreMatchSectionProps extends ActaPreMatchCaptureProps {
   /** Controlled modal state; uncontrolled (closed) when omitted. */
   open?: boolean;
@@ -753,6 +899,11 @@ export function ActaPreMatchSection(props: ActaPreMatchSectionProps) {
     props.onOpenChange?.(next);
   };
   const { snapshot, viewerSide } = props;
+  const rivalSide: Side = viewerSide === "home" ? "away" : "home";
+  const nameOf = (side: Side) =>
+    side === "home" ? props.homeName : props.awayName;
+  const mine = sideCompleteOf(snapshot, viewerSide);
+  const theirs = sideCompleteOf(snapshot, rivalSide);
   const hasCapture =
     snapshot.fans[viewerSide] != null ||
     snapshot.weatherDice[viewerSide] != null ||
@@ -765,23 +916,50 @@ export function ActaPreMatchSection(props: ActaPreMatchSectionProps) {
       className="mt-4 border border-navy/20 bg-white p-4"
     >
       <h2 className="text-lg font-bold text-navy">Antes del partido</h2>
-      <p className="text-sm text-navy">
-        Solo rellenas tu parte; el acta informa de lo que ha sucedido.
-      </p>
-      <button
-        type="button"
-        className="mt-2 rounded-sm bg-navy px-4 py-2 font-display text-xs font-bold uppercase tracking-wide text-white hover:bg-navy-hover"
-        onClick={() => setOpen(true)}
-      >
-        {hasCapture
-          ? "Editar secuencia pre-partido"
-          : "Completar secuencia pre-partido"}
-      </button>
-      <ActaPreMatchReport
-        homeName={props.homeName}
-        awayName={props.awayName}
-        snapshot={snapshot}
-      />
+      {!mine ? (
+        <>
+          <p className="text-sm text-navy">
+            Solo rellenas tu parte; el acta informa de lo que ha sucedido.
+          </p>
+          <button
+            type="button"
+            className="mt-2 rounded-sm bg-navy px-4 py-2 font-display text-xs font-bold uppercase tracking-wide text-white hover:bg-navy-hover"
+            onClick={() => setOpen(true)}
+          >
+            {hasCapture
+              ? "Editar secuencia pre-partido"
+              : "Completar secuencia pre-partido"}
+          </button>
+          <ActaPreMatchReport
+            homeName={props.homeName}
+            awayName={props.awayName}
+            snapshot={snapshot}
+          />
+        </>
+      ) : !theirs ? (
+        /* S7.4 — my sequence is finished and closed (S7.3): wait for the rival. */
+        <div role="status" className="mt-3 border border-navy/20 px-4 py-6">
+          <p className="font-display text-xl font-bold uppercase tracking-[0.16em] text-red">
+            Esperando al contrincante…
+          </p>
+          <p className="mt-3 text-sm text-ink">Contrincante: {nameOf(rivalSide)}</p>
+          <p className="mt-1 text-sm text-ink">
+            Su secuencia pre-partido todavía no está completa.
+          </p>
+        </div>
+      ) : (
+        /* S7.5 — both finished: every roll bundled Tourplay-style. */
+        <ActaPreMatchSummary
+          homeName={props.homeName}
+          awayName={props.awayName}
+          snapshot={snapshot}
+        />
+      )}
+      {/* The wizard modal renders nothing while closed. It stays mounted in
+          every state so the coach can still press «Finalizar» after the last
+          die completes their side (the trigger is already gone by then). It
+          can only OPEN via the trigger above — so a finished sequence can
+          never be edited (S7.3). */}
       <ActaPreMatchWizard
         {...props}
         open={open}

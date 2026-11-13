@@ -29,6 +29,27 @@ const openWizard = () =>
     within(ante()).getByRole("button", { name: /secuencia pre-partido/ }),
   );
 
+/** Fresh pre-match (Restablecer wipes the capture): the wizard reopens at
+ * Paso 1 for my side. */
+const freshSequence = () => {
+  fireEvent.click(screen.getByRole("button", { name: "Restablecer" }));
+  fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+  openWizard();
+};
+
+/** The four wizard steps as ONE coach (dice mocked: 1D3→2, 1D6→5). */
+const walkSequence = () => {
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar a Incentivos" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Avanzar al Equipo pateador" }),
+  );
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+  fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+};
+
 describe("ActaDemoHarness — Antes del partido (S6 · modal wizard)", () => {
   it("the acta section reports what happened; the four steps live in the modal wizard", () => {
     render(<ActaDemoHarness />);
@@ -129,5 +150,72 @@ describe("ActaDemoHarness — Antes del partido (S6 · modal wizard)", () => {
       name: "Lo que ha sucedido",
     });
     expect(report.textContent).toContain("4 + 🎲2 = 6");
+  });
+});
+
+describe("ActaDemoHarness — S7.3–S7.5 · cierre del flujo pre-partido", () => {
+  it("S7.3/S7.4: after Finalizar my sequence is closed — the waiting screen shows the rival and NO edit trigger", () => {
+    render(<ActaDemoHarness />);
+    freshSequence();
+    walkSequence();
+    const wait = within(ante());
+    expect(wait.getByText(/Esperando al contrincante/)).toBeTruthy();
+    expect(wait.getByText(/Colmillos del Caos/)).toBeTruthy();
+    expect(
+      wait.getByText(/Su secuencia pre-partido todavía no está completa/),
+    ).toBeTruthy();
+    // S7.3: a finished sequence cannot be edited — the trigger is gone.
+    expect(
+      wait.queryByRole("button", { name: /secuencia pre-partido/ }),
+    ).toBeNull();
+  });
+
+  it("S7.5: once BOTH coaches finish, one grouped display shows the four phases for both teams and NO edit trigger", () => {
+    render(<ActaDemoHarness />);
+    freshSequence();
+    walkSequence(); // home done → the waiting screen is up.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    openWizard();
+    walkSequence(); // away done → the grouped final display.
+    expect(screen.queryByText(/Esperando al contrincante/)).toBeNull();
+    const summary = within(ante()).getByRole("region", {
+      name: "Lo que ha sucedido",
+    });
+    for (const phase of ["Afición", "Clima", "Incentivos", "Sorteo"]) {
+      expect(summary.textContent).toMatch(new RegExp(phase));
+    }
+    // Both teams side by side, with their actual rolls.
+    expect(summary.textContent).toContain("Águilas de Khemri");
+    expect(summary.textContent).toContain("Colmillos del Caos");
+    expect(summary.textContent).toContain("4 + 🎲2 = 6");
+    expect(summary.textContent).toContain("3 + 🎲2 = 5");
+    expect(summary.textContent).toContain("2D6 = 10");
+    // The opposed kick dice tie under the mocked dice (5 vs 5).
+    expect(summary.textContent).toMatch(/empate/);
+    // S7.3: still no way back into the wizard.
+    expect(
+      within(ante()).queryByRole("button", { name: /secuencia pre-partido/ }),
+    ).toBeNull();
+  });
+
+  it("an incomplete side keeps the current report + «Completar/Editar» trigger", () => {
+    render(<ActaDemoHarness />);
+    // The fixture narrative is mid-capture (!mine) → «Editar» label.
+    expect(
+      within(ante()).getByRole("button", {
+        name: "Editar secuencia pre-partido",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(ante()).getByRole("region", { name: "Lo que ha sucedido" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restablecer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    // A fresh match (!mine) → «Completar» label.
+    expect(
+      within(ante()).getByRole("button", {
+        name: "Completar secuencia pre-partido",
+      }),
+    ).toBeTruthy();
   });
 });

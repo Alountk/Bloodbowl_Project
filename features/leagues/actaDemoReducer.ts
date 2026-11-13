@@ -240,6 +240,37 @@ export function preMatchComplete(preMatch: ActaDemoPreMatch | null): boolean {
   );
 }
 
+/**
+ * True when ONE side holds every pre-match mark (S7.3/S7.4): its fan line,
+ * weather die, inducement confirmation and kick die — plus the kicking
+ * decision, but only once the toss is decided FOR THIS SIDE (both kick dice
+ * in, no tie, this side won). The loser never waits on the winner's decision
+ * and a tied/undecided toss needs no `kicking` yet. A null capture is never
+ * complete. This is the ONLY gate behind the closed sequence («una vez
+ * rellenado todo y le demos a finalizar ya no podremos editar») and the
+ * «Esperando al contrincante…» screen — no extra state flags.
+ */
+export function sideCompleteOf(
+  preMatch: ActaDemoPreMatch | null,
+  side: "home" | "away",
+): boolean {
+  if (preMatch == null) return false;
+  if (
+    preMatch.fans[side] == null ||
+    preMatch.weatherDice[side] == null ||
+    !preMatch.inducementsDone[side] ||
+    preMatch.kickDice[side] == null
+  ) {
+    return false;
+  }
+  const home = preMatch.kickDice.home;
+  const away = preMatch.kickDice.away;
+  // Toss undecided (a die missing or a tie): no kicking decision owed yet.
+  if (home == null || away == null || home === away) return true;
+  const winner = home > away ? "home" : "away";
+  return winner !== side || preMatch.kicking != null;
+}
+
 function asSide(value: unknown): "home" | "away" | null {
   if (value === "home") return "home";
   if (value === "away") return "away";
