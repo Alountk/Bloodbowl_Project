@@ -140,7 +140,9 @@ export function ActaFlow({
           }}
           onCommit={onCommitPreMatch}
         />
-        <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
+        {matchStarted ? (
+          <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
+        ) : null}
         {matchStarted && events.length > 0 ? (
           <div className="bg-background">
             <ActaTurnTimeline
@@ -173,12 +175,22 @@ export function ActaFlow({
               <div className="flex flex-wrap gap-3">
                 {state.viewerSide !== null &&
                 state.viewerSide !== state.activeSide ? (
-                  <button
-                    type="button"
-                    className="rounded-md border border-navy px-4 py-2 text-sm font-semibold text-navy hover:bg-background"
-                  >
-                    Solicitar turno
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      data-deprecated="true"
+                      title="No aplica cara a cara: los dos jugadores comparten mesa."
+                      className="rounded-md border border-navy px-4 py-2 text-sm font-semibold text-navy opacity-60 hover:bg-background"
+                    >
+                      <span className="line-through">Solicitar turno</span>
+                    </button>
+                    <span className="inline-flex items-center rounded-full bg-navy/10 px-2 py-1 text-xs font-semibold text-navy">
+                      Deprecado
+                    </span>
+                    <span className="self-center text-xs text-navy/70">
+                      No aplica cara a cara: los dos jugadores comparten mesa.
+                    </span>
+                  </>
                 ) : null}
               </div>
             </div>

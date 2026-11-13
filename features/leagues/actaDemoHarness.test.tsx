@@ -214,6 +214,25 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.queryByTestId("acta-turn-timeline")).toBeNull();
   });
 
+  it("the «Partido» heading shows only when the match has really started", () => {
+    render(<ActaDemoHarness />);
+    expect(screen.queryByRole("heading", { name: "Partido", level: 2 })).toBeTruthy();
+    fireEvent.click(demoButton("Restablecer"));
+    // A fresh match (pre-match pending) shows no «Partido» section title yet.
+    expect(screen.queryByRole("heading", { name: "Partido", level: 2 })).toBeNull();
+  });
+
+  it("the «Solicitar turno» button is visibly marked as deprecated (face-to-face play)", () => {
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("1T · turno 3"));
+    fireEvent.click(perspective("Colmillos del Caos"));
+    const button = screen.getByRole("button", { name: "Solicitar turno" });
+    // Deprecated: the button itself is flagged and the UI says why, visibly.
+    expect(button.getAttribute("data-deprecated")).toBe("true");
+    expect(screen.getByText("Deprecado")).toBeTruthy();
+    expect(screen.getByText(/no aplica.*cara a cara/i)).toBeTruthy();
+  });
+
   it("the dock action bar shows only when the match has really started", () => {
     render(<ActaDemoHarness />);
     // The fixture narrative is a match underway → the capture actions are there.
