@@ -66,8 +66,9 @@ export interface ActaPreMatchCaptureProps {
  * pasos»); the automatic roll is a DICE BUTTON — clicking it rolls and
  * records the result directly («si le dan hara una tirada automatica y la
  * apuntara directamente, en vez de tener lo que tenemos ahora»), replacing
- * the Manual/Auto toggle; the manual field stays as the quiet physical-die
- * override; after the LAST step the modal closes and everything derives into
+ * the Manual/Auto toggle; the die button is the ONLY entry for rolls — there
+ * is no manual field (S7.2); after the LAST step the modal closes and
+ * everything derives into
  * the acta («todo saldra como debiera (en la informacion de arriba y
  * abajo)»). Capture stays PER SIDE (S2c): the coach records only their own
  * rolls; the rival appears read-only, confirmed facts only.
@@ -95,14 +96,6 @@ const BTN =
   "rounded-sm border border-navy/30 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-navy hover:bg-fill-hover disabled:cursor-not-allowed disabled:opacity-40";
 const PRIMARY =
   "rounded-sm bg-navy px-4 py-2 font-display text-xs font-bold uppercase tracking-wide text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-40";
-const INPUT =
-  "w-20 rounded-sm border border-navy/30 bg-white px-2 py-1 text-sm text-ink";
-
-function clampDie(raw: string, max: number): number | null {
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(1, parsed)) : null;
-}
-
 /** Official BB2025 weather table (digest §B); the resolved row is marked. */
 function WeatherTable({ sum }: { sum: number | null }) {
   const rows: [string, string, string][] = [
@@ -145,16 +138,12 @@ function WeatherTable({ sum }: { sum: number | null }) {
   );
 }
 
-/** Editorial die card: face + dice BUTTON (roll records directly) + quiet manual override. */
+/** Editorial die card: face + dice BUTTON (roll records directly) with the roll animation. */
 function DieCard({
   teamLabel,
   value,
   dieLabel,
   recorded,
-  manualLabel,
-  max,
-  manual,
-  onManual,
   onRoll,
   totalLine,
   rivalLine,
@@ -163,14 +152,12 @@ function DieCard({
   value: number | null;
   dieLabel: string;
   recorded: boolean;
-  manualLabel: string;
-  max: number;
-  manual: number | null;
-  onManual: (value: number | null) => void;
   onRoll: () => void;
   totalLine: ReactNode;
   rivalLine: ReactNode;
 }) {
+  const [rollSeq, setRollSeq] = useState(0);
+  const rolled = rollSeq > 0;
   return (
     <div className="mt-3 border border-navy/15 bg-white px-4 py-3">
       <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-navy">
@@ -178,38 +165,38 @@ function DieCard({
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <span
+          key={`glyph-${rollSeq}`}
           aria-hidden="true"
-          className="flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy"
+          data-testid="die-glyph"
+          className={`flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy${
+            rolled ? " dice-roll" : ""
+          }`}
         >
           {value ?? "–"}
         </span>
-        <button type="button" className={BTN} onClick={onRoll}>
+        <button
+          type="button"
+          className={BTN}
+          onClick={() => {
+            setRollSeq((seq) => seq + 1);
+            onRoll();
+          }}
+        >
           {dieLabel}
         </button>
         <span
+          key={`status-${rollSeq}`}
           role="status"
-          className={
+          className={`${
             recorded
               ? "font-display text-xs font-bold uppercase tracking-wide text-red"
               : "font-display text-xs font-bold uppercase tracking-wide text-ink/60"
-          }
+          }${rolled ? " dice-reveal" : ""}`}
         >
           {recorded ? "Registrado" : "Pendiente"}
         </span>
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <label className="flex items-center gap-2 text-xs text-ink">
-          Manual
-          <input
-            type="number"
-            min={1}
-            max={max}
-            aria-label={manualLabel}
-            value={manual ?? ""}
-            onChange={(event) => onManual(clampDie(event.target.value, max))}
-            className={INPUT}
-          />
-        </label>
         <p className="text-sm text-navy">{totalLine}</p>
       </div>
       {rivalLine}
@@ -241,11 +228,8 @@ export function ActaPreMatchWizard({
 
   const [lastOpen, setLastOpen] = useState(open);
   const [stepIndex, setStepIndex] = useState(firstPending);
-  const [fanDraft, setFanDraft] = useState<number | null>(null);
   const [fanRecorded, setFanRecorded] = useState<number | null>(null);
-  const [weatherDraft, setWeatherDraft] = useState<number | null>(null);
   const [weatherRecorded, setWeatherRecorded] = useState<number | null>(null);
-  const [kickDraft, setKickDraft] = useState<number | null>(null);
   const [kickRecorded, setKickRecorded] = useState<number | null>(null);
   const [kickChoice, setKickChoice] = useState<Side | null>(null);
   const [cart, setCart] = useState<PersistedInducements>(() => ({
@@ -263,11 +247,8 @@ export function ActaPreMatchWizard({
     setLastOpen(open);
     if (open) {
       setStepIndex(firstPending);
-      setFanDraft(null);
       setFanRecorded(null);
-      setWeatherDraft(null);
       setWeatherRecorded(null);
-      setKickDraft(null);
       setKickRecorded(null);
       setKickChoice(null);
       setCart({
@@ -277,15 +258,14 @@ export function ActaPreMatchWizard({
     }
   }
 
-  const shownFan = fanDraft ?? fanRecorded ?? snapshot.fans[viewerSide]?.dice ?? null;
-  const shownWeather =
-    weatherDraft ?? weatherRecorded ?? snapshot.weatherDice[viewerSide];
+  const shownFan = fanRecorded ?? snapshot.fans[viewerSide]?.dice ?? null;
+  const shownWeather = weatherRecorded ?? snapshot.weatherDice[viewerSide];
   const rivalWeatherDie = snapshot.weatherDice[rivalSide];
   const weatherSum =
     shownWeather != null && rivalWeatherDie != null
       ? shownWeather + rivalWeatherDie
       : null;
-  const shownKick = kickDraft ?? kickRecorded ?? snapshot.kickDice[viewerSide];
+  const shownKick = kickRecorded ?? snapshot.kickDice[viewerSide];
   const kickBoth =
     snapshot.kickDice.home != null && snapshot.kickDice.away != null;
   const kickTie =
@@ -317,24 +297,6 @@ export function ActaPreMatchWizard({
   };
 
   const advance = () => {
-    if (stepIndex === 0 && fanDraft != null) {
-      onCommit({
-        step: "fanRoll",
-        side: viewerSide,
-        line: {
-          base: baseOf(viewerSide),
-          dice: fanDraft,
-          total: baseOf(viewerSide) + fanDraft,
-        },
-      });
-      setFanRecorded(fanDraft);
-      setFanDraft(null);
-    }
-    if (stepIndex === 1 && weatherDraft != null) {
-      onCommit({ step: "weatherRoll", side: viewerSide, die: weatherDraft });
-      setWeatherRecorded(weatherDraft);
-      setWeatherDraft(null);
-    }
     if (stepIndex === 2) {
       onCommit({
         step: "inducements",
@@ -343,11 +305,6 @@ export function ActaPreMatchWizard({
       });
     }
     if (stepIndex === STEPS.length - 1) {
-      if (kickDraft != null) {
-        onCommit({ step: "kickRoll", side: viewerSide, die: kickDraft });
-        setKickRecorded(kickDraft);
-        setKickDraft(null);
-      }
       if (kickChoice != null && kickWinner === viewerSide && snapshot.kicking == null) {
         onCommit({ step: "kicking", kicking: kickChoice });
       }
@@ -439,14 +396,9 @@ export function ActaPreMatchWizard({
               value={shownFan}
               dieLabel="Tirar 1D3"
               recorded={recordedFan}
-              manualLabel="Manual 1D3 afición"
-              max={3}
-              manual={fanDraft}
-              onManual={setFanDraft}
               onRoll={() => {
                 const value = dice.d3();
                 setFanRecorded(value);
-                setFanDraft(null);
                 onCommit({
                   step: "fanRoll",
                   side: viewerSide,
@@ -478,14 +430,9 @@ export function ActaPreMatchWizard({
                 value={shownWeather}
                 dieLabel="Tirar 1D6"
                 recorded={recordedWeather}
-                manualLabel="Manual 1D6 clima"
-                max={6}
-                manual={weatherDraft}
-                onManual={setWeatherDraft}
                 onRoll={() => {
                   const value = dice.d6();
                   setWeatherRecorded(value);
-                  setWeatherDraft(null);
                   onCommit({ step: "weatherRoll", side: viewerSide, die: value });
                 }}
                 totalLine={
@@ -600,14 +547,9 @@ export function ActaPreMatchWizard({
               value={shownKick}
               dieLabel="Tirar 1D6"
               recorded={recordedKick}
-              manualLabel="Manual 1D6 pateador"
-              max={6}
-              manual={kickDraft}
-              onManual={setKickDraft}
               onRoll={() => {
                 const value = dice.d6();
                 setKickRecorded(value);
-                setKickDraft(null);
                 onCommit({ step: "kickRoll", side: viewerSide, die: value });
               }}
               totalLine={
@@ -633,7 +575,6 @@ export function ActaPreMatchWizard({
               type="button"
               className={`${BTN} mt-3`}
               onClick={() => {
-                setKickDraft(null);
                 setKickRecorded(null);
                 setKickChoice(null);
                 onCommit({ step: "kickTie" });

@@ -130,20 +130,20 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
-  it("manual entry is recorded on advance and moves to the next step", () => {
-    const { onCommit } = renderWizard();
-    fireEvent.change(
-      screen.getByRole("spinbutton", { name: "Manual 1D3 afición" }),
-      { target: { value: "3" } },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
-    expect(onCommit).toHaveBeenCalledWith({
-      step: "fanRoll",
-      side: "home",
-      line: { base: 4, dice: 3, total: 7 },
-    });
-    expect(step(2, "El Clima")).toBeTruthy();
-    expect(screen.queryByRole("group", { name: "Paso 1 · Los Hinchas" })).toBeNull();
+  it("the die button is the only way to enter a roll (no manual field)", () => {
+    renderWizard();
+    // S7.2: rolls are automatic — the die button is the ONLY entry point.
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(screen.queryByText("Manual")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^Tirar / })).toHaveLength(1);
+  });
+
+  it("clicking the die plays the roll animation and reveals the result", () => {
+    renderWizard();
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D3" }));
+    // The die glyph spins on roll; the recorded result is revealed after it.
+    expect(screen.getByTestId("die-glyph").className).toMatch(/dice-roll/);
+    expect(screen.getByRole("status").className).toMatch(/dice-reveal/);
   });
 
   it("Atrás returns to the previous step without recording anything", () => {
@@ -156,7 +156,7 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
 
   it("capture stays per side: my single die control, no rival controls", () => {
     renderWizard();
-    expect(screen.getAllByRole("spinbutton")).toHaveLength(1);
+    expect(screen.queryAllByRole("spinbutton")).toHaveLength(0);
     expect(screen.getAllByRole("button", { name: /^Tirar / })).toHaveLength(1);
   });
 
@@ -164,15 +164,12 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
     const snapshot = emptySnapshot();
     snapshot.fans.home = { base: 4, dice: 1, total: 5 };
     snapshot.weatherDice.away = 3;
-    renderWizard({ snapshot });
+    renderWizard({ snapshot, dice: { d3: vi.fn(() => 2), d6: vi.fn(() => 4) } });
     const weather = step(2, "El Clima");
     expect(
       within(weather).getByText(/Colmillos del Caos: 3/),
     ).toBeTruthy();
-    fireEvent.change(
-      screen.getByRole("spinbutton", { name: "Manual 1D6 clima" }),
-      { target: { value: "4" } },
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6" }));
     expect(weather.textContent).toMatch(/2D6 = 7/);
     expect(weather.textContent).toContain("Clima perfecto");
     expect(

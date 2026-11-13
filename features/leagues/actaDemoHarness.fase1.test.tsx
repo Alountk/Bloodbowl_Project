@@ -3,6 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActaDemoHarness } from "./actaDemoHarness";
 
+// Deterministic dice for die-button rolls (S7.2: the die button is the only
+// roll entry — the quiet manual override is gone).
+vi.mock("@/lib/random", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/random")>();
+  return { ...actual, rollD3: () => 2, rollD6: () => 5 };
+});
+
 beforeEach(() => {
   localStorage.clear();
 });
@@ -50,12 +57,7 @@ describe("ActaDemoHarness — Antes del partido (S6 · modal wizard)", () => {
     // The fixture captured my steps 1-2 → the wizard resumes at Paso 3.
     fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
     fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
-    fireEvent.change(
-      within(wizard()).getByRole("spinbutton", {
-        name: "Manual 1D3 afición",
-      }),
-      { target: { value: "2" } },
-    );
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
     fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
     expect(document.body.textContent).toMatch(/Afición: 4 \+ 🎲2 = 6/);
     expect(document.body.textContent).not.toMatch(/Afición: 4 \+ 🎲3 = 7/);
@@ -118,12 +120,7 @@ describe("ActaDemoHarness — Antes del partido (S6 · modal wizard)", () => {
     openWizard();
     fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
     fireEvent.click(screen.getByRole("button", { name: "Atrás" }));
-    fireEvent.change(
-      within(wizard()).getByRole("spinbutton", {
-        name: "Manual 1D3 afición",
-      }),
-      { target: { value: "2" } },
-    );
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
     fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
     first.unmount();
     render(<ActaDemoHarness />);
