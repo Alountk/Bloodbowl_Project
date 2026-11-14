@@ -1,7 +1,13 @@
+import { rollD6 } from "@/lib/random";
+import {
+  kickoffDuelResult,
+  kickoffEventFor,
+  type KickoffEvent,
+} from "@/lib/rules/kickoffEvents";
 import { weatherFromRoll } from "@/lib/rules/weather";
 
 import type { LiveCommand, LiveMatchEventDto, LiveMatchViewState } from "./api";
-import { MIN, liveState, narrativeEvents } from "./actaFlow.fixtures";
+import { MIN, liveState, matchDetail, narrativeEvents } from "./actaFlow.fixtures";
 import { fanFactorOf, type FanFactorLine } from "./actaPreMatch";
 import type { PreMatchCommit } from "./actaPreMatchWizard";
 
@@ -47,6 +53,21 @@ export interface ActaDemoPreMatch {
   kicking: "home" | "away" | null;
 }
 
+/**
+ * S3 · Kickoff con efectos 2D6 (T4, design C «Acta secuencial»): the kickoff
+ * gate's own dice. `registered` marks the gate done — every scenario starts
+ * past kickoff (S1) EXCEPT the fresh-match reset («Restablecer»).
+ */
+export interface ActaDemoKickoff {
+  /** The two 1D6 dice of the kickoff 2D6 roll (null until thrown). */
+  d1: number | null;
+  d2: number | null;
+  /** True once the kickoff rows are stamped on the acta (gate closed). */
+  registered: boolean;
+  /** The opposed follow-up (faces 6/7/11/12) per side; null on the others. */
+  followUp: { home: number | null; away: number | null } | null;
+}
+
 export interface ActaDemoState extends LiveMatchViewState {
   events: LiveMatchEventDto[];
   closureOpen: boolean;
@@ -59,6 +80,8 @@ export interface ActaDemoState extends LiveMatchViewState {
    *  started (every fixture preset is a match underway; only a fresh
    *  pre-match sequence keeps this false). */
   matchStarted: boolean;
+  /** S3 · Kickoff gate (T4) — see `ActaDemoKickoff`. */
+  kickoff: ActaDemoKickoff;
 }
 
 export type ActaDemoAction =
@@ -79,6 +102,9 @@ export type ActaDemoAction =
   | { type: "finish" }
   | { type: "reset"; scenario: DemoScenario }
   | { type: "commitPreMatch"; commit: PreMatchCommit }
+  | { type: "rollKickoff" }
+  | { type: "rollKickoffDuel"; side: "home" | "away" }
+  | { type: "registerKickoff" }
   | { type: "hydrate"; saved: ActaDemoState };
 
 /** Turns per half in Blood Bowl; `endTurn` rolls 1T8 → 2T1 and 2T8 → finished. */
@@ -111,6 +137,8 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
     // Every fixture preset is a match underway — only the reset-to-"inicio"
     // wipe (below) represents a fresh, unstarted match.
     matchStarted: true,
+    // S1: every scenario starts past kickoff — the gate is already done.
+    kickoff: { d1: null, d2: null, registered: true, followUp: null },
   };
 
   switch (scenario) {
@@ -267,6 +295,83 @@ function asSide(value: unknown): "home" | "away" | null {
   if (value === "home") return "home";
   if (value === "away") return "away";
   return null;
+}
+
+/** The demo fixture's team names (the acta rows name the sides). */
+function teamNames(): { home: string; away: string } {
+  const detail = matchDetail();
+  return { home: detail.homeTeam.name, away: detail.awayTeam.name };
+}
+
+/** 6/7 favour the highest opposed total; 11/12 punish the lowest. */
+function isBenefitFace(event: KickoffEvent): boolean {
+  return event.sum === 6 || event.sum === 7;
+}
+
+/**
+ * The opposed duel line (row ③ of the sequential kickoff acta): the two 1D6
+ * totals and the tie rule PER THAT EVENT'S TEXT — 6/7 tie → both win, 11/12
+ * tie → both are hit. An unresolved duel is recorded honestly as manual.
+ * Shared by the reducer's stamped rows and the gate's live preview.
+ */
+export function kickoffDuelLine(
+  event: KickoffEvent,
+  followUp: { home: number | null; away: number | null } | null,
+  names: { home: string; away: string },
+): string {
+  const head = `Kickoff · Duelo 1D6: ${followUp?.home ?? "—"} vs ${
+    followUp?.away ?? "—"
+  } →`;
+  if (followUp?.home == null || followUp.away == null) {
+    return `${head} sin resolver (manual)`;
+  }
+  const result = kickoffDuelResult(event, {
+    home: followUp.home,
+    away: followUp.away,
+  });
+  if (result.tie) {
+    return `${head} empate: ambos ${
+      isBenefitFace(event) ? "ganan el beneficio" : "sufren el efecto"
+    }`;
+  }
+  return `${head} ${isBenefitFace(event) ? "gana" : "afecta a"} ${
+    names[result.affected[0]]
+  }`;
+}
+
+/**
+ * The registro line (row ④ of the sequential kickoff acta): «Kickoff ·
+ * <evento> → …». Shared by the reducer's award row and the gate's preview.
+ */
+export function kickoffRegisterLine(
+  event: KickoffEvent,
+  followUp: { home: number | null; away: number | null } | null,
+  names: { home: string; away: string },
+): string {
+  const head = `Kickoff · ${event.name} →`;
+  if (event.resolution === "manual") {
+    return `${head} Aplicación manual en la demo`;
+  }
+  if (event.resolution === "weather") {
+    // Event 8 reuses the existing weather machinery (a new 2D6 weather roll).
+    return `${head} nueva tirada de Clima`;
+  }
+  if (followUp?.home == null || followUp.away == null) {
+    return `${head} duelo sin resolver (manual)`;
+  }
+  const result = kickoffDuelResult(event, {
+    home: followUp.home,
+    away: followUp.away,
+  });
+  const totals = `(${followUp.home} vs ${followUp.away})`;
+  if (result.tie) {
+    return `${head} empate: ambos ${
+      isBenefitFace(event) ? "ganan el beneficio" : "sufren el efecto"
+    } ${totals}`;
+  }
+  return `${head} ${
+    isBenefitFace(event) ? "beneficio para" : "efecto sobre"
+  } ${names[result.affected[0]]} ${totals}`;
 }
 
 function asRosterId(value: unknown): string | null {
@@ -510,6 +615,105 @@ export function actaDemoReducer(
       // commit.step === "kicking": the winner's decision.
       return { ...state, preMatch: { ...preMatch, kicking: commit.kicking } };
     }
+    case "rollKickoff": {
+      // S3 · the kickoff 2D6 (two dice from @/lib/random) — ONE throw per
+      // match: once recorded it never re-rolls (S7.6 philosophy).
+      const kickoff = state.kickoff;
+      if (kickoff.registered || kickoff.d1 != null) return state;
+      const d1 = rollD6();
+      const d2 = rollD6();
+      const event = kickoffEventFor(d1, d2);
+      return {
+        ...state,
+        kickoff: {
+          ...kickoff,
+          d1,
+          d2,
+          // The opposed follow-up (6/7/11/12) opens one slot per side.
+          followUp:
+            event.resolution === "opposed"
+              ? { home: null, away: null }
+              : null,
+        },
+      };
+    }
+    case "rollKickoffDuel": {
+      // S3 · the opposed follow-up: one 1D6 per side, recorded once each.
+      const kickoff = state.kickoff;
+      if (kickoff.registered || kickoff.followUp == null) return state;
+      if (kickoff.followUp[action.side] != null) return state;
+      return {
+        ...state,
+        kickoff: {
+          ...kickoff,
+          followUp: { ...kickoff.followUp, [action.side]: rollD6() },
+        },
+      };
+    }
+    case "registerKickoff": {
+      // S3 · the sequential kickoff acta rows (roll → event → [duel] →
+      // [weather] → award). DEMO-ONLY kinds: the production server never
+      // emits `kickoff` (openspec MVT-6 forbids surfacing kickoff-table
+      // events in the production feed).
+      const kickoff = state.kickoff;
+      if (kickoff.registered || kickoff.d1 == null || kickoff.d2 == null) {
+        return state;
+      }
+      const event = kickoffEventFor(kickoff.d1, kickoff.d2);
+      const sum = kickoff.d1 + kickoff.d2;
+      const names = teamNames();
+      const base = { sum, eventId: event.id };
+      const drafts: EventDraft[] = [
+        {
+          kind: "kickoff",
+          payload: {
+            ...base,
+            phase: "roll",
+            d1: kickoff.d1,
+            d2: kickoff.d2,
+            note: `Kickoff · 2D6: ${kickoff.d1} + ${kickoff.d2} = ${sum}`,
+          },
+        },
+        {
+          kind: "kickoff",
+          payload: { ...base, phase: "event", note: `Kickoff · ${event.name}` },
+        },
+      ];
+      if (kickoff.followUp != null) {
+        drafts.push({
+          kind: "kickoff",
+          payload: {
+            ...base,
+            phase: "duel",
+            home: kickoff.followUp.home,
+            away: kickoff.followUp.away,
+            note: kickoffDuelLine(event, kickoff.followUp, names),
+          },
+        });
+      }
+      if (event.resolution === "weather") {
+        // Event 8 reuses the EXISTING weather machinery (S2): a fresh 2D6
+        // resolves on the weather table and derives into the acta as the
+        // standard `weather` event (same shape `commitPreMatch` derives).
+        const roll = rollD6() + rollD6();
+        drafts.push({
+          kind: "weather",
+          payload: { value: weatherFromRoll(roll).kind, roll },
+        });
+      }
+      drafts.push({
+        kind: "kickoff",
+        payload: {
+          ...base,
+          phase: "award",
+          note: kickoffRegisterLine(event, kickoff.followUp, names),
+        },
+      });
+      return {
+        ...appendEvents(state, drafts),
+        kickoff: { ...kickoff, registered: true },
+      };
+    }
     case "submitCommand":
       return applyCommand(state, action.command);
     case "switchPerspective":
@@ -537,6 +741,9 @@ export function actaDemoReducer(
         inducements: { home: [], away: [] },
         preMatch: emptyPreMatch(),
         matchStarted: false,
+        // S3 · a fresh match meets the kickoff gate («Restablecer» = partido
+        // fresco): the 2D6 kickoff roll is NOT registered yet.
+        kickoff: { d1: null, d2: null, registered: false, followUp: null },
         events: base.events.filter(
           (event) => event.kind !== "weather" && event.kind !== "fan_factor",
         ),
@@ -544,11 +751,18 @@ export function actaDemoReducer(
     }
     case "hydrate":
       // Old saves predate `matchStarted` — they were matches underway, so a
-      // missing flag keeps the old behavior (the capture bar stays up).
+      // missing flag keeps the old behavior (the capture bar stays up). Same
+      // for the kickoff slice (S3): a save without it started past kickoff.
       return {
         ...demoState("inicio"),
         ...action.saved,
         matchStarted: action.saved.matchStarted ?? true,
+        kickoff: {
+          d1: action.saved.kickoff?.d1 ?? null,
+          d2: action.saved.kickoff?.d2 ?? null,
+          registered: action.saved.kickoff?.registered ?? true,
+          followUp: action.saved.kickoff?.followUp ?? null,
+        },
       };
   }
 }
