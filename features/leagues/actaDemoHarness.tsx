@@ -54,6 +54,9 @@ export function ActaFlow({
   onRollKickoff = () => undefined,
   onRollKickoffDuel = () => undefined,
   onRegisterKickoff = () => undefined,
+  onSetKickoffDie = () => undefined,
+  onSetKickoffDuelDie = () => undefined,
+  onSkipKickoffDuel = () => undefined,
 }: {
   state: ReturnType<typeof liveState> & { matchStarted?: boolean };
   nowMin?: number;
@@ -75,6 +78,10 @@ export function ActaFlow({
   onRollKickoff?: () => void;
   onRollKickoffDuel?: (side: "home" | "away") => void;
   onRegisterKickoff?: () => void;
+  /** U12 · L32 — manual kickoff entry + the optional per-coach duel. */
+  onSetKickoffDie?: (die: 1 | 2, value: number | null) => void;
+  onSetKickoffDuelDie?: (side: "home" | "away", value: number | null) => void;
+  onSkipKickoffDuel?: () => void;
 }) {
   const fixture = matchDetail();
   const events = eventsOverride ?? fixture.live?.events ?? [];
@@ -177,6 +184,9 @@ export function ActaFlow({
             onRoll={onRollKickoff}
             onRollDuel={onRollKickoffDuel}
             onRegister={onRegisterKickoff}
+            onSetDie={onSetKickoffDie}
+            onSetDuelDie={onSetKickoffDuelDie}
+            onSkipDuel={onSkipKickoffDuel}
           />
         ) : null}
         {matchStarted && !kickoffPending && kickoffRows.length > 0 ? (
@@ -544,6 +554,13 @@ export function ActaDemoHarness({
           dispatch({ type: "rollKickoffDuel", side })
         }
         onRegisterKickoff={() => dispatch({ type: "registerKickoff" })}
+        onSetKickoffDie={(die, value) =>
+          dispatch({ type: "setKickoffDie", die, value })
+        }
+        onSetKickoffDuelDie={(side, value) =>
+          dispatch({ type: "setKickoffDuelDie", side, value })
+        }
+        onSkipKickoffDuel={() => dispatch({ type: "skipKickoffDuel" })}
       />
     </div>
   );

@@ -26,6 +26,9 @@ function gate(
   const onRoll = vi.fn();
   const onRollDuel = vi.fn();
   const onRegister = vi.fn();
+  const onSetDie = vi.fn();
+  const onSetDuelDie = vi.fn();
+  const onSkipDuel = vi.fn();
   const props = {
     ...NAMES,
     kicking: "home" as const,
@@ -35,15 +38,20 @@ function gate(
       d2: null,
       registered: false,
       followUp: null,
+      source: null,
+      duelManual: false,
       ...kickoff,
     },
     onRoll,
     onRollDuel,
     onRegister,
+    onSetDie,
+    onSetDuelDie,
+    onSkipDuel,
     ...extra,
   };
   const view = render(<ActaKickoffGate {...props} />);
-  return { ...view, onRoll, onRollDuel, onRegister, props };
+  return { ...view, onRoll, onRollDuel, onRegister, onSetDie, onSetDuelDie, onSkipDuel, props };
 }
 
 describe("ActaKickoffGate — the sequential kickoff acta (design C)", () => {
@@ -211,5 +219,115 @@ describe("ActaKickoffGate — the sequential kickoff acta (design C)", () => {
     fireEvent.click(cta);
     expect(ready.onRegister).toHaveBeenCalledTimes(1);
     expect(kickoffEventFor(1, 5).name).toBe("LOS HINCHAS ANIMAN");
+  });
+});
+
+describe("U12 · L32 — manual or automatic 2D6, per-coach duel, optional skip", () => {
+  it("row ① renders TWO separate die fields (each face shown individually)", () => {
+    gate({ d1: 4, d2: 3 });
+    const one = screen.getByLabelText("Dado 1 del kickoff") as HTMLInputElement;
+    const two = screen.getByLabelText("Dado 2 del kickoff") as HTMLInputElement;
+    expect(one.value).toBe("4");
+    expect(two.value).toBe("3");
+  });
+
+  it("typing each die by hand resolves the event and enables the CTA (no roll needed)", () => {
+    const { onSetDie } = gate({});
+    fireEvent.change(screen.getByLabelText("Dado 1 del kickoff"), {
+      target: { value: "4" },
+    });
+    fireEvent.change(screen.getByLabelText("Dado 2 del kickoff"), {
+      target: { value: "3" },
+    });
+    expect(onSetDie).toHaveBeenCalledWith(1, 4);
+    expect(onSetDie).toHaveBeenCalledWith(2, 3);
+    expect(screen.getByRole("button", { name: "Tirar 2D6" })).toBeTruthy();
+    cleanup();
+
+    const manual = gate({ d1: 4, d2: 3 });
+    expect(screen.getByText("ENTRENADOR BRILLANTE")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "REGISTRAR EN ACTA Y CONTINUAR",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it("out-of-range input is ignored; an empty field clears the die", () => {
+    const ignored = gate({});
+    fireEvent.change(screen.getByLabelText("Dado 1 del kickoff"), {
+      target: { value: "9" },
+    });
+    expect(ignored.onSetDie).not.toHaveBeenCalled();
+    cleanup();
+
+    const clearing = gate({ d1: 4, d2: 3 });
+    fireEvent.change(screen.getByLabelText("Dado 1 del kickoff"), {
+      target: { value: "" },
+    });
+    expect(clearing.onSetDie).toHaveBeenCalledWith(1, null);
+  });
+
+  it("an automatic roll locks both fields and the roll button", () => {
+    gate({ d1: 3, d2: 5, source: "auto" });
+    expect(
+      (screen.getByLabelText("Dado 1 del kickoff") as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByLabelText("Dado 2 del kickoff") as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", { name: "Tirar 2D6" }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it("the duel gives each coach their OWN throw: one button and one field per side", () => {
+    const { onSetDuelDie } = gate({
+      d1: 1,
+      d2: 5,
+      followUp: { home: null, away: null },
+    });
+    expect(screen.getByText(/Cada entrenador tira su propio dado/)).toBeTruthy();
+    const mine = screen.getByLabelText("Dado TÚ (manual)") as HTMLInputElement;
+    const theirs = screen.getByLabelText("Dado RIVAL (manual)") as HTMLInputElement;
+    fireEvent.change(mine, { target: { value: "4" } });
+    expect(onSetDuelDie).toHaveBeenCalledWith("home", 4);
+    fireEvent.change(theirs, { target: { value: "6" } });
+    expect(onSetDuelDie).toHaveBeenCalledWith("away", 6);
+    expect(screen.getByRole("button", { name: "Tirar 1D6 · TÚ" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Tirar 1D6 · RIVAL" }),
+    ).toBeTruthy();
+  });
+
+  it("the opposed duel can be resolved manually: skip marks it and replaces the rolls", () => {
+    const { onSkipDuel } = gate({
+      d1: 1,
+      d2: 5,
+      followUp: { home: null, away: null },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Duelo resuelto manualmente" }),
+    );
+    expect(onSkipDuel).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    gate({
+      d1: 1,
+      d2: 5,
+      followUp: { home: null, away: null },
+      duelManual: true,
+    });
+    expect(screen.getByText(/Duelo resuelto manualmente en la mesa/)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Tirar 1D6 · TÚ" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Duelo resuelto manualmente" }),
+    ).toBeNull();
   });
 });

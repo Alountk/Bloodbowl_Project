@@ -55,6 +55,12 @@ export interface ActaKickoffGateProps {
   onRollDuel: (side: "home" | "away") => void;
   /** Row ④ / footer: stamp the rows into the acta and continue. */
   onRegister: () => void;
+  /** U12 · L32: type a kickoff face by hand (1-6, or null to clear). */
+  onSetDie: (die: 1 | 2, value: number | null) => void;
+  /** U12 · L32: type a coach's opposed 1D6 by hand (1-6, or null). */
+  onSetDuelDie: (side: "home" | "away", value: number | null) => void;
+  /** U12 · L32: the table resolves the duel manually (skip the rolls). */
+  onSkipDuel: () => void;
 }
 
 /** Editorial die card (the wizard's DieCard pattern): face + dice BUTTON. */
@@ -119,6 +125,52 @@ function tieRuleText(event: KickoffEvent): string {
     : "Regla: sufre el total más bajo (1D6) · empate → ambos sufren el efecto";
 }
 
+/**
+ * U12 · L32 — manual entry: "" clears (null), 1-6 sets, anything else is
+ * silently ignored (the controlled input keeps its last valid face).
+ */
+function parseDieInput(raw: string): number | null | undefined {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  return Number.isInteger(n) && n >= 1 && n <= 6 ? n : undefined;
+}
+
+/** One die FIELD (U12 · L32): the face glyph + a manual 1-6 entry. */
+function ManualDie({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  disabled: boolean;
+  onChange: (raw: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden
+        className="flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy"
+      >
+        {value ?? "–"}
+      </span>
+      <input
+        type="number"
+        min={1}
+        max={6}
+        inputMode="numeric"
+        aria-label={label}
+        className="w-16 border border-navy/30 bg-white px-2 py-1.5 text-center font-display text-sm font-bold text-navy disabled:opacity-40"
+        value={value ?? ""}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 export function ActaKickoffGate({
   homeName,
   awayName,
@@ -128,6 +180,9 @@ export function ActaKickoffGate({
   onRoll,
   onRollDuel,
   onRegister,
+  onSetDie,
+  onSetDuelDie,
+  onSkipDuel,
 }: ActaKickoffGateProps) {
   const rolled = kickoff.d1 != null && kickoff.d2 != null;
   const event = rolled ? kickoffEventFor(kickoff.d1!, kickoff.d2!) : null;
@@ -135,6 +190,24 @@ export function ActaKickoffGate({
   const names = { home: homeName, away: awayName };
   const nameOf = (side: "home" | "away") => (side === "home" ? homeName : awayName);
   const rivalSide: "home" | "away" = viewerSide === "home" ? "away" : "home";
+  // U12 · L32 — manual/automatic 2D6 + the optional per-coach duel.
+  const kickoffLocked = kickoff.registered || kickoff.source === "auto";
+  const canRollKickoff =
+    !kickoff.registered &&
+    kickoff.source !== "auto" &&
+    kickoff.d1 == null &&
+    kickoff.d2 == null;
+  const bothDuelDiceNull =
+    (kickoff.followUp?.home ?? null) == null &&
+    (kickoff.followUp?.away ?? null) == null;
+  const commitDie = (die: 1 | 2, raw: string): void => {
+    const parsed = parseDieInput(raw);
+    if (parsed !== undefined) onSetDie(die, parsed);
+  };
+  const commitDuelDie = (side: "home" | "away", raw: string): void => {
+    const parsed = parseDieInput(raw);
+    if (parsed !== undefined) onSetDuelDie(side, parsed);
+  };
 
   return (
     <section
@@ -160,23 +233,54 @@ export function ActaKickoffGate({
         <p className="mt-2 text-xs text-ink">{KICKOFF_INTRO_QUOTE}</p>
       </div>
 
-      {/* Row ① — the 2D6 roll. */}
+      {/* Row ① — the 2D6 roll: TWO die fields, automatic OR manual (U12 · L32). */}
       <div className={`${ROW} mt-3`}>
         <p className={ROW_LABEL}>① Tirada 2D6</p>
-        <div className="mt-2">
-          <GateDie
-            label={`Equipo pateador · ${kicking != null ? nameOf(kicking) : homeName}`}
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <ManualDie
+            label="Dado 1 del kickoff"
             value={kickoff.d1}
-            dieLabel="Tirar 2D6"
-            recorded={rolled}
-            onRoll={onRoll}
+            disabled={kickoffLocked}
+            onChange={(raw) => commitDie(1, raw)}
+          />
+          <ManualDie
+            label="Dado 2 del kickoff"
+            value={kickoff.d2}
+            disabled={kickoffLocked}
+            onChange={(raw) => commitDie(2, raw)}
           />
         </div>
-        {rolled ? (
-          <p className="mt-2 text-sm font-semibold text-navy">
-            {`🎲2D6 = ${kickoff.d1} + ${kickoff.d2} = ${sum}`}
-          </p>
-        ) : null}
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className={BTN}
+            disabled={!canRollKickoff}
+            onClick={() => {
+              // Real browsers never click a disabled button; the guard keeps
+              // the reducer idle under synthetic events too.
+              if (!canRollKickoff) return;
+              onRoll();
+            }}
+          >
+            Tirar 2D6
+          </button>
+          <span
+            role="status"
+            className={`font-display text-xs font-bold uppercase tracking-wide ${
+              kickoff.registered ? "text-red" : "text-ink/60"
+            }`}
+          >
+            {kickoff.registered
+              ? "Registrado"
+              : rolled
+                ? "Tirada registrada"
+                : "Pendiente"}
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-ink">
+          Automático con la app o introduce cada dado (1-6) a mano — no es
+          obligatorio tirar.
+        </p>
       </div>
 
       {rolled && event != null ? (
@@ -203,28 +307,62 @@ export function ActaKickoffGate({
             ) : null}
           </div>
 
-          {/* Row ③ — the opposed duel (only on 6/7/11/12). */}
+          {/* Row ③ — the opposed duel (only on 6/7/11/12): OPTIONAL, and
+              each coach throws (or types) their OWN 1D6 (U12 · L32). */}
           {event.resolution === "opposed" ? (
             <div className={`${ROW} mt-3`}>
               <p className={ROW_LABEL}>③ Duelo 1D6</p>
-              <div className="mt-2">
-                <GateDie
-                  label={`TÚ · ${nameOf(viewerSide)}`}
-                  value={kickoff.followUp?.[viewerSide] ?? null}
-                  dieLabel="Tirar 1D6 · TÚ"
-                  recorded={kickoff.followUp?.[viewerSide] != null}
-                  onRoll={() => onRollDuel(viewerSide)}
-                />
-              </div>
-              <div className="mt-3">
-                <GateDie
-                  label={`RIVAL · ${nameOf(rivalSide)}`}
-                  value={kickoff.followUp?.[rivalSide] ?? null}
-                  dieLabel="Tirar 1D6 · RIVAL"
-                  recorded={kickoff.followUp?.[rivalSide] != null}
-                  onRoll={() => onRollDuel(rivalSide)}
-                />
-              </div>
+              <p className="mt-2 text-xs text-ink">
+                Cada entrenador tira su propio dado (o introduce el suyo) — la
+                tirada enfrentada es opcional.
+              </p>
+              {kickoff.duelManual ? (
+                <p className="mt-2 inline-block border border-red/40 px-2 py-1 text-xs font-semibold text-red">
+                  Duelo resuelto manualmente en la mesa
+                </p>
+              ) : (
+                <>
+                  <div className="mt-2">
+                    <GateDie
+                      label={`TÚ · ${nameOf(viewerSide)}`}
+                      value={kickoff.followUp?.[viewerSide] ?? null}
+                      dieLabel="Tirar 1D6 · TÚ"
+                      recorded={kickoff.followUp?.[viewerSide] != null}
+                      onRoll={() => onRollDuel(viewerSide)}
+                    />
+                    <ManualDie
+                      label="Dado TÚ (manual)"
+                      value={kickoff.followUp?.[viewerSide] ?? null}
+                      disabled={kickoff.registered}
+                      onChange={(raw) => commitDuelDie(viewerSide, raw)}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <GateDie
+                      label={`RIVAL · ${nameOf(rivalSide)}`}
+                      value={kickoff.followUp?.[rivalSide] ?? null}
+                      dieLabel="Tirar 1D6 · RIVAL"
+                      recorded={kickoff.followUp?.[rivalSide] != null}
+                      onRoll={() => onRollDuel(rivalSide)}
+                    />
+                    <ManualDie
+                      label="Dado RIVAL (manual)"
+                      value={kickoff.followUp?.[rivalSide] ?? null}
+                      disabled={kickoff.registered}
+                      onChange={(raw) => commitDuelDie(rivalSide, raw)}
+                    />
+                  </div>
+                  {bothDuelDiceNull ? (
+                    <button
+                      type="button"
+                      className={`${BTN} mt-3`}
+                      onClick={onSkipDuel}
+                    >
+                      Duelo resuelto manualmente
+                    </button>
+                  ) : null}
+                </>
+              )}
               <p className="mt-3 text-xs text-ink">{tieRuleText(event)}</p>
               <p className="mt-2 text-sm font-semibold text-navy">
                 {kickoffDuelLine(event, kickoff.followUp, names)}
