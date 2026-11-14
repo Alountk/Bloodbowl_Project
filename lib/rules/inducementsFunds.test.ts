@@ -238,19 +238,13 @@ describe("STAR_PLAYERS roster (verified Season-3 data · L25)", () => {
     expect(displayNameOf("star-player-unknown")).toBe("star-player-unknown");
   });
 
-  it("validateCart accepts a star line within budget and rejects a second copy of the same star", () => {
-    const ok = validateCart({
+  it("keeps star ids OUT of the server cart validator until eligibility ships (demo path enforces its own caps)", () => {
+    const star = validateCart({
       items: [{ id: "star-player-griff-oberwald", count: 1 }],
-      raceId: "orc",
-      budget: 400_000,
-    });
-    expect(ok.ok).toBe(true);
-    const dup = validateCart({
-      items: [{ id: "star-player-griff-oberwald", count: 2 }],
       raceId: "orc",
       budget: 900_000,
     });
-    expect(dup.ok).toBe(false);
+    expect(star.ok).toBe(false);
   });
 });
 

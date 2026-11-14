@@ -363,7 +363,8 @@ export function getStarPlayer(id: string): StarPlayer | undefined {
 
 /** The IND-1-shaped entry for a star line: fixed price, per-star cap 1 (a
  * roster star is unique — the GLOBAL 0-2 cap lives in STAR_MAX_PER_MATCH and
- * is enforced by the purchase UI and validateCart). */
+ * is enforced by the purchase UI (demo path). The SERVER cart validator keeps
+ * rejecting star ids until «Juega por» eligibility ships — see validateCart. */
 export function starPlayerEntry(star: StarPlayer): InducementEntry {
   return {
     // Star ids live in the reserved `star-player-*` namespace, outside the
@@ -481,38 +482,25 @@ export function validateCart(input: {
   }
 
   let total = 0;
-  let starTotal = 0;
   for (const item of entries.values()) {
-    const star = getStarPlayer(item.id);
-    const entry = star ? null : getInducement(item.id);
-    if (!star && !entry) return { ok: false, error: `unknown inducement: ${item.id}` };
-    if (entry && entry.dynamicCost) {
+    // Server-side scope (IND-3): stars stay REJECTED here until the «Juega
+    // por» eligibility rule ships — the demo wizard enforces its own caps
+    // client-side (standardCartCost + STAR_MAX_PER_MATCH).
+    const entry = getInducement(item.id);
+    if (!entry) return { ok: false, error: `unknown inducement: ${item.id}` };
+    if (entry.dynamicCost) {
       return { ok: false, error: `${item.id} is not purchasable (dynamic cost)` };
     }
     if (!Number.isInteger(item.count) || item.count < 1) {
       return { ok: false, error: `invalid count for ${item.id}` };
     }
-    if (star) {
-      if (item.count > 1) {
-        return { ok: false, error: `${item.id} exceeds the max 1 per match` };
-      }
-      starTotal += item.count;
-      total += star.costGp * item.count;
-      continue;
+    if (item.count > entry.maxPerMatch) {
+      return { ok: false, error: `${item.id} exceeds the max ${entry.maxPerMatch} per match` };
     }
-    if (item.count > entry!.maxPerMatch) {
-      return { ok: false, error: `${item.id} exceeds the max ${entry!.maxPerMatch} per match` };
-    }
-    if (!isEligible(entry!, input.raceId)) {
+    if (!isEligible(entry, input.raceId)) {
       return { ok: false, error: `${item.id} is not eligible for race ${input.raceId}` };
     }
-    total += effectiveCost(entry!, input.raceId) * item.count;
-  }
-  if (starTotal > STAR_MAX_PER_MATCH) {
-    return {
-      ok: false,
-      error: `cart has ${starTotal} star players over the max ${STAR_MAX_PER_MATCH} per match`,
-    };
+    total += effectiveCost(entry, input.raceId) * item.count;
   }
   if (total > input.budget) {
     return { ok: false, error: `cart costs ${total} over the ${input.budget} budget` };

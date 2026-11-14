@@ -359,7 +359,7 @@ describe("validateCart (IND-3)", () => {
   });
 
   it("rejects an unknown id with no mutation", () => {
-    const result = validateCart({ items: [item("not-an-inducement", 1)], raceId: "orc", budget: 1_000_000 });
+    const result = validateCart({ items: [item("star-player-griff-oberwald", 1)], raceId: "orc", budget: 1_000_000 });
     expect(result.ok).toBe(false);
   });
 
