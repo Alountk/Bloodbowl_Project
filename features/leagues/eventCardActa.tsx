@@ -184,14 +184,20 @@ function turnReasonTag(
 function ActaRow({
   label,
   num,
+  text,
   children,
 }: {
   label: string;
   num?: boolean;
+  /** Wide free-text value (paragraph copy): stacked label over wrapping text. */
+  text?: boolean;
   children: ReactNode;
 }) {
+  const rowClass = text
+    ? `${styles.acta__row} ${styles["acta__row--text"]}`
+    : styles.acta__row;
   return (
-    <div className={styles.acta__row}>
+    <div className={rowClass}>
       <dt>{label}</dt>
       <span className={styles.acta__leader} aria-hidden="true" />
       <dd className={num ? styles.acta__num : undefined}>{children}</dd>
@@ -737,7 +743,7 @@ export function LiveEventCardsActa({
                 rows={
                   face != null
                     ? [
-                        <ActaRow key="effect" label="Efecto">
+                        <ActaRow key="effect" label="Efecto" text>
                           {face.effect}
                         </ActaRow>,
                       ]
