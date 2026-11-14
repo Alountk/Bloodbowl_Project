@@ -11,6 +11,13 @@ import {
 const HOME = "Águilas de Khemri";
 const AWAY = "Colmillos del Caos";
 
+/** S8 · T7/U9 finance fixture (PRE_MATCH_FINANCE of actaFlow.fixtures,
+ * inlined so the wizard suite stays self-contained). */
+const FINANCE = {
+  home: { value: 1_240_000, treasury: 1_000_000, raceId: "tomb-kings" },
+  away: { value: 1_160_000, treasury: 10_000, raceId: "orc" },
+};
+
 function emptySnapshot(): ActaPreMatchSnapshot {
   return {
     fans: { home: null, away: null },
@@ -50,6 +57,7 @@ function renderWizard(
     homeBase: 4,
     awayBase: 3,
     viewerSide: "home",
+    finance: FINANCE,
     snapshot: emptySnapshot(),
     onCommit,
     onDismiss,
@@ -347,6 +355,7 @@ describe("ActaPreMatchSection — S7 derived states (derived only, no new flags)
         homeBase={4}
         awayBase={3}
         viewerSide="home"
+        finance={FINANCE}
         snapshot={completeSnapshot()}
         onCommit={() => undefined}
       />,
@@ -376,6 +385,7 @@ describe("ActaPreMatchSection — S7 derived states (derived only, no new flags)
         homeBase={4}
         awayBase={3}
         viewerSide="home"
+        finance={FINANCE}
         snapshot={snapshot}
         onCommit={() => undefined}
       />,
@@ -408,6 +418,7 @@ describe("ActaPreMatchSection — S7 derived states (derived only, no new flags)
         homeBase={4}
         awayBase={3}
         viewerSide="home"
+        finance={FINANCE}
         snapshot={snapshot}
         onCommit={onCommit}
       />,
@@ -432,6 +443,7 @@ describe("ActaPreMatchSection — S7 derived states (derived only, no new flags)
         homeBase={4}
         awayBase={3}
         viewerSide="away"
+        finance={FINANCE}
         snapshot={snapshot}
         onCommit={() => undefined}
       />,
@@ -444,5 +456,153 @@ describe("ActaPreMatchSection — S7 derived states (derived only, no new flags)
       ),
     ).toBeTruthy();
     expect(screen.getByRole("region", { name: "Lo que ha sucedido" })).toBeTruthy();
+  });
+});
+
+/** Steps 1-2 confirmed for BOTH sides — the wizard opens at Paso 3. */
+function step3Snapshot(): ActaPreMatchSnapshot {
+  return {
+    ...emptySnapshot(),
+    fans: {
+      home: { base: 4, dice: 1, total: 5 },
+      away: { base: 3, dice: 1, total: 4 },
+    },
+    weather: { roll: 7, value: "perfect" },
+    weatherDice: { home: 4, away: 3 },
+  };
+}
+
+describe("ActaPreMatchWizard — S8 · dinero disponible, categorías y Star Players (T7/U9)", () => {
+  it("viewer home (mayor VE): the money panel shows the treasury as DISPONIBLE TOTAL with gastado/restante", () => {
+    renderWizard({ snapshot: step3Snapshot(), viewerSide: "home" });
+    const panel = screen.getByRole("group", { name: "Dinero disponible" });
+    expect(panel.textContent).toContain("DISPONIBLE TOTAL");
+    expect(panel.textContent).toContain("1.000.000 M.O.");
+    expect(panel.textContent).toContain("De tu Tesorería");
+    expect(panel.textContent).toContain("Gastado 0 M.O.");
+    expect(panel.textContent).toContain("Restante 1.000.000 M.O.");
+  });
+
+  it("viewer away (menor VE) with the rival committed: the 140.000 worked example with its desglose", () => {
+    const snapshot = step3Snapshot();
+    snapshot.inducements.home = [{ id: "bloodweiser-kegs", count: 1 }];
+    snapshot.inducementsDone.home = true;
+    renderWizard({ snapshot, viewerSide: "away" });
+    const panel = screen.getByRole("group", { name: "Dinero disponible" });
+    expect(panel.textContent).toContain("Presupuesto de Caja Menor");
+    expect(panel.textContent).toContain("140.000 M.O.");
+    expect(panel.textContent).toMatch(/ΔVE \(Diferencial\): \+80\.000/);
+    expect(panel.textContent).toMatch(/\+ Gasto rival en Tesorería: \+50\.000/);
+    expect(panel.textContent).toMatch(/= Efectivo en Caja Menor: 130\.000/);
+    expect(panel.textContent).toMatch(/Aportación de tu Tesorería: \+10\.000/);
+    expect(screen.getByText(/Lo que no gaste se pierde/)).toBeTruthy();
+  });
+
+  it("the catalog renders the numbered category groups in rulebook order", () => {
+    renderWizard({ snapshot: step3Snapshot() });
+    for (const name of [
+      "01 · Afición y banquillo",
+      "02 · Árbitro y suerte",
+      "03 · Salud del plantil",
+      "04 · Magia y preparación",
+      "06 · Plantilla — Mercenarios",
+    ]) {
+      expect(screen.getByRole("group", { name })).toBeTruthy();
+    }
+  });
+
+  it("the Griff Oberwald star card shows price, minimal stats, skills and «Juega por» BEFORE hiring", () => {
+    renderWizard({ snapshot: step3Snapshot() });
+    const card = screen.getByRole("group", { name: "Griff Oberwald" });
+    expect(card.textContent).toContain("300.000 M.O.");
+    const table = within(card).getByRole("table", {
+      name: "Estadísticas de Griff Oberwald",
+    });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual(["MA", "ST", "AG", "PA", "AV"]);
+    expect(
+      within(table)
+        .getAllByRole("cell")
+        .map((td) => td.textContent),
+    ).toEqual(["7", "4", "2+", "3+", "9+"]);
+    expect(within(card).getByText("Block")).toBeTruthy();
+    expect(card.textContent).toContain("Juega por: Old World Classic");
+  });
+
+  it("«Fichar Griff Oberwald» is disabled under the petty-cash budget and enabled for the mayor treasury; hiring adds ×1 and reveals «Quitar»", () => {
+    renderWizard({ snapshot: step3Snapshot(), viewerSide: "away" });
+    // Menor VE: 80.000 ΔVE + 0 rival + 10.000 tesorería < 300.000.
+    const ficharAway = screen.getByRole("button", {
+      name: "Fichar Griff Oberwald",
+    }) as HTMLButtonElement;
+    expect(ficharAway.disabled).toBe(true);
+    // Mayor VE: 1.000.000 de tesorería — fichar is open.
+    renderWizard({ snapshot: step3Snapshot(), viewerSide: "home" });
+    const fichar = screen.getAllByRole("button", {
+      name: "Fichar Griff Oberwald",
+    })[1] as HTMLButtonElement;
+    expect(fichar.disabled).toBe(false);
+    fireEvent.click(fichar);
+    expect(screen.getAllByText("×1").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Quitar Griff Oberwald" })).toHaveLength(1);
+  });
+
+  it("the Mercenarios row is a reserved dynamic-cost placeholder: no stepper, «EN DESARROLLO»", () => {
+    renderWizard({ snapshot: step3Snapshot() });
+    expect(screen.queryByRole("button", { name: "Añadir Mercenarios" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quitar Mercenarios" })).toBeNull();
+    expect(screen.getByText("EN DESARROLLO")).toBeTruthy();
+    expect(screen.getByText("Mercenarios de Alquiler")).toBeTruthy();
+  });
+
+  it("the step-3 footer tracks the money: gastado and disponible with the rulebook figures", () => {
+    renderWizard({ snapshot: step3Snapshot() });
+    expect(
+      screen.getByText(
+        /Paso 3 de 4 · Gastado 0 M\.O\. · Disponible 1\.000\.000 M\.O\./,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("TRIANGULATE: an unconfirmed rival leaves its treasury spend at +0 · pendiente in the desglose", () => {
+    renderWizard({ snapshot: step3Snapshot(), viewerSide: "away" });
+    const panel = screen.getByRole("group", { name: "Dinero disponible" });
+    expect(panel.textContent).toMatch(
+      /\+ Gasto rival en Tesorería: \+0 · pendiente/,
+    );
+    expect(panel.textContent).toMatch(/= Efectivo en Caja Menor: 80\.000/);
+  });
+
+  it("TRIANGULATE: the + gate honors the remaining budget, not only the cap", () => {
+    renderWizard({ snapshot: step3Snapshot(), viewerSide: "home" });
+    const addTraining = () =>
+      fireEvent.click(
+        screen.getByRole("button", { name: "Añadir Entrenamiento Adicional" }),
+      );
+    for (let i = 0; i < 8; i += 1) addTraining(); // 800.000 de 1.000.000
+    const chef = screen.getByRole("button", {
+      name: "Añadir Chef Master Halfling",
+    }) as HTMLButtonElement;
+    expect(chef.disabled).toBe(true); // 300.000 > restante 200.000
+    const wizard = screen.getByRole("button", {
+      name: "Añadir Mago",
+    }) as HTMLButtonElement;
+    expect(wizard.disabled).toBe(false); // 150.000 cabe
+  });
+
+  it("TRIANGULATE: ineligible rows are dimmed, badged and reasoned — never purchasable", () => {
+    renderWizard({ snapshot: step3Snapshot(), viewerSide: "home" });
+    // tomb-kings no lleva «Señores de los No Muertos» (IND-5, digest md:532).
+    const add = screen.getByRole("button", {
+      name: "Añadir Asistente de Morgue",
+    }) as HTMLButtonElement;
+    expect(add.disabled).toBe(true);
+    expect(screen.getAllByText("No elegible").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/No elegible: requiere Señores de los No Muertos/),
+    ).toBeTruthy();
   });
 });
