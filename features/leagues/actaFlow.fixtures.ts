@@ -9,6 +9,7 @@ import type {
 import type { ActaClosureViewer } from "./actaClosure";
 import type { LeagueAccess } from "./useLeagueName";
 import type { PersistedInducements } from "@/lib/rules/inducements";
+import type { PreMatchFinance } from "./actaPreMatchWizard";
 
 /**
  * Mock builders shared by the "Acta en vivo" flow stories (Storybook only).
@@ -65,6 +66,14 @@ export const awayTeam: MatchTeamDetail = {
     player("o4", "Wurrzag Colmillo Negro", "thrower"),
     player("o5", "Ugluk el Terco", "lineman"),
   ],
+};
+
+/** S8 · T7/U9 demo money facts (VAE + tesorería + raza per side). The away
+ * treasury (10.000) pins the §D worked example: 80.000 ΔVE + 50.000 gasto
+ * rival + 10.000 aportación propia = 140.000 de caja menor. */
+export const PRE_MATCH_FINANCE: PreMatchFinance = {
+  home: { value: 1_240_000, treasury: 1_000_000, raceId: "tomb-kings" },
+  away: { value: 1_160_000, treasury: 10_000, raceId: "orc" },
 };
 
 /** Kickoff anchor: 2026-09-04 20:00 UTC (the fixture's wall clock). */

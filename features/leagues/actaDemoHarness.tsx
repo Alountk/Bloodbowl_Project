@@ -19,7 +19,7 @@ import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { ActaClosure, canCloseActa } from "./actaClosure";
 import { LiveActionDock } from "./liveActionDock";
-import { MIN, league, liveState, matchDetail, viewer } from "./actaFlow.fixtures";
+import { MIN, PRE_MATCH_FINANCE, league, liveState, matchDetail, viewer } from "./actaFlow.fixtures";
 
 /**
  * Visual twin of the V2 live-acta flow, shared by the Storybook "Flujo
@@ -114,6 +114,7 @@ export function ActaFlow({
           homeBase={DEMO_FAN_BASES.home}
           awayBase={DEMO_FAN_BASES.away}
           viewerSide={state.viewerSide ?? "home"}
+          finance={PRE_MATCH_FINANCE}
           open={preMatchOpen}
           onOpenChange={onPreMatchOpenChange}
           snapshot={{
