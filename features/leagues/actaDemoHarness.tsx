@@ -7,16 +7,19 @@ import {
   actaDemoReducer,
   demoState,
   preMatchComplete,
+  type ActaDemoKickoff,
   type ActaDemoPreMatch,
   type ActaDemoState,
   type DemoScenario,
 } from "./actaDemoReducer";
+import { ActaKickoffGate } from "./actaKickoffGate";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
 import { ActaPreMatchSection, type PreMatchCommit } from "./actaPreMatchWizard";
 import { weatherFromRoll } from "@/lib/rules/weather";
 import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
+import { LiveEventCardsActa } from "./eventCardActa";
 import { ActaClosure, canCloseActa } from "./actaClosure";
 import { LiveActionDock } from "./liveActionDock";
 import { MIN, PRE_MATCH_FINANCE, league, liveState, matchDetail, viewer } from "./actaFlow.fixtures";
@@ -47,6 +50,10 @@ export function ActaFlow({
   preMatch = null,
   preMatchOpen = false,
   onPreMatchOpenChange = () => undefined,
+  kickoff = null,
+  onRollKickoff = () => undefined,
+  onRollKickoffDuel = () => undefined,
+  onRegisterKickoff = () => undefined,
 }: {
   state: ReturnType<typeof liveState> & { matchStarted?: boolean };
   nowMin?: number;
@@ -62,6 +69,12 @@ export function ActaFlow({
   /** Controlled «Antes del partido» wizard modal (demo reset opens it). */
   preMatchOpen?: boolean;
   onPreMatchOpenChange?: (open: boolean) => void;
+  /** S3 · T4 kickoff gate dice (design C «Acta secuencial»). Default: none
+   *  (static stories render the match past kickoff). */
+  kickoff?: ActaDemoKickoff | null;
+  onRollKickoff?: () => void;
+  onRollKickoffDuel?: (side: "home" | "away") => void;
+  onRegisterKickoff?: () => void;
 }) {
   const fixture = matchDetail();
   const events = eventsOverride ?? fixture.live?.events ?? [];
@@ -76,6 +89,16 @@ export function ActaFlow({
   // the «Antes del partido» sequence is captured on BOTH sides.
   const matchStarted =
     (state.matchStarted ?? true) || preMatchComplete(preMatch);
+  // S3 · T4 (L28 insertion point (a)): between the pre-match sequence and
+  // the first dock action the fresh match meets the kickoff gate — shown
+  // INSTEAD of the turn timeline + capture dock until it registers.
+  const kickoffPending = matchStarted && kickoff != null && !kickoff.registered;
+  // S3 · T4 (demo-only, MVT-6): the registered kickoff rows render on their
+  // own ACTA block (design C «Acta secuencial») via the real acta cards. The
+  // shared display filter (lib/liveMatch `isDisplayEvent`) deliberately drops
+  // unknown kinds from the turn timeline — a production-feed guard (D23) that
+  // stays untouched; the production server never emits `kickoff` anyway.
+  const kickoffRows = events.filter((event) => event.kind === "kickoff");
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
 
   return (
@@ -144,7 +167,30 @@ export function ActaFlow({
         {matchStarted ? (
           <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
         ) : null}
-        {matchStarted && events.length > 0 ? (
+        {kickoff != null && kickoffPending ? (
+          <ActaKickoffGate
+            homeName={detail.homeTeam.name}
+            awayName={detail.awayTeam.name}
+            kicking={preMatch?.kicking ?? null}
+            viewerSide={state.viewerSide ?? "home"}
+            kickoff={kickoff}
+            onRoll={onRollKickoff}
+            onRollDuel={onRollKickoffDuel}
+            onRegister={onRegisterKickoff}
+          />
+        ) : null}
+        {matchStarted && !kickoffPending && kickoffRows.length > 0 ? (
+          <div className="bg-background">
+            <LiveEventCardsActa
+              events={kickoffRows}
+              startedAt={state.startedAt}
+              homeTeam={detail.homeTeam}
+              awayTeam={detail.awayTeam}
+              now={now}
+            />
+          </div>
+        ) : null}
+        {matchStarted && !kickoffPending && events.length > 0 ? (
           <div className="bg-background">
             <ActaTurnTimeline
               events={events}
@@ -168,7 +214,7 @@ export function ActaFlow({
               onSubmitted={async () => undefined}
             />
           ) : null
-        ) : (
+        ) : kickoffPending ? null : (
           <>
             {/* DEPRECATED (2026-11-13): the "Solicitar turno" request-turn row is
                 GONE from the view — requesting the turn is pointless when both
@@ -492,6 +538,12 @@ export function ActaDemoHarness({
           dispatch({ type: "commitPreMatch", commit })
         }
         preMatch={state.preMatch}
+        kickoff={state.kickoff}
+        onRollKickoff={() => dispatch({ type: "rollKickoff" })}
+        onRollKickoffDuel={(side) =>
+          dispatch({ type: "rollKickoffDuel", side })
+        }
+        onRegisterKickoff={() => dispatch({ type: "registerKickoff" })}
       />
     </div>
   );

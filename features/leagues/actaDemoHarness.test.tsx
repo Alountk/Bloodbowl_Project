@@ -3,6 +3,18 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ActaDemoHarness } from "./actaDemoHarness";
 
+// Deterministic dice for die-button rolls (S3 · T4 kickoff walk): a per-test
+// queue, defaulting to the wizard's classic 2/5 demo rolls.
+const dice = vi.hoisted(() => ({ queue: [] as number[] }));
+vi.mock("@/lib/random", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/random")>();
+  return {
+    ...actual,
+    rollD3: () => dice.queue.shift() ?? 2,
+    rollD6: () => dice.queue.shift() ?? 5,
+  };
+});
+
 /**
  * The DUAL-VIEW demo harness behind `/demo/partido` + the Storybook "Flujo
  * interactivo" story: two rival coach perspectives over ONE shared match state
@@ -17,6 +29,7 @@ import { ActaDemoHarness } from "./actaDemoHarness";
 
 beforeEach(() => {
   window.localStorage.clear();
+  dice.queue = [];
 });
 
 afterEach(() => {
@@ -360,5 +373,94 @@ describe("ActaDemoHarness — pre-match surface (stale saves, header wiring)", (
     // `actaSheetHeader.test.tsx` convention for these exact strings).
     expect(container.textContent).toContain("Afición: 4 + 🎲3 = 7");
     expect(container.textContent).toContain("Clima: tirada 4 → Perfecto");
+  });
+});
+
+/**
+ * S3 · T4 — the kickoff gate (design C «Acta secuencial», L29): after the
+ * pre-match sequence the fresh match meets the 2D6 kickoff table BEFORE the
+ * first dock action. The gate replaces the turn timeline + capture dock until
+ * «REGISTRAR EN ACTA Y CONTINUAR» stamps the sequential rows (kind `kickoff`,
+ * demo-only — MVT-6 keeps the production feed locked) and the match resumes.
+ */
+const ante = () => screen.getByRole("region", { name: "Antes del partido" });
+const wizard = () => screen.getByRole("dialog", { name: "Antes del partido" });
+const openWizard = () =>
+  fireEvent.click(
+    within(ante()).getByRole("button", { name: /secuencia pre-partido/ }),
+  );
+
+/** The four wizard steps as ONE coach (dice come from the queue). */
+const walkSequence = () => {
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar a Incentivos" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Avanzar al Equipo pateador" }),
+  );
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+  fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+};
+
+describe("ActaDemoHarness — S3 kickoff gate (design C «Acta secuencial»)", () => {
+  it("every scenario starts past kickoff: presets show NO gate", () => {
+    render(<ActaDemoHarness />);
+    expect(screen.queryByTestId("acta-kickoff-gate")).toBeNull();
+    expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
+    fireEvent.click(demoButton("2T · turno 5"));
+    expect(screen.queryByTestId("acta-kickoff-gate")).toBeNull();
+    expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
+  });
+
+  it("a fresh match meets the gate after the pre-match: timeline + dock stay away until the kickoff registers", () => {
+    // Home (fan 2D3, weather 4, toss 6) then away (fan 1, weather 5, toss 3):
+    // the home coach wins the toss 6 vs 3.
+    dice.queue = [2, 4, 6, 1, 5, 3];
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("Restablecer"));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    openWizard();
+    walkSequence(); // home done → the waiting screen.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    openWizard();
+    walkSequence(); // away done → both sequences complete.
+    // The toss WINNER (home) picks who receives → the match starts.
+    fireEvent.click(perspective("Águilas de Khemri"));
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Recibe Colmillos del Caos" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
+
+    // The kickoff gate is UP instead of the turn timeline + capture dock.
+    expect(screen.getByRole("region", { name: "Patada inicial" })).toBeTruthy();
+    expect(screen.queryByTestId("acta-turn-timeline")).toBeNull();
+    expect(screen.queryByTestId("acta-capture-grid")).toBeNull();
+    expect(document.body.textContent).toMatch(/Patea · Águilas de Khemri/);
+    expect(document.body.textContent).toMatch(/Recibe · Colmillos del Caos/);
+
+    // Roll the 2D6 (1+5 = 6 → LOS HINCHAS ANIMAN) and the opposed duel
+    // (TÚ 5 vs RIVAL 3).
+    dice.queue = [1, 5, 5, 3];
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 2D6" }));
+    expect(document.body.textContent).toMatch(/LOS HINCHAS ANIMAN/);
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6 · TÚ" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6 · RIVAL" }));
+    expect(document.body.textContent).toMatch(
+      /Kickoff · LOS HINCHAS ANIMAN → beneficio para Águilas de Khemri \(5 vs 3\)/,
+    );
+
+    // Register → gate gone; the acta shows the kickoff rows and the capture
+    // dock is back for the first action.
+    fireEvent.click(
+      screen.getByRole("button", { name: "REGISTRAR EN ACTA Y CONTINUAR" }),
+    );
+    expect(screen.queryByTestId("acta-kickoff-gate")).toBeNull();
+    expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
+    expect(screen.getByTestId("acta-capture-grid")).toBeTruthy();
+    expect(document.body.textContent).toMatch(/Kickoff · 2D6: 1 \+ 5 = 6/);
+    expect(document.body.textContent).toMatch(
+      /Kickoff · LOS HINCHAS ANIMAN → beneficio para Águilas de Khemri \(5 vs 3\)/,
+    );
   });
 });
