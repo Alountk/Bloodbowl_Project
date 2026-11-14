@@ -74,6 +74,8 @@ describe("the kickoff slice — defaults (presets / fresh reset / hydrate)", () 
         d2: null,
         registered: true,
         followUp: null,
+        source: null,
+        duelManual: false,
       });
     }
   });
@@ -84,6 +86,8 @@ describe("the kickoff slice — defaults (presets / fresh reset / hydrate)", () 
       d2: null,
       registered: false,
       followUp: null,
+      source: null,
+      duelManual: false,
     });
   });
 
@@ -103,6 +107,8 @@ describe("the kickoff slice — defaults (presets / fresh reset / hydrate)", () 
         d2: 5,
         registered: false,
         followUp: { home: 4, away: null },
+        source: null,
+        duelManual: false,
       },
     };
     const fromNew = actaDemoReducer(fresh(), { type: "hydrate", saved });
@@ -286,5 +292,163 @@ describe("kickoffDuelLine / kickoffRegisterLine — the acta copy (shared with t
     expect(kickoffRegisterLine(opposed, null, names)).toBe(
       "Kickoff · LOS HINCHAS ANIMAN → duelo sin resolver (manual)",
     );
+  });
+});
+
+describe("U12 · L32 — manual kickoff entry: two die fields, no mandatory roll", () => {
+  it("setKickoffDie fills each die by hand and resolves the table face", () => {
+    let next = actaDemoReducer(fresh(), {
+      type: "setKickoffDie",
+      die: 1,
+      value: 4,
+    });
+    expect(next.kickoff.d1).toBe(4);
+    expect(next.kickoff.d2).toBeNull();
+    next = actaDemoReducer(next, { type: "setKickoffDie", die: 2, value: 3 });
+    expect(next.kickoff.d2).toBe(3);
+    // 7 = ENTRENADOR BRILLANTE — an opposed face opens its duel slots.
+    expect(next.kickoff.followUp).toEqual({ home: null, away: null });
+    expect(next.kickoff.registered).toBe(false);
+    expect(next.kickoff.source).toBeNull();
+  });
+
+  it("manual faces open the duel slots ONLY on opposed faces (6/7/11/12)", () => {
+    let next = actaDemoReducer(fresh(), {
+      type: "setKickoffDie",
+      die: 1,
+      value: 1,
+    });
+    next = actaDemoReducer(next, { type: "setKickoffDie", die: 2, value: 1 });
+    expect(next.kickoff.followUp).toBeNull();
+  });
+
+  it("re-typing before registration corrects a face; clearing reopens the roll", () => {
+    let next = actaDemoReducer(fresh(), {
+      type: "setKickoffDie",
+      die: 1,
+      value: 2,
+    });
+    next = actaDemoReducer(next, { type: "setKickoffDie", die: 1, value: 5 });
+    expect(next.kickoff.d1).toBe(5);
+    next = actaDemoReducer(next, {
+      type: "setKickoffDie",
+      die: 1,
+      value: null,
+    });
+    expect(next.kickoff.d1).toBeNull();
+  });
+
+  it("rejects out-of-range values (0, 7, 3.5) without touching the state", () => {
+    const base = fresh();
+    for (const value of [0, 7, 3.5]) {
+      expect(
+        actaDemoReducer(base, { type: "setKickoffDie", die: 1, value }),
+      ).toBe(base);
+    }
+    expect(base.kickoff.d1).toBeNull();
+  });
+
+  it("an AUTOMATIC roll locks later manual entry (one-shot throw)", () => {
+    const rolled = roll(fresh(), [3, 5]);
+    const next = actaDemoReducer(rolled, {
+      type: "setKickoffDie",
+      die: 1,
+      value: 1,
+    });
+    expect(next).toBe(rolled);
+    expect(next.kickoff.d1).toBe(3);
+  });
+
+  it("is a no-op once the gate is registered", () => {
+    const done = register(roll(fresh(), [2, 2]));
+    const next = actaDemoReducer(done, {
+      type: "setKickoffDie",
+      die: 1,
+      value: 6,
+    });
+    expect(next).toBe(done);
+  });
+});
+
+describe("U12 · L32 — the opposed duel: per-coach throws and an optional manual skip", () => {
+  it("setKickoffDuelDie records each coach's own 1D6 by hand", () => {
+    let next = roll(fresh(), [1, 5]);
+    next = actaDemoReducer(next, {
+      type: "setKickoffDuelDie",
+      side: "home",
+      value: 4,
+    });
+    expect(next.kickoff.followUp).toEqual({ home: 4, away: null });
+    next = actaDemoReducer(next, {
+      type: "setKickoffDuelDie",
+      side: "away",
+      value: 6,
+    });
+    expect(next.kickoff.followUp).toEqual({ home: 4, away: 6 });
+  });
+
+  it("rejects out-of-range faces, needs the opposed slots, and stops at registration", () => {
+    const opposed = roll(fresh(), [1, 5]);
+    expect(
+      actaDemoReducer(opposed, {
+        type: "setKickoffDuelDie",
+        side: "home",
+        value: 0,
+      }),
+    ).toBe(opposed);
+    const weather = roll(fresh(), [3, 5]);
+    expect(
+      actaDemoReducer(weather, {
+        type: "setKickoffDuelDie",
+        side: "home",
+        value: 3,
+      }),
+    ).toBe(weather);
+    const done = register(roll(fresh(), [1, 5]));
+    expect(
+      actaDemoReducer(done, {
+        type: "setKickoffDuelDie",
+        side: "home",
+        value: 3,
+      }),
+    ).toBe(done);
+  });
+
+  it("a manually typed face blocks re-rolling that side", () => {
+    let next = actaDemoReducer(roll(fresh(), [1, 5]), {
+      type: "setKickoffDuelDie",
+      side: "home",
+      value: 4,
+    });
+    next = duel(next, "home", 6);
+    expect(next.kickoff.followUp?.home).toBe(4);
+  });
+
+  it("skipKickoffDuel marks the duel resolved by the table; no-op elsewhere", () => {
+    const opposed = roll(fresh(), [1, 5]);
+    expect(opposed.kickoff.duelManual).toBe(false);
+    const skipped = actaDemoReducer(opposed, { type: "skipKickoffDuel" });
+    expect(skipped.kickoff.duelManual).toBe(true);
+    const weather = roll(fresh(), [3, 5]);
+    expect(actaDemoReducer(weather, { type: "skipKickoffDuel" })).toBe(weather);
+    const done = register(roll(fresh(), [1, 5]));
+    expect(actaDemoReducer(done, { type: "skipKickoffDuel" })).toBe(done);
+  });
+
+  it("registering without rolling the duel keeps the «sin resolver (manual)» rows", () => {
+    let next = actaDemoReducer(roll(fresh(), [1, 5]), {
+      type: "skipKickoffDuel",
+    });
+    next = register(next);
+    const rows = next.events.filter((e) => e.kind === "kickoff");
+    expect(rows.map((e) => e.payload.phase)).toEqual([
+      "roll",
+      "event",
+      "duel",
+      "award",
+    ]);
+    expect(String(rows[2].payload.note)).toMatch(/sin resolver \(manual\)/);
+    expect(String(rows[3].payload.note)).toMatch(/sin resolver \(manual\)/);
+    expect(next.kickoff.registered).toBe(true);
   });
 });

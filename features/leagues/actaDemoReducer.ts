@@ -66,6 +66,10 @@ export interface ActaDemoKickoff {
   registered: boolean;
   /** The opposed follow-up (faces 6/7/11/12) per side; null on the others. */
   followUp: { home: number | null; away: number | null } | null;
+  /** U12 · L32: "auto" = thrown by the app (locks manual entry, one-shot). */
+  source: "auto" | null;
+  /** U12 · L32: the opposed duel was resolved by the table (skip button). */
+  duelManual: boolean;
 }
 
 export interface ActaDemoState extends LiveMatchViewState {
@@ -104,6 +108,9 @@ export type ActaDemoAction =
   | { type: "commitPreMatch"; commit: PreMatchCommit }
   | { type: "rollKickoff" }
   | { type: "rollKickoffDuel"; side: "home" | "away" }
+  | { type: "setKickoffDie"; die: 1 | 2; value: number | null }
+  | { type: "setKickoffDuelDie"; side: "home" | "away"; value: number | null }
+  | { type: "skipKickoffDuel" }
   | { type: "registerKickoff" }
   | { type: "hydrate"; saved: ActaDemoState };
 
@@ -138,7 +145,14 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
     // wipe (below) represents a fresh, unstarted match.
     matchStarted: true,
     // S1: every scenario starts past kickoff — the gate is already done.
-    kickoff: { d1: null, d2: null, registered: true, followUp: null },
+    kickoff: {
+      d1: null,
+      d2: null,
+      registered: true,
+      followUp: null,
+      source: null,
+      duelManual: false,
+    },
   };
 
   switch (scenario) {
@@ -629,6 +643,8 @@ export function actaDemoReducer(
           ...kickoff,
           d1,
           d2,
+          // U12 · L32: an automatic throw locks manual entry (one-shot).
+          source: "auto",
           // The opposed follow-up (6/7/11/12) opens one slot per side.
           followUp:
             event.resolution === "opposed"
@@ -649,6 +665,67 @@ export function actaDemoReducer(
           followUp: { ...kickoff.followUp, [action.side]: rollD6() },
         },
       };
+    }
+    case "setKickoffDie": {
+      // U12 · L32 — the table may TYPE each kickoff face (1-6) instead of
+      // rolling: manual entry stays open until registration, while an
+      // AUTOMATIC throw stays locked (one-shot).
+      const kickoff = state.kickoff;
+      if (kickoff.registered || kickoff.source === "auto") return state;
+      const { value } = action;
+      if (
+        value !== null &&
+        (!Number.isInteger(value) || value < 1 || value > 6)
+      ) {
+        return state;
+      }
+      const d1 = action.die === 1 ? value : kickoff.d1;
+      const d2 = action.die === 2 ? value : kickoff.d2;
+      const base = { ...kickoff, d1, d2 };
+      if (d1 == null || d2 == null) return { ...state, kickoff: base };
+      // Both faces known → resolve like an automatic throw would: open the
+      // opposed slots (unless real duel throws already live there) and drop
+      // them again if the new face is not opposed.
+      const event = kickoffEventFor(d1, d2);
+      return {
+        ...state,
+        kickoff: {
+          ...base,
+          followUp:
+            event.resolution === "opposed"
+              ? kickoff.followUp ?? { home: null, away: null }
+              : null,
+        },
+      };
+    }
+    case "setKickoffDuelDie": {
+      // U12 · L32 — each coach enters their OWN 1D6 by hand when the table
+      // prefers not to roll; possible until registration.
+      const kickoff = state.kickoff;
+      if (kickoff.registered || kickoff.followUp == null) return state;
+      const { value } = action;
+      if (
+        value !== null &&
+        (!Number.isInteger(value) || value < 1 || value > 6)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        kickoff: {
+          ...kickoff,
+          followUp: { ...kickoff.followUp, [action.side]: value },
+        },
+      };
+    }
+    case "skipKickoffDuel": {
+      // U12 · L32 — the opposed duel is OPTIONAL: the table can resolve it
+      // by hand (registration already records «sin resolver (manual)»).
+      const kickoff = state.kickoff;
+      if (kickoff.registered || kickoff.followUp == null || kickoff.duelManual) {
+        return state;
+      }
+      return { ...state, kickoff: { ...kickoff, duelManual: true } };
     }
     case "registerKickoff": {
       // S3 · the sequential kickoff acta rows (roll → event → [duel] →
@@ -743,7 +820,14 @@ export function actaDemoReducer(
         matchStarted: false,
         // S3 · a fresh match meets the kickoff gate («Restablecer» = partido
         // fresco): the 2D6 kickoff roll is NOT registered yet.
-        kickoff: { d1: null, d2: null, registered: false, followUp: null },
+        kickoff: {
+          d1: null,
+          d2: null,
+          registered: false,
+          followUp: null,
+          source: null,
+          duelManual: false,
+        },
         events: base.events.filter(
           (event) => event.kind !== "weather" && event.kind !== "fan_factor",
         ),
@@ -762,6 +846,8 @@ export function actaDemoReducer(
           d2: action.saved.kickoff?.d2 ?? null,
           registered: action.saved.kickoff?.registered ?? true,
           followUp: action.saved.kickoff?.followUp ?? null,
+          source: action.saved.kickoff?.source ?? null,
+          duelManual: action.saved.kickoff?.duelManual ?? false,
         },
       };
   }
