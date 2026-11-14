@@ -244,7 +244,7 @@ describe("U12 · L32 — manual or automatic 2D6, per-coach duel, optional skip"
     expect(screen.getByRole("button", { name: "Tirar 2D6" })).toBeTruthy();
     cleanup();
 
-    const manual = gate({ d1: 4, d2: 3 });
+    gate({ d1: 4, d2: 3 });
     expect(screen.getByText("ENTRENADOR BRILLANTE")).toBeTruthy();
     expect(
       (
