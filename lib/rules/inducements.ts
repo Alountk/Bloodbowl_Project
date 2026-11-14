@@ -10,12 +10,17 @@
  *  - effective cost, eligibility, the lower-TV budget split (IND-2) and cart
  *    validation (IND-3).
  *
- * Deferred (follow-ups): Star Players (the `star-player-*` id namespace is
- * reserved); the per-race `wizard` type variants and the definitive
- * `no-apothecary` race set (IND-5 verification debt — see NO_APOTHECARY_RACES).
+ * S8/U9 (L25): the `star-player-*` namespace now resolves through the
+ * verified Season-3 roster in `@/lib/rules/starPlayers` (stats + skills are
+ * shown BEFORE purchase — see STAR_PLAYERS) and §D's «Caja menor» money is
+ * computed by `fundsForSide`. Deferred (follow-ups): the full rulebook star
+ * roster and «Juega por» eligibility enforcement; the per-race `wizard` type
+ * variants and the definitive `no-apothecary` race set (IND-5 verification
+ * debt — see NO_APOTHECARY_RACES); the mercenaries dynamic purchase.
  */
 
 import { getRaceById } from "@/features/teams/data/races";
+import { STAR_PLAYERS, type StarPlayer } from "@/lib/rules/starPlayers";
 import { computeCoachingCost, computeRosterCostFromPlayers } from "@/features/teams/roster";
 import {
   DEFAULT_COACHING,
@@ -73,6 +78,10 @@ export interface InducementEntry {
   costGp: number;
   /** Purchase limit per match. */
   maxPerMatch: number;
+  /** The §S8 section taxonomy the purchase UI groups by (design A′: 01-04
+   * common + 06 Plantilla; Star Players render from `@/lib/rules/starPlayers`
+   * as their own section 05 and carry the reserved `"stars"` value). */
+  category: InducementCategoryId;
   /** Rule gate; absent = any race may buy the entry. */
   eligibility?: RuleId;
   /** Per-rule price overrides keyed by special-rule id (IND-1/IND-5). */
@@ -95,16 +104,78 @@ export interface PersistedInducements {
   away: InducementCartItem[];
 }
 
+/** The purchase-UI section a catalog entry belongs to (S8 · design A′).
+ * `stars` is carried by `starPlayerEntry` lines only — section 05 renders
+ * straight from STAR_PLAYERS, so it is NOT part of INDUCEMENT_CATEGORIES. */
+export type InducementCategoryId =
+  | "aficion"
+  | "arbitro"
+  | "salud"
+  | "magia"
+  | "plantilla"
+  | "stars";
+
+/** One numbered section of the inducement step (design A′, mobile): the
+ * common catalog splits into 01-04 + 06 (mercenaries ONLY); 05 · Star Players
+ * is rendered from STAR_PLAYERS. */
+export interface InducementCategory {
+  id: InducementCategoryId;
+  num: string;
+  title: string;
+  /** Fixed header chip (design) when the entry count is not the right label. */
+  optionsLabel?: string;
+}
+
+/** The ordered sections for the common catalog (S8 · L25 taxonomy). */
+export const INDUCEMENT_CATEGORIES: readonly InducementCategory[] = [
+  { id: "aficion", num: "01", title: "Afición y banquillo" },
+  { id: "arbitro", num: "02", title: "Árbitro y suerte" },
+  { id: "salud", num: "03", title: "Salud del plantil" },
+  { id: "magia", num: "04", title: "Magia y preparación" },
+  {
+    id: "plantilla",
+    num: "06",
+    title: "Plantilla — Mercenarios",
+    optionsLabel: "0-3 permitidos",
+  },
+];
+
+/** id → section (declared ONCE per id; Record enforces full coverage). */
+const CATEGORIES: Record<InducementId, InducementCategoryId> = {
+  "prayers-to-nuffle": "arbitro",
+  "temporary-cheerleaders": "aficion",
+  "assistant-coaches": "aficion",
+  "team-mascot": "aficion",
+  "weather-mage": "magia",
+  "bloodweiser-kegs": "aficion",
+  bribes: "arbitro",
+  "extra-training": "magia",
+  "wandering-apothecary": "salud",
+  "mortuary-assistant": "salud",
+  "plague-doctor": "salud",
+  "fierce-innocents": "magia",
+  "halfling-master-chef": "aficion",
+  wizard: "magia",
+  "biased-referee": "arbitro",
+  mercenaries: "plantilla",
+};
+
 /** Catalog input: the IND-1 rules values written ONCE per literal; the
  * acta-facing `price`/`max` display fields (T3) derive from them so the
  * standard values never exist twice in a literal. */
-type CatalogEntryInput = Omit<InducementEntry, "price" | "max">;
+type CatalogEntryInput = Omit<InducementEntry, "price" | "max" | "category">;
 
 /** Fills the T3 display fields: `price` = standard base cost, `max` =
  * standard purchase cap (the INCENTIVOS COMUNES digest values, PDF p.150 /
- * printed p.142 — same numbers costGp/maxPerMatch already pin). */
+ * printed p.142 — same numbers costGp/maxPerMatch already pin) and the §S8
+ * section id. */
 function withDisplayFields(entry: CatalogEntryInput): InducementEntry {
-  return { ...entry, price: entry.costGp, max: entry.maxPerMatch };
+  return {
+    ...entry,
+    price: entry.costGp,
+    max: entry.maxPerMatch,
+    category: CATEGORIES[entry.id],
+  };
 }
 
 const CATALOG: CatalogEntryInput[] = [
@@ -282,6 +353,114 @@ export function budgetForSide(homeTv: number, awayTv: number):
   return { side: "home", budget: awayTv - homeTv };
 }
 
+/** Global cap for the Star Players section (IND-1 «0-2 Jugadores Estrella»). */
+export const STAR_MAX_PER_MATCH = 2;
+
+/** Looks a Season-3 star up by its reserved cart id (undefined when absent). */
+export function getStarPlayer(id: string): StarPlayer | undefined {
+  return STAR_PLAYERS.find((star) => star.id === id);
+}
+
+/** The IND-1-shaped entry for a star line: fixed price, per-star cap 1 (a
+ * roster star is unique — the GLOBAL 0-2 cap lives in STAR_MAX_PER_MATCH and
+ * is enforced by the purchase UI and validateCart). */
+export function starPlayerEntry(star: StarPlayer): InducementEntry {
+  return {
+    // Star ids live in the reserved `star-player-*` namespace, outside the
+    // common InducementId union — they resolve through getStarPlayer.
+    id: star.id as InducementId,
+    displayName: star.displayName,
+    price: star.costGp,
+    max: 1,
+    costGp: star.costGp,
+    maxPerMatch: 1,
+    category: "stars",
+  };
+}
+
+/** One side's §D pre-match money (S8 · U9): how much that coach may spend
+ * on inducements and how the number is composed, per rule (digest md:506-511):
+ *  - mayor VAE → the pot is its own treasury (it spends treasury FIRST);
+ *  - menor VAE → cash = ΔVE + what the rival spent from treasury, PLUS up to
+ *    50 000 M.O. from its own treasury;
+ *  - VAE igual → nobody may spend treasury → pot 0.
+ * `spent` is the side's own committed cart; `restante` = potencial − spent,
+ * floored at 0 (the pot is use-it-or-lose-it — «lo que no gaste se pierde»). */
+export type SideFunds =
+  | { kind: "mayor"; potencial: number; spent: number; restante: number }
+  | {
+      kind: "menor";
+      delta: number;
+      rivalSpend: number;
+      treasuryUsed: number;
+      potencial: number;
+      spent: number;
+      restante: number;
+    }
+  | { kind: "empate"; potencial: 0; spent: number; restante: 0 };
+
+/** §D's own-treasury top-up cap for the lower-VAE side (md:510). */
+export const MINORITY_TREASURY_CAP = 50_000;
+
+export function fundsForSide(input: {
+  own: { value: number; treasury: number };
+  rival: { value: number; treasury: number };
+  /** The rival's committed inducement spend from treasury (mayor side). */
+  rivalSpend: number;
+  /** This side's committed cart (standard prices). */
+  ownSpend: number;
+}): SideFunds {
+  const spent = Math.max(0, input.ownSpend);
+  if (input.own.value === input.rival.value) {
+    return { kind: "empate", potencial: 0, spent, restante: 0 };
+  }
+  if (input.own.value > input.rival.value) {
+    const potencial = Math.max(0, input.own.treasury);
+    return {
+      kind: "mayor",
+      potencial,
+      spent,
+      restante: Math.max(0, potencial - spent),
+    };
+  }
+  const delta = input.rival.value - input.own.value;
+  const rivalSpend = Math.max(0, input.rivalSpend);
+  const treasuryUsed = Math.min(
+    MINORITY_TREASURY_CAP,
+    Math.max(0, input.own.treasury),
+  );
+  const potencial = delta + rivalSpend + treasuryUsed;
+  return {
+    kind: "menor",
+    delta,
+    rivalSpend,
+    treasuryUsed,
+    potencial,
+    spent,
+    restante: Math.max(0, potencial - spent),
+  };
+}
+
+/** The Σ STANDARD price of a cart (no race overrides): the demo wizard's
+ * display/enforcement total — stars count at their fixed price, unknown and
+ * reserved dynamic-cost ids count 0 (mirrors cartCost's defensiveness). */
+export function standardCartCost(items: readonly InducementCartItem[]): number {
+  return items.reduce((total, item) => {
+    const star = getStarPlayer(item.id);
+    if (star) return total + star.costGp * item.count;
+    const entry = getInducement(item.id);
+    return total + (entry && !entry.dynamicCost ? entry.costGp * item.count : 0);
+  }, 0);
+}
+
+/** Display-name resolution for acta/report lines: inducement OR star, else
+ * the raw id (defensive — snapshots may carry legacy ids). */
+export function displayNameOf(id: string): string {
+  return (
+    getStarPlayer(id)?.displayName ?? getInducement(id)?.displayName ?? id
+  );
+}
+
 /** Validates a purchase cart (IND-3): every id exists and is purchasable, no
  * count exceeds maxPerMatch, rule-gated ids are race-eligible and the Σ
  * effective cost fits the budget. Replace-cart semantics — `ok:true` echoes the
@@ -302,22 +481,38 @@ export function validateCart(input: {
   }
 
   let total = 0;
+  let starTotal = 0;
   for (const item of entries.values()) {
-    const entry = getInducement(item.id);
-    if (!entry) return { ok: false, error: `unknown inducement: ${item.id}` };
-    if (entry.dynamicCost) {
+    const star = getStarPlayer(item.id);
+    const entry = star ? null : getInducement(item.id);
+    if (!star && !entry) return { ok: false, error: `unknown inducement: ${item.id}` };
+    if (entry && entry.dynamicCost) {
       return { ok: false, error: `${item.id} is not purchasable (dynamic cost)` };
     }
     if (!Number.isInteger(item.count) || item.count < 1) {
       return { ok: false, error: `invalid count for ${item.id}` };
     }
-    if (item.count > entry.maxPerMatch) {
-      return { ok: false, error: `${item.id} exceeds the max ${entry.maxPerMatch} per match` };
+    if (star) {
+      if (item.count > 1) {
+        return { ok: false, error: `${item.id} exceeds the max 1 per match` };
+      }
+      starTotal += item.count;
+      total += star.costGp * item.count;
+      continue;
     }
-    if (!isEligible(entry, input.raceId)) {
+    if (item.count > entry!.maxPerMatch) {
+      return { ok: false, error: `${item.id} exceeds the max ${entry!.maxPerMatch} per match` };
+    }
+    if (!isEligible(entry!, input.raceId)) {
       return { ok: false, error: `${item.id} is not eligible for race ${input.raceId}` };
     }
-    total += effectiveCost(entry, input.raceId) * item.count;
+    total += effectiveCost(entry!, input.raceId) * item.count;
+  }
+  if (starTotal > STAR_MAX_PER_MATCH) {
+    return {
+      ok: false,
+      error: `cart has ${starTotal} star players over the max ${STAR_MAX_PER_MATCH} per match`,
+    };
   }
   if (total > input.budget) {
     return { ok: false, error: `cart costs ${total} over the ${input.budget} budget` };
@@ -356,9 +551,12 @@ export function emptyPersistedInducements(): PersistedInducements {
 /** The Σ effective cost of a cart for a race (IND-3): every line's effective
  * cost × count. Unknown/reserved (dynamic-cost) ids are skipped defensively —
  * the catalog never offers them and the purchase command rejects them; this is
- * a display-side total over purchasable entries only. */
+ * a display-side total over purchasable entries only; star lines price at
+ * their fixed Season-3 cost (no race override). */
 export function cartCost(items: readonly InducementCartItem[], raceId: string): number {
   return items.reduce((total, item) => {
+    const star = getStarPlayer(item.id);
+    if (star) return total + star.costGp * item.count;
     const entry = getInducement(item.id);
     return total + (entry && !entry.dynamicCost ? effectiveCost(entry, raceId) * item.count : 0);
   }, 0);
