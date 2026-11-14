@@ -446,69 +446,6 @@ export function ActaDemoHarness({
               {detail.awayTeam.name}
             </button>
           </div>
-        </div>
-
-        <label className="flex items-center gap-2 text-sm font-semibold text-navy">
-          <input
-            type="checkbox"
-            checked={state.autoFollow}
-            onChange={(event) =>
-              dispatch({ type: "setAutoFollow", on: event.target.checked })
-            }
-            className="size-4 accent-navy"
-          />
-          Seguir al turno activo
-        </label>
-
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Escenario">
-          {SCENARIOS.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              className={buttonClass}
-              onClick={() => {
-                dispatch({ type: "reset", scenario: s.key });
-                setPreMatchOpen(s.key === "inicio");
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Acciones">
-          <button
-            type="button"
-            className={buttonClass}
-            onClick={() =>
-              dispatch({
-                type: "submitCommand",
-                command: { type: "endTurn", side: state.activeSide },
-              })
-            }
-          >
-            Fin de turno
-          </button>
-          {state.status === "live" ? (
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => dispatch({ type: "finish" })}
-            >
-              Finalizar partido
-            </button>
-          ) : null}
-          {state.status === "finished" &&
-          !state.closureOpen &&
-          state.submittedBy == null ? (
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => dispatch({ type: "openClosure" })}
-            >
-              Abrir cierre
-            </button>
-          ) : null}
           <button
             type="button"
             className={buttonClass}
