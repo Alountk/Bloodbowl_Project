@@ -76,6 +76,9 @@ export interface ActaDemoState extends LiveMatchViewState {
   events: LiveMatchEventDto[];
   closureOpen: boolean;
   autoFollow: boolean;
+  /** Side that OPENED the current turn — the pair rule only advances
+   *  `turnNumber` when this side's rival has also played the turn. */
+  turnStarter?: "home" | "away" | null;
   submittedBy: "home" | "away" | null;
   nextSeq: number;
   /** Fase 1 · Pre-partido capture (S5) — see `ActaDemoPreMatch`. */
@@ -114,7 +117,7 @@ export type ActaDemoAction =
   | { type: "registerKickoff" }
   | { type: "hydrate"; saved: ActaDemoState };
 
-/** Turns per half in Blood Bowl; `endTurn` rolls 1T8 → 2T1 and 2T8 → finished. */
+/** Turns per half in Blood Bowl; each turn is a PAIR of plays (home + away share one number), so `endTurn` rolls 1T8 → 2T1 and 2T8 → finished only on the pair's closing flip. */
 const TURNS_PER_HALF = 8;
 
 /** Demo clock model: 48' per half, 6' per turn, anchored on `startedAt`. */
@@ -464,17 +467,25 @@ function applyCommand(state: ActaDemoState, raw: unknown): ActaDemoState {
           payload: { reason },
         },
       ];
+      // Pair rule: BOTH coaches play the same turn number. `turnStarter` is
+      // the side that opened it (self-adopted from the first flip), and only
+      // the rival's flip closes the pair and advances the turn number.
+      const starter: "home" | "away" = state.turnStarter ?? state.activeSide;
       const activeSide: "home" | "away" = state.activeSide === "home" ? "away" : "home";
-      const patch: Partial<ActaDemoState> = { activeSide };
+      const patch: Partial<ActaDemoState> = { activeSide, turnStarter: starter };
       if (state.autoFollow) patch.viewerSide = activeSide;
-      if (state.half === 2 && state.turnNumber === TURNS_PER_HALF) {
+      const closesPair = state.activeSide !== starter;
+      if (closesPair && state.half === 2 && state.turnNumber === TURNS_PER_HALF) {
         patch.status = "finished";
         drafts.push({ kind: "endMatch", side: null, playerRosterId: null });
-      } else if (state.turnNumber === TURNS_PER_HALF) {
+      } else if (closesPair && state.turnNumber === TURNS_PER_HALF) {
         patch.half = 2;
         patch.turnNumber = 1;
+        // The kickoff receiver flips with the halves (BB: the half's kicker
+        // receives the next half, so the other side opens it).
+        patch.turnStarter = starter === "home" ? "away" : "home";
         drafts.push({ kind: "endHalf", side: null, playerRosterId: null });
-      } else {
+      } else if (closesPair) {
         patch.turnNumber = state.turnNumber + 1;
       }
       return { ...appendEvents(state, drafts), ...patch };
