@@ -7,6 +7,7 @@ import {
   effectiveCost,
   getInducement,
   inducementBudgetOf,
+  inducementByDisplayName,
   isEligible,
   listInducements,
   maxAllowed,
@@ -86,6 +87,59 @@ describe("COMMON_INDUCEMENTS catalog (IND-1)", () => {
     expect(getInducement("bloodweiser-kegs")?.maxPerMatch).toBe(2);
     expect(getInducement("extra-training")?.maxPerMatch).toBe(8);
     expect(getInducement("halfling-master-chef")?.maxPerMatch).toBe(1);
+  });
+});
+
+describe("price/max display fields (T3 — acta sheet)", () => {
+  it("carries `price` and `max` on every catalog id", () => {
+    for (const entry of COMMON_INDUCEMENTS) {
+      expect(typeof entry.price).toBe("number");
+      expect(typeof entry.max).toBe("number");
+    }
+    // getInducement returns them alongside displayName.
+    const bribes = getInducement("bribes");
+    expect(bribes?.displayName).toBe("Sobornos");
+    expect(bribes?.price).toBe(100_000);
+    expect(bribes?.max).toBe(3);
+  });
+
+  it("matches the INCENTIVOS COMUNES digest values (PDF p.150 / printed p.142)", () => {
+    /** price/max per the digest table. The three «precio variable» entries
+     * (Mago, Árbitro, mercenarios) keep the catalog's pinned standard prices;
+     * their CAPS are digest values. */
+    const digest: Record<string, [number, number]> = {
+      "prayers-to-nuffle": [10_000, 3],
+      "temporary-cheerleaders": [5_000, 5],
+      "assistant-coaches": [20_000, 5],
+      "team-mascot": [25_000, 1],
+      "weather-mage": [25_000, 1],
+      "bloodweiser-kegs": [50_000, 2],
+      bribes: [100_000, 3],
+      "extra-training": [100_000, 8],
+      "wandering-apothecary": [100_000, 2],
+      "mortuary-assistant": [100_000, 1],
+      "plague-doctor": [100_000, 1],
+      "fierce-innocents": [150_000, 1],
+      "halfling-master-chef": [300_000, 1],
+      wizard: [150_000, 1],
+      "biased-referee": [120_000, 1],
+      mercenaries: [30_000, 3],
+    };
+    for (const entry of COMMON_INDUCEMENTS) {
+      expect([entry.price, entry.max]).toEqual(digest[entry.id]);
+    }
+    // T3 spot values.
+    expect([getInducement("bribes")?.price, getInducement("bribes")?.max]).toEqual([100_000, 3]);
+    expect([getInducement("bloodweiser-kegs")?.price, getInducement("bloodweiser-kegs")?.max]).toEqual([50_000, 2]);
+    expect([getInducement("weather-mage")?.price, getInducement("weather-mage")?.max]).toEqual([25_000, 1]);
+    expect([getInducement("prayers-to-nuffle")?.price, getInducement("prayers-to-nuffle")?.max]).toEqual([10_000, 3]);
+  });
+
+  it("resolves an entry by its display name (the acta header receives names, not ids)", () => {
+    expect(inducementByDisplayName("Sobornos")?.id).toBe("bribes");
+    expect(inducementByDisplayName("Barriles de Bloodweiser")?.price).toBe(50_000);
+    expect(inducementByDisplayName("Mago del Clima")?.max).toBe(1);
+    expect(inducementByDisplayName("Queso con moho")).toBeUndefined();
   });
 });
 

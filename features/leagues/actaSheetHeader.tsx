@@ -1,7 +1,7 @@
 "use client";
 
 import { useI18n } from "@/lib/i18n";
-import { getInducement } from "@/lib/rules/inducements";
+import { getInducement, inducementByDisplayName } from "@/lib/rules/inducements";
 import { weatherLabel, type SummaryTFunc } from "./matchSummary";
 import type { TurnSide } from "./actaTurnSides";
 import type { LiveMatchEventDto, MatchDetail } from "./api";
@@ -131,6 +131,21 @@ export function bribesOf(
   return card?.count ?? 0;
 }
 
+/** Spanish thousands-dot gold formatting (100_000 → "100.000"). */
+function formatMo(amount: number): string {
+  return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+/** One inducement line (T3): «{displayName} ×{count} — {price} M.O. (máx.
+ * {max})». The catalog resolves price/max by display name (the header
+ * receives snapshot names, not ids); an unresolvable name degrades to the
+ * plain «name ×count» line — never invent a price. */
+function inducementLineLabel(item: { name: string; count: number }): string {
+  const entry = inducementByDisplayName(item.name) ?? getInducement(item.name);
+  if (entry == null) return `${item.name} ×${item.count}`;
+  return `${item.name} ×${item.count} — ${formatMo(entry.price)} M.O. (máx. ${entry.max})`;
+}
+
 /** Material Symbols path (960 grid) copied from artboard 08 — inline SVG only. */
 const ICON_PATHS = {
   emblem:
@@ -162,7 +177,7 @@ function TeamBlock({ team, tone }: { team: ActaTeamLine; tone: "navy" | "red" })
         </span>
         {team.inducements != null && team.inducements.length > 0 ? (
           <span className="block truncate text-[10px] text-slate-strong">
-            Inducements: {team.inducements.map((item) => `${item.name} ×${item.count}`).join(", ")}
+            Inducements: {team.inducements.map(inducementLineLabel).join(", ")}
           </span>
         ) : null}
         {team.fanFactor != null ? (
@@ -310,6 +325,9 @@ export function ActaSheetHeader({
         >
           <TeamBlock team={home} tone="navy" />
           <TeamBlock team={away} tone="red" />
+        </div>
+        <div className="mt-1.5 text-[10px] text-slate-strong">
+          {"Caja menor: diferencia de VAE + gasto rival en incentivos (máx. +50.000 M.O. de tesorería)"}
         </div>
         <div className="mt-2 flex items-center justify-between border-t border-border pt-1.5 text-[11px] text-slate">
           <span className="flex items-center gap-1">
