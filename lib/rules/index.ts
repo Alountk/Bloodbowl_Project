@@ -4,6 +4,7 @@ export * from "./winnings";
 export * from "./inducements";
 export * from "./fanFactor";
 export * from "./skills";
+export * from "./blocks";
 export * from "./injuries";
 export * from "./weather";
 export * from "../value";
