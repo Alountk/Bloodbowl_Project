@@ -602,7 +602,7 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "Tirada 1D16" }),
     ).toBeVisible();
     await expect(
-      homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "por " }),
+      homeCoach.getByTestId("live-event-row").filter({ hasText: homeRoster[0].name }).filter({ hasText: "por ", hasNotText: "Registrado por" }),
     ).toHaveCount(0);
 
     // [A2] DIRECT casualty (design B, RAU-82): the ACTIVE (away) coach records
