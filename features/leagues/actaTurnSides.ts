@@ -101,3 +101,77 @@ export function turnSidesOf(
     turnSideOf(events, half, index + 1, active),
   );
 }
+
+/**
+ * The coach who REGISTERED a capture (S10.4.2 — «quién la registró», the
+ * capture-author badge): the side that acted (`actingSideOf`), falling back to
+ * the event's own side for a causer-less casualty (the victim's coach typed
+ * it). A side-less system capture has NO coach registrar (null).
+ */
+export function captureAuthorOf(event: LiveMatchEventDto): TurnSide {
+  return actingSideOf(event) ?? event.side;
+}
+
+/**
+ * S10.4 (T16 — L54 supersedes T8's capture-author grouping): the GAME TURN's
+ * side of every capture — whose half-turn was being played when the action was
+ * registered — keyed by event `seq`. Side-less captures are ABSENT (they keep
+ * their neutral «AMBOS EQUIPOS» card).
+ *
+ * The derivation walks the feed's TURN BOUNDARIES — the rows a pass leaves
+ * behind — because events carry no capture-time turn stamp and the event
+ * writers are fixed surfaces (a payload stamp would break v5 hydration of old
+ * saves, so the turn is derived instead):
+ *
+ *  - the DEMO reducer stamps ONE `turnStart` per «Fin Turno» AFTER the
+ *    half-turn's captures (actaDemoReducer `endTurn` — a TRAILING marker whose
+ *    side is the coach whose turn just ended): a capture belongs to the
+ *    half-turn its NEXT in-pair `turnStart` closes;
+ *  - the live store (`lib/liveMatch` turnTransition) stamps `turn` +
+ *    `turnStart(nextActive)` at the OPENING of the new half-turn (a LEADING
+ *    marker whose side is the incoming coach). The `turn` row is its signature
+ *    (demo feeds never emit one): there a capture belongs to the half-turn its
+ *    latest preceding `turnStart` opened;
+ *  - the half-turn still being played has no closing boundary yet: it resolves
+ *    to `active.activeSide` (so a rival's capture mid-turn groups live, with
+ *    no re-group when the boundary lands);
+ *  - feeds with NO boundary evidence (legacy v5 saves, constructed feeds)
+ *    fall back to the capture author — the best remaining evidence, and
+ *    exactly T8's attribution for old content where author == turn side.
+ */
+export function gameTurnSidesOf(
+  events: readonly LiveMatchEventDto[],
+  active: Pick<TurnSideActive, "status" | "half" | "turnNumber" | "activeSide">,
+): ReadonlyMap<number, "home" | "away"> {
+  const sides = new Map<number, "home" | "away">();
+  const byPair = new Map<string, LiveMatchEventDto[]>();
+  for (const event of events) {
+    const key = `${event.half}:${event.turnNumber}`;
+    const group = byPair.get(key) ?? [];
+    group.push(event);
+    byPair.set(key, group);
+  }
+  for (const group of byPair.values()) {
+    const ordered = [...group].sort((a, b) => a.seq - b.seq);
+    const boundaries = ordered.filter((event) => event.kind === "turnStart");
+    // Live-store feeds lead their half-turn markers with a `turn` row (the
+    // demo reducer never emits one) — mirrored reading below.
+    const leading = ordered.some((event) => event.kind === "turn");
+    for (const event of ordered) {
+      if (event.side == null) continue; // neutral capture — no game turn
+      const boundary = leading
+        ? [...boundaries].reverse().find((mark) => mark.seq < event.seq)
+        : boundaries.find((mark) => mark.seq > event.seq);
+      const beingPlayed =
+        active.status === "live" &&
+        event.half === active.half &&
+        event.turnNumber === active.turnNumber;
+      const owner =
+        boundary?.side ??
+        (beingPlayed ? active.activeSide : captureAuthorOf(event)) ??
+        event.side;
+      sides.set(event.seq, owner);
+    }
+  }
+  return sides;
+}

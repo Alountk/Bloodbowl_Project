@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   actingSideOf,
+  captureAuthorOf,
+  gameTurnSidesOf,
   turnSideOf,
   turnSideOfEvents,
   turnSidesOf,
@@ -11,8 +13,8 @@ import type { LiveMatchEventDto } from "./api";
 
 /**
  * S3 («los turnos deberian tener el color de cada equipo»): the shared
- * turn → side derivation the timeline cards AND the header stepper pills
- * tint by. The rule under test:
+ * turn → side derivation the header stepper pills tint by. The rule under
+ * test:
  *  - every capture votes the side that ACTED (`actingSideOf`): scored
  *    actions vote their own side, a CAUSED casualty votes its CAUSER's side,
  *    a self-inflicted one votes nothing;
@@ -20,6 +22,12 @@ import type { LiveMatchEventDto } from "./api";
  *    acting capture → null (AMBOS EQUIPOS / unknown);
  *  - the LIVE turn belongs to the active coach (`activeSide`) regardless of
  *    the vote; once not live the vote rules.
+ *
+ * S10.4 (T16 — L54 supersedes T8's capture-author grouping): the CARDS no
+ * longer group by these votes. They group by the GAME TURN (`gameTurnSidesOf`)
+ * and the vote seam now feeds the capture-author BADGE (`captureAuthorOf`) —
+ * "quién la registró" (S10.4.2 role transparency). The tests below keep
+ * pinning the vote contract (its consumer changed, its semantics did not).
  */
 
 let seq = 0;
@@ -45,6 +53,9 @@ function active(overrides: Partial<TurnSideActive> = {}): TurnSideActive {
 }
 
 describe("actingSideOf — the acting vote of one capture", () => {
+  // WHY unchanged (T16): these assertions pin the CAPTURE AUTHOR, which the
+  // regrouping did not change — its consumer moved from card grouping to the
+  // capture-author badge (S10.4.2).
   it("scored actions vote their own side; system cards vote nothing", () => {
     expect(actingSideOf(event({ kind: "td", side: "home" }))).toBe("home");
     expect(actingSideOf(event({ kind: "completion", side: "away" }))).toBe("away");
@@ -69,6 +80,10 @@ describe("actingSideOf — the acting vote of one capture", () => {
 });
 
 describe("turnSideOf — the turn → side derivation (S3)", () => {
+  // WHY unchanged (T16): this vote derivation still feeds the HEADER STEPPER
+  // pills (`turnSidesOf` → ActaSheetHeader); the turn CARDS moved to the
+  // game-turn rule (`gameTurnSidesOf`, below) and the vote's grouping role is
+  // history (L54). The stepper contract is untouched by this change.
   it("a turn's side is the unanimous acting vote of its captures", () => {
     const events = [
       event({ kind: "td", side: "home", turnNumber: 3 }),
@@ -135,5 +150,108 @@ describe("turnSideOf — the turn → side derivation (S3)", () => {
       ]),
     ).toBeNull();
     expect(turnSideOfEvents([])).toBeNull();
+  });
+});
+
+describe("captureAuthorOf — quién la registró (S10.4.2 badge source)", () => {
+  it("is the acting side of the capture (a caused casualty → its CAUSER's side)", () => {
+    const caused = event({
+      kind: "casualty",
+      side: "away",
+      payload: { victimRosterId: "a2", causerRosterId: "h3", cause: "block" },
+    });
+    expect(captureAuthorOf(caused)).toBe("home");
+    // A self-inflicted record falls back to its own side — the victim's coach
+    // is the one who registered it.
+    const selfInflicted = event({
+      kind: "casualty",
+      side: "away",
+      payload: { victimRosterId: "a2", cause: "dodge" },
+    });
+    expect(captureAuthorOf(selfInflicted)).toBe("away");
+  });
+});
+
+describe("gameTurnSidesOf — the GAME TURN of each capture (S10.4 / T16)", () => {
+  const liveAt = (overrides: Partial<TurnSideActive> = {}) =>
+    active({ status: "live", half: 1, turnNumber: 5, activeSide: "home", ...overrides });
+
+  it("a capture lands on the half-turn its next «Fin Turno» boundary closes (demo feed)", () => {
+    // The demo reducer stamps ONE `turnStart` per pass, AFTER the half-turn's
+    // captures (actaDemoReducer endTurn — trailing marker naming the coach
+    // whose turn just ended).
+    const events = [
+      event({ kind: "td", side: "home", turnNumber: 5 }),
+      event({ kind: "turnStart", side: "home", turnNumber: 5 }),
+      event({ kind: "completion", side: "away", turnNumber: 5 }),
+      event({ kind: "turnStart", side: "away", turnNumber: 5 }),
+    ];
+    const sides = gameTurnSidesOf(events, active({ status: "live", half: 1, turnNumber: 6 }));
+    expect(sides.get(events[0].seq)).toBe("home");
+    expect(sides.get(events[2].seq)).toBe("away");
+  });
+
+  it("a victim-side injury captured during the attacker's turn lands on the ATTACKER's game turn (S10.4.1)", () => {
+    // A placa a B: A's half-turn is being played; B (the victim's owner)
+    // registers the injury of its own knocked-down player. The row belongs to
+    // A's game turn — but its capture author (the badge) is B.
+    const injury = event({
+      kind: "casualty",
+      side: "away",
+      turnNumber: 5,
+      payload: { victimRosterId: "a2", cause: "dodge" },
+    });
+    const passed = event({ kind: "turnStart", side: "home", turnNumber: 5 });
+    const sides = gameTurnSidesOf([injury, passed], active({ status: "live", half: 1, turnNumber: 6 }));
+    expect(sides.get(injury.seq)).toBe("home");
+    expect(captureAuthorOf(injury)).toBe("away");
+  });
+
+  it("the half-turn being played resolves to the active coach mid-run — no re-group once the boundary lands", () => {
+    const injury = event({
+      kind: "casualty",
+      side: "away",
+      turnNumber: 5,
+      payload: { victimRosterId: "a2", cause: "dodge" },
+    });
+    // Before any boundary: the open run IS the active coach's half-turn.
+    expect(gameTurnSidesOf([injury], liveAt()).get(injury.seq)).toBe("home");
+    // After the pass boundary lands the attribution is unchanged (no flicker).
+    const passed = event({ kind: "turnStart", side: "home", turnNumber: 5 });
+    expect(gameTurnSidesOf([injury, passed], liveAt()).get(injury.seq)).toBe("home");
+  });
+
+  it("marker-less feeds outside the live turn keep the capture-author attribution (legacy v5 saves)", () => {
+    const caused = event({
+      kind: "casualty",
+      side: "away",
+      turnNumber: 5,
+      payload: { victimRosterId: "a2", causerRosterId: "h3", cause: "block" },
+    });
+    const sides = gameTurnSidesOf([caused], active({ status: "live", half: 1, turnNumber: 6 }));
+    expect(sides.get(caused.seq)).toBe("home");
+  });
+
+  it("the live store's leading boundary pair (turn + turnStart) opens the half-turn it names", () => {
+    // lib/liveMatch turnTransition stamps `turn` + `turnStart(nextActive)` at
+    // the OPENING of the new half-turn (side = the INCOMING coach) — mirrored
+    // demo convention; the `turn` row is its signature (demo feeds never).
+    const events = [
+      event({ kind: "turn", side: null, turnNumber: 5 }),
+      event({ kind: "turnStart", side: "home", turnNumber: 5 }),
+      event({ kind: "td", side: "home", turnNumber: 5 }),
+      event({ kind: "turn", side: null, turnNumber: 5 }),
+      event({ kind: "turnStart", side: "away", turnNumber: 5 }),
+      event({ kind: "completion", side: "away", turnNumber: 5 }),
+    ];
+    const sides = gameTurnSidesOf(events, active({ status: "live", half: 1, turnNumber: 6 }));
+    expect(sides.get(events[2].seq)).toBe("home");
+    expect(sides.get(events[5].seq)).toBe("away");
+  });
+
+  it("neutral (side-null) captures carry no game turn — they stay on the AMBOS EQUIPOS card", () => {
+    const weather = event({ kind: "weather", side: null, turnNumber: 5 });
+    const sides = gameTurnSidesOf([weather], liveAt());
+    expect(sides.has(weather.seq)).toBe(false);
   });
 });

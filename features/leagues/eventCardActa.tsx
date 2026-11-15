@@ -16,6 +16,7 @@ import {
   type TFunc,
 } from "./liveEventLabels";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
+import { captureAuthorOf } from "./actaTurnSides";
 import { KICKOFF_EVENTS } from "@/lib/rules/kickoffEvents";
 import { weatherLabel } from "./matchSummary";
 import styles from "./eventCardActa.module.css";
@@ -209,6 +210,8 @@ function ActaRow({
  * The Acta card shell: header (tag/meta), optional serif name + dorsal,
  * optional position line, optional dotted-leader data list and optional ack
  * row. Data-only cards (no name/position) sit flush under the header.
+ * `author` is the S10.4.2 capture-author badge («quién la registró») — a
+ * compact secondary line so the 390px layout never breaks (T16).
  */
 function ActaCard({
   sideClass,
@@ -217,6 +220,7 @@ function ActaCard({
   name,
   dorsal,
   pos,
+  author,
   rows,
   ack,
 }: {
@@ -226,6 +230,7 @@ function ActaCard({
   name?: ReactNode;
   dorsal?: number;
   pos?: ReactNode;
+  author?: ReactNode;
   rows?: ReactNode[];
   ack?: ReactNode;
 }) {
@@ -243,6 +248,11 @@ function ActaCard({
         </h3>
       ) : null}
       {pos != null ? <p className={styles.acta__pos}>{pos}</p> : null}
+      {author != null ? (
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate">
+          {author}
+        </p>
+      ) : null}
       {rows && rows.length > 0 ? (
         <dl className={`${styles.acta__data} ${hasHeader ? "" : styles["acta__data--flush"]}`}>
           {rows}
@@ -365,6 +375,13 @@ export function LiveEventCardsActa({
         const minute = deriveMinute(event.at, startedAt ?? 0);
         const spp = eventSpp(event);
         const sideClass = isAway ? styles.away : isHome ? styles.home : styles.neutral;
+        // S10.4.2 (T16): «quién la registró» — the capture author's badge; a
+        // side-less system capture has no coach registrar to name.
+        const authorSide = captureAuthorOf(event);
+        const authorLabel =
+          authorSide != null
+            ? `Registrado por ${authorSide === "home" ? homeTeam.name : awayTeam.name}`
+            : "Registro de sistema";
         // The Acta meta uses the literal "Turno {n}" copy (NOT the global T{n}
         // turn tag): the v4 sheet reads like the rulebook, not the compact feed.
         const turnMeta = `Turno ${event.turnNumber} · ${minute}`;
@@ -463,6 +480,7 @@ export function LiveEventCardsActa({
                   sideClass={sideClass}
                   tag={tag}
                   meta={turnMeta}
+                  author={authorLabel}
                   name={name}
                   dorsal={dorsal}
                   pos={pos}
@@ -476,6 +494,7 @@ export function LiveEventCardsActa({
                     sideClass={event.side === "home" ? styles.away : styles.home}
                     tag={spp > 0 ? `${actionCard.label} · ★${spp}` : actionCard.label}
                     meta={turnMeta}
+                    author={authorLabel}
                     name={actionCard.player.name}
                     dorsal={actionCard.player.dorsal}
                     pos={`${positionName(oppositeTeam, actionCard.player.positionalKey)} · ${oppositeTeam.name}`}
@@ -505,6 +524,7 @@ export function LiveEventCardsActa({
                 sideClass={sideClass}
                 tag="Inicio de turno"
                 meta={turnMeta}
+                author={authorLabel}
                 name={team.name}
                 pos={t("match.turnStarts")}
                 rows={
@@ -543,6 +563,7 @@ export function LiveEventCardsActa({
                 sideClass={sideClass}
                 tag={t("match.event.journeyman")}
                 meta={turnMeta}
+                author={authorLabel}
                 name={name}
                 pos={pos}
               />
@@ -559,6 +580,7 @@ export function LiveEventCardsActa({
                 sideClass={sideClass}
                 tag={liveEventLabel(event, t)}
                 meta="Kickoff"
+                author={authorLabel}
                 name={team.name}
                 pos={outcome}
                 rows={
@@ -584,6 +606,7 @@ export function LiveEventCardsActa({
                 sideClass={styles.neutral}
                 tag={liveEventLabel(event, t)}
                 meta="Kickoff"
+                author={authorLabel}
                 rows={
                   time
                     ? [
@@ -605,6 +628,7 @@ export function LiveEventCardsActa({
                 sideClass={styles.neutral}
                 tag={liveEventLabel(event, t)}
                 meta={`Mitad ${event.half}`}
+                author={authorLabel}
                 rows={[
                   <ActaRow key="minute" label="Minuto" num>
                     <b>{minute}</b>
@@ -623,6 +647,7 @@ export function LiveEventCardsActa({
                 sideClass={styles.neutral}
                 tag={liveEventLabel(event, t)}
                 meta="Final"
+                author={authorLabel}
                 rows={
                   time
                     ? [
@@ -647,6 +672,7 @@ export function LiveEventCardsActa({
                 sideClass={styles.neutral}
                 tag={liveEventLabel(event, t)}
                 meta={turnMeta}
+                author={authorLabel}
                 name={surrenderTeam?.name}
                 pos={surrenderTeam ? "Se rinde" : undefined}
                 rows={
@@ -672,6 +698,7 @@ export function LiveEventCardsActa({
                 sideClass={styles.neutral}
                 tag={liveEventLabel(event, t)}
                 meta="Kickoff"
+                author={authorLabel}
                 rows={[
                   <ActaRow key="home" label="Local" num>
                     {`👥${home.base} + 🎲${home.dice} = `}
@@ -698,6 +725,7 @@ export function LiveEventCardsActa({
                 sideClass={styles.neutral}
                 tag={liveEventLabel(event, t)}
                 meta={turnMeta}
+                author={authorLabel}
                 rows={[
                   ...(value != null
                     ? [
@@ -740,6 +768,7 @@ export function LiveEventCardsActa({
                 sideClass={styles.neutral}
                 tag={liveEventLabel(event, t)}
                 meta={turnMeta}
+                author={authorLabel}
                 rows={
                   face != null
                     ? [
@@ -758,7 +787,12 @@ export function LiveEventCardsActa({
         // never throws.
         return (
           <li key={event.seq} data-testid="live-event-row">
-            <ActaCard sideClass={sideClass} tag={liveEventLabel(event, t)} meta={turnMeta} />
+            <ActaCard
+              sideClass={sideClass}
+              tag={liveEventLabel(event, t)}
+              meta={turnMeta}
+              author={authorLabel}
+            />
           </li>
         );
       })}

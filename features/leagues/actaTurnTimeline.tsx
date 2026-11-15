@@ -20,7 +20,12 @@ import {
   type GuidedSelections,
 } from "./liveActionEntry";
 import { RollStepper } from "./rollStepper";
-import { actingSideOf, causerIdOf, type TurnSide } from "./actaTurnSides";
+import {
+  causerIdOf,
+  captureAuthorOf,
+  gameTurnSidesOf,
+  type TurnSide,
+} from "./actaTurnSides";
 import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
 
 /**
@@ -275,23 +280,27 @@ export interface ActaTurnCard {
 }
 
 /**
- * B1 (T8 / L37): groups the feed into ONE CARD PER HALF-TURN — keyed
- * `(half, turnNumber, side)`, one card each time a coach plays (T1 Águilas,
- * T1 Colmillos, T2 …), never one merged card per turn pair. NEWEST FIRST:
- * half/turn descending and, within a pair, the half-turn played SECOND (the
- * pair's newest play) above the opener — `active.turnStarter` names the
- * opener (it flips with the halves per the kickoff receiver rule); without a
- * `turnStarter` the fallback counts the active side as the pair's newest play.
+ * B1 (T8 / L37, regrouped by S10.4 / T16 per L54): groups the feed into ONE
+ * CARD PER HALF-TURN — keyed `(half, turnNumber, side)` where `side` is the
+ * GAME TURN's side (whose turn was being played — `gameTurnSidesOf`), one card
+ * each time a coach plays (T1 Águilas, T1 Colmillos, T2 …), never one merged
+ * card per turn pair. NEWEST FIRST: half/turn descending and, within a pair,
+ * the half-turn played SECOND (the pair's newest play) above the opener —
+ * `active.turnStarter` names the opener (it flips with the halves per the
+ * kickoff receiver rule); without a `turnStarter` the fallback counts the
+ * active side as the pair's newest play.
  *
- * The bucket side of a capture is its CAPTURE AUTHOR (`actingSideOf`): scored
- * actions vote their own `side`, a CAUSED casualty its CAUSER's side — so the
- * live EN JUEGO card registers the acting coach's actions as recorded. A
- * causer-less casualty (self-inflicted dodge/crowd) has no author and falls
- * back to its own `side` (the victim's coach — the mishap lands in the
- * half-turn being played); a side-null display capture (weather / fan factor /
- * endHalf / endMatch …) has no coach at all and gets its OWN neutral card
- * keyed with the turn — sorted as the pair's OLDEST entry (its exact moment
- * inside the pair is unknowable) and titled "AMBOS EQUIPOS".
+ * The bucket side of a capture is its GAME TURN (S10.4.2 — NOT the capture
+ * author): «el jugador que placa informa del placaje y el jugador que recibe
+ * marca la herida» — both coaches capture during the SAME turn, so every
+ * action lands on the card of the half-turn being played, whatever coach
+ * registered it. The registrar still shows on the row itself (the
+ * "Registrado por …" badge — S10.4.2 role transparency). A capture with no
+ * coach attribution at all (weather / fan factor / endHalf / endMatch …) keeps
+ * its OWN neutral card keyed with the turn — sorted as the pair's OLDEST entry
+ * (its exact moment inside the pair is unknowable) and titled "AMBOS EQUIPOS".
+ * Feeds with no turn-boundary evidence (legacy v5 saves, constructed feeds)
+ * fall back to the capture author — see `gameTurnSidesOf`.
  *
  * States: the ACTIVE half-turn always renders its card with EN JUEGO — even
  * before any action («cuando pase el turno deberia salir la card») — while a
@@ -351,8 +360,13 @@ export function turnCardsOf(
   };
 
   const visible = events.filter((event) => isDisplayEvent(event.kind));
+  // S10.4 (T16): the GAME TURN's side each capture belongs to — whose
+  // half-turn was being played when it was registered (the turn-start
+  // boundaries the feed carries). Side-less captures have NO entry → their
+  // neutral "both" card below.
+  const gameTurns = gameTurnSidesOf(events, active);
   for (const event of visible) {
-    const card = ensure(event.half, event.turnNumber, actingSideOf(event) ?? event.side);
+    const card = ensure(event.half, event.turnNumber, gameTurns.get(event.seq) ?? null);
     card.events.push(event);
     card.minuteAt = Math.max(card.minuteAt, event.at);
   }
@@ -537,6 +551,12 @@ function playerLine(
   );
 }
 
+/** S10.4.2 (T16): the capture-author badge copy — «quién la registró». */
+function authorBadgeLabel(event: LiveMatchEventDto, teams: TeamMap): string {
+  const author = captureAuthorOf(event);
+  return author != null ? `Registrado por ${teams[author].name}` : "Registro de sistema";
+}
+
 function EventRow({
   event,
   teams,
@@ -587,6 +607,11 @@ function EventRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm text-ink">{subject}</p>
         <p className="text-xs text-slate">{descriptionFor(event, teams)}</p>
+        {/* S10.4.2 role transparency: who REGISTERED the capture (compact,
+            secondary — never competes with the row itself on mobile). */}
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate">
+          {authorBadgeLabel(event, teams)}
+        </p>
       </div>
       {marker != null ? (
         <span className={`shrink-0 text-[11px] font-bold ${marker.className}`}>{marker.text}</span>
@@ -631,7 +656,11 @@ function CompactRow({
     >
       <ActaIcon name={icon} className="mt-0.5 size-4 shrink-0 text-slate" />
       <p className="min-w-0 flex-1">
-        <strong className="text-navy">{name}</strong> {compactSentence(event, teams)}
+        <strong className="text-navy">{name}</strong> {compactSentence(event, teams)}{" "}
+        {/* S10.4.2: the compact-row variant of the capture-author badge. */}
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate">
+          · {authorBadgeLabel(event, teams)}
+        </span>
       </p>
     </div>
   );
