@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 
 import { ActaDemoHarness } from "./actaDemoHarness";
+import { demoState } from "./actaDemoReducer";
 
 // Deterministic dice for die-button rolls (S3 · T4 kickoff walk): a per-test
 // queue, defaulting to the wizard's classic 2/5 demo rolls.
@@ -928,5 +936,154 @@ describe("ActaDemoHarness — T13: reload mid-wizard with the second coach (L48)
     ) as { v?: number; state?: { matchStarted?: boolean } } | null;
     expect(saved?.v).toBe(5);
     expect(saved?.state?.matchStarted).toBe(false);
+  });
+});
+
+/**
+ * T14 · L50 — Step 4 of the flow-test plan: the CLOSE-OUT segment of
+ * docs/flow-enfrentamiento.md («Partido finalizado» → «Cierre → acta derivada
+ * (S5)») walked through the REAL UI: «Fin Turno» closes the 2T8 pair (the
+ * match ENDS from the dock) and the REAL `ActaClosure` form closes the acta
+ * through its own controls (canCloseActa gate → fill → `submitResult` → the
+ * harness's demo save shim). These tests PIN the shipped close-out (no
+ * behavior change).
+ *
+ * ENTRY-POINT DEBT (the one honest seed): the harness trim (d1e6f72) removed
+ * «Abrir cierre» — the ONLY `openClosure` dispatch (actaDemoHarness has no
+ * other one; the parked shim test above says it outright: "the closure UI
+ * needs a new entry point"). The seeded v5 blob therefore carries
+ * `closureOpen: true` — the exact state that button produced after a reload —
+ * and the close-out runs from there. Ending the match and closing the acta
+ * are both the real UI; only the OPEN trigger is seeded.
+ *
+ * The snapshot is the «segundo-tercio» scenario advanced to the 2T8 pair with
+ * homeScore pinned to 1 = its captured TD rows: the stock narrative tally (2)
+ * counts one home TD more than its feed carries and `validateActa`'s
+ * Σ anotaciones == marcador guard would block every save over it (fixture
+ * debt — reported, not patched here).
+ */
+
+/** The late-match v5 seed: 2T8 pair, home active, closure ready to open.
+ *  (`demoState("segundo-tercio")` inherits `activeSide: "away"` from the live
+ *  fixture — the home viewer must be the ACTIVE coach to reach «Fin Turno».) */
+const closeOutSnapshot = () => ({
+  ...demoState("segundo-tercio"),
+  half: 2,
+  turnNumber: 8,
+  activeSide: "home" as const,
+  homeScore: 1,
+  closureOpen: true,
+});
+
+/** Load the seeded late match through the REAL v5 hydration path. */
+const loadLateMatch = () => {
+  window.localStorage.setItem(
+    "bb-demo-partido",
+    JSON.stringify({ v: 5, state: closeOutSnapshot() }),
+  );
+  return render(<ActaDemoHarness />);
+};
+
+/** Two «Fin Turno» close the 2T8 pair → the match ENDS (endMatch). */
+const finishMatch = () => {
+  finTurno("Voluntario");
+  finTurno("Voluntario");
+};
+
+describe("ActaDemoHarness — T14: close-out through the real closure form (L50)", () => {
+  it("the closure form appears ONLY at match end: hidden mid-match, up once the 2T8 pair closes", () => {
+    loadLateMatch();
+
+    // 2T8, home playing: NO closure form mid-match — the finished gate holds
+    // it back even with the closure-open seed already in the blob.
+    expect(screen.getByText(/TURNO 8 EN JUEGO/)).toBeTruthy();
+    expect(screen.queryByTestId("acta-closure")).toBeNull();
+    expect(screen.getByTestId("acta-capture-grid")).toBeTruthy();
+
+    // First flip: the pair is still open → still no closure.
+    finTurno("Voluntario");
+    expect(screen.queryByTestId("acta-closure")).toBeNull();
+
+    // Second flip closes the pair → the match ENDS and the REAL closure form
+    // is up (canCloseActa: participant + scheduled + finished live).
+    finTurno("Voluntario");
+    const closure = screen.getByTestId("acta-closure");
+    expect(within(closure).getByText("Cierre del acta")).toBeTruthy();
+    expect(
+      within(closure).getByRole("button", { name: "Guardar acta" }),
+    ).toBeTruthy();
+    // The derived final score line (from the live capture).
+    expect(closure.textContent).toMatch(
+      /Águilas de Khemri 1\s*–\s*1 Colmillos del Caos/,
+    );
+    // The capture dock is gone with the finished match.
+    expect(screen.queryByTestId("acta-capture-grid")).toBeNull();
+  });
+
+  it("submitting the REAL closure form reports the acta and the closure survives a reload (v5)", async () => {
+    const first = loadLateMatch();
+    finishMatch();
+    const closure = screen.getByTestId("acta-closure");
+
+    // Captured casualty rolls ride through (the feed's bajas carry their
+    // 1D16 + 1D6): nothing is re-asked, and the save gates on missing data.
+    expect(within(closure).getByText("Sin tiradas pendientes.")).toBeTruthy();
+    const save = within(closure).getByRole("button", { name: "Guardar acta" });
+    expect(save.hasAttribute("disabled")).toBe(true);
+
+    // Fill the REAL controls: MVP per team, final FF + fan 1D6 per team.
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: "MVP · Águilas de Khemri · Khalid el Impávido",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("radio", {
+        name: "MVP · Colmillos del Caos · Grishnak Mordaz",
+      }),
+    );
+    fireEvent.change(
+      screen.getByRole("spinbutton", { name: "Factor fan · Águilas de Khemri" }),
+      { target: { value: "7" } },
+    );
+    fireEvent.change(
+      screen.getByRole("spinbutton", { name: "Factor fan · Colmillos del Caos" }),
+      { target: { value: "5" } },
+    );
+    fireEvent.change(
+      screen.getByRole("spinbutton", {
+        name: "Afición · tirada 1D6 · Águilas de Khemri",
+      }),
+      { target: { value: "3" } },
+    );
+    fireEvent.change(
+      screen.getByRole("spinbutton", {
+        name: "Afición · tirada 1D6 · Colmillos del Caos",
+      }),
+      { target: { value: "4" } },
+    );
+    expect(save.hasAttribute("disabled")).toBe(false);
+
+    // Submit through the real save path: the demo save shim answers the POST,
+    // marks the single submitter and the form gives way to the report chrome.
+    fireEvent.click(save);
+    await waitFor(() => expect(screen.queryByTestId("acta-closure")).toBeNull());
+    expect(
+      screen.getByText(/Resultado reportado por Águilas de Khemri/),
+    ).toBeTruthy();
+
+    // The closed acta survives the reload (v5 blob keeps finished + submitter).
+    first.unmount();
+    render(<ActaDemoHarness />);
+    expect(
+      screen.getByText(/Resultado reportado por Águilas de Khemri/),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("acta-closure")).toBeNull();
+    const saved = JSON.parse(
+      window.localStorage.getItem("bb-demo-partido") ?? "null",
+    ) as { v?: number; state?: { status?: string; submittedBy?: string } } | null;
+    expect(saved?.v).toBe(5);
+    expect(saved?.state?.status).toBe("finished");
+    expect(saved?.state?.submittedBy).toBe("home");
   });
 });
