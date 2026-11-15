@@ -339,3 +339,18 @@
     animation: none;
   }
 }
+
+/* S7.2 · Dice roll (2026-11-13): the die glyph spins on each roll and the
+   recorded result is revealed after it lands. */
+@keyframes dice-roll {
+  0% { transform: rotate(0deg) scale(1); }
+  30% { transform: rotate(-16deg) scale(1.12); }
+  65% { transform: rotate(14deg) scale(0.94); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+@keyframes dice-reveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dice-roll { animation: dice-roll 0.6s ease-in-out; }
+.dice-reveal { animation: dice-reveal 0.4s ease-out 0.35s both; }

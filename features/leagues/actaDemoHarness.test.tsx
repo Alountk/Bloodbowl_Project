@@ -44,16 +44,17 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(pressed("Águilas de Khemri")).toBe("false");
   });
 
-  it("viewing as the NON-active side shows Solicitar turno and hides the active dock actions; switching back restores them", () => {
+  it("viewing as the NON-active side hides the active dock actions and shows no request-turn UI; switching back restores them", () => {
     render(<ActaDemoHarness />);
     // 1T turn 3: the home coach is ACTIVE — the full capture dock is up.
     fireEvent.click(demoButton("1T · turno 3"));
     expect(demoButton("+ TD")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
 
-    // Watch as the rival: request-turn row + only their LM-12-legal records.
+    // Watch as the rival: no request-turn UI (deprecated) + only their
+    // LM-12-legal records.
     fireEvent.click(perspective("Colmillos del Caos"));
-    expect(screen.getByRole("button", { name: "Solicitar turno" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+ TD" })).toBeNull();
     expect(screen.getByRole("button", { name: /Baja propia/ })).toBeTruthy();
 
@@ -93,7 +94,9 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     // Perspective no longer dragged along — the viewer is now the non-active
     // coach and gets the request-turn row.
     expect(pressed("Colmillos del Caos")).toBe("true");
-    expect(screen.getByRole("button", { name: "Solicitar turno" })).toBeTruthy();
+    // The request-turn UI is gone (deprecated): the perspective switch is
+    // evidenced by the pressed state above.
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
   });
 
   it("REAL capture: the dock's TD flow advances the header score line and appends an event card", () => {
@@ -154,6 +157,99 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
 
     fireEvent.click(demoButton("Inicio"));
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+  });
+
+  it("Restablecer (and the Inicio preset) opens the pre-match wizard modal", () => {
+    render(<ActaDemoHarness />);
+    expect(
+      screen.queryByRole("dialog", { name: "Antes del partido" }),
+    ).toBeNull();
+
+    fireEvent.click(demoButton("Restablecer"));
+    expect(
+      screen.getByRole("dialog", { name: "Antes del partido" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    expect(
+      screen.queryByRole("dialog", { name: "Antes del partido" }),
+    ).toBeNull();
+
+    fireEvent.click(demoButton("Inicio"));
+    expect(
+      screen.getByRole("dialog", { name: "Antes del partido" }),
+    ).toBeTruthy();
+  });
+
+  it("Restablecer starts the pre-match from scratch: wizard at Paso 1 and a clean acta", () => {
+    render(<ActaDemoHarness />);
+    // The fixture narrative pre-captures both coaches' rolls.
+    expect(document.body.textContent).toMatch(/Afición: 4 \+ 🎲3 = 7/);
+    expect(document.body.textContent).toMatch(/Sobornos ×1/);
+
+    fireEvent.click(demoButton("Restablecer"));
+    // The wizard opens at the very first step (empty capture)…
+    expect(screen.getByRole("button", { name: "Tirar 1D3" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Avanzar al Clima" })).toBeTruthy();
+    // …and the acta holds no pre-match facts until they are captured again.
+    expect(document.body.textContent).not.toMatch(/Afición: 4 \+ 🎲3 = 7/);
+    expect(document.body.textContent).not.toMatch(/Sobornos ×1/);
+    const fresh = screen.getByRole("region", { name: "Lo que ha sucedido" });
+    expect(fresh.textContent).toContain("Aún no hay nada confirmado.");
+  });
+
+  it("the pre-match wizard modal fills the screen and scrolls on its own", () => {
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("Restablecer"));
+    const dialog = screen.getByRole("dialog", { name: "Antes del partido" });
+    // Full-screen frame (the close button is the way out) + a scrollable body:
+    // long steps (the inducement table) scroll INSIDE the modal.
+    expect(dialog.className).toMatch(/h-full/);
+    expect(dialog.querySelector(".overflow-y-auto")).toBeTruthy();
+  });
+
+  it("the turn timeline shows only when the match has really started", () => {
+    render(<ActaDemoHarness />);
+    // The fixture narrative is a match underway → its turn timeline is there.
+    expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
+    fireEvent.click(demoButton("Restablecer"));
+    // A fresh match (pre-match pending) shows no turn timeline yet — only the
+    // «Antes del partido» section to complete it.
+    expect(screen.queryByTestId("acta-turn-timeline")).toBeNull();
+  });
+
+  it("the «Partido» heading shows only when the match has really started", () => {
+    render(<ActaDemoHarness />);
+    expect(screen.queryByRole("heading", { name: "Partido", level: 2 })).toBeTruthy();
+    fireEvent.click(demoButton("Restablecer"));
+    // A fresh match (pre-match pending) shows no «Partido» section title yet.
+    expect(screen.queryByRole("heading", { name: "Partido", level: 2 })).toBeNull();
+  });
+
+  it("the «Solicitar turno» button is gone from the view: the flow is deprecated (face-to-face play)", () => {
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("1T · turno 3"));
+    fireEvent.click(perspective("Colmillos del Caos"));
+    // Deprecated for face-to-face play: the request-turn UI is not rendered at
+    // all (the flow behind is marked @deprecated in code).
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
+  });
+
+  it("the dock action bar shows only when the match has really started", () => {
+    render(<ActaDemoHarness />);
+    // The fixture narrative is a match underway → the capture actions are there.
+    expect(screen.getByTestId("acta-capture-grid")).toBeTruthy();
+    fireEvent.click(demoButton("Restablecer"));
+    // A fresh match (pre-match pending) shows no in-game actions yet.
+    expect(screen.queryByTestId("acta-capture-grid")).toBeNull();
+  });
+
+  it("mid-match preset chips keep their direct jump (no wizard modal)", () => {
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("2T · turno 5"));
+    expect(
+      screen.queryByRole("dialog", { name: "Antes del partido" }),
+    ).toBeNull();
+    expect(screen.getByText(/TURNO 5 EN JUEGO/)).toBeTruthy();
   });
 
   it("turn accents and stepper pills tint by team color in the demo flow (S3)", () => {

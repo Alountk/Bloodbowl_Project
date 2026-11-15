@@ -182,6 +182,9 @@ function emptyPendingView(): LiveMatchViewState {
  * no later turn flip (turnStart/turn/endHalf/endMatch) has superseded. Deriving
  * from the timeline makes the banner survive a reload (the snapshot carries the
  * persisted nudge) and self-clear on the next turn flip.
+ *
+ * @deprecated Face-to-face play (2026-11-13): the turn request makes no sense
+ * when both players share a table; the whole requestTurn flow is deprecated.
  */
 function rivalRequestsTurn(
   events: LiveMatchView["events"],
@@ -1308,7 +1311,10 @@ function LiveActiveMatch({
               ) : null}
             </div>
             <div className="flex flex-wrap gap-3">
-              {/* A non-active coach (with a side) may request the turn (LM-13/D14);
+              {/* DEPRECATED (2026-11-13): face-to-face play makes the remote turn
+                  request pointless (both players share a table). The requestTurn
+                  flow is deprecated; this control stays only for compatibility.
+                  A non-active coach (with a side) may request the turn (LM-13/D14);
                   the ACTIVE coach's pass control lives CENTERED in the top bar. */}
               {state.viewerSide !== null && state.viewerSide !== state.activeSide ? (
                 <button
