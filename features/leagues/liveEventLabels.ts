@@ -227,6 +227,59 @@ export const KICKOFF_PHASE_LABELS: Record<string, string> = {
 };
 
 /**
+ * T17 (S10.1 · S4 Combate): the five block-die faces as Spanish chip labels
+ * (lib/rules/blocks `BlockDieFace` ids — UI copy over the engine's ids, never
+ * a rules table). Unknown ids fall through; loops over this map never throw.
+ */
+export const BLOCK_FACE_LABELS: Record<string, string> = {
+  attackerDown: "El atacante cae",
+  bothDown: "Ambos caen",
+  push: "Empujón",
+  defenderStumbles: "El defensor tropieza",
+  defenderDown: "El defensor cae",
+};
+
+/**
+ * T17 (S10.2): the derribo-row suffix naming WHO fell — only the faces that
+ * are NOT a plain defender knockdown need one («Derribo» alone already means
+ * the defender went down). A push never builds a row.
+ */
+const KNOCKDOWN_FACE_SUFFIX: Record<string, string> = {
+  attackerDown: "cae el atacante",
+  bothDown: "ambos caen",
+};
+
+/**
+ * T17 (S10.2): the composed label of the standalone «Derribo» row —
+ * "Derribo" + WHO fell + the recorded armour line (2D6 vs the victim's AV,
+ * compact «Ar 7 (9+) rota|aguanta» — the `roster.header.av` "AR"
+ * abbreviation). Dictionary key first (the `causeLabel` pattern), then the
+ * fixed Spanish fallback. Never throws: missing/malformed payload parts are
+ * simply skipped.
+ */
+export function knockdownLabel(
+  payload: Record<string, unknown>,
+  fn: TFunc = esT,
+): string {
+  const key = "match.event.knockdown";
+  const translated = fn(key);
+  const head = translated === key ? "Derribo" : translated;
+  const parts: string[] = [head];
+  const face = typeof payload.face === "string" ? payload.face : null;
+  const suffix = face != null ? KNOCKDOWN_FACE_SUFFIX[face] : null;
+  if (suffix != null) parts.push(suffix);
+  const roll = typeof payload.armourRoll === "number" ? payload.armourRoll : null;
+  if (roll != null) {
+    const av = typeof payload.victimAv === "number" ? payload.victimAv : null;
+    const broken = payload.armourBroken;
+    const outcome = broken === true ? "rota" : broken === false ? "aguanta" : null;
+    const line = av != null ? `Ar ${roll} (${av}+)` : `Ar ${roll}`;
+    parts.push(outcome != null ? `${line} ${outcome}` : line);
+  }
+  return parts.join(" · ");
+}
+
+/**
  * Formats a treasury value in the es-ES style: dot-thousands plus a literal
  * " M.O." (LM-24). Pure — callers decide whether a missing field renders the
  * line at all.
@@ -354,6 +407,10 @@ export function liveEventLabel(event: LiveEventLabelInput, fn: TFunc = esT): str
     }
     case "foul":
       return fn("match.event.foul");
+    case "knockdown":
+      // T17 (S10.2): the standalone derribo row — composed from the payload
+      // (face + armour vs AV); see `knockdownLabel`.
+      return knockdownLabel(event.payload, fn);
     case "expensive_mistake":
       return fn("match.event.expensiveMistake");
     case "fan_factor":

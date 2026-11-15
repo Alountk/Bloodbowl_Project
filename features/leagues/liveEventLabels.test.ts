@@ -12,6 +12,7 @@ import {
   journeymanJoinLabel,
   isBothDownCasualty,
   bothDownMarkerLabel,
+  knockdownLabel,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -329,5 +330,54 @@ describe("kickoff rows — the DEMO kickoff-gate labels (S3 · T4, MVT-6)", () =
 
   it("maps the kickoff glyph to the dice icon (never the bare football fallback)", () => {
     expect(EVENT_GLYPH.kickoff).toBe("dice");
+  });
+});
+
+describe("knockdownLabel — the standalone derribo row (T17, S10.2)", () => {
+  it("reads «Derribo» for a plain defender knockdown and names WHO falls on the other faces", () => {
+    expect(knockdownLabel({})).toBe("Derribo");
+    expect(knockdownLabel({ face: "defenderDown" })).toBe("Derribo");
+    // Skills are not modelled — a stumble without Dodge is a defender derribo.
+    expect(knockdownLabel({ face: "defenderStumbles" })).toBe("Derribo");
+    expect(knockdownLabel({ face: "bothDown" })).toBe("Derribo · ambos caen");
+    expect(knockdownLabel({ face: "attackerDown" })).toBe(
+      "Derribo · cae el atacante",
+    );
+  });
+
+  it("appends the recorded 2D6 armour line vs the victim AV (rota / aguanta)", () => {
+    expect(
+      knockdownLabel({
+        face: "defenderDown",
+        armourRoll: 7,
+        victimAv: 9,
+        armourBroken: true,
+      }),
+    ).toBe("Derribo · Ar 7 (9+) rota");
+    expect(
+      knockdownLabel({
+        face: "defenderDown",
+        armourRoll: 9,
+        victimAv: 9,
+        armourBroken: false,
+      }),
+    ).toBe("Derribo · Ar 9 (9+) aguanta");
+    // Unknown AV (fixture positional outside the catalog): the raw roll only.
+    expect(knockdownLabel({ armourRoll: 11 })).toBe("Derribo · Ar 11");
+  });
+
+  it("liveEventLabel routes the knockdown kind through the composed label (never throws)", () => {
+    expect(
+      liveEventLabel(
+        ev("knockdown", {
+          armourRoll: 12,
+          victimAv: 10,
+          armourBroken: true,
+        }),
+      ),
+    ).toBe("Derribo · Ar 12 (10+) rota");
+    expect(liveEventLabel(ev("knockdown", { face: "bothDown" }))).toBe(
+      "Derribo · ambos caen",
+    );
   });
 });

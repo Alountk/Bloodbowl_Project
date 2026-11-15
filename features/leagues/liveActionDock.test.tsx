@@ -1,9 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
 import { fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { LiveActionDock } from "./liveActionDock";
 import type { LiveCommand, MatchPlayer } from "./api";
 
 type MockControl = (cmd: LiveCommand) => Promise<void>;
+
+// Deterministic block dice (T17 chain — lib/rules/blocks `blockDie` rolls D6
+// faces): a per-test queue over the shared `@/lib/random` seam (same pattern as
+// actaDemoHarness.test.tsx). Default 5 = «El defensor tropieza» face.
+const dice = vi.hoisted(() => ({ queue: [] as number[] }));
+vi.mock("@/lib/random", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/random")>();
+  return {
+    ...actual,
+    rollD6: () => dice.queue.shift() ?? 5,
+  };
+});
 
 function rosterPlayer(seed: Partial<Omit<MatchPlayer, "rosterPlayerId">> & { id: string }): MatchPlayer {
   return {
@@ -469,12 +482,15 @@ describe("Acta quick-capture dock (MVA-5 · T9 Slice C)", () => {
  * ------------------------------------------------------------------------- */
 
 describe("Acta + Evento choice sheet (MVA-4 capture surface, Slice E)", () => {
-  it("+ Evento opens the five-choice sheet on the acta variant (S2: + Cambiar clima)", () => {
+  it("+ Evento opens the six-choice sheet on the acta variant (T17: + Bloqueo; S2: + Cambiar clima)", () => {
     renderActaDock();
     fireEvent.click(actaAction("+ Evento"));
     const modal = within(screen.getByTestId("live-action-modal"));
     const options = modal.getAllByTestId("dock-event-option");
+    // INTENTIONAL change (T17 · S10.1): the sheet gains the block chain entry
+    // («Bloqueo») — the guided combat capture is a recordable acta event.
     expect(options.map((o) => o.textContent)).toEqual([
+      "Bloqueo",
       "Falta",
       "Intercepción",
       "Lanzar compañero",
@@ -629,5 +645,249 @@ describe("Acta + Evento → Cambiar clima (S2 weather capture)", () => {
     expect(cmd.value).toBe("blizzard");
     expect("roll" in cmd).toBe(false);
     expect(screen.queryByTestId("live-action-modal")).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * T17 (S4 step 2b — S10.1/S10.2/S10.4.1): the guided BLOCK ACTION recorded as
+ * the real combat chain — block dice by ST (lib/rules/blocks, imported never
+ * transcribed) -> pick a face -> standalone knockdown entry -> armour 2D6 vs
+ * the victim's AV -> when broken, the VICTIM's owner side gets a
+ * pending-injury callout to record the 1D16 (+1D6 on Permanente). The injury
+ * capture carries NO causer (S10.4.1 «el jugador que recibe marca la herida»):
+ * the badge must name the victim's coach and the causal context already rides
+ * the knockdown row. Entry point: «+ Evento» -> «Bloqueo» (acta variant).
+ * ------------------------------------------------------------------------- */
+
+const asVictimView = (
+  rerender: (ui: ReactElement) => void,
+  onSubmit: MockControl,
+) =>
+  rerender(
+    <LiveActionDock
+      viewerSide="away"
+      activeSide="home"
+      status="live"
+      roster={awayOpponent}
+      opponentRoster={homeRoster}
+      rosterRaceId="human"
+      opponentRaceId="human"
+      onSubmit={onSubmit}
+      variant="acta"
+    />,
+  );
+
+/** Walks «+ Evento» -> «Bloqueo» -> causer #1 -> victim #1 up to the block
+ *  dice stage (nothing rolled yet). */
+const walkToBlockRoll = () => {
+  fireEvent.click(actaAction("+ Evento"));
+  fireEvent.click(within(actaDock()).getByRole("button", { name: "Bloqueo" }));
+  fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
+  fireEvent.click(within(actaPool("rival")).getByRole("button", { name: /#1/i }));
+};
+
+/** Throws the queued block dice and advances to the face stage. */
+const throwDice = (d6faces: number[]) => {
+  dice.queue = d6faces;
+  fireEvent.click(
+    within(screen.getByTestId("dock-block-roll")).getByRole("button", {
+      name: "Tirar dados de bloqueo",
+    }),
+  );
+};
+
+const faceChip = (label: string) =>
+  within(screen.getByTestId("dock-block-face")).getByRole("button", { name: label });
+
+const armourChip = (value: string) =>
+  within(screen.getByTestId("dock-armour-roll")).getByRole("button", { name: value });
+
+describe("Acta + Evento → Bloqueo (T17 combat chain)", () => {
+  it("walks the real chain: block dice by ST -> face -> knockdown -> armour 2D6 vs AR (tackler-side knockdown fires)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    const rollStage = screen.getByTestId("dock-block-roll");
+    // ST comparison drives the dice count (3 vs 3 -> 2 dice, standard BB).
+    expect(rollStage.textContent).toContain("FUE 3 vs FUE 3 · 2 dados");
+    throwDice([6, 1]); // faces: El defensor cae + El atacante cae
+    // The rolled faces are the pickable chips of the next stage.
+    const faceStage = screen.getByTestId("dock-block-face");
+    expect(faceStage.textContent).toContain("El defensor cae");
+    expect(faceStage.textContent).toContain("El atacante cae");
+    fireEvent.click(faceChip("El defensor cae"));
+    // Armour stage: 2D6 vs the victim's catalog AV (human blitzer = AR 9).
+    const armourStage = screen.getByTestId("dock-armour-roll");
+    expect(armourStage.textContent).toContain("Armadura de Vrok · AR 9+");
+    fireEvent.click(armourChip("10"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // S10.4.1: the tackler's coach reports the placaje — `side` is the
+    // recorder's and the chain travels whole (dice, face, armour vs AV).
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "knockdown",
+      side: "home",
+      causerRosterId: "p1",
+      victimRosterId: "o1",
+      blockDice: ["defenderDown", "attackerDown"],
+      face: "defenderDown",
+      armourRoll: 10,
+      victimAv: 9,
+      armourBroken: true,
+    });
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
+  });
+
+  it("rolls ONE block die when the attacker's ST is below the defender's (block dice by ST)", () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({
+      onSubmit,
+      opponentRoster: [rosterPlayer({ id: "o9", name: "Ogryn", positionalKey: "ogre" })],
+    });
+    fireEvent.click(actaAction("+ Evento"));
+    fireEvent.click(within(actaDock()).getByRole("button", { name: "Bloqueo" }));
+    fireEvent.click(within(actaPool("own")).getByRole("button", { name: /#1/i }));
+    fireEvent.click(within(actaPool("rival")).getByRole("button", { name: /#1/i }));
+    const rollStage = screen.getByTestId("dock-block-roll");
+    // FUE 3 (blitzer) vs FUE 5 (ogre) -> 1 die.
+    expect(rollStage.textContent).toContain("FUE 3 vs FUE 5 · 1 dado");
+  });
+
+  it("S10.2: armour holding ends the chain with the standalone knockdown entry (no pending injury)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([6, 1]);
+    fireEvent.click(faceChip("El defensor cae"));
+    fireEvent.click(armourChip("5")); // 5 vs AR 9 -> intacta
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "knockdown",
+      side: "home",
+      causerRosterId: "p1",
+      victimRosterId: "o1",
+      blockDice: ["defenderDown", "attackerDown"],
+      face: "defenderDown",
+      armourRoll: 5,
+      victimAv: 9,
+      armourBroken: false,
+    });
+    // No injury potential -> the victim side gets NO callout.
+    asVictimView(rerender, onSubmit);
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+  });
+
+  it("a Push face records NOTHING (no knockdown entry) and closes the sheet", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([3, 3]); // both faces Push
+    expect(screen.getByTestId("dock-block-face").textContent).toContain("Empujón");
+    fireEvent.click(faceChip("Empujón"));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
+  });
+
+  it("«Ambos caen» / «El atacante cae» register the knockdown row ONLY (S10.3 backlog — no armour stage)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([2, 2]); // both faces Both Down
+    fireEvent.click(faceChip("Ambos caen"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // Standalone derribo entry, NO armour fields (both-down injuries backlog).
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "knockdown",
+      side: "home",
+      causerRosterId: "p1",
+      victimRosterId: "o1",
+      blockDice: ["bothDown", "bothDown"],
+      face: "bothDown",
+    });
+    expect(screen.queryByTestId("dock-armour-roll")).toBeNull();
+    // TRIANGULATE: the attacker-down face follows the same row-only path.
+    walkToBlockRoll();
+    throwDice([1, 1]);
+    fireEvent.click(faceChip("El atacante cae"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(onSubmit.mock.calls[1][0]).toMatchObject({ face: "attackerDown" });
+    expect("armourRoll" in (onSubmit.mock.calls[1][0] as object)).toBe(false);
+    // Neither row opens a victim-side injury callout.
+    asVictimView(rerender, onSubmit);
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+  });
+
+  it("S10.4.1: after a broken armour the VICTIM's side gets the pending-injury callout and records the 1D16 (no causer)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([6, 1]);
+    fireEvent.click(faceChip("El defensor cae"));
+    fireEvent.click(armourChip("10")); // 10 > AR 9 -> rota
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // The TACKLER side never sees the victim's callout.
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+
+    // The victim's owner (perspective flip) gets the pending-injury callout.
+    asVictimView(rerender, onSubmit);
+    const callout = screen.getByTestId("dock-pending-injury");
+    expect(callout.textContent).toContain("TIRADA DE LESIÓN PENDIENTE");
+    expect(callout.textContent).toContain("Vrok (#1)");
+    expect(callout.textContent).toContain("tras romperse la armadura");
+
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-8"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(onSubmit.mock.calls[1][0]).toEqual({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o1",
+      cause: "block",
+      roll16: 8,
+    });
+    // Roll-inclusive and CAUSER-LESS (the badge must name the recorder).
+    expect("causerRosterId" in (onSubmit.mock.calls[1][0] as object)).toBe(false);
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+  });
+
+  it("the Permanente band waits for the 1D6 before firing the injury capture", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([6, 1]);
+    fireEvent.click(faceChip("El defensor cae"));
+    fireEvent.click(armourChip("12"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    asVictimView(rerender, onSubmit);
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-13")); // Permanente
+    expect(onSubmit).toHaveBeenCalledTimes(1); // still silent
+    fireEvent.click(
+      within(screen.getByTestId("roll-stepper-6")).getByTestId("roll-option-4"),
+    );
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(onSubmit.mock.calls[1][0]).toEqual({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o1",
+      cause: "block",
+      roll16: 13,
+      roll6: 4,
+    });
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+  });
+
+  it("«Sin herida» dismisses the pending callout without any command (S10.4.1 «solo si llega a producirse»)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([6, 1]);
+    fireEvent.click(faceChip("El defensor cae"));
+    fireEvent.click(armourChip("11"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    asVictimView(rerender, onSubmit);
+    expect(screen.getByTestId("dock-pending-injury")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("dock-injury-dismiss"));
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+    expect(onSubmit).toHaveBeenCalledTimes(1); // only the knockdown
   });
 });

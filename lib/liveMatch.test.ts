@@ -513,7 +513,7 @@ describe("applyWeatherChange — S2 side-less weather capture (Cambiar clima)", 
 });
 
 describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
-  it("accepts the display kinds incl. the LM-13 acta vocabulary and the S2 weather capture (start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede|weather)", () => {
+  it("accepts the display kinds incl. the LM-13 acta vocabulary, the S2 weather capture and the T17 knockdown entry (start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|endHalf|endMatch|mvp|expensive_mistake|fan_factor|concede|weather|knockdown)", () => {
     const displayKinds = [
       "start",
       "td",
@@ -533,6 +533,10 @@ describe("isDisplayEvent — server-side feed filter (LM-16)", () => {
       // its current weather line from the latest such event (deliberate filter
       // change, same as the LM-13 additions).
       "weather",
+      // T17 (S10.2): the standalone derribo row must land on the acta's
+      // game-turn cards — same deliberate filter change as the kinds above.
+      // The production server never emits it (the demo records it).
+      "knockdown",
     ];
     for (const kind of displayKinds) {
       expect(isDisplayEvent(kind)).toBe(true);

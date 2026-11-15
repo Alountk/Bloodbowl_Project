@@ -45,6 +45,7 @@ export type LiveEventKind =
   | "throwTeamMate"
   | "landedSafe"
   | "casualty"
+  | "knockdown"
   | "foul"
   | "endHalf"
   | "endMatch"
@@ -61,7 +62,8 @@ export type LiveEventKind =
  * The display-worthy kinds that reach the feed DTOs (LM-16): the history shows
  * `start|td|completion|interception|throwTeamMate|landedSafe|casualty|foul|
  * endHalf|endMatch|mvp|concede|journeyman` (and `expensive_mistake|fan_factor|
- * weather` — the kickoff/pre-match and S2 weather captures). `turn`, `turnStart` and
+ * weather` — the kickoff/pre-match and S2 weather captures — plus the T17
+ * `knockdown` combat-chain entry). `turn`, `turnStart` and
  * `requestTurn` stay in the DB (audit/replay) and live-only (nudge banner) but
  * MUST NEVER appear in a feed DTO. Shared by BOTH serializers (`toEventDtos` in
  * the live route and `serializeLive` in the fixture GET) so the feed and the
@@ -79,6 +81,11 @@ export function isDisplayEvent(kind: string): boolean {
     case "throwTeamMate":
     case "landedSafe":
     case "casualty":
+    // T17 (S10.2): the standalone «Derribo» entry of the combat chain must
+    // reach the acta's game-turn cards. Additive deliberate filter change (same
+    // class as the LM-13/S2 additions): the production server never emits this
+    // kind — the demo's guided block chain records it.
+    case "knockdown":
     case "foul":
     case "endHalf":
     case "endMatch":

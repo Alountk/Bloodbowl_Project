@@ -3,10 +3,14 @@ import {
   ACTIVE_CAUSES,
   SELF_CAUSES,
   buildGuidedCommand,
+  buildKnockdownCommand,
   buildScoredCommand,
+  buildVictimInjuryCommand,
   buildWeatherCommand,
   eligiblePlayers,
+  knockdownVictimOf,
   positionName,
+  statsFor,
 } from "./liveActionEntry";
 import type { LiveCommand, MatchPlayer } from "./api";
 
@@ -113,6 +117,135 @@ describe("liveActionEntry — role sets + building shared commands (Design A doc
     expect(buildGuidedCommand("casualty", "home", { cause: "block" })).toBeNull();
     expect(buildGuidedCommand("foul", "home", { causerId: "h1" })).toBeNull();
     expect(buildGuidedCommand("bothDown", "home", { victimId: "a1" })).toBeNull();
+  });
+});
+
+describe("liveActionEntry — T17 combat chain: knockdown -> armour -> victim injury (S10.1/S10.2/S10.4.1)", () => {
+  it("statsFor resolves ST and numeric AV from the race catalog (human blitzer -> 3 / 9+); unknown positionals -> null", () => {
+    expect(statsFor("human", "blitzer")).toEqual({ st: 3, av: 9 });
+    expect(statsFor("human", "lineman")).toEqual({ st: 3, av: 9 });
+    expect(statsFor("human", "not-a-position")).toBeNull();
+  });
+
+  it("knockdownVictimOf maps the block faces to WHO falls (push -> nobody = no knockdown entry)", () => {
+    expect(knockdownVictimOf("defenderDown")).toBe("defender");
+    // Skills are deliberately NOT modelled (lib/rules/blocks.ts) — a stumble
+    // without Dodge knocks the defender down too.
+    expect(knockdownVictimOf("defenderStumbles")).toBe("defender");
+    expect(knockdownVictimOf("bothDown")).toBe("both");
+    expect(knockdownVictimOf("attackerDown")).toBe("attacker");
+    expect(knockdownVictimOf("push")).toBeNull();
+  });
+
+  it("buildKnockdownCommand records the tackler-side chain: dice, picked face, armour 2D6 vs the victim AV", () => {
+    const cmd = buildKnockdownCommand({
+      recorderSide: "home",
+      causerId: "p1",
+      victimId: "o1",
+      blockDice: ["push", "defenderDown"],
+      face: "defenderDown",
+      armourRoll: 10,
+      victimAv: 9,
+    });
+    // S10.4.1: the TACKLER's coach records the knockdown — the command's side
+    // is the recorder's (the event badge «Registrado por» follows it).
+    expect(cmd).toEqual({
+      type: "knockdown",
+      side: "home",
+      causerRosterId: "p1",
+      victimRosterId: "o1",
+      blockDice: ["push", "defenderDown"],
+      face: "defenderDown",
+      armourRoll: 10,
+      victimAv: 9,
+      armourBroken: true,
+    });
+  });
+
+  it("an armour roll AT the victim AV keeps the armour (armourBroken false — S10.2 knockdown without baja)", () => {
+    const cmd = buildKnockdownCommand({
+      recorderSide: "home",
+      causerId: "p1",
+      victimId: "o1",
+      blockDice: ["defenderDown"],
+      face: "defenderDown",
+      armourRoll: 9,
+      victimAv: 9,
+    });
+    expect(cmd?.armourBroken).toBe(false);
+  });
+
+  it("a non-defender knockdown entry carries NO armour fields (both-down injuries stay backlog, S10.3)", () => {
+    const cmd = buildKnockdownCommand({
+      recorderSide: "away",
+      causerId: "o2",
+      victimId: "p3",
+      blockDice: ["bothDown"],
+      face: "bothDown",
+    });
+    expect(cmd).toEqual({
+      type: "knockdown",
+      side: "away",
+      causerRosterId: "o2",
+      victimRosterId: "p3",
+      blockDice: ["bothDown"],
+      face: "bothDown",
+    });
+  });
+
+  it("never builds a knockdown for a push, a face outside the rolled dice, or a missing player", () => {
+    expect(
+      buildKnockdownCommand({
+        recorderSide: "home",
+        causerId: "p1",
+        victimId: "o1",
+        blockDice: ["push", "push"],
+        face: "push",
+      }),
+    ).toBeNull();
+    expect(
+      buildKnockdownCommand({
+        recorderSide: "home",
+        causerId: "p1",
+        victimId: "o1",
+        blockDice: ["push"],
+        face: "defenderDown", // not among the rolled dice
+      }),
+    ).toBeNull();
+    expect(
+      buildKnockdownCommand({
+        recorderSide: "home",
+        causerId: "",
+        victimId: "o1",
+        blockDice: ["defenderDown"],
+        face: "defenderDown",
+      }),
+    ).toBeNull();
+  });
+
+  it("buildVictimInjuryCommand is the VICTIM-owner's roll-inclusive capture: own-side casualty WITHOUT a causer (S10.4.1)", () => {
+    const cmd = buildVictimInjuryCommand("away", "o1", 9);
+    expect(cmd).toEqual({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o1",
+      cause: "block",
+      roll16: 9,
+    } as LiveCommand);
+    // No causer key: the badge must name the VICTIM's coach (the recorder) and
+    // the causal context already rides the knockdown row.
+    expect("causerRosterId" in (cmd ?? {})).toBe(false);
+    const permanent = buildVictimInjuryCommand("away", "o1", 13, 4);
+    expect(permanent).toEqual({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o1",
+      cause: "block",
+      roll16: 13,
+      roll6: 4,
+    } as LiveCommand);
+    expect(buildVictimInjuryCommand("away", "", 9)).toBeNull();
+    expect(buildVictimInjuryCommand("away", "o1", 0)).toBeNull();
   });
 });
 
