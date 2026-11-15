@@ -132,7 +132,7 @@ export function bribesOf(
 }
 
 /** Spanish thousands-dot gold formatting (100_000 → "100.000"). */
-function formatMo(amount: number): string {
+export function formatMo(amount: number): string {
   return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
