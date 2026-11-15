@@ -488,3 +488,163 @@ describe("ActaDemoHarness — T9: the kickoff stays OUT of the flow (L39)", () =
     expect(summary.textContent).toMatch(/Recibe: Colmillos del Caos/);
   });
 });
+
+/**
+ * T10 · L42 — Step 1 of the approved flow-test plan: turn progression walked
+ * through the REAL UI (RTL only — no Playwright). The capture dock's «Fin
+ * Turno» opens the reason sheet (Voluntario | Tirada fallida | Baja) whose
+ * chip fires `endTurn`. These tests PIN the current correct behavior (no
+ * behavior change):
+ *   - pair rule (L36): both coaches share ONE turn number — T1 receiver →
+ *     T1 rival → T2 — and the «TURNO n EN JUEGO» badge advances only when the
+ *     pair closes;
+ *   - cards per half-turn (L37): the ACTIVE half-turn always shows its card
+ *     with the EN JUEGO chip, a closed half-turn with NOTHING recorded leaves
+ *     NO card, and half-turns with events stay as COMPLETADO/CERRADO;
+ *   - mid-match reload (localStorage v5): turn number, active side,
+ *     perspective and recorded cards survive a remount.
+ */
+
+/** The turn card whose heading reads «T{n} • {team}» (user-visible text). */
+const turnCard = (turn: number, team: string): HTMLElement =>
+  screen.getByText(`T${turn} • ${team}`).closest("article") as HTMLElement;
+
+/** The single card carrying the EN JUEGO chip (the ACTIVE half-turn). */
+const enJuegoCard = (): HTMLElement =>
+  screen.getByText("EN JUEGO").closest("article") as HTMLElement;
+
+/** Two-touch capture on the real dock: action → own player chip (#1). */
+const capture = (action: "+ TD" | "+ Pase") => {
+  fireEvent.click(demoButton(action));
+  fireEvent.click(
+    within(
+      within(screen.getByTestId("live-action-modal")).getByTestId("dock-pool-own"),
+    ).getByRole("button", { name: /#1/i }),
+  );
+};
+
+/** «Fin Turno» → reason sheet → the chosen chip fires endTurn immediately. */
+const finTurno = (reason: "Voluntario" | "Tirada fallida" | "Baja") => {
+  fireEvent.click(demoButton("Fin Turno"));
+  fireEvent.click(
+    within(screen.getByTestId("live-action-modal")).getByRole("button", {
+      name: reason,
+    }),
+  );
+};
+
+/** Full pre-match walk; the toss winner (home, 6 vs 3) lets Águilas RECEIVE. */
+const startWithHomeReceiver = () => {
+  // Home (fan 2, weather 4, toss 6) then away (fan 1, weather 5, toss 3).
+  dice.queue = [2, 4, 6, 1, 5, 3];
+  render(<ActaDemoHarness />);
+  fireEvent.click(demoButton("Restablecer"));
+  fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+  openWizard();
+  walkSequence(); // home done → the waiting screen.
+  fireEvent.click(perspective("Colmillos del Caos"));
+  openWizard();
+  walkSequence(); // away done → both sequences complete.
+  fireEvent.click(perspective("Águilas de Khemri"));
+  fireEvent.click(
+    screen.getByRole("radio", { name: "Recibe Águilas de Khemri" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
+};
+
+describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
+  it("pair rule: T1 receiver → T1 rival → T2 — the turn badge advances only when the pair closes", () => {
+    startWithHomeReceiver();
+    // The match starts DIRECTLY in turn 1 with the RECEIVER (Águilas) active.
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+    expect(enJuegoCard().textContent).toContain("T1 • Águilas de Khemri");
+    expect(pressed("Águilas de Khemri")).toBe("true");
+
+    // T1 home: a real dock capture lands in the EN JUEGO card.
+    capture("+ TD");
+    expect(heading().textContent).toBe("Águilas de Khemri 1 - 0 Colmillos del Caos");
+    expect(
+      within(turnCard(1, "Águilas de Khemri"))
+        .getAllByTestId("acta-event-row")
+        .some((row) => row.getAttribute("data-kind") === "td"),
+    ).toBe(true);
+
+    // «Fin Turno» → «Voluntario»: the RIVAL plays T1 — the turn number does
+    // NOT advance yet (pair rule) and the EN JUEGO card flips sides.
+    finTurno("Voluntario");
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+    expect(enJuegoCard().textContent).toContain("T1 • Colmillos del Caos");
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    expect(
+      within(turnCard(1, "Águilas de Khemri")).getByText("COMPLETADO"),
+    ).toBeTruthy();
+
+    // T1 away: the rival records their own half-turn and passes the turn.
+    capture("+ Pase");
+    finTurno("Tirada fallida");
+
+    // The pair closed → T2 of the RECEIVER; both T1 half-turns keep cards.
+    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+    expect(enJuegoCard().textContent).toContain("T2 • Águilas de Khemri");
+    expect(pressed("Águilas de Khemri")).toBe("true");
+    expect(
+      within(turnCard(1, "Colmillos del Caos")).getByText("COMPLETADO"),
+    ).toBeTruthy();
+    expect(
+      within(turnCard(1, "Águilas de Khemri")).getByText("CERRADO"),
+    ).toBeTruthy();
+  });
+
+  it("half-turns with NOTHING recorded disappear: no card, the rival's new half-turn appears as EN JUEGO", () => {
+    render(<ActaDemoHarness />);
+    // The narrative fixture opens with Colmillos active in T1: the ACTIVE
+    // half-turn always shows its card (EN JUEGO) even before any capture.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    expect(enJuegoCard().textContent).toContain("T1 • Colmillos del Caos");
+
+    // «Fin Turno» with zero captures (reason «Baja») → NO card for that
+    // half-turn; the rival's new half-turn card appears as EN JUEGO (still
+    // T1 — the pair is open).
+    finTurno("Baja");
+    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+    expect(enJuegoCard().textContent).toContain("T1 • Águilas de Khemri");
+
+    // The rival also passes with nothing recorded → T2 opens and BOTH empty
+    // T1 half-turns are gone (only their EN JUEGO successors remain).
+    finTurno("Voluntario");
+    expect(screen.queryByText("T1 • Águilas de Khemri")).toBeNull();
+    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+    expect(enJuegoCard().textContent).toContain("T2 • Colmillos del Caos");
+  });
+
+  it("mid-match reload keeps the turn, the active side, the perspective and the recorded cards (v5)", () => {
+    const first = render(<ActaDemoHarness />);
+    // Colmillos scores in T1, then both sides pass: the pair closes into T2.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    capture("+ TD");
+    finTurno("Voluntario"); // → Águilas T1 (nothing recorded)
+    finTurno("Voluntario"); // the pair closes → T2, Colmillos active again
+    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+    expect(enJuegoCard().textContent).toContain("T2 • Colmillos del Caos");
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    const saved = JSON.parse(
+      window.localStorage.getItem("bb-demo-partido") ?? "null",
+    ) as { v?: number; state?: { turnNumber?: number } } | null;
+    expect(saved?.v).toBe(5);
+    expect(saved?.state?.turnNumber).toBe(2);
+    first.unmount();
+
+    // The reload (unmount + render) hydrates the SAME match: turn, side,
+    // perspective and the recorded cards all survive.
+    render(<ActaDemoHarness />);
+    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+    expect(enJuegoCard().textContent).toContain("T2 • Colmillos del Caos");
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    expect(
+      within(turnCard(1, "Colmillos del Caos"))
+        .getAllByTestId("acta-event-row")
+        .some((row) => row.getAttribute("data-kind") === "td"),
+    ).toBe(true);
+  });
+});
