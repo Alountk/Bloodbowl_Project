@@ -1,11 +1,23 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
 import { rollD3, rollD6 } from "@/lib/random";
 import {
+  displayNameOf,
+  fundsForSide,
+  getInducement,
+  getStarPlayer,
+  INDUCEMENT_CATEGORIES,
+  isEligible,
   listInducements,
+  STAR_MAX_PER_MATCH,
+  standardCartCost,
   type InducementCartItem,
+  type InducementEntry,
   type PersistedInducements,
+  type RuleId,
+  type SideFunds,
 } from "@/lib/rules/inducements";
+import { STAR_PLAYERS, type StarPlayer } from "@/lib/rules/starPlayers";
 import { weatherFromRoll } from "@/lib/rules/weather";
 
 import type { FanFactorLine } from "./actaPreMatch";
@@ -44,6 +56,21 @@ export type PreMatchCommit =
   | { step: "kickTie" }
   | { step: "kicking"; kicking: "home" | "away" };
 
+/** One side's money facts for the §D inducement budget (S8 · U9). */
+export interface PreMatchFinanceSide {
+  /** Team value (VAE) in M.O. */
+  value: number;
+  /** Treasury in M.O. */
+  treasury: number;
+  /** Roster race id — IND-5 eligibility resolves against it. */
+  raceId: string;
+}
+
+export interface PreMatchFinance {
+  home: PreMatchFinanceSide;
+  away: PreMatchFinanceSide;
+}
+
 export interface ActaPreMatchCaptureProps {
   homeName: string;
   awayName: string;
@@ -52,6 +79,8 @@ export interface ActaPreMatchCaptureProps {
   awayBase: number;
   /** Which coach is viewing: the capture shows ONLY this side. */
   viewerSide: "home" | "away";
+  /** VAE + treasury + race per side (S8 §D money panel + IND-5 gates). */
+  finance: PreMatchFinance;
   snapshot: ActaPreMatchSnapshot;
   onCommit: (commit: PreMatchCommit) => void;
   /** Injectable dice (auto roll); defaults to the real dice in lib/random. */
@@ -208,12 +237,211 @@ function DieCard({
   );
 }
 
+/** S8 · IND-1/IND-5 ES special-rule labels, transcribed from the digest's
+ * catalog parentheticals (docs/research/blood-bowl-2025-match.md:526-537,
+ * «solo para equipos con la regla especial …») — never invented here. */
+const RULE_LABELS: Partial<Record<RuleId, string>> = {
+  "bribery-and-corruption": "Sobornos y corrupción",
+  "low-cost-linemen": "Líneas prescindibles",
+  "favoured-of-nurgle": "Elegidos de Nurgle",
+  "masters-of-undeath": "Señores de los No Muertos",
+};
+
+/** The «No elegible» reason line: «requiere {regla oficial}» when the digest
+ * names the gate, else a plain team-scoped fallback (no invented names). */
+function eligibilityReason(entry: InducementEntry): string {
+  const label = entry.eligibility ? RULE_LABELS[entry.eligibility] : undefined;
+  return label != null
+    ? `No elegible: requiere ${label}`
+    : "No elegible para este equipo";
+}
+
+/** Design A′ section bar: `NN · TITLE` navy header + right chip. */
+function SectionHeader({
+  num,
+  title,
+  chip,
+}: {
+  num: string;
+  title: string;
+  chip: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 bg-navy px-3 py-2 text-white">
+      <p className="font-display text-xs font-bold uppercase tracking-wide">
+        {num} · {title}
+      </p>
+      <span className="bg-white/15 px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide">
+        {chip}
+      </span>
+    </div>
+  );
+}
+
+/** S8 · the §D money panel (design A′): disponible/gastado/restante + the
+ * petty-cash desglose for the lower-VAE side («Presupuesto de Caja Menor»). */
+function MoneyPanel({
+  funds,
+  spent,
+  rivalPending,
+}: {
+  funds: SideFunds;
+  spent: number;
+  /** The rival has NOT confirmed their inducement spend yet. */
+  rivalPending: boolean;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Dinero disponible"
+      className="border border-navy/15 bg-white px-4 py-3"
+    >
+      <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-navy">
+        DISPONIBLE TOTAL
+      </p>
+      <p className="font-display text-2xl font-bold text-navy">
+        {formatMo(funds.potencial)} M.O.
+      </p>
+      <p className="text-xs text-ink/70">
+        {funds.kind === "menor"
+          ? "Presupuesto de Caja Menor"
+          : funds.kind === "mayor"
+            ? "De tu Tesorería"
+            : "VE igual — sin caja menor"}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <p className="border border-red/40 px-3 py-1.5 font-display text-sm font-bold text-red">
+          Gastado {formatMo(spent)} M.O.
+        </p>
+        <p className="border border-success/40 px-3 py-1.5 font-display text-sm font-bold text-success-strong">
+          Restante {formatMo(funds.restante)} M.O.
+        </p>
+      </div>
+      {funds.kind === "menor" ? (
+        <div className="mt-2 border-t border-navy/10 pt-2 text-xs text-ink">
+          <p>ΔVE (Diferencial): +{formatMo(funds.delta)}</p>
+          <p>
+            + Gasto rival en Tesorería: +{formatMo(funds.rivalSpend)}
+            {rivalPending ? " · pendiente" : ""}
+          </p>
+          <p>
+            = Efectivo en Caja Menor: {formatMo(funds.delta + funds.rivalSpend)}
+          </p>
+          <p>
+            + Aportación de tu Tesorería: +{formatMo(funds.treasuryUsed)} (máx.
+            50.000)
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** S8 · a Season-3 Star Player card (L25: stats + skills visible BEFORE the
+ * hire) — «Fichar»/«Quitar» over the shared 0-2 per-match cap. */
+function StarPlayerCard({
+  star,
+  inCart,
+  disabled,
+  onAdd,
+  onRemove,
+}: {
+  star: StarPlayer;
+  inCart: boolean;
+  disabled: boolean;
+  onAdd: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={star.displayName}
+      className="border border-navy/15 bg-white px-4 py-3"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-display text-sm font-bold text-navy">
+          {star.displayName}
+          {inCart ? (
+            <span className="font-display font-bold text-red"> ×1</span>
+          ) : null}
+        </p>
+        <span className="font-display text-sm font-bold text-navy">
+          {formatMo(star.costGp)} M.O.
+        </span>
+      </div>
+      <p className="mt-0.5 text-xs text-ink/70">{star.position}</p>
+      <table
+        aria-label={`Estadísticas de ${star.displayName}`}
+        className="mt-2 w-full border-collapse text-left text-xs text-ink"
+      >
+        <thead>
+          <tr className="border-b border-navy/20 font-display uppercase tracking-wide text-navy">
+            <th scope="col" className="py-1 pr-2 font-bold">MA</th>
+            <th scope="col" className="py-1 pr-2 font-bold">ST</th>
+            <th scope="col" className="py-1 pr-2 font-bold">AG</th>
+            <th scope="col" className="py-1 pr-2 font-bold">PA</th>
+            <th scope="col" className="py-1 font-bold">AV</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="py-1 pr-2">{star.stats.ma}</td>
+            <td className="py-1 pr-2">{star.stats.st}</td>
+            <td className="py-1 pr-2">{star.stats.ag}</td>
+            <td className="py-1 pr-2">{star.stats.pa}</td>
+            <td className="py-1">{star.stats.av}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {star.skills.map((skill) => (
+          <span
+            key={skill}
+            className="rounded-sm border border-navy/30 px-2 py-0.5 text-xs text-navy"
+          >
+            {skill}
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 border-l-2 border-red pl-2">
+        <p className="font-display text-xs font-bold uppercase tracking-wide text-red">
+          {star.special.name}
+        </p>
+        <p className="text-xs italic text-ink">{star.special.text}</p>
+      </div>
+      <p className="mt-2 text-xs text-ink">
+        Juega por: {star.playsFor.join(" · ")}
+      </p>
+      <button
+        type="button"
+        aria-label={`Fichar ${star.displayName}`}
+        className={`${PRIMARY} mt-2 w-full`}
+        disabled={disabled}
+        onClick={onAdd}
+      >
+        Fichar {star.displayName}
+      </button>
+      {inCart ? (
+        <button
+          type="button"
+          aria-label={`Quitar ${star.displayName}`}
+          className={`${BTN} mt-2 w-full`}
+          onClick={onRemove}
+        >
+          Quitar {star.displayName}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function ActaPreMatchWizard({
   homeName,
   awayName,
   homeBase,
   awayBase,
   viewerSide,
+  finance,
   snapshot,
   onCommit,
   dice = { d3: rollD3, d6: rollD6 },
@@ -286,8 +514,49 @@ export function ActaPreMatchWizard({
         : "away"
       : null;
 
+  // S8 · §D money (U9): the rival's treasury spend counts ONLY once their
+  // cart is confirmed; mine is the live wizard cart. fundsForSide receives
+  // plain {value, treasury} — raceId stays UI-side (IND-5 gates).
+  const sideRaceId = finance[viewerSide].raceId;
+  const rivalSpend = snapshot.inducementsDone[rivalSide]
+    ? standardCartCost(snapshot.inducements[rivalSide])
+    : 0;
+  const spent = standardCartCost(cart[viewerSide]);
+  const funds = fundsForSide({
+    own: {
+      value: finance[viewerSide].value,
+      treasury: finance[viewerSide].treasury,
+    },
+    rival: {
+      value: finance[rivalSide].value,
+      treasury: finance[rivalSide].treasury,
+    },
+    rivalSpend,
+    ownSpend: spent,
+  });
+  /** Committed cart cost per side (the mayor-VE chip's «Gastado»). */
+  const committedOf = (side: Side): number =>
+    side === viewerSide
+      ? standardCartCost(cart[side])
+      : snapshot.inducementsDone[side]
+        ? standardCartCost(snapshot.inducements[side])
+        : 0;
+  const mayorSide: Side | null =
+    finance.home.value === finance.away.value
+      ? null
+      : finance.home.value > finance.away.value
+        ? "home"
+        : "away";
+  const totalStars = cart[viewerSide].reduce(
+    (total, item) => (getStarPlayer(item.id) ? total + item.count : total),
+    0,
+  );
+
   const bumpCart = (id: string, delta: number) => {
-    const max = listInducements().find((entry) => entry.id === id)?.max ?? 1;
+    const star = getStarPlayer(id);
+    const max = star
+      ? 1
+      : listInducements().find((entry) => entry.id === id)?.max ?? 1;
     setCart((prev) => {
       const items: InducementCartItem[] = prev[viewerSide].map((item) => ({
         ...item,
@@ -300,6 +569,19 @@ export function ActaPreMatchWizard({
         else items[index].count = next;
       } else if (next > 0) {
         items.push({ id, count: next });
+      }
+      if (delta > 0) {
+        // S8/U9 · §D: the pot is HARD — never commit beyond potencial.
+        if (standardCartCost(items) > funds.potencial) return prev;
+        // IND-1: «0-2 Jugadores Estrella» per match (max 1 each, above).
+        if (star) {
+          const totalStars = items.reduce(
+            (total, item) =>
+              getStarPlayer(item.id) ? total + item.count : total,
+            0,
+          );
+          if (totalStars > STAR_MAX_PER_MATCH) return prev;
+        }
       }
       return { ...prev, [viewerSide]: items };
     });
@@ -404,7 +686,7 @@ export function ActaPreMatchWizard({
                 : stepIndex === 1
                   ? "Cada entrenador lanza 1D6; la suma (2D6) resuelve el clima."
                   : stepIndex === 2
-                    ? "Selecciona tus incentivos (precio y límite del reglamento)."
+                    ? "Compra lo que necesites con el dinero disponible"
                     : "1D6 enfrentado; el ganador del sorteo decide quién recibe (empate: se repite)."}
             </p>
           </div>
@@ -487,58 +769,241 @@ export function ActaPreMatchWizard({
               <div
                 role="group"
                 aria-label={`Incentivos ${nameOf(viewerSide)}`}
-                className="mt-3 border border-navy/15 bg-white"
+                className="mt-3"
               >
-                {listInducements().map((entry) => {
-                  const count =
-                    cart[viewerSide].find((item) => item.id === entry.id)
-                      ?.count ?? 0;
-                  return (
+                {/* S8 · §D money panel (design A′): disponible/gastado/
+                    restante + petty-cash desglose — replaces the old one-liner. */}
+                <MoneyPanel
+                  funds={funds}
+                  spent={spent}
+                  rivalPending={!snapshot.inducementsDone[rivalSide]}
+                />
+                {funds.kind === "menor" ? (
+                  <p className="mt-2 text-xs text-ink">
+                    Lo que no gaste se pierde. Si el VE es igual, ninguno gasta
+                    de su Tesorería.
+                  </p>
+                ) : funds.kind === "empate" ? (
+                  <p className="mt-2 text-xs text-ink">
+                    Si el VE es igual, ninguno gasta de su Tesorería.
+                  </p>
+                ) : null}
+                {/* Team chips: LOCAL/VISITANTE + TU EQUIPO + VE comparison. */}
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {(["home", "away"] as const).map((side) => (
                     <div
-                      key={entry.id}
-                      className="flex items-center gap-3 border-b border-navy/10 px-4 py-2 last:border-b-0"
+                      key={side}
+                      className="border border-navy/15 bg-white px-3 py-2"
                     >
-                      <span className="flex-1 text-sm text-ink">
-                        {entry.displayName}
-                        {count > 0 ? (
-                          <span className="font-display font-bold text-red">
-                            {" "}
-                            ×{count}
+                      <p className="flex flex-wrap items-center gap-1">
+                        <span className="bg-navy px-1.5 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-white">
+                          {side === "home" ? "LOCAL" : "VISITANTE"}
+                        </span>
+                        {side === viewerSide ? (
+                          <span className="bg-red px-1.5 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-white">
+                            TU EQUIPO
                           </span>
                         ) : null}
-                      </span>
-                      <span className="font-display text-sm font-bold text-navy">
-                        {formatMo(entry.price)} M.O.
-                      </span>
-                      <span className="text-xs text-ink/60">
-                        máx. {entry.max}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Añadir ${entry.displayName}`}
-                        className={BTN}
-                        disabled={count >= entry.max}
-                        onClick={() => bumpCart(entry.id, 1)}
-                      >
-                        +
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Quitar ${entry.displayName}`}
-                        className={BTN}
-                        disabled={count <= 0}
-                        onClick={() => bumpCart(entry.id, -1)}
-                      >
-                        −
-                      </button>
+                        <span className="font-display text-sm font-bold text-navy">
+                          {nameOf(side)}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-xs text-ink">
+                        VE {formatMo(finance[side].value)}
+                        {mayorSide === side
+                          ? " (mayor VE)"
+                          : mayorSide != null
+                            ? " (menor VE)"
+                            : ""}
+                      </p>
+                      {mayorSide === side ? (
+                        <p className="mt-1 text-xs text-ink/70">
+                          Tesorería {formatMo(finance[side].treasury)} M.O. ·
+                          Gastado {formatMo(committedOf(side))} M.O. ·
+                          Disponible{" "}
+                          {formatMo(
+                            Math.max(
+                              0,
+                              finance[side].treasury - committedOf(side),
+                            ),
+                          )}{" "}
+                          M.O.
+                        </p>
+                      ) : null}
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+                {cart[viewerSide].length > 0 ? (
+                  <p className="mt-3 text-sm text-ink">
+                    {`Carrito actual (${cart[viewerSide].reduce(
+                      (total, item) => total + item.count,
+                      0,
+                    )} artículos): ${cart[viewerSide]
+                      .map((item) => `${displayNameOf(item.id)} ×${item.count}`)
+                      .join(" · ")} = ${formatMo(
+                      standardCartCost(cart[viewerSide]),
+                    )} M.O.`}
+                  </p>
+                ) : null}
+                {/* Design A′: 01-04 by section, then 05 · Star Players and
+                    06 · Plantilla (mercenaries ONLY — L25 taxonomy). */}
+                {INDUCEMENT_CATEGORIES.map((category) =>
+                  category.id === "plantilla" ? (
+                    <Fragment key={category.id}>
+                      <div
+                        role="group"
+                        aria-label="05 · Star Players"
+                        className="mt-4"
+                      >
+                        <SectionHeader
+                          num="05"
+                          title="STAR PLAYERS"
+                          chip="MÁX. 2"
+                        />
+                        <p className="px-3 py-1 text-xs text-ink/70">
+                          Jugadores Estrella · 0-2 por partido
+                        </p>
+                        {STAR_PLAYERS.map((star) => {
+                          const inCart = cart[viewerSide].some(
+                            (item) => item.id === star.id && item.count > 0,
+                          );
+                          return (
+                            <StarPlayerCard
+                              key={star.id}
+                              star={star}
+                              inCart={inCart}
+                              disabled={
+                                inCart ||
+                                totalStars >= STAR_MAX_PER_MATCH ||
+                                star.costGp > funds.restante
+                              }
+                              onAdd={() => bumpCart(star.id, 1)}
+                              onRemove={() => bumpCart(star.id, -1)}
+                            />
+                          );
+                        })}
+                        <p className="px-3 py-2 text-xs text-ink/70">
+                          Datos oficiales Blood Bowl Season 3 · máx. 2 por
+                          partido
+                        </p>
+                      </div>
+                      {/* The reserved dynamic-cost entry: NOT purchasable. */}
+                      <div
+                        role="group"
+                        aria-label={`${category.num} · ${category.title}`}
+                        className="mt-4"
+                      >
+                        <SectionHeader
+                          num={category.num}
+                          title={category.title}
+                          chip={category.optionsLabel ?? "0-3 permitidos"}
+                        />
+                        <div className="flex flex-wrap items-center gap-3 border border-navy/15 bg-white px-4 py-2 opacity-50">
+                          <span className="flex-1 text-sm text-ink">
+                            Mercenarios de Alquiler
+                          </span>
+                          <span className="text-xs text-ink/60">
+                            0-3 permitidos
+                          </span>
+                          <span className="bg-red px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-white">
+                            EN DESARROLLO
+                          </span>
+                          <span className="w-full text-xs text-ink/70">
+                            Precio dinámico · no disponible todavía
+                          </span>
+                        </div>
+                      </div>
+                    </Fragment>
+                  ) : (
+                    <div
+                      key={category.id}
+                      role="group"
+                      aria-label={`${category.num} · ${category.title}`}
+                      className="mt-4"
+                    >
+                      <SectionHeader
+                        num={category.num}
+                        title={category.title}
+                        chip={
+                          category.optionsLabel ??
+                          `${
+                            listInducements().filter(
+                              (entry) => entry.category === category.id,
+                            ).length
+                          } OPCIONES`
+                        }
+                      />
+                      <div className="border border-navy/15 bg-white">
+                        {listInducements()
+                          .filter((entry) => entry.category === category.id)
+                          .map((entry) => {
+                            const count =
+                              cart[viewerSide].find(
+                                (item) => item.id === entry.id,
+                              )?.count ?? 0;
+                            const eligible = isEligible(entry, sideRaceId);
+                            return (
+                              <div
+                                key={entry.id}
+                                className={`flex flex-wrap items-center gap-3 border-b border-navy/10 px-4 py-2 last:border-b-0${
+                                  eligible ? "" : " opacity-50"
+                                }`}
+                              >
+                                <span className="flex-1 text-sm text-ink">
+                                  {entry.displayName}
+                                  {count > 0 ? (
+                                    <span className="font-display font-bold text-red">
+                                      {" "}
+                                      ×{count}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="font-display text-sm font-bold text-navy">
+                                  {formatMo(entry.price)} M.O.
+                                </span>
+                                <span className="text-xs text-ink/60">
+                                  máx. {entry.max}
+                                </span>
+                                {!eligible ? (
+                                  <span className="bg-red px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-white">
+                                    No elegible
+                                  </span>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  aria-label={`Añadir ${entry.displayName}`}
+                                  className={BTN}
+                                  disabled={
+                                    count >= entry.max ||
+                                    entry.price > funds.restante ||
+                                    !eligible
+                                  }
+                                  onClick={() => bumpCart(entry.id, 1)}
+                                >
+                                  +
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label={`Quitar ${entry.displayName}`}
+                                  className={BTN}
+                                  disabled={count <= 0}
+                                  onClick={() => bumpCart(entry.id, -1)}
+                                >
+                                  −
+                                </button>
+                                {!eligible ? (
+                                  <span className="w-full text-xs text-red">
+                                    {eligibilityReason(entry)}
+                                  </span>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  ),
+                )}
               </div>
-              <p className="mt-2 text-xs text-ink">
-                Caja menor: diferencia de VAE + gasto rival en incentivos
-                (máx. +50.000 M.O. de tesorería).
-              </p>
               {snapshot.inducementsDone[rivalSide] ? (
                 <p className="mt-2 text-sm text-ink">
                   Incentivos rival · {nameOf(rivalSide)}:{" "}
@@ -547,11 +1012,7 @@ export function ActaPreMatchWizard({
                     : snapshot.inducements[rivalSide]
                         .map(
                           (item) =>
-                            `${
-                              listInducements().find(
-                                (entry) => entry.id === item.id,
-                              )?.displayName ?? item.id
-                            } ×${item.count}`,
+                            `${displayNameOf(item.id)} ×${item.count}`,
                         )
                         .join(", ")}{" "}
                   · Confirmado
@@ -616,7 +1077,11 @@ export function ActaPreMatchWizard({
         {/* S7: forward-only — once a step is behind you, there is no way back. */}
         <footer className="flex items-center justify-between gap-3 border-t border-navy/15 px-5 py-4">
           <p className="flex-1 text-center text-xs text-ink">
-            Paso {stepIndex + 1} de {STEPS.length}
+            {stepIndex === 2
+              ? `Paso 3 de 4 · Gastado ${formatMo(spent)} M.O. · Disponible ${formatMo(
+                  funds.restante,
+                )} M.O.`
+              : `Paso ${stepIndex + 1} de ${STEPS.length}`}
           </p>
           <button
             type="button"
@@ -669,10 +1134,7 @@ export function ActaPreMatchReport({
       items.length === 0
         ? "Ninguno"
         : items
-            .map((item) => {
-              const entry = listInducements().find((e) => e.id === item.id);
-              return `${entry?.displayName ?? item.id} ×${item.count}`;
-            })
+            .map((item) => `${displayNameOf(item.id)} ×${item.count}`)
             .join(", ");
     lines.push(
       <p key={`ind-${side}`} className="text-sm text-navy">
@@ -751,10 +1213,12 @@ export function ActaPreMatchSummary({
     const items = snapshot.inducements[side];
     if (items.length === 0) return ["Ninguno"];
     return items.map((item) => {
-      const entry = listInducements().find((e) => e.id === item.id);
-      return entry == null
-        ? `${item.id} ×${item.count}`
-        : `${entry.displayName} ×${item.count} — ${formatMo(entry.price)} M.O.`;
+      // Star lines render by name with their fixed price (S8/U9).
+      const price =
+        getStarPlayer(item.id)?.costGp ?? getInducement(item.id)?.price;
+      return price == null
+        ? `${displayNameOf(item.id)} ×${item.count}`
+        : `${displayNameOf(item.id)} ×${item.count} — ${formatMo(price)} M.O.`;
     });
   };
   const kickBoth =

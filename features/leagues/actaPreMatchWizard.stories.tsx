@@ -2,7 +2,7 @@ import {
   ActaPreMatchWizard,
   type ActaPreMatchSnapshot,
 } from "./actaPreMatchWizard";
-import { awayTeam, homeTeam } from "./actaFlow.fixtures";
+import { PRE_MATCH_FINANCE, awayTeam, homeTeam } from "./actaFlow.fixtures";
 
 /**
  * S6 · Modal wizard «Antes del partido» (design «Opción 5 · Editorial
@@ -58,6 +58,7 @@ const baseArgs = {
   homeBase: 4,
   awayBase: 3,
   viewerSide: "home" as const,
+  finance: PRE_MATCH_FINANCE,
   onCommit: () => undefined,
   onDismiss: () => undefined,
   onFinish: () => undefined,
