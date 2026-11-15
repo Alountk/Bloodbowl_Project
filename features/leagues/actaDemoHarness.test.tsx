@@ -804,3 +804,129 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     ).toBe(false);
   });
 });
+
+/**
+ * T13 · L48 — Step 3 of the flow-test plan: a reload DURING the pre-match
+ * wizard with the SECOND coach mid-way (one coach finalized, the other
+ * halfway). These tests PIN the shipped v5 persistence (no behavior change):
+ *   - the reload keeps BOTH coaches' captures: the finalized coach's sequence
+ *     stays closed («Esperando al contrincante», no edit trigger) with their
+ *     data on the acta, and the mid-way coach reopens the wizard on their
+ *     SAME step (Paso 3 · Incentivos) with steps 1-2 marked ✓ from the
+ *     PERSISTED marks (the live roll marks die with the unmount);
+ *   - the in-progress coach keeps the «Completar/Editar» trigger state (the
+ *     fase1 flow: captures on file → «Editar»);
+ *   - hygiene: nothing of the mid-way input is lost and the acta is still
+ *     pre-match — no match started, no dock captures, no turn timeline.
+ * Distinct from the fase1 single-coach reload pin (:137) — that one covers a
+ * SOLO coach mid-wizard; this one is the MIXED state (one finalized + one
+ * mid-way).
+ */
+
+/**
+ * Coach A (Águilas, home) finishes the WHOLE sequence and Finaliza; coach B
+ * (Colmillos, away) then walks steps 1-2 (fan 1, weather 5) and sits on
+ * Paso 3 · Incentivos — the page reloads THERE (unmount + render). Dice
+ * queue: A fan 2 · weather 4 · toss 6, then B fan 1 · weather 5.
+ */
+const reloadMidWizard = () => {
+  dice.queue = [2, 4, 6, 1, 5];
+  const first = render(<ActaDemoHarness />);
+  fireEvent.click(demoButton("Restablecer"));
+  fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+  openWizard();
+  walkSequence(); // coach A done → the waiting screen is up.
+  fireEvent.click(perspective("Colmillos del Caos"));
+  openWizard(); // «Completar secuencia pre-partido» — B is fresh.
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar a Incentivos" }));
+  // B is mid-wizard on Paso 3 when the reload happens.
+  expect(
+    within(wizard()).getByRole("group", { name: "Paso 3 · Incentivos" }),
+  ).toBeTruthy();
+  first.unmount();
+  render(<ActaDemoHarness />);
+};
+
+const report = () =>
+  within(ante()).getByRole("region", { name: "Lo que ha sucedido" });
+
+describe("ActaDemoHarness — T13: reload mid-wizard with the second coach (L48)", () => {
+  it("the wizard reopens on coach B's SAME step with B's captures intact and coach A still shows completed", () => {
+    reloadMidWizard();
+    // The reload keeps the viewing coach — B, mid-way.
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    // B is still in progress → the fase1 «Completar/Editar» trigger state:
+    // captures on file, so the label reads «Editar» (never «Completar»).
+    expect(
+      within(ante()).getByRole("button", {
+        name: "Editar secuencia pre-partido",
+      }),
+    ).toBeTruthy();
+
+    // Reopening the wizard lands on B's SAME step: Paso 3 · Incentivos, with
+    // steps 1-2 marked ✓ from the PERSISTED captures (fanRecorded/
+    // weatherRecorded died with the unmount — the marks come from storage).
+    openWizard();
+    expect(
+      within(wizard()).getByRole("group", { name: "Paso 3 · Incentivos" }),
+    ).toBeTruthy();
+    const rail = screen.getByRole("list", { name: "Secuencia pre-partido" });
+    const items = within(rail).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "✓ 1 · Los Hinchas",
+      "✓ 2 · El Clima",
+      "3 · Incentivos",
+      "4 · Equipo pateador",
+    ]);
+    expect(items[2].getAttribute("aria-current")).toBe("step");
+
+    // A's data is kept on the acta report even while B is mid-way.
+    expect(report().textContent).toContain(
+      "Afición — Águilas de Khemri: 4 + 🎲2 = 6",
+    );
+    expect(report().textContent).toContain("Incentivos — Águilas de Khemri");
+
+    // Coach A still shows COMPLETED: their sequence is closed and waiting
+    // for B (S7.3/S7.4 — no edit trigger), with A's fan line still on the
+    // acta header.
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    fireEvent.click(perspective("Águilas de Khemri"));
+    expect(within(ante()).getByText(/Esperando al contrincante/)).toBeTruthy();
+    expect(
+      within(ante()).queryByRole("button", { name: /secuencia pre-partido/ }),
+    ).toBeNull();
+    expect(document.body.textContent).toMatch(/Afición: 4 \+ 🎲2 = 6/);
+  });
+
+  it("reload hygiene: nothing of coach B's in-progress input is lost and the acta is still pre-match", () => {
+    reloadMidWizard();
+    // Nothing lost: B's captured fan line and weather die (1 + A's 4 → 2D6
+    // = 9) still read on the acta, header and report alike.
+    expect(document.body.textContent).toMatch(/Afición: 3 \+ 🎲1 = 4/);
+    expect(report().textContent).toContain(
+      "Afición — Colmillos del Caos: 3 + 🎲1 = 4",
+    );
+    expect(report().textContent).toContain("Clima: 2D6 = 9 · Perfecto");
+
+    // …and the wizard continues at Paso 3: steps 1-2 are never re-asked.
+    openWizard();
+    expect(
+      within(wizard()).getByRole("group", { name: "Paso 3 · Incentivos" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+
+    // Still pre-match: the match has NOT started — no dock captures, no turn
+    // timeline, no «Partido» block (the v5 blob agrees: matchStarted false).
+    expect(screen.queryByTestId("acta-capture-grid")).toBeNull();
+    expect(screen.queryByTestId("acta-turn-timeline")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Partido" })).toBeNull();
+    const saved = JSON.parse(
+      window.localStorage.getItem("bb-demo-partido") ?? "null",
+    ) as { v?: number; state?: { matchStarted?: boolean } } | null;
+    expect(saved?.v).toBe(5);
+    expect(saved?.state?.matchStarted).toBe(false);
+  });
+});
