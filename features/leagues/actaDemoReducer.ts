@@ -637,8 +637,28 @@ export function actaDemoReducer(
         };
       }
 
-      // commit.step === "kicking": the winner's decision.
-      return { ...state, preMatch: { ...preMatch, kicking: commit.kicking } };
+      // commit.step === "kicking": the winner's decision — who RECEIVES
+      // (the commit stores who KICKS; S7.10's inverted commit).
+      const receiver: "home" | "away" =
+        commit.kicking === "home" ? "away" : "home";
+      return {
+        ...state,
+        preMatch: { ...preMatch, kicking: commit.kicking },
+        // kickoff resolved externally per L39 («la patada inicial se hara de
+        // manera externa»): the initial kick happens OUTSIDE the app, so the
+        // gate reads resolved (it can never open) and NO kickoff rows are
+        // ever recorded — the S3 kickoff machinery stays in the codebase,
+        // out of the flow (reversible).
+        kickoff: { ...state.kickoff, registered: true },
+        // The match starts DIRECTLY in turn 1 with the RECEIVING team active
+        // (the one that keeps the ball / attacks first).
+        matchStarted: true,
+        activeSide: receiver,
+        turnStarter: receiver,
+        // The demo camera follows the active coach onto the receiver (same
+        // auto-follow rule as endTurn) so turn 1 is playable immediately.
+        ...(state.autoFollow ? { viewerSide: receiver } : {}),
+      };
     }
     case "rollKickoff": {
       // S3 · the kickoff 2D6 (two dice from @/lib/random) — ONE throw per

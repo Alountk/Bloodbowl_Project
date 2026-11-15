@@ -183,3 +183,63 @@ describe("preMatchComplete — the match really starts only when every mark is c
     ).toBe(false);
   });
 });
+
+/**
+ * T9 · L39 — the kickoff is OUT of the demo flow: «…omitiremos la patada
+ * inicial, eso se hara de manera externa». Confirming the receiver (the
+ * «quién recibe» pick, `step: "kicking"`) resolves the initial kick
+ * EXTERNALLY and starts the match DIRECTLY in turn 1 with the RECEIVING team
+ * active. The kickoff machinery (gate, 2D6 table, duel actions) stays in the
+ * codebase as reversible infrastructure — never reached by the flow.
+ */
+function fresh(): ActaDemoState {
+  return actaDemoReducer(demoState("inicio"), {
+    type: "reset",
+    scenario: "inicio",
+  });
+}
+
+describe("kicking → match start (T9 · L39: the kickoff is resolved externally)", () => {
+  it("confirming the receiver starts the match DIRECTLY in turn 1 with the RECEIVER active", () => {
+    let next = run({ step: "kickRoll", side: "home", die: 6 }, fresh());
+    next = run({ step: "kickRoll", side: "away", die: 2 }, next);
+    // Home wins the toss 6–2 and gives the ball away: away RECEIVES.
+    next = run({ step: "kicking", kicking: "home" }, next);
+
+    // Turn 1 with the RECEIVING team active (the one that keeps the ball /
+    // attacks first) — never the kicker, never a stale fixture side.
+    expect(next.matchStarted).toBe(true);
+    expect(next.half).toBe(1);
+    expect(next.turnNumber).toBe(1);
+    expect(next.activeSide).toBe("away");
+    expect(next.turnStarter).toBe("away");
+    // The demo camera follows the active coach (same rule as endTurn).
+    expect(next.viewerSide).toBe("away");
+
+    // The inverse mapping: kicking "away" → home receives and opens turn 1.
+    const inverse = run({ step: "kicking", kicking: "away" }, fresh());
+    expect(inverse.activeSide).toBe("home");
+    expect(inverse.turnStarter).toBe("home");
+    expect(inverse.viewerSide).toBe("home");
+  });
+
+  it("the kickoff is resolved externally: no gate state left open and NO kickoff events recorded", () => {
+    let next = run({ step: "kickRoll", side: "home", die: 6 }, fresh());
+    next = run({ step: "kickRoll", side: "away", die: 2 }, next);
+    next = run({ step: "kicking", kicking: "home" }, next);
+
+    // The gate reads RESOLVED (it can never open) and the acta records NO
+    // kickoff rows — the kick happened outside the app.
+    expect(next.kickoff.registered).toBe(true);
+    expect(next.kickoff.d1).toBeNull();
+    expect(next.kickoff.d2).toBeNull();
+    expect(next.events.filter((e) => e.kind === "kickoff")).toHaveLength(0);
+  });
+
+  it("the match does NOT start before the receiver decision", () => {
+    let next = run({ step: "kickRoll", side: "home", die: 6 }, fresh());
+    next = run({ step: "kickRoll", side: "away", die: 2 }, next);
+    expect(next.matchStarted).toBe(false);
+    expect(next.kickoff.registered).toBe(false);
+  });
+});

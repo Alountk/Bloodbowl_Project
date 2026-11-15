@@ -19,7 +19,7 @@ vi.mock("@/lib/random", async (importOriginal) => {
  * The DUAL-VIEW demo harness behind `/demo/partido` + the Storybook "Flujo
  * interactivo" story: two rival coach perspectives over ONE shared match state
  * (`actaDemoReducer`), with the REAL `LiveActionDock` capture wired in (no
- * omniscient demo buttons) and v4 localStorage persistence (`bb-demo-partido`).
+ * omniscient demo buttons) and v5 localStorage persistence (`bb-demo-partido`).
  *
  * Assertions run in the repo's ES dictionary + the demo's Spanish copy (no
  * jest-dom matchers — `.textContent` / regex / role queries only). The TD
@@ -136,7 +136,7 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(rows.some((row) => row.getAttribute("data-kind") === "td")).toBe(true);
   });
 
-  it("persists the demo state across remounts (v4) and Restablecer returns to kickoff", () => {
+  it("persists the demo state across remounts (v5) and Restablecer returns to a fresh match", () => {
     const first = render(<ActaDemoHarness />);
     // A real dock capture is the persistence witness (the omniscient turn
     // controls are gone from the harness). The fixture opens in AWAY's turn.
@@ -157,7 +157,7 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
       v: number;
       state: { events: Array<{ kind?: string }> };
     } | null;
-    expect(saved?.v).toBe(4);
+    expect(saved?.v).toBe(5);
     expect(saved?.state.events.some((ev) => ev.kind === "td")).toBe(true);
     first.unmount();
 
@@ -400,11 +400,12 @@ describe("ActaDemoHarness — pre-match surface (stale saves, header wiring)", (
 });
 
 /**
- * S3 · T4 — the kickoff gate (design C «Acta secuencial», L29): after the
- * pre-match sequence the fresh match meets the 2D6 kickoff table BEFORE the
- * first dock action. The gate replaces the turn timeline + capture dock until
- * «REGISTRAR EN ACTA Y CONTINUAR» stamps the sequential rows (kind `kickoff`,
- * demo-only — MVT-6 keeps the production feed locked) and the match resumes.
+ * T9 · L39 — the kickoff is OUT of the demo flow: «…omitiremos la patada
+ * inicial, eso se hara de manera externa». After the pre-match sequence and
+ * the «quién recibe» pick the match starts DIRECTLY in turn 1 with the
+ * RECEIVING team active — no kickoff gate step and NO kickoff rows on the
+ * acta. The S3 kickoff machinery (gate, 2D6 table, duel) stays in the
+ * codebase as reversible infrastructure, never reached by the flow.
  */
 const ante = () => screen.getByRole("region", { name: "Antes del partido" });
 const wizard = () => screen.getByRole("dialog", { name: "Antes del partido" });
@@ -426,14 +427,14 @@ const walkSequence = () => {
   fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
 };
 
-describe("ActaDemoHarness — S3 kickoff gate (design C «Acta secuencial»)", () => {
+describe("ActaDemoHarness — T9: the kickoff stays OUT of the flow (L39)", () => {
   it("the narrative fixture starts past kickoff: NO gate, the timeline is up", () => {
     render(<ActaDemoHarness />);
     expect(screen.queryByTestId("acta-kickoff-gate")).toBeNull();
     expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
   });
 
-  it("a fresh match meets the gate after the pre-match: timeline + dock stay away until the kickoff registers", () => {
+  it("after the receiver is confirmed the match starts DIRECTLY in turn 1 with the receiver active (no gate, no kickoff events)", () => {
     // Home (fan 2D3, weather 4, toss 6) then away (fan 1, weather 5, toss 3):
     // the home coach wins the toss 6 vs 3.
     dice.queue = [2, 4, 6, 1, 5, 3];
@@ -452,35 +453,38 @@ describe("ActaDemoHarness — S3 kickoff gate (design C «Acta secuencial»)", (
     );
     fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
 
-    // The kickoff gate is UP instead of the turn timeline + capture dock.
-    expect(screen.getByRole("region", { name: "Patada inicial" })).toBeTruthy();
-    expect(screen.queryByTestId("acta-turn-timeline")).toBeNull();
-    expect(screen.queryByTestId("acta-capture-grid")).toBeNull();
-    expect(document.body.textContent).toMatch(/Patea · Águilas de Khemri/);
-    expect(document.body.textContent).toMatch(/Recibe · Colmillos del Caos/);
-
-    // Roll the 2D6 (1+5 = 6 → LOS HINCHAS ANIMAN) and the opposed duel
-    // (TÚ 5 vs RIVAL 3).
-    dice.queue = [1, 5, 5, 3];
-    fireEvent.click(screen.getByRole("button", { name: "Tirar 2D6" }));
-    expect(document.body.textContent).toMatch(/LOS HINCHAS ANIMAN/);
-    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6 · TÚ" }));
-    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6 · RIVAL" }));
-    expect(document.body.textContent).toMatch(
-      /Kickoff · LOS HINCHAS ANIMAN → beneficio para Águilas de Khemri \(5 vs 3\)/,
-    );
-
-    // Register → gate gone; the acta shows the kickoff rows and the capture
-    // dock is back for the first action.
-    fireEvent.click(
-      screen.getByRole("button", { name: "REGISTRAR EN ACTA Y CONTINUAR" }),
-    );
+    // NO kickoff gate step: the initial kick is resolved externally (L39).
+    expect(screen.queryByRole("region", { name: "Patada inicial" })).toBeNull();
     expect(screen.queryByTestId("acta-kickoff-gate")).toBeNull();
+    // NO kickoff events in the acta («Kickoff · …» was the gate rows' copy).
+    expect(document.body.textContent).not.toMatch(/Kickoff ·/);
+    expect(
+      screen
+        .queryAllByTestId("acta-event-row")
+        .filter((row) => row.getAttribute("data-kind") === "kickoff"),
+    ).toHaveLength(0);
+
+    // The timeline + dock unlock at the match start (turn 1 playable now).
     expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
     expect(screen.getByTestId("acta-capture-grid")).toBeTruthy();
-    expect(document.body.textContent).toMatch(/Kickoff · 2D6: 1 \+ 5 = 6/);
-    expect(document.body.textContent).toMatch(
-      /Kickoff · LOS HINCHAS ANIMAN → beneficio para Águilas de Khemri \(5 vs 3\)/,
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+
+    // The RECEIVER (Colmillos del Caos, away) plays turn 1: the camera
+    // follows the active coach and their capture dock records live.
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    fireEvent.click(demoButton("+ TD"));
+    const modal = screen.getByTestId("live-action-modal");
+    fireEvent.click(
+      within(within(modal).getByTestId("dock-pool-own")).getByRole("button", {
+        name: /#1/i,
+      }),
     );
+    expect(heading().textContent).toBe("Águilas de Khemri 0 - 1 Colmillos del Caos");
+
+    // The receiver decision stays on the pre-match record («Recibe: …»).
+    const summary = within(ante()).getByRole("region", {
+      name: "Lo que ha sucedido",
+    });
+    expect(summary.textContent).toMatch(/Recibe: Colmillos del Caos/);
   });
 });

@@ -96,9 +96,11 @@ export function ActaFlow({
   // the «Antes del partido» sequence is captured on BOTH sides.
   const matchStarted =
     (state.matchStarted ?? true) || preMatchComplete(preMatch);
-  // S3 · T4 (L28 insertion point (a)): between the pre-match sequence and
-  // the first dock action the fresh match meets the kickoff gate — shown
-  // INSTEAD of the turn timeline + capture dock until it registers.
+  // T9 · L39: the kickoff gate is OUT of the demo flow — the reducer
+  // resolves the initial kick EXTERNALLY at the receiver confirm (the same
+  // commit that starts the match flips `kickoff.registered`), so this pending
+  // window can never open. The gate wiring below stays as reversible
+  // infrastructure (S3 · T4, design C «Acta secuencial»).
   const kickoffPending = matchStarted && kickoff != null && !kickoff.registered;
   // S3 · T4 (demo-only, MVT-6): the registered kickoff rows render on their
   // own ACTA block (design C «Acta secuencial») via the real acta cards. The
@@ -283,20 +285,21 @@ const SCENARIOS: ReadonlyArray<{ key: DemoScenario; label: string }> = [
 const DEMO_FAN_BASES = { home: 4, away: 3 } as const;
 
 /**
- * localStorage persistence: one versioned blob, `bb-demo-partido` v4 (the v3
- * save contract is intentionally invalidated — the S2c per-side capture
- * changed the `preMatch` shape).
+ * localStorage persistence: one versioned blob, `bb-demo-partido` v5 (the v4
+ * save contract is intentionally invalidated — T9 took the kickoff OUT of the
+ * flow per L39: a v4 save stuck at the kickoff gate would re-open it).
  */
 const STORAGE_KEY = "bb-demo-partido";
-const STORAGE_VERSION = 4;
+const STORAGE_VERSION = 5;
 
 /**
  * Interactive DUAL-VIEW demo sandbox driven by the pure `actaDemoReducer`
  * (no network): two rival coach perspectives over ONE shared match state,
  * switched manually ("Ver como:") or auto-followed turn by turn ("Seguir al
  * turno activo"). The REAL `LiveActionDock`/timeline capture lands in the
- * reducer via `submitCommand`; the state persists to localStorage (v4) so an
- * iteration survives a reload, and "Restablecer" replays from the kickoff.
+ * reducer via `submitCommand`; the state persists to localStorage (v5) so an
+ * iteration survives a reload, and "Restablecer" replays from the pre-match
+ * sequence.
  * Deterministic by design: no `Date.now()`, no `Math.random()` — the fetch
  * shim and localStorage are runtime concerns only.
  */
@@ -344,7 +347,7 @@ export function ActaDemoHarness({
     }
   }, []);
 
-  // 2) Persist every state change as `{ v: 4, state }` (the pristine initial
+  // 2) Persist every state change as `{ v: 5, state }` (the pristine initial
   // state is never written — see `initialStateRef`).
   useEffect(() => {
     if (state === initialStateRef.current) return;
