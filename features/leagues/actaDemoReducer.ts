@@ -10,6 +10,7 @@ import type { LiveCommand, LiveMatchEventDto, LiveMatchViewState } from "./api";
 import { MIN, liveState, matchDetail, narrativeEvents } from "./actaFlow.fixtures";
 import { fanFactorOf, type FanFactorLine } from "./actaPreMatch";
 import type { PreMatchCommit } from "./actaPreMatchWizard";
+import type { KnockdownCommand } from "./liveActionEntry";
 
 /**
  * Pure demo state machine behind the dual-view match demo ("Flujo
@@ -101,7 +102,13 @@ export type ActaDemoAction =
       /** Optional score bump (a touchdown) for one side. */
       score?: { side: "home" | "away" };
     }
-  | { type: "submitCommand"; command: LiveCommand }
+  | {
+      type: "submitCommand";
+      /** The live command union PLUS the additive T17 `knockdown` command
+       *  (applied by `applyCommand`; `api.ts`'s `LiveCommand` is a fixed
+       *  surface outside this slice). */
+      command: LiveCommand | KnockdownCommand;
+    }
   | { type: "switchPerspective"; side: "home" | "away" }
   | { type: "setAutoFollow"; on: boolean }
   | { type: "submitClosure"; side: "home" | "away" }
@@ -436,6 +443,32 @@ function applyCommand(state: ActaDemoState, raw: unknown): ActaDemoState {
       if (cmd.roll6 != null) payload.roll6 = cmd.roll6;
       if (cmd.bothDown != null) payload.bothDown = cmd.bothDown;
       return appendEvents(state, [{ kind: "casualty", side, playerRosterId, payload }]);
+    }
+    case "knockdown": {
+      // T17 (S10.1/S10.2): the standalone «Derribo» entry of the guided combat
+      // chain. `side` is the RECORDER's (the tackler's coach — S10.4.1) and the
+      // causer is the acting player; the payload carries the chain whole
+      // (block dice, picked face and — on a defender knockdown — the armour
+      // 2D6 vs the victim's AV).
+      const payload: Record<string, unknown> = {
+        causerRosterId: cmd.causerRosterId ?? null,
+        victimRosterId: cmd.victimRosterId ?? null,
+        blockDice: Array.isArray(cmd.blockDice) ? cmd.blockDice : [],
+        face: cmd.face ?? null,
+      };
+      if (typeof cmd.armourRoll === "number") payload.armourRoll = cmd.armourRoll;
+      if (typeof cmd.victimAv === "number") payload.victimAv = cmd.victimAv;
+      if (typeof cmd.armourBroken === "boolean") {
+        payload.armourBroken = cmd.armourBroken;
+      }
+      return appendEvents(state, [
+        {
+          kind: "knockdown",
+          side,
+          playerRosterId: asRosterId(cmd.causerRosterId),
+          payload,
+        },
+      ]);
     }
     case "foul":
       return appendEvents(state, [

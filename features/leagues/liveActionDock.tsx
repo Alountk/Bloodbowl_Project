@@ -3,20 +3,26 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { resolveInjury } from "@/lib/rules/injuries";
-import { causeLabel, liveEventLabel } from "./liveEventLabels";
+import { blockDice, blockDie, type BlockDieFace } from "@/lib/rules/blocks";
+import { BLOCK_FACE_LABELS, causeLabel, liveEventLabel } from "./liveEventLabels";
 import { RollStepper } from "./rollStepper";
 import {
   ACTIVE_CAUSES,
   SELF_CAUSES,
   buildGuidedCommand,
+  buildKnockdownCommand,
   buildScoredCommand,
+  buildVictimInjuryCommand,
   buildWeatherCommand,
   dorsalMap,
   eligiblePlayers,
   isActiveActor,
+  knockdownVictimOf,
   positionName,
   shortName,
+  statsFor,
   type GuidedSelections,
+  type KnockdownCommand,
 } from "./liveActionEntry";
 import { weatherLabel } from "./matchSummary";
 import { WEATHER_KINDS } from "@/lib/rules/weather";
@@ -75,13 +81,22 @@ type Flow =
   | "eventChoice"
   | "selfInflicted"
   | "bothDown"
+  | "block"
   | "passTurn";
 
 /** The "+ Evento" choice step (Slice E): the recordable acta events — Falta
  * plus the LM-13 scored actions, and the S2 "Cambiar clima" capture. All are
  * ACTIVE-coach captures, so the choice rides exactly the window its entry
- * button already gates (MVA-4). */
-const EVENT_CHOICES = ["foul", "interception", "throwTeamMate", "landedSafe", "weather"] as const;
+ * button already gates (MVA-4). T17 leads with «Bloqueo» — the guided combat
+ * chain (S10.1) is the core capture of the match's "toma y daca". */
+const EVENT_CHOICES = [
+  "block",
+  "foul",
+  "interception",
+  "throwTeamMate",
+  "landedSafe",
+  "weather",
+] as const;
 
 /** True for the instant two-touch scored actions (own player pick → fire).
  *  Accepts the nullable flow state (a closed sheet is never a scored flow). */
@@ -177,6 +192,7 @@ const ACTA_FEEDBACK: Record<Flow, { text: string; tone: "navy" | "red" }> = {
   eventChoice: { text: "Evento Registrado", tone: "navy" },
   selfInflicted: { text: "+2 SPP (Baja)", tone: "navy" },
   bothDown: { text: "+2 SPP (Baja)", tone: "navy" },
+  block: { text: "Evento Registrado", tone: "navy" },
   passTurn: { text: "Cambio de Turno", tone: "red" },
 };
 
@@ -185,6 +201,13 @@ interface ActaFloatFeedback {
   id: number;
   text: string;
   tone: "navy" | "red";
+}
+
+/** T17 (S10.4.1): one chain outcome awaiting the VICTIM owner's injury roll. */
+interface PendingInjury {
+  id: number;
+  victimId: string;
+  victimSide: "home" | "away";
 }
 
 /** One artboard quick-capture action: icon + uppercase label stacked on a
@@ -238,6 +261,9 @@ type GuidedStage =
   | { kind: "pickRival" }
   | { kind: "selfCause" }
   | { kind: "roll" }
+  | { kind: "blockRoll" }
+  | { kind: "blockFace" }
+  | { kind: "armourRoll" }
   | { kind: "weatherKind" }
   | { kind: "weatherRoll" };
 
@@ -265,6 +291,18 @@ function stagesFor(flow: Flow): GuidedStage[] {
         { kind: "pickOwn" },
         { kind: "pickRival" },
         { kind: "roll" },
+      ];
+    case "block":
+      // T17 (S10.1): the real combat chain — block dice by ST -> pick a face
+      // -> (defender falls) armour 2D6 vs the victim's AV. The knockdown entry
+      // fires from the face/armour stage; a broken armour opens the VICTIM
+      // side's pending-injury callout (S10.4.1) for the 1D16.
+      return [
+        { kind: "pickOwn" },
+        { kind: "pickRival" },
+        { kind: "blockRoll" },
+        { kind: "blockFace" },
+        { kind: "armourRoll" },
       ];
     case "foul":
       return [{ kind: "pickOwn" }, { kind: "pickRival" }];
@@ -305,6 +343,89 @@ function playerChip(
   );
 }
 
+/**
+ * T17 (S10.4.1): the VICTIM side's pending-injury callout — shown once the
+ * combat chain ended in a broken armour («si rompe»). The victim's owner marks
+ * the herida ONLY if it happens (apothecaries, regeneration, …): «TIRAR 1D16
+ * DE LESIÓN» records the roll-inclusive capture (1D16 + 1D6 on Permanente,
+ * auto-fired like every guided flow) and «Sin herida» dismisses it with no
+ * record. Copy mirrors the acta timeline's MVA-4 callout; tokens stay
+ * rulebook-light (AGENTS.md rule 5).
+ */
+function PendingInjuryCallout({
+  victimName,
+  victimDorsal,
+  onRoll,
+  onDismiss,
+}: {
+  victimName: string;
+  victimDorsal: number;
+  onRoll: (roll16: number, roll6?: number) => void;
+  onDismiss: () => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [roll16, setRoll16] = useState<number | "">("");
+  const [roll6, setRoll6] = useState<number | "">("");
+  const handleRoll16 = (n: number) => {
+    setRoll16(n);
+    setRoll6("");
+    // Auto-fire the moment the band does not need the permanent 1D6.
+    if (resolveInjury(n).kind !== "permanent") onRoll(n);
+  };
+  const handleRoll6 = (n: number) => {
+    setRoll6(n);
+    if (roll16 !== "") onRoll(Number(roll16), n);
+  };
+  return (
+    <div
+      data-testid="dock-pending-injury"
+      className="acta-motion-pulse-glow space-y-2 rounded-sm border-2 border-red bg-panel p-3"
+    >
+      <p className="text-[10px] font-bold uppercase tracking-wider text-red">
+        TIRADA DE LESIÓN PENDIENTE
+      </p>
+      <p className="text-xs font-medium text-ink">
+        Tirada de lesión requerida para{" "}
+        <strong className="text-navy">
+          {victimName} (#{victimDorsal})
+        </strong>{" "}
+        tras romperse la armadura (Bloqueo).
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          data-testid="dock-injury-roll"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className="rounded bg-navy px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-navy-hover"
+        >
+          TIRAR 1D16 DE LESIÓN
+        </button>
+        <button
+          type="button"
+          data-testid="dock-injury-dismiss"
+          onClick={onDismiss}
+          className="rounded border border-border bg-panel px-3 py-1.5 text-xs font-bold text-navy hover:bg-background"
+        >
+          Sin herida
+        </button>
+      </div>
+      {open ? (
+        <div data-testid="dock-injury-stepper">
+          <RollStepper
+            roll16={roll16}
+            roll6={roll6}
+            onRoll16={handleRoll16}
+            onRoll6={handleRoll6}
+            fn={t}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function LiveActionDock({
   viewerSide,
   activeSide,
@@ -325,6 +446,10 @@ export function LiveActionDock({
   // MVA-6: the floating "+SPP" feedback of the LAST fired acta capture
   // (replaced on the next fire — no timers, no animation-event dependency).
   const [feedback, setFeedback] = useState<(ActaFloatFeedback & { action: Flow }) | null>(null);
+  // T17 (S10.4.1): chain outcomes awaiting the VICTIM owner's injury roll —
+  // opened when the armour broke; dock-local (the flow surface owns the
+  // hand-off between the two coaches).
+  const [pendingInjuries, setPendingInjuries] = useState<PendingInjury[]>([]);
 
   // Gates: spectator (no side) or a non-live match → no dock at all.
   if (viewerSide == null || status !== "live") return null;
@@ -352,9 +477,13 @@ export function LiveActionDock({
   const nextStep = () => setStepIndex((i) => i + 1);
 
   /** Fire a complete command and reset the flow. */
-  const submit = (cmd: LiveCommand) => {
+  const submit = (cmd: LiveCommand | KnockdownCommand) => {
     const source = flow;
-    void onSubmit(cmd);
+    // T17 transport seam: `api.ts`'s `LiveCommand` is a fixed surface outside
+    // this slice — the additive `knockdown` command (applied by the demo
+    // reducer's `applyCommand`) rides it by cast. The production route does
+    // not accept it yet (demo-first, same stance as the S3 kickoff machinery).
+    void onSubmit(cmd as LiveCommand);
     if (variant === "acta" && source != null) {
       const next = ACTA_FEEDBACK[source];
       // The incrementing id remounts the badge so the one-shot float replays.
@@ -414,7 +543,7 @@ export function LiveActionDock({
     // fire automatically when it was the last required selection.
     const slot =
       side === "own"
-        ? flow === "bothDown" || flow === "casualtyCaused" || flow === "foul"
+        ? flow === "bothDown" || flow === "casualtyCaused" || flow === "foul" || flow === "block"
           ? "causerId"
           : "victimId" // selfInflicted victim is each own fallen player
         : "victimId";
@@ -443,6 +572,115 @@ export function LiveActionDock({
     const cmd = buildWeatherCommand(selections.weather ?? "", roll ?? "");
     if (cmd) submit(cmd);
   };
+
+  /** T17: the picked pair's catalog stats (ST/AV) — null when the fixture's
+   *  positional is not in the race catalog (honest degradation, never an
+   *  invented number). */
+  const attackerStats = statsFor(
+    rosterRaceId,
+    own.find((p) => p.rosterPlayerId === selections.causerId)?.positionalKey ?? "",
+  );
+  const victimStats = statsFor(
+    opponentRaceId,
+    rival.find((p) => p.rosterPlayerId === selections.victimId)?.positionalKey ?? "",
+  );
+  /** T17: the block dice count from the ST comparison (standard BB — the
+   *  unknown-stats fallback keeps the common two-dice block, never invented
+   *  numbers). */
+  const blockDiceCount =
+    attackerStats != null && victimStats != null && attackerStats.st < victimStats.st
+      ? 1
+      : 2;
+
+  /** T17 · S10.1: throws the block dice by ST (lib/rules/blocks — imported,
+   *  never transcribed). An unresolvable ST never invents stats: the standard
+   *  two-dice block is rolled and the display keeps the "?" marker. */
+  const throwBlockDice = () => {
+    const faces =
+      attackerStats != null && victimStats != null
+        ? blockDice(attackerStats.st, victimStats.st)
+        : Array.from({ length: 2 }, () => blockDie());
+    setSelections({ ...selections, blockDice: faces, face: undefined, armourRoll: "" });
+    nextStep();
+  };
+
+  /** T17: the picked face — a Push records nothing (no derribo); a defender
+   *  knockdown continues into the armour stage; both/attacker falls stop at
+   *  the standalone row (S10.3 injuries stay backlog). */
+  const pickBlockFace = (face: BlockDieFace) => {
+    if (viewerSide == null) return;
+    const falls = knockdownVictimOf(face);
+    if (falls == null) {
+      close();
+      return;
+    }
+    if (falls === "defender") {
+      applyGuided({ ...selections, face }, true);
+      return;
+    }
+    const cmd = buildKnockdownCommand({
+      recorderSide: viewerSide,
+      causerId: selections.causerId ?? "",
+      victimId: selections.victimId ?? "",
+      blockDice: selections.blockDice ?? [],
+      face,
+    });
+    if (cmd) submit(cmd);
+    else close();
+  };
+
+  /** T17: records the armour 2D6 vs the victim's AV together with the
+   *  knockdown entry (S10.2 — standalone even when no injury follows) and,
+   *  when the armour breaks, hands the 1D16 to the VICTIM side's callout
+   *  (S10.4.1). */
+  const fireArmour = (armourRoll: number) => {
+    if (viewerSide == null) return;
+    const face = selections.face;
+    const causerId = selections.causerId;
+    const victimId = selections.victimId;
+    if (face == null || causerId == null || victimId == null) return;
+    const cmd = buildKnockdownCommand({
+      recorderSide: viewerSide,
+      causerId,
+      victimId,
+      blockDice: selections.blockDice ?? [],
+      face,
+      armourRoll,
+      victimAv: victimStats?.av ?? null,
+    });
+    if (cmd == null) {
+      close();
+      return;
+    }
+    const broken = cmd.armourBroken === true;
+    const victimSide: "home" | "away" = viewerSide === "home" ? "away" : "home";
+    submit(cmd);
+    if (broken) {
+      setPendingInjuries((prev) => [
+        ...prev,
+        { id: (prev[prev.length - 1]?.id ?? 0) + 1, victimId, victimSide },
+      ]);
+    }
+  };
+
+  /** T17 (S10.4.1): the victim owner's roll-inclusive injury capture from the
+   *  pending callout — «solo si llega a producirse» (see «Sin herida»). */
+  const fireVictimInjury = (
+    pending: PendingInjury,
+    roll16: number,
+    roll6?: number,
+  ) => {
+    const cmd = buildVictimInjuryCommand(
+      pending.victimSide,
+      pending.victimId,
+      roll16,
+      roll6 ?? "",
+    );
+    setPendingInjuries((prev) => prev.filter((item) => item.id !== pending.id));
+    if (cmd) submit(cmd);
+  };
+  const dismissVictimInjury = (id: number) =>
+    setPendingInjuries((prev) => prev.filter((item) => item.id !== id));
 
   // The centered modal that hosts the open flow (the dock bar stays underneath).
   const modalContent = (() => {
@@ -473,11 +711,17 @@ export function LiveActionDock({
           ? t("match.dock.rollTitle")
           : stage?.kind === "cause" || stage?.kind === "selfCause"
             ? t("match.controls.injuryCause")
-            : stage?.kind === "weatherKind"
-              ? "Cambiar clima"
-              : stage?.kind === "weatherRoll"
-                ? "Tirada de clima"
-                : t("match.dock.sheetTitle");
+            : stage?.kind === "blockRoll"
+              ? "Dados de bloqueo"
+              : stage?.kind === "blockFace"
+                ? "Resultado del bloqueo"
+                : stage?.kind === "armourRoll"
+                  ? "Tirada de armadura"
+                  : stage?.kind === "weatherKind"
+                    ? "Cambiar clima"
+                    : stage?.kind === "weatherRoll"
+                      ? "Tirada de clima"
+                      : t("match.dock.sheetTitle");
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -542,9 +786,11 @@ export function LiveActionDock({
                   onClick={() => begin(choice)}
                   className="rounded border border-border bg-panel px-2 py-1 text-xs font-bold text-navy hover:bg-background"
                 >
-                  {choice === "weather"
-                    ? "Cambiar clima"
-                    : liveEventLabel({ kind: choice, half: 1, turnNumber: 1, payload: {} }, t)}
+                  {choice === "block"
+                    ? causeLabel("block", t)
+                    : choice === "weather"
+                      ? "Cambiar clima"
+                      : liveEventLabel({ kind: choice, half: 1, turnNumber: 1, payload: {} }, t)}
                 </button>
               ))}
             </div>
@@ -600,6 +846,82 @@ export function LiveActionDock({
               >
                 Sin tirada
               </button>
+            </div>
+          ) : null}
+
+          {/* T17 · S10.1: the block-dice stage — the ST comparison drives the
+              dice count (lib/rules/blocks `blockDice`: 2 dice when the attacker
+              is at least as strong, else 1) and the throw button rolls them. */}
+          {stage?.kind === "blockRoll" ? (
+            <div data-testid="dock-block-roll" className="space-y-2">
+              <p className="text-xs text-slate">
+                {`FUE ${attackerStats?.st ?? "?"} vs FUE ${
+                  victimStats?.st ?? "?"
+                } · ${blockDiceCount} ${blockDiceCount === 1 ? "dado" : "dados"}`}
+              </p>
+              <button
+                type="button"
+                data-testid="dock-block-throw"
+                onClick={throwBlockDice}
+                className="rounded bg-navy px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-navy-hover"
+              >
+                Tirar dados de bloqueo
+              </button>
+            </div>
+          ) : null}
+
+          {/* T17: the rolled faces ARE the pickable chips (Push x2 collapses to
+              one chip — picking a face, not a die). */}
+          {stage?.kind === "blockFace" ? (
+            <div data-testid="dock-block-face" className="flex flex-wrap gap-1.5">
+              {[...new Set(selections.blockDice ?? [])].map((face) => (
+                <button
+                  key={face}
+                  type="button"
+                  data-testid="dock-block-face-option"
+                  aria-pressed={selections.face === face}
+                  onClick={() => pickBlockFace(face)}
+                  className={`rounded border px-2 py-1 text-xs font-bold ${
+                    selections.face === face
+                      ? "border-navy bg-navy text-white"
+                      : "border-border bg-panel text-navy hover:bg-background"
+                  }`}
+                >
+                  {BLOCK_FACE_LABELS[face] ?? face}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {/* T17: the armour 2D6 vs the victim's AV (manual sum entry, same
+              pattern as the weather 2D6 stage). »más de AR rompe« is the
+              rulebook break condition (strictly greater). */}
+          {stage?.kind === "armourRoll" ? (
+            <div data-testid="dock-armour-roll" className="space-y-2">
+              <p className="text-xs text-slate">
+                {(() => {
+                  const victim = rival.find(
+                    (p) => p.rosterPlayerId === selections.victimId,
+                  );
+                  const av = victimStats?.av ?? null;
+                  return `Armadura de ${victim?.name ?? "la víctima"} · AR ${
+                    av != null ? `${av}+` : "desconocida"
+                  }${av != null ? ` · 2D6 (más de ${av} rompe)` : ""}`;
+                })()}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    data-testid="dock-armour-roll-option"
+                    onClick={() => fireArmour(n)}
+                    className="rounded border border-border bg-panel px-2 py-1 text-xs font-bold text-navy hover:bg-background"
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
 
@@ -808,6 +1130,33 @@ export function LiveActionDock({
           its backdrop blur never becomes the modal's containing block (which
           would collapse the overlay's `fixed inset-0`). */}
       {modalContent}
+      {/* T17 (S10.4.1): the VICTIM side's pending-injury callouts — shown when
+          the combat chain ended in a broken armour and the viewer is the
+          victim's owner (never the tackler side, never a spectator). */}
+      {flow == null
+        ? pendingInjuries
+            .filter((pending) => pending.victimSide === viewerSide)
+            .map((pending) => {
+              const victim = [...own, ...rival].find(
+                (p) => p.rosterPlayerId === pending.victimId,
+              );
+              const dorsal =
+                ownDorsal.get(pending.victimId) ??
+                rivalDorsal.get(pending.victimId) ??
+                0;
+              return (
+                <PendingInjuryCallout
+                  key={pending.id}
+                  victimName={victim?.name ?? "el jugador"}
+                  victimDorsal={dorsal}
+                  onRoll={(roll16, roll6) =>
+                    fireVictimInjury(pending, roll16, roll6)
+                  }
+                  onDismiss={() => dismissVictimInjury(pending.id)}
+                />
+              );
+            })
+        : null}
       {variant === "acta" ? (
         matchStarted ? (
         /* MVA-5 (artboard 08 "FIXED BOTTOM QUICK-CAPTURE ACTION DOCK"): white
@@ -826,7 +1175,7 @@ export function LiveActionDock({
                 <ActaDockButton icon="football" label="+ TD" tone="navy" onClick={() => begin("td")} feedback={floatFor("td")} />
                 <ActaDockButton icon="send" label="+ Pase" tone="navy" onClick={() => begin("completion")} feedback={floatFor("completion")} />
                 <ActaDockButton icon="medical" label="+ Baja" tone="red" onClick={() => begin("casualtyCaused")} feedback={floatFor("casualtyCaused")} />
-                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("eventChoice")} feedback={floatFor("foul", "interception", "throwTeamMate", "landedSafe", "weather", "eventChoice")} />
+                <ActaDockButton icon="more" label="+ Evento" tone="slate" onClick={() => begin("eventChoice")} feedback={floatFor("block", "foul", "interception", "throwTeamMate", "landedSafe", "weather", "eventChoice")} />
                 <ActaDockButton icon="flag" label="Fin Turno" tone="solidRed" onClick={() => begin("passTurn")} feedback={floatFor("passTurn")} />
               </>
             ) : (

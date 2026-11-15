@@ -15,6 +15,7 @@
 
 import { CASUALTY_CAUSES, type CasualtyCause } from "@/lib/livePhase";
 import { getRaceById } from "@/features/teams/data/races";
+import type { BlockDieFace } from "@/lib/rules/blocks";
 import type { LiveCommand, MatchPlayer } from "./api";
 
 /** The casualty causes that REQUIRE an explicit causer (blitz/foul/block). */
@@ -73,6 +74,144 @@ export interface GuidedSelections {
   roll6?: number | "";
   /** S2 (Cambiar clima): the picked `WEATHER_KINDS` code ("" = none yet). */
   weather?: string;
+  /** T17 (S10.1): the rolled block dice (empty until «Tirar dados»). */
+  blockDice?: BlockDieFace[];
+  /** T17: the face picked from the rolled block dice. */
+  face?: BlockDieFace;
+  /** T17: the recorded 2D6 armour sum ("" = not rolled yet). */
+  armourRoll?: number | "";
+}
+
+/**
+ * T17 (S4 step 2b · S10.1): a roster player's combat stats — the numeric ST
+ * and the numeric armour value behind the catalog's "9+" notation — resolved
+ * from the race catalog (the SAME lookup `positionName` uses; never a new data
+ * source). Null when the race/positional is not in the catalog (defensive — a
+ * fixture positional typo degrades the chain honestly, never throws).
+ */
+export function statsFor(
+  raceId: string,
+  positionalKey: string,
+): { st: number; av: number | null } | null {
+  const positional = getRaceById(raceId)?.positionals.find(
+    (pos) => pos.key === positionalKey,
+  );
+  if (positional == null) return null;
+  const av = Number.parseInt(positional.av, 10);
+  return { st: positional.st, av: Number.isFinite(av) ? av : null };
+}
+
+/**
+ * T17 (S10.2): WHO falls for each block-die face. Skills are deliberately NOT
+ * modelled (lib/rules/blocks.ts), so a stumble without Dodge knocks the
+ * defender down too; a push knocks nobody (no derribo, no entry).
+ */
+export function knockdownVictimOf(
+  face: BlockDieFace,
+): "defender" | "attacker" | "both" | null {
+  switch (face) {
+    case "defenderDown":
+    case "defenderStumbles":
+      return "defender";
+    case "bothDown":
+      return "both";
+    case "attackerDown":
+      return "attacker";
+    default:
+      return null;
+  }
+}
+
+/**
+ * T17 (S10.1/S10.2): the standalone «Derribo» capture of the guided combat
+ * chain — block dice + picked face + (defender falls) the armour 2D6 vs the
+ * victim's AV. `side` is the RECORDER's side — the tackler's coach reports the
+ * placaje (S10.4.1), so the row's «Registrado por» badge names them.
+ *
+ * Transport note: the demo reducer's `applyCommand` stamps this additive
+ * command; `api.ts`'s `LiveCommand` union is a fixed surface outside this
+ * slice, so the dock carries it over that seam with one documented cast. The
+ * production route does not accept `type: "knockdown"` yet (demo-first, same
+ * stance as the S3 kickoff machinery).
+ */
+export interface KnockdownCommand {
+  type: "knockdown";
+  side: "home" | "away";
+  causerRosterId: string;
+  victimRosterId: string;
+  blockDice: BlockDieFace[];
+  face: BlockDieFace;
+  armourRoll?: number;
+  victimAv?: number;
+  armourBroken?: boolean;
+}
+
+/**
+ * Builds the knockdown command from the completed chain selections. Null when
+ * the chain is incomplete or the picked face is NOT among the rolled dice — or
+ * is a Push (a push is never a derribo, so there is nothing to register).
+ * The armour fields ride ONLY the defender's knockdown (S10.3 keeps both-down
+ * and attacker-fall injuries in the backlog — just the row).
+ */
+export function buildKnockdownCommand(args: {
+  recorderSide: "home" | "away";
+  causerId: string;
+  victimId: string;
+  blockDice: BlockDieFace[];
+  face: BlockDieFace;
+  armourRoll?: number | null;
+  victimAv?: number | null;
+}): KnockdownCommand | null {
+  const { recorderSide, causerId, victimId, blockDice, face, armourRoll, victimAv } = args;
+  if (!causerId || !victimId) return null;
+  if (!blockDice.includes(face)) return null;
+  const falls = knockdownVictimOf(face);
+  if (falls == null) return null;
+  const cmd: KnockdownCommand = {
+    type: "knockdown",
+    side: recorderSide,
+    causerRosterId: causerId,
+    victimRosterId: victimId,
+    blockDice: [...blockDice],
+    face,
+  };
+  if (falls === "defender" && typeof armourRoll === "number") {
+    cmd.armourRoll = armourRoll;
+    if (typeof victimAv === "number") {
+      cmd.victimAv = victimAv;
+      cmd.armourBroken = armourRoll > victimAv;
+    }
+  }
+  return cmd;
+}
+
+/**
+ * T17 (S10.4.1): the VICTIM owner's injury capture — «el jugador que recibe
+ * marca la herida — solo si llega a producirse». A roll-inclusive own-side
+ * casualty WITHOUT a causer: the badge must name the victim's coach (the
+ * recorder) and the causal context already rides the knockdown row. Null for a
+ * missing victim or an out-of-range 1D16 (never a roll-less casualty).
+ */
+export function buildVictimInjuryCommand(
+  victimSide: "home" | "away",
+  victimId: string,
+  roll16: number,
+  roll6?: number | "",
+  cause: CasualtyCause = "block",
+): LiveCommand | null {
+  if (!victimId || !Number.isInteger(roll16) || roll16 < 1 || roll16 > 16) {
+    return null;
+  }
+  const base: LiveCommand = {
+    type: "casualty",
+    side: victimSide,
+    victimRosterId: victimId,
+    cause,
+    roll16,
+  };
+  if (roll6 !== "" && roll6 != null)
+    (base as Extract<LiveCommand, { type: "casualty" }>).roll6 = roll6;
+  return base;
 }
 
 /**

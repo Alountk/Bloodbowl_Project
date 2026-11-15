@@ -92,6 +92,67 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.awayScore).toBe(0);
   });
 
+  it("submitCommand knockdown stamps the tackler-side derribo entry with the full chain payload (T17 · S10.1/S10.2)", () => {
+    const s0 = state();
+    const s = reduce(s0, {
+      type: "submitCommand",
+      command: {
+        type: "knockdown",
+        side: "home",
+        causerRosterId: "k1",
+        victimRosterId: "o1",
+        blockDice: ["push", "defenderDown"],
+        face: "defenderDown",
+        armourRoll: 11,
+        victimAv: 10,
+        armourBroken: true,
+      },
+    });
+    const e = s.events[s.events.length - 1];
+    expect(s.events).toHaveLength(s0.events.length + 1);
+    expect(e.kind).toBe("knockdown");
+    // S10.4.1: the tackler's coach reports the placaje — the event's side is
+    // the RECORDER's (the «Registrado por» badge derives from it).
+    expect(e.side).toBe("home");
+    expect(e.playerRosterId).toBe("k1");
+    expect(e.payload).toEqual({
+      causerRosterId: "k1",
+      victimRosterId: "o1",
+      blockDice: ["push", "defenderDown"],
+      face: "defenderDown",
+      armourRoll: 11,
+      victimAv: 10,
+      armourBroken: true,
+    });
+    expect(e.half).toBe(s0.half);
+    expect(e.turnNumber).toBe(s0.turnNumber);
+    expect(e.seq).toBeGreaterThan(MAX_FIXTURE_SEQ);
+  });
+
+  it("submitCommand knockdown omits the armour fields when the chain stopped at the derribo (S10.2/S10.3 backlog)", () => {
+    const s = reduce(state(), {
+      type: "submitCommand",
+      command: {
+        type: "knockdown",
+        side: "away",
+        causerRosterId: "o2",
+        victimRosterId: "k2",
+        blockDice: ["bothDown"],
+        face: "bothDown",
+      },
+    });
+    const e = s.events[s.events.length - 1];
+    expect(e.kind).toBe("knockdown");
+    expect(e.payload).toEqual({
+      causerRosterId: "o2",
+      victimRosterId: "k2",
+      blockDice: ["bothDown"],
+      face: "bothDown",
+    });
+    expect("armourRoll" in e.payload).toBe(false);
+    expect("armourBroken" in e.payload).toBe(false);
+  });
+
   it("submitCommand weather records a side-less weather event with the value + d6 payload (S2)", () => {
     const s = reduce(state(), {
       type: "submitCommand",

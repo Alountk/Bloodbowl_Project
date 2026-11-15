@@ -904,6 +904,103 @@ const reloadMidWizard = () => {
 const report = () =>
   within(ante()).getByRole("region", { name: "Lo que ha sucedido" });
 
+/**
+ * T17 · S4 step 2b (S10.1/S10.2/S10.4.1) — the guided BLOCK ACTION recorded as
+ * the real combat chain on the REAL dock: block dice by ST (lib/rules/blocks)
+ * -> pick a face -> standalone knockdown entry («Derribo») -> armour 2D6 vs
+ * the victim's AR -> when broken, the VICTIM's owner side records the 1D16
+ * through the dock's pending-injury callout. Rows land on the GAME TURN's card
+ * (T16 grouping — unchanged here) with EACH recorder's author badge: the
+ * tackler's coach reports the placaje, the victim's coach marks the herida.
+ * Both-down/attacker-down injuries stay BACKLOG (S10.3): only the row.
+ */
+
+/** «+ Evento» -> «Bloqueo» chain: causer own #1 (Khalid, blitz-ra FUE 3) vs
+ *  victim rival #1 (Grishnak, orc blitzer FUE 3 / AR 10) — throws the queued
+ *  block dice (6 = «El defensor cae») and records the given armour sum. */
+const captureBloqueo = (d6faces: number[], armour: string) => {
+  fireEvent.click(demoButton("+ Evento"));
+  fireEvent.click(screen.getByRole("button", { name: "Bloqueo" }));
+  fireEvent.click(
+    within(
+      within(screen.getByTestId("live-action-modal")).getByTestId(
+        "dock-pool-own",
+      ),
+    ).getByRole("button", { name: /#1/i }),
+  );
+  fireEvent.click(
+    within(
+      within(screen.getByTestId("live-action-modal")).getByTestId(
+        "dock-pool-rival",
+      ),
+    ).getByRole("button", { name: /#1/i }),
+  );
+  dice.queue = d6faces;
+  fireEvent.click(
+    within(screen.getByTestId("dock-block-roll")).getByRole("button", {
+      name: "Tirar dados de bloqueo",
+    }),
+  );
+  fireEvent.click(
+    within(screen.getByTestId("dock-block-face")).getByRole("button", {
+      name: "El defensor cae",
+    }),
+  );
+  fireEvent.click(
+    within(screen.getByTestId("dock-armour-roll")).getByRole("button", {
+      name: armour,
+    }),
+  );
+};
+
+describe("ActaDemoHarness — T17: combat chain on the game-turn cards (S10.1/S10.2/S10.4.1)", () => {
+  it("knockdown + victim-recorded injury land on the ATTACKER's game-turn card, each row with its recorder's badge", () => {
+    startWithHomeReceiver();
+    // Águilas (home) plays T1: Khalid #1 blocks Grishnak #1, armour 11 vs AR
+    // 10 -> rota (the chain ends in a potential injury).
+    captureBloqueo([6, 1], "11");
+
+    const card = enJuegoCard();
+    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(rowKinds(card)).toEqual(["knockdown"]);
+    // The row's label carries the recorded chain (face + armour vs AV).
+    expect(card.textContent).toContain("Derribo · Ar 11 (10+) rota");
+    // S10.4.1/S10.4.2: the TACKLER's coach reported the placaje.
+    expect(card.textContent).toContain("Registrado por Águilas de Khemri");
+
+    // S10.4.1: the VICTIM's owner marks the herida — the dock offers them the
+    // pending-injury callout and they roll the 1D16.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    const callout = screen.getByTestId("dock-pending-injury");
+    expect(callout.textContent).toContain("TIRADA DE LESIÓN PENDIENTE");
+    expect(callout.textContent).toContain("Grishnak Mordaz (#1)");
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-12"));
+
+    // BOTH rows land on the SAME game-turn card (placaje y herida de la misma
+    // jugada) — the injury row carries the VICTIM coach's author badge.
+    const landed = turnCard(1, "Águilas de Khemri");
+    expect(rowKinds(landed)).toEqual(["knockdown", "casualty"]);
+    expect(landed.textContent).toContain("Registrado por Colmillos del Caos");
+    expect(landed.textContent).toContain("Tirada 1D16: 12");
+    // …and the victim side gets NO card of its own for this play (T16).
+    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+  });
+
+  it("S10.2: armour holding registers the standalone knockdown row and opens NO injury callout", () => {
+    startWithHomeReceiver();
+    // Armour 5 vs AR 10 -> aguanta: the derribo registers by itself.
+    captureBloqueo([6, 3], "5");
+
+    const card = enJuegoCard();
+    expect(rowKinds(card)).toEqual(["knockdown"]);
+    expect(card.textContent).toContain("Derribo · Ar 5 (10+) aguanta");
+    fireEvent.click(perspective("Colmillos del Caos"));
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+  });
+});
+
 describe("ActaDemoHarness — T13: reload mid-wizard with the second coach (L48)", () => {
   it("the wizard reopens on coach B's SAME step with B's captures intact and coach A still shows completed", () => {
     reloadMidWizard();
