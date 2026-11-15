@@ -87,6 +87,10 @@ export const EVENT_GLYPH: Record<string, IconName> = {
   turnStart: "hand",
   people: "account-group",
   journeyman: "shirt",
+  // DEMO-ONLY (S3 · T4): the production server never emits `kickoff` —
+  // openspec MVT-6 forbids surfacing kickoff-table events in the production
+  // feed. Entry kept so demo kickoff rows never fall back to bare football.
+  kickoff: "dice",
 };
 
 /**
@@ -206,6 +210,20 @@ export const KICKOFF_OUTCOME_LABELS: Record<string, string> = {
   "minor-incident": "Incidente menor",
   "serious-incident": "Incidente grave",
   catastrophe: "Catástrofe",
+};
+
+/**
+ * DEMO-ONLY (S3 · T4): the sequential kickoff rows' phase labels
+ * (`kickoff` payload `phase: roll|event|duel|award`). The production server
+ * never emits `kickoff` — openspec MVT-6 forbids surfacing kickoff-table
+ * events in the production feed. A row carrying its `note` registro line
+ * labels with that note instead (see `liveEventLabel`).
+ */
+export const KICKOFF_PHASE_LABELS: Record<string, string> = {
+  roll: "Patada inicial · Tirada",
+  event: "Patada inicial · Evento",
+  duel: "Patada inicial · Duelo",
+  award: "Patada inicial · Registro",
 };
 
 /**
@@ -350,6 +368,20 @@ export function liveEventLabel(event: LiveEventLabelInput, fn: TFunc = esT): str
       return fn("match.event.concede");
     case "journeyman":
       return fn("match.event.journeyman");
+    case "kickoff": {
+      // DEMO-ONLY (S3 · T4, MVT-6): never emitted in the production feed.
+      // Dictionary key first (mirrors `causeLabel`), then the recorded
+      // registro note, then the phase label, then the bare face name.
+      const key = "match.event.kickoff";
+      const translated = fn(key);
+      if (translated !== key) return translated;
+      const note =
+        typeof event.payload.note === "string" ? event.payload.note : null;
+      if (note != null && note !== "") return note;
+      const phase =
+        typeof event.payload.phase === "string" ? event.payload.phase : null;
+      return KICKOFF_PHASE_LABELS[phase ?? ""] ?? "Patada inicial";
+    }
     default:
       return event.kind;
   }

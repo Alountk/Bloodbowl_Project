@@ -117,13 +117,82 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(e.payload).toEqual({ value: "blizzard" });
   });
 
-  it("endTurn command advances the turn, flips the active side and records the reason", () => {
-    const s0 = state({ half: 1, turnNumber: 2, activeSide: "home", autoFollow: false, viewerSide: "home" });
+  it("endTurn hands the SAME turn number to the rival before advancing (pair rule)", () => {
+    const s0 = state({
+      half: 1,
+      turnNumber: 1,
+      activeSide: "away",
+      autoFollow: false,
+      viewerSide: "away",
+    });
+    const first = reduce(s0, {
+      type: "submitCommand",
+      command: { type: "endTurn", side: "away" },
+    });
+    expect(first.activeSide).toBe("home");
+    expect(first.turnNumber).toBe(1); // home still plays turn 1
+
+    const second = reduce(first, {
+      type: "submitCommand",
+      command: { type: "endTurn", side: "home" },
+    });
+    expect(second.activeSide).toBe("away");
+    expect(second.turnNumber).toBe(2); // both coaches played 1 → turn 2 opens
+
+    const third = reduce(second, {
+      type: "submitCommand",
+      command: { type: "endTurn", side: "away" },
+    });
+    expect(third.activeSide).toBe("home");
+    expect(third.turnNumber).toBe(2); // home still plays turn 2
+  });
+
+  it("endTurn keeps 1T8 on the board while the turn's opener passes the baton", () => {
+    const s0 = state({
+      half: 1,
+      turnNumber: 8,
+      activeSide: "home",
+      turnStarter: "home",
+    });
+    const s = reduce(s0, {
+      type: "submitCommand",
+      command: { type: "endTurn", side: "home" },
+    });
+    expect(s.half).toBe(1);
+    expect(s.turnNumber).toBe(8); // away still plays turn 8 of half 1
+    expect(s.activeSide).toBe("away");
+  });
+
+  it("endTurn finishes 2T8 only on the closing flip of the pair", () => {
+    const s0 = state({
+      half: 2,
+      turnNumber: 8,
+      status: "live",
+      activeSide: "home",
+      turnStarter: "home",
+    });
+    const mid = reduce(s0, {
+      type: "submitCommand",
+      command: { type: "endTurn", side: "home" },
+    });
+    expect(mid.status).toBe("live");
+    expect(mid.turnNumber).toBe(8);
+
+    const done = reduce(mid, {
+      type: "submitCommand",
+      command: { type: "endTurn", side: "away" },
+    });
+    expect(done.status).toBe("finished");
+    expect(done.events[done.events.length - 1].kind).toBe("endMatch");
+  });
+
+  it("endTurn hands the SAME turn to the rival, flips the active side and records the reason", () => {
+    const s0 = state({ half: 1, turnNumber: 2, activeSide: "home", turnStarter: "home", autoFollow: false, viewerSide: "home" });
     const s = reduce(s0, {
       type: "submitCommand",
       command: { type: "endTurn", side: "home", reason: "turnover" },
     });
-    expect(s.turnNumber).toBe(3);
+    expect(s.turnNumber).toBe(2); // away plays turn 2 next — the number waits for the pair
     expect(s.activeSide).toBe("away");
     expect(s.half).toBe(1);
     const e = s.events[s.events.length - 1];
@@ -155,19 +224,20 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.homeScore).toBe(2);
   });
 
-  it("endTurn rolls 1T turn 8 into 2T turn 1 and records endHalf", () => {
+  it("endTurn rolls 1T turn 8 into 2T turn 1 and records endHalf (pair closing flip)", () => {
     const s = reduce(
-      state({ half: 1, turnNumber: 8 }),
+      state({ half: 1, turnNumber: 8, activeSide: "home", turnStarter: "away" }),
       { type: "submitCommand", command: { type: "endTurn", side: "home" } },
     );
     expect(s.half).toBe(2);
     expect(s.turnNumber).toBe(1);
+    expect(s.turnStarter).toBe("home"); // the 2T opener flips with the halves
     expect(s.events[s.events.length - 1].kind).toBe("endHalf");
   });
 
-  it("endTurn after 2T turn 8 finishes the match and records endMatch", () => {
+  it("endTurn after 2T turn 8 finishes the match and records endMatch (pair closing flip)", () => {
     const s = reduce(
-      state({ half: 2, turnNumber: 8, status: "live" }),
+      state({ half: 2, turnNumber: 8, status: "live", activeSide: "away", turnStarter: "home" }),
       { type: "submitCommand", command: { type: "endTurn", side: "away" } },
     );
     expect(s.status).toBe("finished");

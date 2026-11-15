@@ -20,19 +20,15 @@ import {
   type GuidedSelections,
 } from "./liveActionEntry";
 import { RollStepper } from "./rollStepper";
-import {
-  causerIdOf,
-  TURNS_PER_HALF,
-  turnSideOfEvents,
-  type TurnSide,
-} from "./actaTurnSides";
+import { actingSideOf, causerIdOf, type TurnSide } from "./actaTurnSides";
 import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
 
 /**
  * Acta en Vivo turn timeline (MVA-3 timeline half + MVA-4, T8 Slice B): the
  * "MAIN CONTENT: TURN TIMELINE" section of
- * `design/match-report-redesign/08-acta-en-vivo.html` — per-turn cards over
- * the live feed, newest turn first:
+ * `design/match-report-redesign/08-acta-en-vivo.html` — per-HALF-TURN cards
+ * over the live feed (T8 / L37: ONE CARD per (half, turnNumber, side) — one
+ * each time a coach plays), newest first:
  *
  *   - card header: "T6 • GOUGED EYE" (per-half turn tag + acting team) with
  *     the EN JUEGO / COMPLETADO / CERRADO state chip and "Min N'" label;
@@ -48,11 +44,12 @@ import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
  *     the "TIRAR 1D16 DE LESIÓN" action and the BB2025 D16 severity table
  *     (S1 — bands verbatim).
  *
- * Turn states: the ACTIVE turn renders EN JUEGO; while live, the turn right
- * before it renders COMPLETADO and older turns CERRADO (the MVA-3 scenario:
- * "turns 1-4 closed, turn 5 completed, turn 6 active"); on a finished match
- * the last turn renders COMPLETADO and every older one CERRADO. Card titles
- * fall back to "AMBOS EQUIPOS" when a turn's events span both teams.
+ * Turn states: the ACTIVE half-turn renders EN JUEGO (its card always shows,
+ * even before any action); while live, the card right before it renders
+ * COMPLETADO and older cards CERRADO (the MVA-3 scenario: "turns 1-4 closed,
+ * turn 5 completed, turn 6 active"); once the match is over the last turn
+ * renders COMPLETADO and every older card CERRADO. Card titles fall back to
+ * "AMBOS EQUIPOS" only on a pair's neutral system card (side-null captures).
  *
  * The pending-roll action resolves through the EXISTING flow — the shared
  * `RollStepper` (1D16 + conditional 1D6) feeding the guided `casualty`
@@ -261,12 +258,13 @@ export function canResolveInjuryRoll(
 export type TurnCardState = "live" | "completed" | "closed";
 
 export interface ActaTurnCard {
-  /** Stable map key: `{half}:{turnNumber}`. */
+  /** Stable map key: `{half}:{turnNumber}:{side}` (`both` = neutral card). */
   key: string;
   half: number;
   turnNumber: number;
   state: TurnCardState;
-  /** The side whose turn this was (`actaTurnSides` vote) — null = "AMBOS EQUIPOS". */
+  /** The coach playing this HALF-TURN (the card's grouping side) — null only
+   *  on the pair's neutral "AMBOS EQUIPOS" card (system captures, no side). */
   actingSide: TurnSide;
   /** The latest capture timestamp of the turn (the card's minute). */
   minuteAt: number;
@@ -277,14 +275,33 @@ export interface ActaTurnCard {
 }
 
 /**
- * B1: groups the feed into per-turn cards, NEWEST TURN FIRST. Turns with no
- * display event get no card, except the active one (always shown so the
- * EN JUEGO chip is never missing while live). States follow the MVA-3
- * scenario — active → `live`, the turn right before it (while live) →
- * `completed`, everything older → `closed`; once finished the last turn is
- * `completed` and the rest `closed`. A casualty awaiting its 1D16 lands in
- * `pendingInjuries` unless a LATER capture already resolved the same victim
- * (then the resolved row renders it — never a stale callout).
+ * B1 (T8 / L37): groups the feed into ONE CARD PER HALF-TURN — keyed
+ * `(half, turnNumber, side)`, one card each time a coach plays (T1 Águilas,
+ * T1 Colmillos, T2 …), never one merged card per turn pair. NEWEST FIRST:
+ * half/turn descending and, within a pair, the half-turn played SECOND (the
+ * pair's newest play) above the opener — `active.turnStarter` names the
+ * opener (it flips with the halves per the kickoff receiver rule); without a
+ * `turnStarter` the fallback counts the active side as the pair's newest play.
+ *
+ * The bucket side of a capture is its CAPTURE AUTHOR (`actingSideOf`): scored
+ * actions vote their own `side`, a CAUSED casualty its CAUSER's side — so the
+ * live EN JUEGO card registers the acting coach's actions as recorded. A
+ * causer-less casualty (self-inflicted dodge/crowd) has no author and falls
+ * back to its own `side` (the victim's coach — the mishap lands in the
+ * half-turn being played); a side-null display capture (weather / fan factor /
+ * endHalf / endMatch …) has no coach at all and gets its OWN neutral card
+ * keyed with the turn — sorted as the pair's OLDEST entry (its exact moment
+ * inside the pair is unknowable) and titled "AMBOS EQUIPOS".
+ *
+ * States: the ACTIVE half-turn always renders its card with EN JUEGO — even
+ * before any action («cuando pase el turno deberia salir la card») — while a
+ * half-turn that closes with NO recorded display event shows NO card at all
+ * («si no hay nada que registrar esta card deberia desaparecer»). While live
+ * the card right before the active one renders COMPLETADO and every older
+ * card CERRADO; once not live every card of the active pair (the "last turn")
+ * renders COMPLETADO and the rest CERRADO. A casualty awaiting its 1D16 lands
+ * in `pendingInjuries` unless a LATER capture already resolved the same
+ * victim (then the resolved row renders it — never a stale callout).
  */
 export function turnCardsOf(
   events: readonly LiveMatchEventDto[],
@@ -293,11 +310,29 @@ export function turnCardsOf(
     half: number;
     turnNumber: number;
     activeSide: "home" | "away";
+    /** Side that OPENED the current turn pair (the demo pair rule). */
+    turnStarter?: "home" | "away" | null;
   },
 ): ActaTurnCard[] {
+  // The side that opens each PAIR of `half` (plays the half-turn first):
+  // `turnStarter` opens the current half's pairs and — flipped with the
+  // halves per the kickoff receiver rule — the OTHER half's pairs opened
+  // with its rival. Without a `turnStarter` the fallback counts the active
+  // side as the pair's newest play, so the opener is its rival.
+  const fallbackOpener: "home" | "away" =
+    active.activeSide === "home" ? "away" : "home";
+  const openerOf = (half: number): "home" | "away" => {
+    const opener = active.turnStarter ?? fallbackOpener;
+    if (active.turnStarter == null || half === active.half) return opener;
+    return opener === "home" ? "away" : "home";
+  };
+  /** Within-pair recency: second play (newest) > opener > neutral (oldest). */
+  const pairRank = (card: ActaTurnCard): number =>
+    card.actingSide == null ? -1 : card.actingSide === openerOf(card.half) ? 0 : 1;
+
   const byTurn = new Map<string, ActaTurnCard>();
-  const ensure = (half: number, turnNumber: number): ActaTurnCard => {
-    const key = `${half}:${turnNumber}`;
+  const ensure = (half: number, turnNumber: number, side: TurnSide): ActaTurnCard => {
+    const key = `${half}:${turnNumber}:${side ?? "both"}`;
     let card = byTurn.get(key);
     if (card == null) {
       card = {
@@ -305,7 +340,7 @@ export function turnCardsOf(
         half,
         turnNumber,
         state: "closed",
-        actingSide: null,
+        actingSide: side,
         minuteAt: 0,
         events: [],
         pendingInjuries: [],
@@ -317,32 +352,40 @@ export function turnCardsOf(
 
   const visible = events.filter((event) => isDisplayEvent(event.kind));
   for (const event of visible) {
-    const card = ensure(event.half, event.turnNumber);
+    const card = ensure(event.half, event.turnNumber, actingSideOf(event) ?? event.side);
     card.events.push(event);
     card.minuteAt = Math.max(card.minuteAt, event.at);
   }
 
-  const activeKey = `${active.half}:${active.turnNumber}`;
-  const predecessorKey =
-    active.turnNumber > 1
-      ? `${active.half}:${active.turnNumber - 1}`
-      : `${active.half - 1}:${TURNS_PER_HALF}`;
-  if (active.status === "live") ensure(active.half, active.turnNumber);
+  // The ACTIVE half-turn always shows its card (EN JUEGO) — even empty.
+  if (active.status === "live") ensure(active.half, active.turnNumber, active.activeSide);
 
-  for (const card of byTurn.values()) {
-    if (card.key === activeKey) {
-      card.state = active.status === "live" ? "live" : "completed";
-    } else if (active.status === "live" && card.key === predecessorKey) {
-      card.state = "completed";
+  const cards = [...byTurn.values()].sort(
+    (a, b) => b.half - a.half || b.turnNumber - a.turnNumber || pairRank(b) - pairRank(a),
+  );
+
+  if (active.status === "live") {
+    const activeIndex = cards.findIndex(
+      (card) =>
+        card.half === active.half &&
+        card.turnNumber === active.turnNumber &&
+        card.actingSide === active.activeSide,
+    );
+    if (activeIndex >= 0) cards[activeIndex].state = "live";
+    // The card right before the active one is the half-turn that just closed.
+    const previous = activeIndex >= 0 ? cards[activeIndex + 1] : undefined;
+    if (previous != null) previous.state = "completed";
+  } else {
+    // The "last turn" (the active pair) renders COMPLETADO once not live.
+    for (const card of cards) {
+      if (card.half === active.half && card.turnNumber === active.turnNumber) {
+        card.state = "completed";
+      }
     }
-    // S3: TEAM-coded side — the live turn belongs to the active coach, every
-    // other turn to the shared unanimous event vote (null → AMBOS EQUIPOS).
-    card.actingSide =
-      card.state === "live" ? active.activeSide : turnSideOfEvents(card.events);
   }
 
   // Pending casualties cleared by a later resolved capture of the same victim.
-  for (const card of byTurn.values()) {
+  for (const card of cards) {
     card.pendingInjuries = card.events.filter((event) => {
       if (!isPendingInjuryRoll(event)) return false;
       const victim = victimIdOf(event);
@@ -357,9 +400,7 @@ export function turnCardsOf(
     });
   }
 
-  return [...byTurn.values()].sort(
-    (a, b) => b.half - a.half || b.turnNumber - a.turnNumber,
-  );
+  return cards;
 }
 
 // --- Event row derivation -------------------------------------------------
@@ -742,6 +783,8 @@ export interface ActaTurnTimelineProps {
     half: number;
     turnNumber: number;
     activeSide: "home" | "away";
+    /** Side that OPENED the current turn pair (the demo pair rule). */
+    turnStarter?: "home" | "away" | null;
   };
   /** The viewing coach's side (null → spectator/admin, no roll action). */
   viewerSide: "home" | "away" | null;

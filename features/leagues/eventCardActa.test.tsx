@@ -146,3 +146,58 @@ describe("LiveEventCardsActa — S2 weather card (Clima)", () => {
     expect(row.textContent).not.toContain("🎲");
   });
 });
+
+describe("LiveEventCardsActa — DEMO kickoff rows (S3 · T4, MVT-6)", () => {
+  it("renders a kickoff row with its registro note and the verbatim rulebook effect", () => {
+    renderActa([
+      ev({
+        kind: "kickoff",
+        side: null,
+        playerRosterId: null,
+        seq: 2,
+        payload: {
+          phase: "award",
+          sum: 6,
+          eventId: "hinchas-animan",
+          note: "Kickoff · LOS HINCHAS ANIMAN → beneficio para Reavers (5 vs 3)",
+        },
+      }),
+    ]);
+    // Labelled with the registro note + the «Efecto» row kept verbatim.
+    expect(
+      screen.getByText(
+        /Kickoff · LOS HINCHAS ANIMAN → beneficio para Reavers \(5 vs 3\)/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Efecto")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Cada Entrenador tira 1D6 y le suma el número de Animadoras/,
+      ),
+    ).toBeTruthy();
+    // NEVER the raw «kickoff» token of the unknown-kind fallback.
+    expect(screen.queryByText("kickoff")).toBeNull();
+  });
+
+  it("renders the effect row in the wrapping text variant (no card overflow)", () => {
+    // U12 follow-up: the dotted-leader row forces `dd` to one line
+    // (`flex: 0 0 auto`), so paragraph-length verbatim effects overflowed the
+    // card. The kickoff effect row must use the stacked wrapping variant.
+    renderActa([
+      ev({
+        kind: "kickoff",
+        side: null,
+        playerRosterId: null,
+        seq: 2,
+        payload: {
+          phase: "award",
+          sum: 6,
+          eventId: "hinchas-animan",
+          note: "Kickoff · LOS HINCHAS ANIMAN → beneficio para Reavers (5 vs 3)",
+        },
+      }),
+    ]);
+    const effectRow = screen.getByText("Efecto").closest("div");
+    expect(effectRow?.className).toContain("acta__row--text");
+  });
+});

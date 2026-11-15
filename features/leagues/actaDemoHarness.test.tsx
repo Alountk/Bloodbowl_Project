@@ -3,11 +3,23 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ActaDemoHarness } from "./actaDemoHarness";
 
+// Deterministic dice for die-button rolls (S3 · T4 kickoff walk): a per-test
+// queue, defaulting to the wizard's classic 2/5 demo rolls.
+const dice = vi.hoisted(() => ({ queue: [] as number[] }));
+vi.mock("@/lib/random", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/random")>();
+  return {
+    ...actual,
+    rollD3: () => dice.queue.shift() ?? 2,
+    rollD6: () => dice.queue.shift() ?? 5,
+  };
+});
+
 /**
  * The DUAL-VIEW demo harness behind `/demo/partido` + the Storybook "Flujo
  * interactivo" story: two rival coach perspectives over ONE shared match state
  * (`actaDemoReducer`), with the REAL `LiveActionDock` capture wired in (no
- * omniscient demo buttons) and v4 localStorage persistence (`bb-demo-partido`).
+ * omniscient demo buttons) and v5 localStorage persistence (`bb-demo-partido`).
  *
  * Assertions run in the repo's ES dictionary + the demo's Spanish copy (no
  * jest-dom matchers — `.textContent` / regex / role queries only). The TD
@@ -17,6 +29,7 @@ import { ActaDemoHarness } from "./actaDemoHarness";
 
 beforeEach(() => {
   window.localStorage.clear();
+  dice.queue = [];
 });
 
 afterEach(() => {
@@ -46,25 +59,26 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
 
   it("viewing as the NON-active side hides the active dock actions and shows no request-turn UI; switching back restores them", () => {
     render(<ActaDemoHarness />);
-    // 1T turn 3: the home coach is ACTIVE — the full capture dock is up.
-    fireEvent.click(demoButton("1T · turno 3"));
-    expect(demoButton("+ TD")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
-
-    // Watch as the rival: no request-turn UI (deprecated) + only their
-    // LM-12-legal records.
-    fireEvent.click(perspective("Colmillos del Caos"));
-    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
+    // The narrative fixture opens in AWAY's turn: watching as home (the
+    // NON-active side) shows no capture actions, and no request-turn UI
+    // (deprecated) — only the LM-12-legal records.
     expect(screen.queryByRole("button", { name: "+ TD" })).toBeNull();
-    expect(screen.getByRole("button", { name: /Baja propia/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
 
-    // Back to the active coach: the full dock is restored.
-    fireEvent.click(perspective("Águilas de Khemri"));
+    // Watch as the ACTIVE coach: the full capture dock is up.
+    fireEvent.click(perspective("Colmillos del Caos"));
     expect(demoButton("+ TD")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
+
+    // Back to the non-active coach: the capture dock is gone again.
+    fireEvent.click(perspective("Águilas de Khemri"));
+    expect(screen.queryByRole("button", { name: "+ TD" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Solicitar turno" })).toBeNull();
   });
 
-  it("Fin de turno advances the active-turn badge", () => {
+  // PARKED (intentional harness cleanup): the omniscient «Fin de turno»
+  // control is gone from the demo — turn advance UI is out of scope for now.
+  it.skip("Fin de turno advances the active-turn badge", () => {
     render(<ActaDemoHarness />);
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
 
@@ -73,7 +87,9 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
   });
 
-  it("auto-follow moves the perspective on Fin de turno and can be disabled", () => {
+  // PARKED (intentional harness cleanup): the «Seguir al turno activo»
+  // control is gone together with «Fin de turno».
+  it.skip("auto-follow moves the perspective on Fin de turno and can be disabled", () => {
     render(<ActaDemoHarness />);
     const follow = screen.getByRole("checkbox", {
       name: "Seguir al turno activo",
@@ -101,8 +117,8 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
 
   it("REAL capture: the dock's TD flow advances the header score line and appends an event card", () => {
     render(<ActaDemoHarness />);
-    // The kickoff handover puts the home coach in the active turn (auto-follow).
-    fireEvent.click(demoButton("Fin de turno"));
+    // The narrative fixture opens in AWAY's turn: capture as the active coach.
+    fireEvent.click(perspective("Colmillos del Caos"));
     expect(demoButton("+ TD")).toBeTruthy();
     expect(heading().textContent).toBe("Águilas de Khemri 0 - 0 Colmillos del Caos");
 
@@ -115,32 +131,51 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
       }),
     );
     expect(screen.queryByTestId("live-action-modal")).toBeNull();
-    expect(heading().textContent).toBe("Águilas de Khemri 1 - 0 Colmillos del Caos");
+    expect(heading().textContent).toBe("Águilas de Khemri 0 - 1 Colmillos del Caos");
     const rows = screen.getAllByTestId("acta-event-row");
     expect(rows.some((row) => row.getAttribute("data-kind") === "td")).toBe(true);
   });
 
-  it("persists the demo state across remounts (v4) and Restablecer returns to kickoff", () => {
+  it("persists the demo state across remounts (v5) and Restablecer returns to a fresh match", () => {
     const first = render(<ActaDemoHarness />);
-    fireEvent.click(demoButton("Fin de turno"));
-    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
-    const saved = JSON.parse(window.localStorage.getItem("bb-demo-partido") ?? "null") as {
+    // A real dock capture is the persistence witness (the omniscient turn
+    // controls are gone from the harness). The fixture opens in AWAY's turn.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    fireEvent.click(demoButton("+ TD"));
+    const modal = screen.getByTestId("live-action-modal");
+    fireEvent.click(
+      within(within(modal).getByTestId("dock-pool-own")).getByRole("button", {
+        name: /#1/i,
+      }),
+    );
+    expect(heading().textContent).toBe(
+      "Águilas de Khemri 0 - 1 Colmillos del Caos",
+    );
+    const saved = JSON.parse(
+      window.localStorage.getItem("bb-demo-partido") ?? "null",
+    ) as {
       v: number;
-      state: { turnNumber: number };
+      state: { events: Array<{ kind?: string }> };
     } | null;
-    expect(saved?.v).toBe(4);
-    expect(saved?.state.turnNumber).toBe(2);
+    expect(saved?.v).toBe(5);
+    expect(saved?.state.events.some((ev) => ev.kind === "td")).toBe(true);
     first.unmount();
 
     render(<ActaDemoHarness />);
-    expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
+    expect(heading().textContent).toBe(
+      "Águilas de Khemri 0 - 1 Colmillos del Caos",
+    );
 
     fireEvent.click(demoButton("Restablecer"));
-    expect(screen.queryByText(/TURNO 2 EN JUEGO/)).toBeNull();
+    expect(heading().textContent).toBe(
+      "Águilas de Khemri 0 - 0 Colmillos del Caos",
+    );
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
   });
 
-  it("the scenario chips jump to the named match state", () => {
+  // PARKED (intentional harness cleanup): the omniscient scenario chips are
+  // gone from the demo — the reducer presets stay but have no UI right now.
+  it.skip("the scenario chips jump to the named match state", () => {
     render(<ActaDemoHarness />);
     for (const name of ["Inicio", "1T · turno 3", "2T · turno 5", "Finalizado"]) {
       expect(demoButton(name)).toBeTruthy();
@@ -159,7 +194,7 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
   });
 
-  it("Restablecer (and the Inicio preset) opens the pre-match wizard modal", () => {
+  it("Restablecer opens the pre-match wizard modal", () => {
     render(<ActaDemoHarness />);
     expect(
       screen.queryByRole("dialog", { name: "Antes del partido" }),
@@ -173,11 +208,6 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(
       screen.queryByRole("dialog", { name: "Antes del partido" }),
     ).toBeNull();
-
-    fireEvent.click(demoButton("Inicio"));
-    expect(
-      screen.getByRole("dialog", { name: "Antes del partido" }),
-    ).toBeTruthy();
   });
 
   it("Restablecer starts the pre-match from scratch: wizard at Paso 1 and a clean acta", () => {
@@ -227,7 +257,6 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
 
   it("the «Solicitar turno» button is gone from the view: the flow is deprecated (face-to-face play)", () => {
     render(<ActaDemoHarness />);
-    fireEvent.click(demoButton("1T · turno 3"));
     fireEvent.click(perspective("Colmillos del Caos"));
     // Deprecated for face-to-face play: the request-turn UI is not rendered at
     // all (the flow behind is marked @deprecated in code).
@@ -243,7 +272,9 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.queryByTestId("acta-capture-grid")).toBeNull();
   });
 
-  it("mid-match preset chips keep their direct jump (no wizard modal)", () => {
+  // PARKED (intentional harness cleanup): the mid-match preset chips are gone
+  // from the demo together with the rest of the scenario jump UI.
+  it.skip("mid-match preset chips keep their direct jump (no wizard modal)", () => {
     render(<ActaDemoHarness />);
     fireEvent.click(demoButton("2T · turno 5"));
     expect(
@@ -252,7 +283,9 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.getByText(/TURNO 5 EN JUEGO/)).toBeTruthy();
   });
 
-  it("turn accents and stepper pills tint by team color in the demo flow (S3)", () => {
+  // PARKED (intentional harness cleanup): reaching turns 3-4 needs the chip
+  // jump / «Fin de turno» controls, which are gone from the harness.
+  it.skip("turn accents and stepper pills tint by team color in the demo flow (S3)", () => {
     const { container } = render(<ActaDemoHarness />);
     fireEvent.click(demoButton("1T · turno 3"));
 
@@ -273,7 +306,10 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(activePill?.className).toContain("bg-red");
   });
 
-  it("the closure save shim answers the demo result POST without network and marks the result reported", async () => {
+  // PARKED (intentional harness cleanup): the «Finalizado» / «Abrir cierre»
+  // controls are gone from the harness — the closure UI needs a new entry
+  // point before this shim can be walked again.
+  it.skip("the closure save shim answers the demo result POST without network and marks the result reported", async () => {
     const passthrough = vi.fn(() =>
       Promise.resolve({ ok: true, status: 200, json: async () => ({}) }),
     );
@@ -360,5 +396,95 @@ describe("ActaDemoHarness — pre-match surface (stale saves, header wiring)", (
     // `actaSheetHeader.test.tsx` convention for these exact strings).
     expect(container.textContent).toContain("Afición: 4 + 🎲3 = 7");
     expect(container.textContent).toContain("Clima: tirada 4 → Perfecto");
+  });
+});
+
+/**
+ * T9 · L39 — the kickoff is OUT of the demo flow: «…omitiremos la patada
+ * inicial, eso se hara de manera externa». After the pre-match sequence and
+ * the «quién recibe» pick the match starts DIRECTLY in turn 1 with the
+ * RECEIVING team active — no kickoff gate step and NO kickoff rows on the
+ * acta. The S3 kickoff machinery (gate, 2D6 table, duel) stays in the
+ * codebase as reversible infrastructure, never reached by the flow.
+ */
+const ante = () => screen.getByRole("region", { name: "Antes del partido" });
+const wizard = () => screen.getByRole("dialog", { name: "Antes del partido" });
+const openWizard = () =>
+  fireEvent.click(
+    within(ante()).getByRole("button", { name: /secuencia pre-partido/ }),
+  );
+
+/** The four wizard steps as ONE coach (dice come from the queue). */
+const walkSequence = () => {
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+  fireEvent.click(screen.getByRole("button", { name: "Avanzar a Incentivos" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Avanzar al Equipo pateador" }),
+  );
+  fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+  fireEvent.click(screen.getByRole("button", { name: "Finalizar" }));
+};
+
+describe("ActaDemoHarness — T9: the kickoff stays OUT of the flow (L39)", () => {
+  it("the narrative fixture starts past kickoff: NO gate, the timeline is up", () => {
+    render(<ActaDemoHarness />);
+    expect(screen.queryByTestId("acta-kickoff-gate")).toBeNull();
+    expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
+  });
+
+  it("after the receiver is confirmed the match starts DIRECTLY in turn 1 with the receiver active (no gate, no kickoff events)", () => {
+    // Home (fan 2D3, weather 4, toss 6) then away (fan 1, weather 5, toss 3):
+    // the home coach wins the toss 6 vs 3.
+    dice.queue = [2, 4, 6, 1, 5, 3];
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("Restablecer"));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    openWizard();
+    walkSequence(); // home done → the waiting screen.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    openWizard();
+    walkSequence(); // away done → both sequences complete.
+    // The toss WINNER (home) picks who receives → the match starts.
+    fireEvent.click(perspective("Águilas de Khemri"));
+    fireEvent.click(
+      screen.getByRole("radio", { name: "Recibe Colmillos del Caos" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Aceptar" }));
+
+    // NO kickoff gate step: the initial kick is resolved externally (L39).
+    expect(screen.queryByRole("region", { name: "Patada inicial" })).toBeNull();
+    expect(screen.queryByTestId("acta-kickoff-gate")).toBeNull();
+    // NO kickoff events in the acta («Kickoff · …» was the gate rows' copy).
+    expect(document.body.textContent).not.toMatch(/Kickoff ·/);
+    expect(
+      screen
+        .queryAllByTestId("acta-event-row")
+        .filter((row) => row.getAttribute("data-kind") === "kickoff"),
+    ).toHaveLength(0);
+
+    // The timeline + dock unlock at the match start (turn 1 playable now).
+    expect(screen.getByTestId("acta-turn-timeline")).toBeTruthy();
+    expect(screen.getByTestId("acta-capture-grid")).toBeTruthy();
+    expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
+
+    // The RECEIVER (Colmillos del Caos, away) plays turn 1: the camera
+    // follows the active coach and their capture dock records live.
+    expect(pressed("Colmillos del Caos")).toBe("true");
+    fireEvent.click(demoButton("+ TD"));
+    const modal = screen.getByTestId("live-action-modal");
+    fireEvent.click(
+      within(within(modal).getByTestId("dock-pool-own")).getByRole("button", {
+        name: /#1/i,
+      }),
+    );
+    expect(heading().textContent).toBe("Águilas de Khemri 0 - 1 Colmillos del Caos");
+
+    // The receiver decision stays on the pre-match record («Recibe: …»).
+    const summary = within(ante()).getByRole("region", {
+      name: "Lo que ha sucedido",
+    });
+    expect(summary.textContent).toMatch(/Recibe: Colmillos del Caos/);
   });
 });

@@ -16,6 +16,7 @@ import {
   type TFunc,
 } from "./liveEventLabels";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
+import { KICKOFF_EVENTS } from "@/lib/rules/kickoffEvents";
 import { weatherLabel } from "./matchSummary";
 import styles from "./eventCardActa.module.css";
 
@@ -183,14 +184,20 @@ function turnReasonTag(
 function ActaRow({
   label,
   num,
+  text,
   children,
 }: {
   label: string;
   num?: boolean;
+  /** Wide free-text value (paragraph copy): stacked label over wrapping text. */
+  text?: boolean;
   children: ReactNode;
 }) {
+  const rowClass = text
+    ? `${styles.acta__row} ${styles["acta__row--text"]}`
+    : styles.acta__row;
   return (
-    <div className={styles.acta__row}>
+    <div className={rowClass}>
       <dt>{label}</dt>
       <span className={styles.acta__leader} aria-hidden="true" />
       <dd className={num ? styles.acta__num : undefined}>{children}</dd>
@@ -707,6 +714,41 @@ export function LiveEventCardsActa({
                       ]
                     : []),
                 ]}
+              />
+            </li>
+          );
+        }
+
+        // DEMO-ONLY (S3 · T4): the production server never emits `kickoff`
+        // events — openspec MVT-6 forbids surfacing kickoff-table events in
+        // the production feed. This ONE branch exists for the demo harness's
+        // sequential kickoff rows (`kind` is an open string on the DTO): the
+        // registro note labels the card and the verbatim rulebook effect is
+        // kept as an acta row (the defensive fallback below drops rows).
+        if (event.kind === "kickoff") {
+          const eventId =
+            typeof event.payload.eventId === "string"
+              ? event.payload.eventId
+              : null;
+          const face =
+            eventId != null
+              ? KICKOFF_EVENTS.find((entry) => entry.id === eventId)
+              : null;
+          return (
+            <li key={event.seq} data-testid="live-event-row">
+              <ActaCard
+                sideClass={styles.neutral}
+                tag={liveEventLabel(event, t)}
+                meta={turnMeta}
+                rows={
+                  face != null
+                    ? [
+                        <ActaRow key="effect" label="Efecto" text>
+                          {face.effect}
+                        </ActaRow>,
+                      ]
+                    : []
+                }
               />
             </li>
           );

@@ -7,16 +7,19 @@ import {
   actaDemoReducer,
   demoState,
   preMatchComplete,
+  type ActaDemoKickoff,
   type ActaDemoPreMatch,
   type ActaDemoState,
   type DemoScenario,
 } from "./actaDemoReducer";
+import { ActaKickoffGate } from "./actaKickoffGate";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
 import { ActaPreMatchSection, type PreMatchCommit } from "./actaPreMatchWizard";
 import { weatherFromRoll } from "@/lib/rules/weather";
 import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
+import { LiveEventCardsActa } from "./eventCardActa";
 import { ActaClosure, canCloseActa } from "./actaClosure";
 import { LiveActionDock } from "./liveActionDock";
 import { MIN, PRE_MATCH_FINANCE, league, liveState, matchDetail, viewer } from "./actaFlow.fixtures";
@@ -47,6 +50,13 @@ export function ActaFlow({
   preMatch = null,
   preMatchOpen = false,
   onPreMatchOpenChange = () => undefined,
+  kickoff = null,
+  onRollKickoff = () => undefined,
+  onRollKickoffDuel = () => undefined,
+  onRegisterKickoff = () => undefined,
+  onSetKickoffDie = () => undefined,
+  onSetKickoffDuelDie = () => undefined,
+  onSkipKickoffDuel = () => undefined,
 }: {
   state: ReturnType<typeof liveState> & { matchStarted?: boolean };
   nowMin?: number;
@@ -62,6 +72,16 @@ export function ActaFlow({
   /** Controlled «Antes del partido» wizard modal (demo reset opens it). */
   preMatchOpen?: boolean;
   onPreMatchOpenChange?: (open: boolean) => void;
+  /** S3 · T4 kickoff gate dice (design C «Acta secuencial»). Default: none
+   *  (static stories render the match past kickoff). */
+  kickoff?: ActaDemoKickoff | null;
+  onRollKickoff?: () => void;
+  onRollKickoffDuel?: (side: "home" | "away") => void;
+  onRegisterKickoff?: () => void;
+  /** U12 · L32 — manual kickoff entry + the optional per-coach duel. */
+  onSetKickoffDie?: (die: 1 | 2, value: number | null) => void;
+  onSetKickoffDuelDie?: (side: "home" | "away", value: number | null) => void;
+  onSkipKickoffDuel?: () => void;
 }) {
   const fixture = matchDetail();
   const events = eventsOverride ?? fixture.live?.events ?? [];
@@ -76,6 +96,18 @@ export function ActaFlow({
   // the «Antes del partido» sequence is captured on BOTH sides.
   const matchStarted =
     (state.matchStarted ?? true) || preMatchComplete(preMatch);
+  // T9 · L39: the kickoff gate is OUT of the demo flow — the reducer
+  // resolves the initial kick EXTERNALLY at the receiver confirm (the same
+  // commit that starts the match flips `kickoff.registered`), so this pending
+  // window can never open. The gate wiring below stays as reversible
+  // infrastructure (S3 · T4, design C «Acta secuencial»).
+  const kickoffPending = matchStarted && kickoff != null && !kickoff.registered;
+  // S3 · T4 (demo-only, MVT-6): the registered kickoff rows render on their
+  // own ACTA block (design C «Acta secuencial») via the real acta cards. The
+  // shared display filter (lib/liveMatch `isDisplayEvent`) deliberately drops
+  // unknown kinds from the turn timeline — a production-feed guard (D23) that
+  // stays untouched; the production server never emits `kickoff` anyway.
+  const kickoffRows = events.filter((event) => event.kind === "kickoff");
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
 
   return (
@@ -144,7 +176,33 @@ export function ActaFlow({
         {matchStarted ? (
           <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
         ) : null}
-        {matchStarted && events.length > 0 ? (
+        {kickoff != null && kickoffPending ? (
+          <ActaKickoffGate
+            homeName={detail.homeTeam.name}
+            awayName={detail.awayTeam.name}
+            kicking={preMatch?.kicking ?? null}
+            viewerSide={state.viewerSide ?? "home"}
+            kickoff={kickoff}
+            onRoll={onRollKickoff}
+            onRollDuel={onRollKickoffDuel}
+            onRegister={onRegisterKickoff}
+            onSetDie={onSetKickoffDie}
+            onSetDuelDie={onSetKickoffDuelDie}
+            onSkipDuel={onSkipKickoffDuel}
+          />
+        ) : null}
+        {matchStarted && !kickoffPending && kickoffRows.length > 0 ? (
+          <div className="bg-background">
+            <LiveEventCardsActa
+              events={kickoffRows}
+              startedAt={state.startedAt}
+              homeTeam={detail.homeTeam}
+              awayTeam={detail.awayTeam}
+              now={now}
+            />
+          </div>
+        ) : null}
+        {matchStarted && !kickoffPending && events.length > 0 ? (
           <div className="bg-background">
             <ActaTurnTimeline
               events={events}
@@ -168,7 +226,7 @@ export function ActaFlow({
               onSubmitted={async () => undefined}
             />
           ) : null
-        ) : (
+        ) : kickoffPending ? null : (
           <>
             {/* DEPRECATED (2026-11-13): the "Solicitar turno" request-turn row is
                 GONE from the view — requesting the turn is pointless when both
@@ -227,20 +285,21 @@ const SCENARIOS: ReadonlyArray<{ key: DemoScenario; label: string }> = [
 const DEMO_FAN_BASES = { home: 4, away: 3 } as const;
 
 /**
- * localStorage persistence: one versioned blob, `bb-demo-partido` v4 (the v3
- * save contract is intentionally invalidated — the S2c per-side capture
- * changed the `preMatch` shape).
+ * localStorage persistence: one versioned blob, `bb-demo-partido` v5 (the v4
+ * save contract is intentionally invalidated — T9 took the kickoff OUT of the
+ * flow per L39: a v4 save stuck at the kickoff gate would re-open it).
  */
 const STORAGE_KEY = "bb-demo-partido";
-const STORAGE_VERSION = 4;
+const STORAGE_VERSION = 5;
 
 /**
  * Interactive DUAL-VIEW demo sandbox driven by the pure `actaDemoReducer`
  * (no network): two rival coach perspectives over ONE shared match state,
  * switched manually ("Ver como:") or auto-followed turn by turn ("Seguir al
  * turno activo"). The REAL `LiveActionDock`/timeline capture lands in the
- * reducer via `submitCommand`; the state persists to localStorage (v4) so an
- * iteration survives a reload, and "Restablecer" replays from the kickoff.
+ * reducer via `submitCommand`; the state persists to localStorage (v5) so an
+ * iteration survives a reload, and "Restablecer" replays from the pre-match
+ * sequence.
  * Deterministic by design: no `Date.now()`, no `Math.random()` — the fetch
  * shim and localStorage are runtime concerns only.
  */
@@ -288,7 +347,7 @@ export function ActaDemoHarness({
     }
   }, []);
 
-  // 2) Persist every state change as `{ v: 4, state }` (the pristine initial
+  // 2) Persist every state change as `{ v: 5, state }` (the pristine initial
   // state is never written — see `initialStateRef`).
   useEffect(() => {
     if (state === initialStateRef.current) return;
@@ -390,69 +449,6 @@ export function ActaDemoHarness({
               {detail.awayTeam.name}
             </button>
           </div>
-        </div>
-
-        <label className="flex items-center gap-2 text-sm font-semibold text-navy">
-          <input
-            type="checkbox"
-            checked={state.autoFollow}
-            onChange={(event) =>
-              dispatch({ type: "setAutoFollow", on: event.target.checked })
-            }
-            className="size-4 accent-navy"
-          />
-          Seguir al turno activo
-        </label>
-
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Escenario">
-          {SCENARIOS.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              className={buttonClass}
-              onClick={() => {
-                dispatch({ type: "reset", scenario: s.key });
-                setPreMatchOpen(s.key === "inicio");
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Acciones">
-          <button
-            type="button"
-            className={buttonClass}
-            onClick={() =>
-              dispatch({
-                type: "submitCommand",
-                command: { type: "endTurn", side: state.activeSide },
-              })
-            }
-          >
-            Fin de turno
-          </button>
-          {state.status === "live" ? (
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => dispatch({ type: "finish" })}
-            >
-              Finalizar partido
-            </button>
-          ) : null}
-          {state.status === "finished" &&
-          !state.closureOpen &&
-          state.submittedBy == null ? (
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => dispatch({ type: "openClosure" })}
-            >
-              Abrir cierre
-            </button>
-          ) : null}
           <button
             type="button"
             className={buttonClass}
@@ -492,6 +488,19 @@ export function ActaDemoHarness({
           dispatch({ type: "commitPreMatch", commit })
         }
         preMatch={state.preMatch}
+        kickoff={state.kickoff}
+        onRollKickoff={() => dispatch({ type: "rollKickoff" })}
+        onRollKickoffDuel={(side) =>
+          dispatch({ type: "rollKickoffDuel", side })
+        }
+        onRegisterKickoff={() => dispatch({ type: "registerKickoff" })}
+        onSetKickoffDie={(die, value) =>
+          dispatch({ type: "setKickoffDie", die, value })
+        }
+        onSetKickoffDuelDie={(side, value) =>
+          dispatch({ type: "setKickoffDuelDie", side, value })
+        }
+        onSkipKickoffDuel={() => dispatch({ type: "skipKickoffDuel" })}
       />
     </div>
   );

@@ -9,7 +9,8 @@ import type { LiveMatchEventDto, MatchPlayer, MatchTeamDetail } from "./api";
  * MVA-3 timeline half + MVA-4): the per-turn cards of
  * `design/match-report-redesign/08-acta-en-vivo.html` ("MAIN CONTENT: TURN
  * TIMELINE"), data-bound over the live feed. These tests pin the four rules:
- *  - B1: events group into per-turn cards (newest turn first) with the
+ *  - B1: events group into per-HALF-TURN cards (T8 — one card per
+ *    (half, turnNumber, side), newest first) with the
  *    EN JUEGO / COMPLETADO / CERRADO state chips (MVA-3),
  *  - B2: event rows show kind badge + player (name + role/number) +
  *    description + SPP marker without re-entry (S3),
@@ -203,13 +204,13 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
     expect(cards[1].textContent).toContain("Min 44'");
   });
 
-  it("falls back to 'AMBOS EQUIPOS' when a turn's events span both teams", () => {
+  it("a pair where BOTH coaches act splits into two cards — never one merged AMBOS EQUIPOS card (T8)", () => {
     seqCounter = 0;
     const mixed = [
-      casualtyEvent(false), // authored by the home causer
+      casualtyEvent(false), // the CAUSED casualty's author is the home causer
       event({
         kind: "completion",
-        side: "away", // authored by the away side — the turn mixes both
+        side: "away", // the away coach played the SAME turn number
         playerRosterId: "a1",
         turnNumber: 5,
         at: STARTED + 43 * MIN,
@@ -218,7 +219,12 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
     render(<ActaTurnTimeline {...timelineProps({ events: mixed, active: { ...liveActive(), turnNumber: 6 } })} />);
 
     const cards = screen.getAllByTestId("acta-turn-card");
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*AMBOS EQUIPOS/);
+    // ONE CARD PER HALF-TURN: each coach's play of turn 5 keeps its own card
+    // (the pair's second play first) — the span-both merge is gone.
+    expect(cards).toHaveLength(3);
+    expect(cards[1].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(cards[2].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(screen.queryByText(/AMBOS EQUIPOS/)).toBeNull();
   });
 
   it.each(["interception", "throwTeamMate", "landedSafe"] as const)(
@@ -282,13 +288,13 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
     expect(cards[2].className).toContain("border-l-navy");
   });
 
-  it("a mixed turn (AMBOS EQUIPOS) gets the neutral slate accent", () => {
+  it("a pair where both coaches act tints each half-turn card by its own team (T8 split — no slate merge)", () => {
     seqCounter = 0;
     const mixed = [
-      casualtyEvent(false), // authored by the home causer
+      casualtyEvent(false), // authored by the home causer → home's half-turn
       event({
         kind: "completion",
-        side: "away", // authored by the away side — the turn mixes both
+        side: "away", // the away coach's own half-turn
         playerRosterId: "a1",
         turnNumber: 5,
         at: STARTED + 43 * MIN,
@@ -301,7 +307,10 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
     );
 
     const cards = screen.getAllByTestId("acta-turn-card");
-    expect(cards[1].className).toContain("border-l-slate");
+    expect(cards[1].className).toContain("border-l-red");
+    expect(cards[2].className).toContain("border-l-navy");
+    expect(cards[1].className).not.toContain("border-l-slate");
+    expect(cards[2].className).not.toContain("border-l-slate");
   });
 });
 
@@ -592,14 +601,17 @@ describe("ActaTurnTimeline — the roll action (MVA-4 / B4)", () => {
 });
 
 describe("turnCardsOf / injuryRollCommand (pure seams)", () => {
-  it("turnCardsOf keys the cards by (half, turnNumber) and keeps events in capture order", () => {
+  it("turnCardsOf keys the cards by (half, turnNumber, side) and keeps events in capture order (T8)", () => {
     seqCounter = 0;
     const events = [...closedTurnEvents(), casualtyEvent(true), tdEvent()];
     const cards = turnCardsOf(events, liveActive());
-    expect(cards.map((card) => [card.half, card.turnNumber])).toEqual([
-      [1, 6],
-      [1, 5],
-      [1, 4],
+    // One key per HALF-TURN: the active T6 away card, T5's home half-turn
+    // (the caused casualty's capture author) and T4's home half-turn.
+    expect(cards.map((card) => card.key)).toEqual(["1:6:away", "1:5:home", "1:4:home"]);
+    expect(cards.map((card) => [card.half, card.turnNumber, card.actingSide])).toEqual([
+      [1, 6, "away"],
+      [1, 5, "home"],
+      [1, 4, "home"],
     ]);
     expect(cards[2].events.map((e) => e.kind)).toEqual(["foul", "completion"]);
   });
@@ -615,5 +627,352 @@ describe("turnCardsOf / injuryRollCommand (pure seams)", () => {
       cause: "block",
       roll16: 12,
     });
+  });
+});
+
+describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
+  it("when the turn passes the rival's half-turn gets its own empty EN JUEGO card and the closed sibling persists", () => {
+    // «cuando pase el turno deberia salir la card de t1 colimillos del caos» —
+    // the ACTIVE half-turn always shows its card (even before any action) and
+    // its actions appear live as recorded.
+    seqCounter = 0;
+    const homeCompletion = event({
+      kind: "completion",
+      side: "home",
+      playerRosterId: "h2",
+      turnNumber: 5,
+      at: STARTED + 40 * MIN,
+    });
+    // Home opened the pair (turnStarter) and is playing turn 5 right now.
+    const homePlaying = {
+      status: "live" as const,
+      half: 1,
+      turnNumber: 5,
+      activeSide: "home" as const,
+      turnStarter: "home" as const,
+    };
+    const { rerender } = render(
+      <ActaTurnTimeline {...timelineProps({ events: [homeCompletion], active: homePlaying })} />,
+    );
+
+    let cards = screen.getAllByTestId("acta-turn-card");
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[0].textContent).toContain("EN JUEGO");
+    expect(
+      cards[0].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
+    ).not.toBeNull();
+
+    // Home passes the turn: the RIVAL's card appears as the new active card.
+    rerender(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [homeCompletion],
+          active: { ...homePlaying, activeSide: "away" },
+        })}
+      />,
+    );
+
+    cards = screen.getAllByTestId("acta-turn-card");
+    expect(cards).toHaveLength(2);
+    // The new active half-turn shows its card with EN JUEGO, even empty.
+    expect(cards[0].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(cards[0].textContent).toContain("EN JUEGO");
+    expect(cards[0].querySelectorAll('[data-testid="acta-event-row"]')).toHaveLength(0);
+    // The closed sibling persists with its own actions (COMPLETADO).
+    expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[1].textContent).toContain("COMPLETADO");
+    expect(
+      cards[1].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
+    ).not.toBeNull();
+  });
+
+  it("one card per (half, turnNumber, side): a caused casualty lands on its CAUSER's half-turn card", () => {
+    seqCounter = 0;
+    const events = [
+      // The caused casualty's CAPTURE AUTHOR is the home causer (LM-12) — it
+      // belongs to home's half-turn, never the victim coach's.
+      casualtyEvent(true),
+      event({
+        kind: "completion",
+        side: "home",
+        playerRosterId: "h2",
+        turnNumber: 5,
+        at: STARTED + 43 * MIN,
+      }),
+      event({
+        kind: "td",
+        side: "away",
+        playerRosterId: "a1",
+        turnNumber: 5,
+        at: STARTED + 42 * MIN,
+      }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events, active: { ...liveActive(), turnStarter: "home" } })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    // [T6 away active] · [T5 away (the pair's second play)] · [T5 home (opener)].
+    expect(cards).toHaveLength(3);
+    expect(cards[1].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(
+      cards[1].querySelectorAll('[data-testid="acta-event-row"]'),
+    ).toHaveLength(1);
+    expect(
+      cards[1].querySelector('[data-testid="acta-event-row"][data-kind="td"]'),
+    ).not.toBeNull();
+    expect(
+      cards[1].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
+    ).toBeNull();
+    // Home's half-turn holds BOTH home-authored captures — casualty included.
+    expect(cards[2].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(
+      cards[2].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
+    ).not.toBeNull();
+    expect(
+      cards[2].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
+    ).not.toBeNull();
+  });
+
+  it("a half-turn that closes with NO recorded display event shows NO card («si no hay nada que registrar esta card deberia desaparecer»)", () => {
+    seqCounter = 0;
+    const events = [
+      event({
+        kind: "completion",
+        side: "home",
+        playerRosterId: "h2",
+        turnNumber: 5,
+        at: STARTED + 40 * MIN,
+      }),
+    ];
+    // Home played turn 5 and recorded a pass; the rival played the SAME turn
+    // number and recorded NOTHING — no key/card may exist for that half-turn.
+    const played = turnCardsOf(events, {
+      status: "live",
+      half: 1,
+      turnNumber: 6,
+      activeSide: "away",
+      turnStarter: "home",
+    });
+    expect(played.map((card) => card.key)).toEqual(["1:6:away", "1:5:home"]);
+
+    // The ACTIVE half-turn's card exists even when empty (EN JUEGO)…
+    const playing = turnCardsOf(events, {
+      status: "live",
+      half: 1,
+      turnNumber: 5,
+      activeSide: "away",
+      turnStarter: "home",
+    });
+    expect(playing.map((card) => card.key)).toEqual(["1:5:away", "1:5:home"]);
+
+    // …and disappears once the turn passes: only real captures keep cards.
+    const passed = turnCardsOf(events, {
+      status: "live",
+      half: 1,
+      turnNumber: 6,
+      activeSide: "home",
+      turnStarter: "away",
+    });
+    expect(passed.map((card) => card.key)).toEqual(["1:6:home", "1:5:home"]);
+  });
+
+  it("while live: the active half-turn is EN JUEGO, the card right before it COMPLETADO, every older card CERRADO", () => {
+    seqCounter = 0;
+    const events = [
+      // Pair 5: away (the turnStarter) opened, then home played — both recorded.
+      event({
+        kind: "td",
+        side: "away",
+        playerRosterId: "a1",
+        turnNumber: 5,
+        at: STARTED + 40 * MIN,
+      }),
+      event({
+        kind: "completion",
+        side: "home",
+        playerRosterId: "h2",
+        turnNumber: 5,
+        at: STARTED + 42 * MIN,
+      }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events, active: { ...liveActive(), turnStarter: "away" } })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    // Within a pair the half-turn played SECOND is newer than the opener, so
+    // home's T5 card (the pair's second play) leads its closed sibling.
+    expect(
+      cards.map((card) => [card.getAttribute("data-turn"), card.getAttribute("data-state")]),
+    ).toEqual([
+      ["6", "live"],
+      ["5", "completed"],
+      ["5", "closed"],
+    ]);
+    expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[2].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+  });
+
+  it("system captures (side null) get their own neutral AMBOS EQUIPOS card, at the pair's bottom", () => {
+    seqCounter = 0;
+    const events = [
+      event({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        turnNumber: 5,
+        at: STARTED + 41 * MIN,
+        payload: { value: "perfect", roll: 4 },
+      }),
+      event({
+        kind: "completion",
+        side: "home",
+        playerRosterId: "h2",
+        turnNumber: 5,
+        at: STARTED + 42 * MIN,
+      }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events, active: { ...liveActive(), turnStarter: "home" } })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    expect(cards).toHaveLength(3);
+    // The coach's half-turn card holds ONLY their own action…
+    expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(
+      cards[1].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
+    ).not.toBeNull();
+    expect(
+      cards[1].querySelector('[data-testid="acta-event-row"][data-kind="weather"]'),
+    ).toBeNull();
+    // …and the system capture lands in the pair's own neutral card (slate).
+    expect(cards[2].textContent).toMatch(/T5\s*•\s*AMBOS EQUIPOS/);
+    expect(cards[2].className).toContain("border-l-slate");
+    expect(
+      cards[2].querySelector('[data-testid="acta-event-row"][data-kind="weather"]'),
+    ).not.toBeNull();
+    expect(
+      cards[2].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
+    ).toBeNull();
+  });
+
+  it("on a finished match the last turn renders COMPLETADO and every older card CERRADO (per half-turn)", () => {
+    seqCounter = 0;
+    const events = [
+      event({
+        kind: "td",
+        side: "away",
+        playerRosterId: "a1",
+        half: 2,
+        turnNumber: 8,
+        at: STARTED + 92 * MIN,
+      }),
+      event({
+        kind: "completion",
+        side: "home",
+        playerRosterId: "h2",
+        half: 2,
+        turnNumber: 8,
+        at: STARTED + 90 * MIN,
+      }),
+      event({
+        kind: "foul",
+        side: "home",
+        playerRosterId: "h1",
+        half: 2,
+        turnNumber: 7,
+        at: STARTED + 80 * MIN,
+        payload: { victimRosterId: "a2" },
+      }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events,
+          active: {
+            status: "finished",
+            half: 2,
+            turnNumber: 8,
+            activeSide: "home",
+            turnStarter: "home",
+          },
+        })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    // BOTH half-turns of the last pair (the "last turn") persist as COMPLETADO.
+    expect(
+      cards.map((card) => [card.getAttribute("data-turn"), card.getAttribute("data-state")]),
+    ).toEqual([
+      ["8", "completed"],
+      ["8", "completed"],
+      ["7", "closed"],
+    ]);
+    expect(cards[0].textContent).toMatch(/T8\s*•\s*Gouged Eye/);
+    expect(cards[1].textContent).toMatch(/T8\s*•\s*Reikland Reavers/);
+    expect(cards[2].textContent).toMatch(/T7\s*•\s*Reikland Reavers/);
+  });
+
+  it("a causer-less casualty (self-inflicted) lands in its victim's coach half-turn — never a neutral card", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [selfInflictedEvent()], active: { ...liveActive(), turnStarter: "home" } })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    // The mishap belongs to the AWAY coach's half-turn (their player fell).
+    expect(cards[1].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(
+      cards[1].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
+    ).not.toBeNull();
+    expect(screen.queryByText(/AMBOS EQUIPOS/)).toBeNull();
+  });
+
+  it("turnStarter flips with the halves: the other half's pairs opened with the rival", () => {
+    seqCounter = 0;
+    const events = [
+      event({
+        kind: "completion",
+        side: "home",
+        playerRosterId: "h2",
+        half: 1,
+        turnNumber: 8,
+        at: STARTED + 45 * MIN,
+      }),
+      event({
+        kind: "td",
+        side: "away",
+        playerRosterId: "a1",
+        half: 1,
+        turnNumber: 8,
+        at: STARTED + 46 * MIN,
+      }),
+    ];
+    // Half 2 is under way and HOME opens its pairs — so half 1's pairs were
+    // opened by AWAY: home's turn-8 half-turn is the pair's SECOND play.
+    const cards = turnCardsOf(events, {
+      status: "live",
+      half: 2,
+      turnNumber: 1,
+      activeSide: "home",
+      turnStarter: "home",
+    });
+    expect(cards.map((card) => [card.half, card.turnNumber, card.actingSide])).toEqual([
+      [2, 1, "home"],
+      [1, 8, "home"],
+      [1, 8, "away"],
+    ]);
   });
 });

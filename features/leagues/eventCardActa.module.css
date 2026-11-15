@@ -136,3 +136,25 @@
   gap: 6px;
   margin-top: 10px;
 }
+
+/* ---- wide free-text row (kickoff rulebook effect) ----
+ * The dotted-leader row above is built for SHORT values: `dd` is
+ * `flex: 0 0 auto`, so paragraph-length copy kept one unbreakable line and
+ * overflowed the card. This variant stacks the label over the value, drops
+ * the leader and lets the text wrap (mobile-first: the description must be
+ * readable on any width). */
+.acta__row--text {
+  display: block;
+}
+.acta__row--text dt {
+  display: block;
+  margin-bottom: 2px;
+}
+.acta__row--text .acta__leader {
+  display: none;
+}
+.acta__row--text dd {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

@@ -304,3 +304,30 @@ describe("bothDownMarkerLabel — localized '(Ambos derribados)' marker copy (b5
     expect(bothDownMarkerLabel({ cause: "block", bothDown: "yes" as unknown })).toBeNull();
   });
 });
+
+describe("kickoff rows — the DEMO kickoff-gate labels (S3 · T4, MVT-6)", () => {
+  it("renders the recorded note as the label (the acta registro line)", () => {
+    expect(
+      liveEventLabel(
+        ev("kickoff", {
+          phase: "award",
+          note: "Kickoff · LOS HINCHAS ANIMAN → beneficio para Águilas (5 vs 3)",
+        }),
+      ),
+    ).toBe("Kickoff · LOS HINCHAS ANIMAN → beneficio para Águilas (5 vs 3)");
+  });
+
+  it("falls back to the phase label and then to «Patada inicial»", () => {
+    expect(liveEventLabel(ev("kickoff", { phase: "roll" }))).toBe(
+      "Patada inicial · Tirada",
+    );
+    expect(liveEventLabel(ev("kickoff", { phase: "duel" }))).toBe(
+      "Patada inicial · Duelo",
+    );
+    expect(liveEventLabel(ev("kickoff", {}))).toBe("Patada inicial");
+  });
+
+  it("maps the kickoff glyph to the dice icon (never the bare football fallback)", () => {
+    expect(EVENT_GLYPH.kickoff).toBe("dice");
+  });
+});
