@@ -206,8 +206,13 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
 
   it("a pair where BOTH coaches act splits into two cards — never one merged AMBOS EQUIPOS card (T8)", () => {
     seqCounter = 0;
+    // WHY the turn-boundary markers (T16): the split is now the GAME-TURN rule
+    // (S10.4) — each capture lands on the half-turn its «Fin Turno» boundary
+    // closes — not the capture-author rule. The markers are the real feed's
+    // pass rows (actaDemoReducer endTurn stamps one per pass).
     const mixed = [
-      casualtyEvent(false), // the CAUSED casualty's author is the home causer
+      casualtyEvent(false), // captured during HOME's half-turn (their causer acted)
+      event({ kind: "turnStart", side: "home", turnNumber: 5, at: STARTED + 42 * MIN }),
       event({
         kind: "completion",
         side: "away", // the away coach played the SAME turn number
@@ -215,6 +220,7 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
         turnNumber: 5,
         at: STARTED + 43 * MIN,
       }),
+      event({ kind: "turnStart", side: "away", turnNumber: 5, at: STARTED + 44 * MIN }),
     ];
     render(<ActaTurnTimeline {...timelineProps({ events: mixed, active: { ...liveActive(), turnNumber: 6 } })} />);
 
@@ -290,8 +296,12 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
 
   it("a pair where both coaches act tints each half-turn card by its own team (T8 split — no slate merge)", () => {
     seqCounter = 0;
+    // WHY the turn-boundary markers (T16): same as the split test above — the
+    // two half-turns are delimited by the feed's pass rows (game-turn rule),
+    // not inferred from who authored each capture.
     const mixed = [
-      casualtyEvent(false), // authored by the home causer → home's half-turn
+      casualtyEvent(false), // captured during HOME's half-turn
+      event({ kind: "turnStart", side: "home", turnNumber: 5, at: STARTED + 42 * MIN }),
       event({
         kind: "completion",
         side: "away", // the away coach's own half-turn
@@ -299,6 +309,7 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
         turnNumber: 5,
         at: STARTED + 43 * MIN,
       }),
+      event({ kind: "turnStart", side: "away", turnNumber: 5, at: STARTED + 44 * MIN }),
     ];
     render(
       <ActaTurnTimeline
@@ -605,8 +616,10 @@ describe("turnCardsOf / injuryRollCommand (pure seams)", () => {
     seqCounter = 0;
     const events = [...closedTurnEvents(), casualtyEvent(true), tdEvent()];
     const cards = turnCardsOf(events, liveActive());
-    // One key per HALF-TURN: the active T6 away card, T5's home half-turn
-    // (the caused casualty's capture author) and T4's home half-turn.
+    // One key per HALF-TURN: the active T6 away card, T5's home half-turn and
+    // T4's home half-turn. WHY unchanged (T16): these feeds carry no
+    // turn-boundary rows, so the attribution falls back to the capture author
+    // (legacy/constructed feeds — `gameTurnSidesOf`), which is T8's answer.
     expect(cards.map((card) => card.key)).toEqual(["1:6:away", "1:5:home", "1:4:home"]);
     expect(cards.map((card) => [card.half, card.turnNumber, card.actingSide])).toEqual([
       [1, 6, "away"],
@@ -664,10 +677,21 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     ).not.toBeNull();
 
     // Home passes the turn: the RIVAL's card appears as the new active card.
+    // WHY the pass marker joins the feed (T16): the real «Fin Turno» appends
+    // its `turnStart` boundary (actaDemoReducer endTurn) — that marker is what
+    // keeps the completed half-turn's rows on HOME's game-turn card once the
+    // active side flips; a marker-less feed cannot express "home already
+    // passed" and would re-attribute the open run to the new active side.
+    const homePassed = event({
+      kind: "turnStart",
+      side: "home",
+      turnNumber: 5,
+      at: STARTED + 41 * MIN,
+    });
     rerender(
       <ActaTurnTimeline
         {...timelineProps({
-          events: [homeCompletion],
+          events: [homeCompletion, homePassed],
           active: { ...homePlaying, activeSide: "away" },
         })}
       />,
@@ -687,11 +711,14 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     ).not.toBeNull();
   });
 
-  it("one card per (half, turnNumber, side): a caused casualty lands on its CAUSER's half-turn card", () => {
+  it("one card per (half, turnNumber, side): a caused casualty lands on its GAME TURN's half-turn card", () => {
     seqCounter = 0;
     const events = [
-      // The caused casualty's CAPTURE AUTHOR is the home causer (LM-12) — it
-      // belongs to home's half-turn, never the victim coach's.
+      // WHY re-framed (T16 / S10.4): the row lands on the GAME TURN's card —
+      // it was captured while the causer's coach was playing their half-turn
+      // («el jugador que placa informa del placaje»). The capture author (the
+      // home causer, LM-12) now shows only on the row's author badge; the
+      // half-turn boundary is the feed's pass row (turnStart).
       casualtyEvent(true),
       event({
         kind: "completion",
@@ -700,13 +727,16 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
         turnNumber: 5,
         at: STARTED + 43 * MIN,
       }),
+      // Home passes: their half-turn closes; the rival plays the same turn.
+      event({ kind: "turnStart", side: "home", turnNumber: 5, at: STARTED + 44 * MIN }),
       event({
         kind: "td",
         side: "away",
         playerRosterId: "a1",
         turnNumber: 5,
-        at: STARTED + 42 * MIN,
+        at: STARTED + 45 * MIN,
       }),
+      event({ kind: "turnStart", side: "away", turnNumber: 5, at: STARTED + 46 * MIN }),
     ];
     render(
       <ActaTurnTimeline
@@ -727,7 +757,7 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     expect(
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
     ).toBeNull();
-    // Home's half-turn holds BOTH home-authored captures — casualty included.
+    // Home's half-turn (the GAME TURN of those captures) holds both rows.
     expect(cards[2].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
     expect(
       cards[2].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
@@ -746,6 +776,16 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
         playerRosterId: "h2",
         turnNumber: 5,
         at: STARTED + 40 * MIN,
+      }),
+      // WHY the pass marker joins the feed (T16): the story is "home played
+      // turn 5 and recorded A PASS" — the real feed carries home's «Fin Turno»
+      // boundary (`turnStart`), which is what attributes the row to home's
+      // GAME TURN once the rival's half-turn is the active one.
+      event({
+        kind: "turnStart",
+        side: "home",
+        turnNumber: 5,
+        at: STARTED + 41 * MIN,
       }),
     ];
     // Home played turn 5 and recorded a pass; the rival played the SAME turn
@@ -923,16 +963,24 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     expect(cards[2].textContent).toMatch(/T7\s*•\s*Reikland Reavers/);
   });
 
-  it("a causer-less casualty (self-inflicted) lands in its victim's coach half-turn — never a neutral card", () => {
+  it("a causer-less casualty (self-inflicted) lands in the game turn's half-turn — never a neutral card", () => {
     seqCounter = 0;
+    // WHY re-framed (T16 / S10.4): the mishap landed during the AWAY coach's
+    // half-turn (their player fell mid-turn) — the feed's pass row delimits
+    // that game turn. The capture author (the victim's own coach) shows on the
+    // row's badge; the CARD follows the game turn, never the author.
+    const events = [
+      selfInflictedEvent(),
+      event({ kind: "turnStart", side: "away", turnNumber: 5, at: STARTED + 45 * MIN }),
+    ];
     render(
       <ActaTurnTimeline
-        {...timelineProps({ events: [selfInflictedEvent()], active: { ...liveActive(), turnStarter: "home" } })}
+        {...timelineProps({ events, active: { ...liveActive(), turnStarter: "home" } })}
       />,
     );
 
     const cards = screen.getAllByTestId("acta-turn-card");
-    // The mishap belongs to the AWAY coach's half-turn (their player fell).
+    // The mishap belongs to the AWAY coach's game turn (their player fell).
     expect(cards[1].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
     expect(
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
@@ -974,5 +1022,176 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
       [1, 8, "home"],
       [1, 8, "away"],
     ]);
+  });
+});
+
+describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges (T16)", () => {
+  it("during team A's turn, team B (victim's owner) captures an injury for its own knocked-down player — the row lands on A's card with B's author badge", () => {
+    seqCounter = 0;
+    // S10.4.1 (L54): A placa a B — A's coach is playing their half-turn and B
+    // (the victim's owner) registers the INJURY of its own knocked-down player
+    // (the victim-side capture, today's «Baja propia»; the knockdown/causer
+    // context is the attacker's own capture — T17's chain). The row lands on
+    // A's GAME-TURN card («placaje y herida de la misma jugada caen en la
+    // MISMA card») while the badge names B as the registrar (S10.4.2).
+    const injury = event({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "a2",
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: { victimRosterId: "a2", cause: "dodge", roll16: 8 },
+    });
+    const homePassed = event({
+      kind: "turnStart",
+      side: "home",
+      turnNumber: 5,
+      at: STARTED + 45 * MIN,
+    });
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injury, homePassed],
+          active: { ...liveActive(), turnStarter: "home" },
+        })}
+      />,
+    );
+
+    // A's card = the game turn (T5 · Reikland Reavers) holds the injury row…
+    const card = screen
+      .getByText(/T5\s*•\s*Reikland Reavers/)
+      .closest("article") as HTMLElement;
+    const row = card.querySelector(
+      '[data-testid="acta-event-row"][data-kind="casualty"]',
+    ) as HTMLElement;
+    expect(row).not.toBeNull();
+    // …and the badge names B (the victim's owner) as quien la registró.
+    expect(row.textContent).toContain("Registrado por Gouged Eye");
+    // The victim's team gets NO card of its own for this capture.
+    expect(screen.queryByText(/T5\s*•\s*Gouged Eye/)).toBeNull();
+  });
+
+  it("mid-turn: the victim-side capture resolves to the ACTIVE coach's card even before the pass boundary lands", () => {
+    seqCounter = 0;
+    // The no-flicker rule (`gameTurnSidesOf`): while the half-turn is being
+    // played its captures already group under the active game turn — the
+    // later «Fin Turno» marker changes nothing.
+    const injury = event({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "a2",
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: { victimRosterId: "a2", cause: "dodge", roll16: 8 },
+    });
+    const { rerender } = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injury],
+          active: { ...liveActive(), turnNumber: 5, activeSide: "home", turnStarter: "home" },
+        })}
+      />,
+    );
+    expect(screen.getByText(/T5\s*•\s*Reikland Reavers/)).toBeTruthy();
+
+    // The pass lands: the same row stays on the same card (no re-group).
+    const homePassed = event({
+      kind: "turnStart",
+      side: "home",
+      turnNumber: 5,
+      at: STARTED + 45 * MIN,
+    });
+    rerender(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injury, homePassed],
+          active: {
+            ...liveActive(),
+            turnNumber: 5,
+            activeSide: "away",
+            turnStarter: "home",
+          },
+        })}
+      />,
+    );
+    const card = screen
+      .getByText(/T5\s*•\s*Reikland Reavers/)
+      .closest("article") as HTMLElement;
+    expect(
+      card.querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
+    ).not.toBeNull();
+  });
+
+  it("captures by BOTH coaches during ONE game turn land on ONE card — the regrouping (S10.4.2)", () => {
+    seqCounter = 0;
+    const events = [
+      // A's own action…
+      event({
+        kind: "td",
+        side: "home",
+        playerRosterId: "h1",
+        turnNumber: 5,
+        at: STARTED + 43 * MIN,
+      }),
+      // …and B's victim-side injury capture, same game turn.
+      event({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "a2",
+        turnNumber: 5,
+        at: STARTED + 44 * MIN,
+        payload: { victimRosterId: "a2", cause: "dodge", roll16: 8 },
+      }),
+      event({ kind: "turnStart", side: "home", turnNumber: 5, at: STARTED + 45 * MIN }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events,
+          active: { ...liveActive(), turnStarter: "home" },
+        })}
+      />,
+    );
+
+    const cards = screen.getAllByTestId("acta-turn-card");
+    // The ONE game-turn card holds both rows (never one card per author)…
+    expect(cards).toHaveLength(2);
+    const card = cards[1];
+    expect(card.textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(
+      Array.from(card.querySelectorAll('[data-testid="acta-event-row"]')).map(
+        (row) => row.getAttribute("data-kind"),
+      ),
+    ).toEqual(["td", "casualty"]);
+    // …each row carrying its own capture-author badge (role transparency).
+    expect(card.textContent).toContain("Registrado por Reikland Reavers");
+    expect(card.textContent).toContain("Registrado por Gouged Eye");
+  });
+
+  it("closed cards carry the compact badge too, and system rows read «Registro de sistema»", () => {
+    seqCounter = 0;
+    const events = [
+      ...closedTurnEvents(),
+      event({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        turnNumber: 4,
+        at: STARTED + 37 * MIN,
+        payload: { value: "perfect", roll: 4 },
+      }),
+    ];
+    render(<ActaTurnTimeline {...timelineProps({ events })} />);
+
+    const closed = screen
+      .getByText(/T4\s*•\s*Reikland Reavers/)
+      .closest("article") as HTMLElement;
+    // Compact rows (closed cards) show the same registrar marker…
+    expect(closed.textContent).toContain("Registrado por Reikland Reavers");
+    // …and a side-less system capture has no coach registrar to name.
+    const neutral = screen.getByText(/T4\s*•\s*AMBOS EQUIPOS/).closest(
+      "article",
+    ) as HTMLElement;
+    expect(neutral.textContent).toContain("Registro de sistema");
   });
 });

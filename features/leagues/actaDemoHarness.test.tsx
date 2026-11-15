@@ -659,21 +659,24 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
 
 /**
  * T11 · L44 — Step 2 of the flow-test plan: REAL dock captures landing on the
- * right half-turn cards. These tests PIN the shipped L37/L38 behavior (no
- * behavior change):
+ * right half-turn cards (re-framed by S10.4 / T16 — L54 superseded L38's
+ * capture-author grouping with GAME-TURN grouping):
  *   - «+ TD» / «+ Pase» / «+ Baja» captured in one half-turn all land on THAT
  *     half-turn's card of the acting team (the EN JUEGO card) and the rival's
  *     card stays clean;
- *   - capture-author grouping (L38): a CAUSED casualty belongs to its CAUSER's
- *     card. The guided «+ Baja» sheet really offers the victim/causer choice
- *     (cause → Causante from the OWN pool → Víctima from the RIVAL pool →
- *     injury roll) and its command stamps the VICTIM's side as the event's
- *     `side` (`buildGuidedCommand` in liveActionEntry.ts) — grouping by that
- *     `side` would drop the row on the victim's card, so the timeline flips a
- *     caused casualty to the CAUSER's side (`actingSideOf`, actaTurnSides.ts).
- *     Demo simplification: the guided flow only pairs a causer from the acting
- *     coach's own roster, so the causer's card IS the acting team's card — the
- *     flip is pinned by the row NOT landing on the victim's card;
+ *   - game-turn grouping (L38 → S10.4): the row lands on the half-turn being
+ *     PLAYED («placaje y herida de la misma jugada caen en la MISMA card»),
+ *     never on the capture author's or the victim's card per se. The guided
+ *     «+ Baja» sheet really offers the victim/causer choice (cause → Causante
+ *     from the OWN pool → Víctima from the RIVAL pool → injury roll) and its
+ *     command stamps the VICTIM's side as the event's `side`
+ *     (`buildGuidedCommand` in liveActionEntry.ts); the capture happens during
+ *     the acting coach's turn, so the row lands on the ACTING team's card. The
+ *     CAPTURE AUTHOR still shows on the row's badge (S10.4.2 — today the
+ *     causer's owner types the guided capture);
+ *   - the NON-active coach's victim-side capture («Baja propia» — S10.4.1
+ *     «el jugador que recibe marca la herida») lands on the SAME game turn's
+ *     card with the RECORDER's author badge (the T16 grouping change);
  *   - cards close per play order once the pair moves on: the second-play card
  *     reads COMPLETADO, the opener CERRADO (the step-1 pins) and BOTH keep
  *     their captured rows;
@@ -744,22 +747,62 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     ]);
   });
 
-  it("capture-author grouping: a caused «+ Baja» lands on the CAUSER's card, never the victim's (L38)", () => {
+  it("game-turn grouping: a caused «+ Baja» lands on the GAME TURN's card (the acting half-turn), never the victim's (L38 → S10.4)", () => {
     startWithHomeReceiver();
     // The guided sheet really offers the victim/causer choice (see captureBaja:
     // Causante #1 of the acting roster, Víctima #1 of the rival roster).
     captureBaja();
 
-    // The casualty row lands on the CAUSER's card — the acting team's EN JUEGO
-    // card — carrying its causal line «causer → victim»…
+    // WHY re-framed (T16 / S10.4): the row lands on the card of the half-turn
+    // BEING PLAYED (home's T1 — «el jugador que placa informa del placaje»).
+    // The capture author (the home causer) shows on the row's badge instead of
+    // driving the grouping.
     const card = enJuegoCard();
     expect(card.textContent).toContain("T1 • Águilas de Khemri");
     expect(rowKinds(card)).toEqual(["casualty"]);
     expect(card.textContent).toContain(
       "Khalid el Impávido (#1) → Grishnak Mordaz (#1)",
     );
+    // S10.4.2: the badge names who REGISTERED the capture (today's guided
+    // casualty is typed by the causer's owner — the acting coach).
+    expect(card.textContent).toContain("Registrado por Águilas de Khemri");
     // …and the VICTIM's team never gets a card for this capture (grouping by
     // the event's victim-side `side` would have created one).
+    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+  });
+
+  it("during team A's turn, team B (victim's owner) captures an injury for its own player — the row lands on A's card with B's author badge", () => {
+    startWithHomeReceiver();
+    // A = Águilas de Khemri plays T1 (the game turn).
+    expect(enJuegoCard().textContent).toContain("T1 • Águilas de Khemri");
+
+    // S10.4.1 (L54): B — the victim's owner, watching from the NON-active
+    // dock — registers the injury of its OWN knocked-down player («Baja
+    // propia», the victim-side capture; the knockdown/causer context is the
+    // attacker's own capture — T17's chain).
+    fireEvent.click(perspective("Colmillos del Caos"));
+    fireEvent.click(demoButton("Baja propia"));
+    const modal = screen.getByTestId("live-action-modal");
+    // Víctima = B's own player #1, cause «Esquivando — se cayó»…
+    fireEvent.click(
+      within(within(modal).getByTestId("dock-pool-own")).getByRole("button", {
+        name: /#1/i,
+      }),
+    );
+    fireEvent.click(
+      within(modal).getByRole("button", { name: "Esquivando — se cayó" }),
+    );
+    // …injury roll 8 (Magullado — the guided flow fires on the chip).
+    fireEvent.click(within(modal).getByTestId("roll-option-8"));
+
+    // The row lands on A's GAME-TURN card («placaje y herida de la misma
+    // jugada caen en la MISMA card»)…
+    const card = enJuegoCard();
+    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(rowKinds(card)).toEqual(["casualty"]);
+    // …with B's author badge (S10.4.2 — quién la registró)…
+    expect(card.textContent).toContain("Registrado por Colmillos del Caos");
+    // …and B gets NO card of its own for this capture.
     expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
   });
 

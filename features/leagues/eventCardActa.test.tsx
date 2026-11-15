@@ -201,3 +201,65 @@ describe("LiveEventCardsActa — DEMO kickoff rows (S3 · T4, MVT-6)", () => {
     expect(effectRow?.className).toContain("acta__row--text");
   });
 });
+
+describe("LiveEventCardsActa — S10.4.2 capture-author badge (T16)", () => {
+  it("every coach-registered sheet shows who registered it (the capture author)", () => {
+    const { container } = renderActa([
+      // A caused casualty: its capture author is the CAUSER's coach (LM-12) —
+      // today's guided «+ Baja» is typed by the causer's owner.
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: {
+          victimRosterId: "p2",
+          causerRosterId: "p4",
+          cause: "block",
+          roll16: 9,
+        },
+      }),
+      ev({ kind: "completion", side: "home", playerRosterId: "p4", seq: 1 }),
+    ]);
+    const rows = Array.from(
+      container.querySelectorAll("[data-testid='live-event-row']"),
+    );
+    // Newest first: the casualty pair (injury sheet + derived action sheet),
+    // then the completion — all three sheets carry the registrar badge.
+    for (const row of rows) {
+      expect(row.textContent).toContain("Registrado por Reavers");
+    }
+  });
+
+  it("a victim-side injury capture badges the victim's coach (S10.4.1 — B marks la herida)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: { victimRosterId: "p2", cause: "dodge", roll16: 8 },
+      }),
+    ]);
+    const row = container.querySelector(
+      "[data-testid='live-event-row']",
+    ) as HTMLElement;
+    expect(row.textContent).toContain("Registrado por Dwarves");
+  });
+
+  it("side-less system sheets read «Registro de sistema» (no coach registered them)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        seq: 2,
+        payload: { value: "rain", roll: 5 },
+      }),
+    ]);
+    const row = container.querySelector(
+      "[data-testid='live-event-row']",
+    ) as HTMLElement;
+    expect(row.textContent).toContain("Registro de sistema");
+  });
+});
