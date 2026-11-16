@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  crowdSppException,
+  foulSppException,
+  type ActivePrayers,
+  type MatchActivePrayers,
+} from "@/lib/rules/inducements";
 import { resolveInjury } from "@/lib/rules/injuries";
 import { CASUALTY_CAUSES, type CasualtyCause } from "@/lib/livePhase";
 import { isDisplayEvent } from "@/lib/liveMatch";
@@ -447,6 +453,18 @@ function opposite(side: "home" | "away"): "home" | "away" {
   return side === "home" ? "away" : "home";
 }
 
+/** T25 («Plegarias a Nuffle»): the EARNING side's active blessings — a
+ * casualty pays its CAUSER side (opposite the victim's row side, LM-12), any
+ * other event its own acting side. Absent set (or a side-less system row) →
+ * no blessings (the T24 earn rule exactly). */
+function earnerPrayersOf(
+  event: LiveMatchEventDto,
+  match?: MatchActivePrayers,
+): ActivePrayers {
+  if (match == null || event.side == null) return [];
+  return match[event.kind === "casualty" ? opposite(event.side) : event.side];
+}
+
 /** T18 (folder-tab acta rows, design/acta-folder-tabs/01): the CATEGORY tab —
  *  short labels («Casualty» red only), never the SPP count (L60: «+1 SPP» was
  *  never a title) and never the long composed chain label (it stays the row's
@@ -466,23 +484,34 @@ function tabFor(event: LiveMatchEventDto): { label: string; injury?: boolean } {
  *  row can never flash a provisional award. A CAUSED record may carry no
  *  `causerRosterId` of its own (the demo's split combat chain records the
  *  herida on the victim side — the causer context rides the chain's «Derribo»
- *  row), so the CAUSE is the earn signal, never the payload's causer field. */
-function sppMarkerFor(event: LiveMatchEventDto): { text: string; className: string } | null {
+ *  row), so the CAUSE is the earn signal, never the payload's causer field.
+ *  T25 («Plegarias a Nuffle»): the foul/crowd zero-rows consult the per-prayer
+ *  exception seams (`foulSppException`/`crowdSppException`) — the blessing
+ *  unlocks the award for the EARNING team only; both-down / self-inflicted /
+ *  dodge rows have NO exception and stay pinned at zero. */
+function sppMarkerFor(
+  event: LiveMatchEventDto,
+  prayers: ActivePrayers,
+): { text: string; className: string } | null {
   if (event.kind === "casualty") {
     const cause = typeof event.payload.cause === "string" ? (event.payload.cause as CasualtyCause) : null;
-    if (
-      event.payload.bothDown === true ||
-      event.payload.selfInflicted === true ||
-      cause === "foul" ||
-      (cause != null && SELF_CAUSES.includes(cause))
-    ) {
+    if (event.payload.bothDown === true || event.payload.selfInflicted === true) {
+      return null;
+    }
+    if (cause === "foul" && !foulSppException(prayers)) {
+      return null;
+    }
+    if (cause === "crowd" && !crowdSppException(prayers)) {
+      return null;
+    }
+    if (cause != null && SELF_CAUSES.includes(cause) && cause !== "crowd") {
       return null;
     }
   }
   // A pending casualty shows the flat causal +2 (artboard T5 row — provisional
   // until the roll settles the value); a resolved one follows the shared
-  // `eventSpp` rule (T24).
-  const value = isPendingInjuryRoll(event) ? 2 : eventSpp(event);
+  // `eventSpp` rule (T24 + the T25 blessings).
+  const value = isPendingInjuryRoll(event) ? 2 : eventSpp(event, prayers);
   if (value <= 0) return null;
   return {
     text: `+${value} SPP`,
@@ -603,14 +632,16 @@ function EventRow({
   teams,
   highlight,
   fresh,
+  activePrayers,
 }: {
   event: LiveMatchEventDto;
   teams: TeamMap;
   highlight: boolean;
   fresh: boolean;
+  activePrayers?: MatchActivePrayers;
 }) {
   const tab = tabFor(event);
-  const marker = sppMarkerFor(event);
+  const marker = sppMarkerFor(event, earnerPrayersOf(event, activePrayers));
   let subject: ReactNode;
   if (event.kind === "casualty" && event.side != null) {
     // The causal line (artboard T5): "Grashnak Viletooth (#4) → Ugluk (#6)".
@@ -746,10 +777,12 @@ function CompactRow({
   event,
   teams,
   fresh,
+  activePrayers,
 }: {
   event: LiveMatchEventDto;
   teams: TeamMap;
   fresh: boolean;
+  activePrayers?: MatchActivePrayers;
 }) {
   // The victim is the subject on a casualty row; the acting player otherwise.
   const subjectId = event.kind === "casualty" ? victimIdOf(event) : event.playerRosterId;
@@ -784,7 +817,8 @@ function CompactRow({
     >
       <ActaIcon name={icon} className="mt-0.5 size-4 shrink-0 text-slate" />
       <p className="min-w-0 flex-1">
-        <strong className={mirrored ? "text-red" : "text-navy"}>{name}</strong> {compactSentence(event, teams)}{" "}
+        <strong className={mirrored ? "text-red" : "text-navy"}>{name}</strong>{" "}
+        {compactSentence(event, teams, earnerPrayersOf(event, activePrayers))}{" "}
         {/* S10.4.2: the compact-row variant of the capture-author badge. */}
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate">
           · {authorBadgeLabel(event, teams)}
@@ -794,12 +828,18 @@ function CompactRow({
   );
 }
 
-function compactSentence(event: LiveMatchEventDto, teams: TeamMap): string {
+function compactSentence(
+  event: LiveMatchEventDto,
+  teams: TeamMap,
+  prayers: ActivePrayers,
+): string {
   switch (event.kind) {
     case "td":
       return "anotó Touchdown (+3 SPP).";
     case "completion":
-      return "completó Pase con éxito (+1 SPP).";
+      // T25: the award sentence follows the SHARED earn rule (T24 + the
+      // «Plegarias a Nuffle» blessings) — never a hardcoded count.
+      return `completó Pase con éxito (+${eventSpp(event, prayers)} SPP).`;
     case "foul": {
       const victim = event.side ? resolvePlayer(teams[opposite(event.side)], victimIdOf(event)) : null;
       return victim
@@ -947,6 +987,10 @@ export interface ActaTurnTimelineProps {
   viewerSide: "home" | "away" | null;
   /** The EXISTING live command pathway (`sendLiveCommand` via the V2 `act`). */
   onSubmit?: (command: LiveCommand) => Promise<void> | void;
+  /** T25 («Plegarias a Nuffle»): the per-side active-prayer sets (the
+   * blessings rolled from each team's pre-match prayers-to-nuffle inducement).
+   * Optional seam — absent = no blessings active (the T24 earn rule exactly). */
+  activePrayers?: MatchActivePrayers;
 }
 
 const STATE_CHIP: Record<TurnCardState, { label: string; className: string }> = {
@@ -980,6 +1024,7 @@ export function ActaTurnTimeline({
   active,
   viewerSide,
   onSubmit,
+  activePrayers,
 }: ActaTurnTimelineProps) {
   const teams: TeamMap = { home: homeTeam, away: awayTeam };
   const cards = turnCardsOf(events, active);
@@ -1026,6 +1071,7 @@ export function ActaTurnTimeline({
                       event={event}
                       teams={teams}
                       fresh={fresh.has(event.seq)}
+                      activePrayers={activePrayers}
                     />
                   ) : (
                     <EventRow
@@ -1034,6 +1080,7 @@ export function ActaTurnTimeline({
                       teams={teams}
                       highlight={card.state === "live"}
                       fresh={fresh.has(event.seq)}
+                      activePrayers={activePrayers}
                     />
                   ),
                 )}

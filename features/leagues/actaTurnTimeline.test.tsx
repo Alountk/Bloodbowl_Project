@@ -1666,3 +1666,226 @@ describe("ActaTurnTimeline — T24 SPP earn gate («Puntos de SPP.md», L78)", (
     expect(sppTabOf("knockdown")).toBeNull();
   });
 });
+
+/**
+ * T25 (PR #415 follow-up): the CONFIRMED Prayers-of-Nuffle blessings on the
+ * acta SPP marker («Plegarias a Nuffle» — the quoted rows are the authority).
+ * The `activePrayers` prop carries each team's blessing set (the pre-match
+ * 1D16 rolls); the AWARD always belongs to the EARNING side — a casualty pays
+ * its CAUSER side (opposite the victim's row side), a pass the acting side.
+ * Absent prop = T24 exactly (every default ZERO row stays pinned).
+ */
+describe("ActaTurnTimeline — T25 Prayers of Nuffle SPP exceptions", () => {
+  const ALL_BLESSINGS = [
+    "perfect-pass",
+    "dazzling-catches",
+    "crowd-support",
+    "foul-and-frenzy",
+  ] as const;
+  const sppTabOf = (kind = "casualty"): HTMLElement | null =>
+    document
+      .querySelector(`[data-testid="acta-event-row"][data-kind="${kind}"]`)
+      ?.querySelector('[data-testid="acta-event-spp"]') ?? null;
+
+  /** A casualty on the away victim's row; the causer rides the payload when
+   *  given (the demo's caused shape) — a crowd row is causer-less. */
+  const injuryRow = (payload: Record<string, unknown>): LiveMatchEventDto =>
+    event({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "a2",
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: { victimRosterId: "a2", ...payload },
+    });
+
+  it("(13) «¡Con faltas y a lo loco!»: a foul-caused injury shows the CAUSER side's +2 SPP — the blessing must belong to the causer's team (home), never the victim's (away)", () => {
+    seqCounter = 0;
+    const withCauserPrayer = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ causerRosterId: "h3", cause: "foul", roll16: 12 })],
+          activePrayers: { home: ["foul-and-frenzy"], away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+    withCauserPrayer.unmount();
+
+    // Side scoping: the victim side's own blessing never pays the causer.
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ causerRosterId: "h3", cause: "foul", roll16: 12 })],
+          activePrayers: { home: [], away: ["foul-and-frenzy"] },
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("(13) the default foul=0 row stays pinned without its own blessing (absent prop and wrong blessings never flash a tab)", () => {
+    seqCounter = 0;
+    const absent = render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [injuryRow({ causerRosterId: "h3", cause: "foul", roll16: 12 })] })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+    absent.unmount();
+
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ causerRosterId: "h3", cause: "foul", roll16: 12 })],
+          activePrayers: { home: ["perfect-pass", "crowd-support"], away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("(13) a PENDING foul row under the blessing shows the flat provisional +2 (the same award the resolved roll settles)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ causerRosterId: "h3", cause: "foul" })],
+          activePrayers: { home: ["foul-and-frenzy"], away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+  });
+
+  it("(12) «Apoyo del público»: a crowd-push injury shows the PUSHER side's +2 SPP (the demo's causer-less crowd row) — and the default crowd=0 row stays pinned without it", () => {
+    seqCounter = 0;
+    const withPrayer = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "crowd", roll16: 9 })],
+          activePrayers: { home: ["crowd-support"], away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+    withPrayer.unmount();
+
+    seqCounter = 0;
+    const absent = render(
+      <ActaTurnTimeline {...timelineProps({ events: [injuryRow({ cause: "crowd", roll16: 9 })] })} />,
+    );
+    expect(sppTabOf()).toBeNull();
+    absent.unmount();
+
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "crowd", roll16: 9 })],
+          activePrayers: { home: ["foul-and-frenzy"], away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("(10)/(11) on the pass row: «Pase perfecto» shows +2 SPP, «Recepciones deslumbrantes» +2 SPP, both together +3 SPP — and the baseline +1 SPP stays pinned", () => {
+    const pass = (): LiveMatchEventDto =>
+      event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 5, at: STARTED + 40 * MIN });
+
+    seqCounter = 0;
+    const base = render(<ActaTurnTimeline {...timelineProps({ events: [pass()] })} />);
+    expect(sppTabOf("completion")?.textContent).toContain("+1 SPP");
+    base.unmount();
+
+    seqCounter = 0;
+    const perfect = render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [pass()], activePrayers: { home: ["perfect-pass"], away: [] } })}
+      />,
+    );
+    expect(sppTabOf("completion")?.textContent).toContain("+2 SPP");
+    perfect.unmount();
+
+    seqCounter = 0;
+    const catches = render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [pass()], activePrayers: { home: ["dazzling-catches"], away: [] } })}
+      />,
+    );
+    expect(sppTabOf("completion")?.textContent).toContain("+2 SPP");
+    catches.unmount();
+
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [pass()],
+          activePrayers: { home: ["perfect-pass", "dazzling-catches"], away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf("completion")?.textContent).toContain("+3 SPP");
+  });
+
+  it("the CLOSED card's pass sentence follows the blessing too («completó Pase con éxito (+2 SPP)») — no stale award anywhere in the turn cards", () => {
+    // Two older home passes: the newest old card renders COMPLETADO (EventRow),
+    // the older one CERRADO (CompactRow — the sentence carries the award).
+    seqCounter = 0;
+    const older = event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 3, at: STARTED + 25 * MIN });
+    const newer = event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 5, at: STARTED + 40 * MIN });
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [newer, older],
+          activePrayers: { home: ["perfect-pass"], away: [] },
+        })}
+      />,
+    );
+    const closed = document.querySelector(
+      '[data-testid="acta-event-row"][data-kind="completion"][data-compact="true"]',
+    ) as HTMLElement;
+    expect(closed.textContent).toContain("completó Pase con éxito (+2 SPP).");
+  });
+
+  it("the ZERO rows with NO exception stay pinned with EVERY blessing active: both-down and auto-lesiones/dodge rows never show a tab", () => {
+    seqCounter = 0;
+    const bothDown = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ causerRosterId: "h3", cause: "block", roll16: 12, bothDown: true })],
+          activePrayers: { home: ALL_BLESSINGS, away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+    bothDown.unmount();
+
+    seqCounter = 0;
+    const self = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ selfInflicted: true, cause: "dodge", roll16: 9 })],
+          activePrayers: { home: ALL_BLESSINGS, away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+    self.unmount();
+
+    // A foul row with the OTHER blessings only keeps its zero (per-prayer).
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ causerRosterId: "h3", cause: "foul", roll16: 12 })],
+          activePrayers: { home: ["perfect-pass", "dazzling-catches", "crowd-support"], away: [] },
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+});

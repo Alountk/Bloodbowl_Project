@@ -11,6 +11,11 @@
  */
 
 import { DEFAULT_LOCALE, t as translate } from "@/lib/i18n/dictionaries";
+import {
+  crowdSppException,
+  foulSppException,
+  type ActivePrayers,
+} from "@/lib/rules/inducements";
 import { resolveInjury } from "@/lib/rules/injuries";
 import type { IconName } from "./icons";
 
@@ -420,13 +425,32 @@ export const SCORED_ACTION_LABELS: Record<string, string> = {
  * (`resolveInjury`, the SAME rulebook table the row text uses). T24 case-4
  * «keep it working»: those rows' causer context rides the chain's «Derribo»
  * row (pinned by lib/liveFeed.test.ts + MatchView.test.tsx, outside this
- * slice's edit surfaces). */
-export function eventSpp(event: LiveEventLabelInput): number {
+ * slice's edit surfaces).
+ *
+ * T25 (PR #415 follow-up, «Plegarias a Nuffle»): the CONFIRMED prayer
+ * exceptions ride ON TOP of the T24 baseline via the second argument — the
+ * EARNING team's active blessing set (the causer's side on a casualty row,
+ * the acting side otherwise; the caller resolves the side). 13 «¡Con faltas y
+ * a lo loco!» pays +2 for a foul-caused Injury (the earn rule consults the
+ * `foulSppException` seam), 10 «Pase perfecto» pays 2 instead of 1 for a
+ * completed pass, 11 «Recepciones deslumbrantes» pays the pass-catch +1 on
+ * the same completion row, 12 «Apoyo del público» pays +2 for a crowd-push
+ * Injury (via `crowdSppException`). Absent/empty set = T24 exactly: the
+ * default ZERO rows (foul/crowd/dodge/both-down/self-inflicted/no-roll) all
+ * stay pinned — each exception is per-prayer, never a global switch. */
+export function eventSpp(event: LiveEventLabelInput, activePrayers: ActivePrayers = []): number {
   switch (event.kind) {
     case "td":
       return 3;
-    case "completion":
-      return 1;
+    case "completion": {
+      // T25 rows 10/11: the completed-pass award (★1) becomes 2 with «Pase
+      // perfecto», and the catch adds its own +1 with «Recepciones
+      // deslumbrantes» — additive (thrower 2 + catcher 1 = 3 with both).
+      let spp = 1;
+      if (activePrayers.includes("perfect-pass")) spp += 1;
+      if (activePrayers.includes("dazzling-catches")) spp += 1;
+      return spp;
+    }
     case "interception":
       return 2;
     case "throwTeamMate":
@@ -438,13 +462,25 @@ export function eventSpp(event: LiveEventLabelInput): number {
       if (payload.bothDown === true) return 0;
       if (payload.selfInflicted === true) return 0;
       const cause = typeof payload.cause === "string" ? payload.cause : null;
-      if (cause === "dodge" || cause === "crowd" || cause === "foul") return 0;
       const roll16 = typeof payload.roll16 === "number" ? payload.roll16 : null;
       const band = typeof payload.band === "string" ? payload.band : null;
+      // A resolved injury roll (roll16 or its derived band) pays — ANY result.
+      const injuryResolved = roll16 != null || band != null;
       if (cause === "block" || cause === "blitz") {
-        // A resolved injury roll (roll16 or its derived band) pays — ANY result.
-        return roll16 != null || band != null ? 2 : 0;
+        return injuryResolved ? 2 : 0;
       }
+      // T25 row 13: the foul=0 default consults the `foulSppException` seam —
+      // only «¡Con faltas y a lo loco!» unlocks it, and only for a caused
+      // Injury (same resolved-roll threshold as the block/blitz row).
+      if (cause === "foul") {
+        return injuryResolved && foulSppException(activePrayers) ? 2 : 0;
+      }
+      // T25 row 12: the crowd=0 default consults the `crowdSppException`
+      // seam — «si un rival resulta Lesionado», the pusher earns 2.
+      if (cause === "crowd") {
+        return injuryResolved && crowdSppException(activePrayers) ? 2 : 0;
+      }
+      if (cause === "dodge") return 0;
       // Legacy rows without a recorded cause keep the shipped band derivation.
       if (band) return bandToDisplay(band).stars;
       return roll16 != null ? bandToDisplay(resolveInjury(roll16).kind).stars : 0;

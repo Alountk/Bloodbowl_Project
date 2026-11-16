@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ActivePrayers } from "@/lib/rules/inducements";
 import {
   liveEventLabel,
   bandToDisplay,
@@ -176,6 +177,96 @@ describe("eventSpp — T24 SPP table («Puntos de SPP.md», L78)", () => {
         }),
       ),
     ).toBe(0);
+  });
+});
+
+/**
+ * T25 (PR #415 follow-up): the CONFIRMED Prayers-of-Nuffle SPP exceptions
+ * («Plegarias a Nuffle» — the quoted table rows are the authority) ON TOP of
+ * the T24 baseline: (13) a foul-caused Injury pays +2, (10) a completed pass
+ * pays 2 instead of 1, (11) the pass-catch pays +1, (12) a crowd-push Injury
+ * pays +2 to the pusher. The second argument is the EARNING team's blessing
+ * set (the causer's side on a casualty row) — the caller resolves the side.
+ * The default ZERO rows stay pinned: each exception is per-prayer, never a
+ * global switch.
+ */
+describe("eventSpp — T25 Prayers of Nuffle exceptions («Plegarias a Nuffle», on top of T24)", () => {
+  const ALL: ActivePrayers = ["perfect-pass", "dazzling-catches", "crowd-support", "foul-and-frenzy"];
+  const caused = (payload: Record<string, unknown>) =>
+    ev("casualty", { victimRosterId: "p2", causerRosterId: "p4", ...payload });
+
+  it("(13) «¡Con faltas y a lo loco!»: a foul-caused INJURY pays ★2 — and «causing an Injury» means a resolved roll/band (same threshold as T24)", () => {
+    for (const roll16 of [1, 9, 12, 16]) {
+      expect(eventSpp(caused({ cause: "foul", roll16 }), ["foul-and-frenzy"])).toBe(2);
+    }
+    expect(eventSpp(caused({ cause: "foul", roll16: 12, band: "grave" }), ["foul-and-frenzy"])).toBe(2);
+    // No resolved injury (no roll16, no band) pays NOTHING even with the blessing.
+    expect(eventSpp(caused({ cause: "foul" }), ["foul-and-frenzy"])).toBe(0);
+    // The bare foul ACTION row is not the injury — the injury rides the casualty row.
+    expect(eventSpp(ev("foul"), ["foul-and-frenzy"])).toBe(0);
+  });
+
+  it("(13) the default foul=0 row stays pinned without its own blessing (the exception is per-prayer)", () => {
+    const otherSets: ActivePrayers[] = [["perfect-pass"], ["dazzling-catches"], ["crowd-support"]];
+    expect(eventSpp(caused({ cause: "foul", roll16: 12 }), [])).toBe(0);
+    for (const prayers of otherSets) {
+      expect(eventSpp(caused({ cause: "foul", roll16: 12 }), prayers)).toBe(0);
+    }
+  });
+
+  it("(10) «Pase perfecto»: a completed pass pays ★2 instead of ★1", () => {
+    expect(eventSpp(ev("completion"), ["perfect-pass"])).toBe(2);
+    // The baseline row stays ★1 for every other blessing set.
+    expect(eventSpp(ev("completion"), [])).toBe(1);
+    expect(eventSpp(ev("completion"), ["dazzling-catches"])).toBe(2); // the catch's +1 below
+    expect(eventSpp(ev("completion"), ["crowd-support"])).toBe(1);
+    expect(eventSpp(ev("completion"), ["foul-and-frenzy"])).toBe(1);
+  });
+
+  it("(11) «Recepciones deslumbrantes»: the pass-catch earns +1 ON TOP of the completed-pass award (additive with (10))", () => {
+    expect(eventSpp(ev("completion"), ["dazzling-catches"])).toBe(2); // thrower 1 + catcher 1
+    expect(eventSpp(ev("completion"), ["perfect-pass", "dazzling-catches"])).toBe(3); // thrower 2 + catcher 1
+    // SCOPED INTERPRETATION (T25): the interception catch keeps its own flat
+    // ★2 table row — the quote's generic «catching a ball from a Pass action»
+    // is modeled on the completed-pass reception only; flipping this is a
+    // one-line follow-up if the rules authority says otherwise.
+    expect(eventSpp(ev("interception"), ["dazzling-catches"])).toBe(2);
+  });
+
+  it("(12) «Apoyo del público»: a crowd-push INJURY pays ★2 to the pusher — the default crowd=0 needs the blessing AND a resolved injury", () => {
+    for (const payload of [
+      { cause: "crowd", roll16: 9 },
+      { cause: "crowd", roll16: 12, band: "grave" },
+    ]) {
+      expect(eventSpp(caused(payload), ["crowd-support"])).toBe(2);
+    }
+    // «si un rival resulta Lesionado» — no resolved roll/band pays NOTHING.
+    expect(eventSpp(caused({ cause: "crowd" }), ["crowd-support"])).toBe(0);
+    // The default crowd=0 row stays pinned without its own blessing.
+    expect(eventSpp(caused({ cause: "crowd", roll16: 9 }), [])).toBe(0);
+    expect(eventSpp(caused({ cause: "crowd", roll16: 9 }), ["foul-and-frenzy"])).toBe(0);
+    expect(eventSpp(caused({ cause: "crowd", roll16: 9 }), ["perfect-pass", "dazzling-catches"])).toBe(0);
+  });
+
+  it("the ZERO rows with NO exception stay pinned with EVERY blessing active (both-down / auto-lesiones / failed dodges / armour-less knockdowns)", () => {
+    expect(eventSpp(caused({ cause: "block", roll16: 12, bothDown: true }), ALL)).toBe(0);
+    expect(eventSpp(caused({ cause: "foul", roll16: 12, bothDown: true }), ALL)).toBe(0);
+    expect(eventSpp(caused({ cause: "block", roll16: 12, selfInflicted: true }), ALL)).toBe(0);
+    expect(eventSpp(ev("casualty", { victimRosterId: "p2", cause: "dodge", roll16: 9 }), ALL)).toBe(0);
+    expect(eventSpp(ev("casualty", { victimRosterId: "p2", cause: "dodge", roll16: 9, selfInflicted: true }), ALL)).toBe(0);
+    // A knockdown without a broken armour (no roll, no band) pays nothing.
+    expect(eventSpp(caused({ cause: "block" }), ALL)).toBe(0);
+    expect(eventSpp(caused({ cause: "blitz" }), ALL)).toBe(0);
+  });
+
+  it("blessings never touch the other award rows (TD ★3 / MVP ★4 / scored actions / the rest)", () => {
+    expect(eventSpp(ev("td"), ALL)).toBe(3);
+    expect(eventSpp(ev("mvp"), ALL)).toBe(4);
+    expect(eventSpp(ev("interception"), ALL)).toBe(2);
+    expect(eventSpp(ev("throwTeamMate"), ALL)).toBe(1);
+    expect(eventSpp(ev("landedSafe"), ALL)).toBe(1);
+    expect(eventSpp(ev("turn"), ALL)).toBe(0);
+    expect(eventSpp(ev("start"), ALL)).toBe(0);
   });
 });
 
