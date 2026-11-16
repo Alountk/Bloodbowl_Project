@@ -103,9 +103,13 @@ export default {
     docs: {
       description: {
         component:
-          "Tarjetas 'Acta' (v4) del feed del partido en vivo. Ficha de datos: cabecera tag/meta, " +
-          "nombre serif + dorsal, línea de posición y lista de datos con puntos guía. Los valores " +
-          "importantes van en negrita. Datos mock ES, sin red ni proveedor de i18n.",
+          "Tarjetas 'Acta' (v4) del feed del partido en vivo, con el diseño de carpeta (T18): " +
+          "solapa-categoría arriba a la izquierda (navy; roja solo para Casualty), cuerpo adjunto " +
+          "debajo (meta, nombre serif + dorsal, línea de posición, sello «Registrado por» y lista de " +
+          "datos con puntos guía) y — solo cuando se ganan — los ★SPP en la solapa inferior derecha. " +
+          "Las bajas dividen las dos voces: la marca del atacante en el cuerpo y «Lo que informa " +
+          "quien la recibe» (tirada + consecuencias) en el sub-recuadro. Datos mock ES, sin red ni " +
+          "proveedor de i18n.",
       },
     },
   },
@@ -137,9 +141,10 @@ export const FeedCompleto = {
     docs: {
       description: {
         story:
-          "1ª parte narrada: inicio (hora), turnos (con motivo), pase ★1, TD local ★3 (marcador 1-0), " +
-          "falta visitante con víctima, Herida propia por el público, Baja causada (doble ficha: lesión " +
-          "de la víctima + acción del causante ★2), TD visitante ✓ cotejado (1-1) y fin del partido.",
+          "1ª parte narrada: inicio (hora), turnos (con motivo), pase con su solapa ★1, TD local ★3 " +
+          "(marcador 1-0), falta visitante con víctima, Herida propia por el público, Baja causada " +
+          "(doble ficha: «Lo que informa quien la recibe» con la tirada + acción del causante con su " +
+          "solapa ★2), TD visitante ✓ cotejado (1-1) y fin del partido.",
       },
     },
   },

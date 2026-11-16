@@ -57,8 +57,10 @@ export default {
       description: {
         component:
           "Cronología por turnos del acta en vivo: tarjetas por turno con chips de estado " +
-          "(EN JUEGO / COMPLETADO / CERRADO), marcas de baja y — solo con `onSubmit` y en el " +
-          "turno propio — la acción de tirada. Sin `onSubmit` queda en solo lectura.",
+          "(EN JUEGO / COMPLETADO / CERRADO) y, dentro, las filas-carpeta T18 (solapa de categoría, " +
+          "descripción a todo el ancho, SPP solo en la solapa inferior derecha, «Lo que informa quien " +
+          "la recibe» en las bajas) — solo con `onSubmit` y en el turno propio aparece la acción de " +
+          "tirada. Sin `onSubmit` queda en solo lectura.",
       },
     },
   },

@@ -403,7 +403,11 @@ describe("MatchView — uniform sticky rulebook header across states", () => {
     // (endMatch) → the list must read 10, 9, 5, 1 from top to bottom.
     expect(rows).toHaveLength(4);
     expect(rows[0].textContent).toContain("Fin del partido");
-    expect(rows[1].textContent).toContain("Baja");
+    // WHY changed (T18, intentional — user chose design/acta-folder-tabs artboard
+    // A): the casualty card's title is now the category tab «Casualty» (the
+    // user's brief wording, red tab) — the band bucket "Baja" left the title
+    // (its consequence still renders on the row's Efecto line).
+    expect(rows[1].textContent).toContain("Casualty");
     expect(rows[2].textContent).toContain("Touchdown");
     expect(rows[3].textContent).toContain("Inicio del partido");
   });
@@ -1652,8 +1656,10 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     // home TD at at=2000, startedAt=1000 → minute 1'; half 1 turn 3 → T3.
     expect(container.textContent).toContain("Touchdown");
     expect(container.textContent).toContain("Blitzer A");
-    // LM-18: a lasting casualty band renders the Design-A bucket "Baja".
-    expect(container.textContent).toContain("Baja");
+    // LM-18 + WHY changed (T18, intentional): the lasting casualty now renders
+    // the artboard-A category tab «Casualty» instead of the "Baja" band-bucket
+    // title («en la solapa pondriamos Casualty / …» — the user's brief).
+    expect(container.textContent).toContain("Casualty");
     expect(container.textContent).toContain("Blitzer B");
     expect(container.textContent).toContain("Fin del partido");
     // ★ SPP via eventSpp: td ★3, lasting casualty ★2.
@@ -1719,7 +1725,9 @@ describe("MatchView — finished live match timeline (LM-10 / Design-A, LM-17)",
     // no global "T{n}" tag. The away card keeps the `away` side identity.
     expect(localRow!.textContent).toContain("Turno 3");
     expect(visitorRow!.textContent).toContain("Turno 6");
-    expect(visitorRow!.textContent).toContain("Baja");
+    // WHY changed (T18, intentional): the casualty title is the «Casualty»
+    // category tab now (artboard A; the "Baja" band label left the title).
+    expect(visitorRow!.textContent).toContain("Casualty");
     expect(visitorRow!.textContent).toContain("Blitzer B");
   });
 });

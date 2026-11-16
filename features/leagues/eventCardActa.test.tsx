@@ -263,3 +263,99 @@ describe("LiveEventCardsActa — S10.4.2 capture-author badge (T16)", () => {
     expect(row.textContent).toContain("Registro de sistema");
   });
 });
+
+describe("LiveEventCardsActa — T18 folder-tab acta rows (design/acta-folder-tabs/01)", () => {
+  it("the category tab carries the LABEL only — earned ★SPP move to a bottom-right tab (never «label · ★N» as the title)", () => {
+    const { container } = renderActa([
+      ev({ kind: "completion", side: "home", playerRosterId: "p4", seq: 1 }),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    const tab = row.querySelector("[data-testid='acta-card-tab']") as HTMLElement;
+    // The title says WHAT HAPPENED (e2e pins «Pase completo») and carries no SPP.
+    expect(tab.textContent).toBe("Pase completo");
+    expect(tab.textContent).not.toContain("★");
+    // The earned ★1 rides the inverted bottom-right tab (artboard .spp).
+    const sppTab = row.querySelector("[data-testid='acta-card-spp']") as HTMLElement;
+    expect(sppTab).not.toBeNull();
+    expect(sppTab.textContent).toContain("★1");
+  });
+
+  it("the SPP tab renders ONLY when earned (bruise ★0 → no tab at all)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: {
+          victimRosterId: "p2",
+          causerRosterId: "p4",
+          cause: "block",
+          roll16: 3,
+          band: "bruise",
+        },
+      }),
+    ]);
+    for (const row of Array.from(
+      container.querySelectorAll("[data-testid='live-event-row']"),
+    )) {
+      expect(row.querySelector("[data-testid='acta-card-spp']")).toBeNull();
+      expect(row.textContent).not.toContain("★");
+    }
+  });
+
+  it("the casualty sheet shows the red «Casualty» category tab (red only for Casualty)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: { victimRosterId: "p2", cause: "dodge", roll16: 8 },
+      }),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    const tab = row.querySelector("[data-testid='acta-card-tab']") as HTMLElement;
+    expect(tab.textContent).toBe("Casualty");
+    expect(tab.className).toContain("acta__tab--casualty");
+    // A non-casualty card's tab is the plain navy one.
+    const { container: c2 } = renderActa([
+      ev({ kind: "completion", side: "home", playerRosterId: "p4", seq: 1 }),
+    ]);
+    const tab2 = c2.querySelector("[data-testid='acta-card-tab']") as HTMLElement;
+    expect(tab2.className).not.toContain("acta__tab--casualty");
+  });
+
+  it("splits the casualty voices: attacker mark + recorder badge in the body, «Lo que informa quien la recibe» holds the injury roll/consequences with ITS OWN recorder badge", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away", // LM-12: the victim's side
+        playerRosterId: "p2",
+        seq: 2,
+        payload: {
+          victimRosterId: "p2",
+          causerRosterId: "p4",
+          cause: "block",
+          roll16: 9,
+          band: "apaleado",
+        },
+      }),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    // BODY keeps the attacker-side mark («X marca herida a Y» = the Causa row)
+    // with its recorder badge (the capture author = the causer's coach, T16).
+    expect(row.textContent).toContain("por Arnau");
+    expect(row.textContent).toContain("Registrado por Reavers");
+    // The victim-note sub-box (artboard .victim-note) carries the injury roll
+    // and its consequences, plus the RECEIVER's own recorder badge.
+    const note = row.querySelector("[data-testid='acta-victim-note']") as HTMLElement;
+    expect(note).not.toBeNull();
+    expect(note.textContent).toContain("Lo que informa quien la recibe");
+    expect(note.textContent).toContain("Tirada 1D16");
+    expect(note.textContent).toContain("Se pierde el próximo partido");
+    expect(note.textContent).toContain("Registrado por Dwarves");
+    // The injury roll lives ONLY in the note (the body keeps only the mark).
+    expect(note.textContent).not.toContain("por Arnau");
+  });
+});

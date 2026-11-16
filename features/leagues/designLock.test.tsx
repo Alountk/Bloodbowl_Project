@@ -17,13 +17,24 @@ import type { LiveMatchEventDto, LiveMatchView, MatchDetail, MatchTeamDetail } f
  * change, reintroduced v3 atom, unbolded value, missing ack row, duplicated page
  * header) fails the suite. TEST-ONLY: no production file is touched.
  *
+ * T18 RE-LOCK (intentional, user-chosen design/acta-folder-tabs/01 artboard A):
+ * the Acta card became a FOLDER — category tab top-left (navy; red ONLY for
+ * Casualty), body panel attached under it (full-width description), earned ★SPP
+ * ONLY on the inverted bottom-right tab (never as part of the title), and the
+ * casualty sheet split into the two voices (attacker mark in the body; «Lo que
+ * informa quien la recibe» sub-box for the injury roll/consequences with the
+ * receiver's own badge — L62). Sections A/B below re-lock THAT structure; the
+ * unrelated locks (side identity, serif name, dotted-leader data, ack gating,
+ * section C rulebook header, section D timeline bar) are unchanged.
+ *
  * A  — `eventCardActa.module.css` is read as a raw string and the validated Acta
  *       declarations are asserted (deleting/changing one fails).
- * B  — rendered Acta structure per family: the `.acta` shell + side class, the
- *       tag/meta header, the name/dorsal/pos line, the dotted-leader `<dl>` with
- *       BOLD values (Efecto / Tirada 1D16 / Causa / Marcador / Víctima / Acción /
- *       Motivo / Tesorería / Hora / Minuto / Victoria / Local / Visitante), the
- *       derived casualty ACTION card and the ack row on ackable kinds only.
+ * B  — rendered Acta structure per family: the folder shell (tab + body + SPP
+ *       tab) + side class, the name/dorsal/pos line, the dotted-leader `<dl>`
+ *       with BOLD values (Causa / Marcador / Víctima / Acción / Motivo /
+ *       Tesorería / Hora / Minuto / Victoria / Local / Visitante + the
+ *       victim-note Tirada 1D16 / Efecto), the derived casualty ACTION card and
+ *       the ack row on ackable kinds only.
  * C  — the rulebook sticky header via a stubbed MatchView (back arrow, no
  *       duplicated page header, TURNO button, half badge, hero mini-line).
  * D  — MatchTimelineBar (light track, always-on boundary markers, chips).
@@ -46,7 +57,14 @@ const actaBlock = block(/\.acta\s*\{([\s\S]*?)\}/, ".acta");
 const homeBlock = block(/\.home\s*\{([\s\S]*?)\}/, ".home");
 const awayBlock = block(/\.away\s*\{([\s\S]*?)\}/, ".away");
 const neutralBlock = block(/\.neutral\s*\{([\s\S]*?)\}/, ".neutral");
-const tagBlock = block(/\.acta__tag\s*\{([\s\S]*?)\}/, ".acta__tag");
+// WHY renamed (T18, intentional): the old `.acta__tag` header chip became the
+// folder category tab (`.acta__tab`) and the panel is now `.acta__body` — the
+// lock follows the user-chosen artboard-A structure (folder geometry).
+const tabBlock = block(/\.acta__tab\s*\{([\s\S]*?)\}/, ".acta__tab");
+const tabCasualtyBlock = block(/\.acta__tab--casualty\s*\{([\s\S]*?)\}/, ".acta__tab--casualty");
+const bodyBlock = block(/\.acta__body\s*\{([\s\S]*?)\}/, ".acta__body");
+const sppBlock = block(/\.acta__spp\s*\{([\s\S]*?)\}/, ".acta__spp");
+const victimNoteBlock = block(/\.victim__note\s*\{([\s\S]*?)\}/, ".victim__note");
 const metaBlock = block(/\.acta__meta\s*\{([\s\S]*?)\}/, ".acta__meta");
 const nameBlock = block(/\.acta__name\s*\{([\s\S]*?)\}/, ".acta__name");
 const posBlock = block(/\.acta__pos\s*\{([\s\S]*?)\}/, ".acta__pos");
@@ -70,13 +88,21 @@ describe("A. eventCardActa.module.css — validated Acta declarations", () => {
     }
   });
 
-  it("locks the .acta panel base: panel background, 1px border, 3px top rule, radius and padding", () => {
-    expect(actaBlock).toContain("background: var(--color-panel);");
-    expect(actaBlock).toContain("border: 1px solid var(--color-border);");
-    expect(actaBlock).toContain("border-top: 3px solid var(--side, var(--color-slate));");
-    expect(actaBlock).toContain("border-radius: 3px;");
-    expect(actaBlock).toContain("padding: 14px 18px 16px;");
+  it("locks the folder shell: the 26px tab strip + the attached body panel (T18 artboard-A geometry)", () => {
+    // WHY changed (T18, intentional — the user chose artboard A): the v4 flat
+    // panel (radius 3px, padding 14px 18px 16px) became a FOLDER card — the
+    // wrapper holds the 26px tab strip and the body panel attaches under it
+    // (top-left corner square where the tab meets it). The 3px per-side top
+    // rule (team identity) survives on the body.
+    expect(actaBlock).toContain("position: relative;");
+    expect(actaBlock).toContain("padding-top: 26px;");
     expect(actaBlock).toContain("box-sizing: border-box;");
+    expect(bodyBlock).toContain("background: var(--color-panel);");
+    expect(bodyBlock).toContain("border: 1px solid var(--color-border);");
+    expect(bodyBlock).toContain("border-top: 3px solid var(--side, var(--color-slate));");
+    expect(bodyBlock).toContain("border-radius: 0 8px 8px 8px;");
+    expect(bodyBlock).toContain("padding: 12px 14px 14px;");
+    expect(bodyBlock).toContain("box-sizing: border-box;");
   });
 
   it("locks the side identity custom property: navy home / red away / slate neutral", () => {
@@ -85,18 +111,37 @@ describe("A. eventCardActa.module.css — validated Acta declarations", () => {
     expect(neutralBlock).toContain("--side: var(--color-slate);");
   });
 
-  it("locks the tag/meta header typography (uppercase 10px, tag on --side, tabular meta)", () => {
-    expect(tagBlock).toContain("font-size: 10px;");
-    expect(tagBlock).toContain("font-weight: 700;");
-    expect(tagBlock).toContain("letter-spacing: .12em;");
-    expect(tagBlock).toContain("text-transform: uppercase;");
-    expect(tagBlock).toContain("color: var(--side, var(--color-slate));");
+  it("locks the category tab + meta typography (T18: navy tab, red ONLY for Casualty, uppercase 10px)", () => {
+    // WHY changed (T18, intentional): the inline tag chip (side-colored text)
+    // became the folder category tab — white on navy, red only for the
+    // Casualty category (the user's brief: «navy background, red only for
+    // Casualty»). The meta keeps its typography.
+    expect(tabBlock).toContain("font-size: 10px;");
+    expect(tabBlock).toContain("font-weight: 700;");
+    expect(tabBlock).toContain("letter-spacing: .12em;");
+    expect(tabBlock).toContain("text-transform: uppercase;");
+    expect(tabBlock).toContain("background: var(--color-navy);");
+    expect(tabBlock).toContain("color: var(--color-panel);");
+    expect(tabBlock).toContain("border-radius: 6px 6px 0 0;");
+    expect(tabCasualtyBlock).toContain("background: var(--color-red);");
     expect(metaBlock).toContain("font-size: 10px;");
     expect(metaBlock).toContain("font-weight: 700;");
     expect(metaBlock).toContain("letter-spacing: .06em;");
     expect(metaBlock).toContain("text-transform: uppercase;");
     expect(metaBlock).toContain("color: var(--color-slate);");
     expect(metaBlock).toContain("font-variant-numeric: tabular-nums;");
+  });
+
+  it("locks the inverted SPP tab + the victim-note sub-box (T18 artboard A)", () => {
+    // WHY new (T18, intentional): earned ★SPP live ONLY on the bottom-right
+    // inverted tab (rounded bottom corners, artboard .spp) and the casualty
+    // victim-note sub-box carries the receiver's report (L62).
+    expect(sppBlock).toContain("margin: -1px 0 0 auto;");
+    expect(sppBlock).toContain("width: max-content;");
+    expect(sppBlock).toContain("border-top: none;");
+    expect(sppBlock).toContain("border-radius: 0 0 10px 10px;");
+    expect(victimNoteBlock).toContain("border-left: 3px solid var(--color-red);");
+    expect(victimNoteBlock).toContain("border-radius: 0 6px 6px 0;");
   });
 
   it("locks the serif name + position line and the data-list rule", () => {
@@ -197,8 +242,10 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     expect(rows).toHaveLength(2);
     expect(container.textContent).not.toContain("Fin de turno");
-    expect(rows[0].querySelector(".acta__tag")?.textContent).toBe("Fin del partido");
-    expect(rows[1].querySelector(".acta__tag")?.textContent).toBe("Inicio del partido");
+    // WHY the selector changed (T18, intentional): the tag chip is the folder
+    // category tab (`.acta__tab`) now — the labels themselves are unchanged.
+    expect(rows[0].querySelector(".acta__tab")?.textContent).toBe("Fin del partido");
+    expect(rows[1].querySelector(".acta__tab")?.textContent).toBe("Inicio del partido");
   });
 
   it("locks the home TD sheet: .acta + home, tag/meta, name/dorsal/pos, bold Marcador row and ack", () => {
@@ -207,7 +254,12 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     expect(article.classList.contains("acta")).toBe(true);
     expect(article.classList.contains("home")).toBe(true);
     expect(article.classList.contains("away")).toBe(false);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Touchdown · ★3");
+    // WHY changed (T18, intentional — user chose artboard A): the SPP-as-title
+    // «· ★3» moved OUT of the title onto the inverted bottom-right tab («los
+    // spp ganados … en una solapa abajo a la derecha … y solo cuando ganes
+    // spp»). The category tab keeps the label only.
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Touchdown");
+    expect(article.querySelector(".acta__spp")?.textContent).toBe("★3");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Turno 4 · 4'");
     expect(article.querySelector(".acta__name")?.textContent).toBe("Blitzer A #1");
     expect(article.querySelector(".acta__pos")?.textContent).toBe("Human Blitzer · Reavers");
@@ -224,7 +276,9 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("away")).toBe(true);
     expect(article.classList.contains("home")).toBe(false);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Touchdown · ★3");
+    // WHY changed (T18, intentional): same SPP-title → bottom-right tab move.
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Touchdown");
+    expect(article.querySelector(".acta__spp")?.textContent).toBe("★3");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Turno 5 · 4'");
     expect(article.querySelector(".acta__name")?.textContent).toBe("Blitzer B #1");
     expect(article.querySelector(".acta__pos")?.textContent).toBe("Dwarf Blitzer · Dwarves");
@@ -232,20 +286,26 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     expect(article.querySelector(".ack")).toBeTruthy();
   });
 
-  it("locks the completion sheet: ★1 tag, no data list, ack row", () => {
+  it("locks the completion sheet: label-only tab, ★1 on the SPP tab, no data list, ack row", () => {
     const { container } = renderCards([ev(6, "completion", "home", {}, "p4", 3, 2000)]);
     const article = container.querySelector("article") as HTMLElement;
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Pase completo · ★1");
+    // WHY changed (T18, intentional): the pase title says WHAT HAPPENED
+    // («Pase completo» — the string e2e/live-match.spec.ts pins) and NEVER the
+    // SPP award («+1 SPP»/«· ★1») — SPP is a consequence and lives on the
+    // inverted bottom-right tab (L60).
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Pase completo");
+    expect(article.querySelector(".acta__tab")?.textContent).not.toContain("★");
+    expect(article.querySelector(".acta__spp")?.textContent).toBe("★1");
     expect(article.querySelector(".acta__name")?.textContent).toBe("Arnau #2");
     expect(article.querySelector(".acta__data")).toBeNull();
     expect(article.querySelector(".ack")).toBeTruthy();
   });
 
-  it("locks the foul sheet: Falta tag + the bold Víctima value", () => {
+  it("locks the foul sheet: Falta tab + the bold Víctima value", () => {
     const { container } = renderCards([ev(8, "foul", "home", { victimRosterId: "p8" }, "p1", 3, 2000)]);
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("home")).toBe(true);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Falta");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Falta");
     const row = article.querySelector(".acta__row") as HTMLElement;
     expect(row.querySelector("dt")?.textContent).toBe("Víctima");
     expect(row.querySelector("dd")?.textContent).toBe("a Trash (#2)");
@@ -253,7 +313,13 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     expect(article.querySelector(".ack")).toBeTruthy();
   });
 
-  it("locks the casualty INJURY sheet: Baja tag, Efecto/Tirada 1D16/Causa rows with bold values and the ack", () => {
+  it("locks the casualty INJURY sheet: red «Casualty» tab, attacker mark in the body, «Lo que informa quien la recibe» note (roll + consequences + its own badge) and the ack", () => {
+    // WHY changed (T18, intentional — user chose artboard A + L62): the title
+    // is the «Casualty» category tab (red only for it — the user's brief
+    // wording), never the "Baja" band bucket; the two VOICES split — the
+    // attacker-side mark («por Arnau …») stays in the body with the T16
+    // capture-author badge, while the injury roll + consequences moved into
+    // the victim-note sub-box with the RECEIVER's own badge.
     const { container } = renderCards([
       ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 9, band: "permanent" }, "p2", 6, 3000),
     ]);
@@ -262,22 +328,34 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const injury = rows.find((li) => li.querySelector(".acta__name")?.textContent === "Blitzer B #1") as HTMLElement;
     expect(injury).toBeTruthy();
     expect(injury.querySelector("article")?.classList.contains("away")).toBe(true);
-    expect(injury.querySelector(".acta__tag")?.textContent).toBe("Baja");
+    expect(injury.querySelector(".acta__tab")?.textContent).toBe("Casualty");
+    expect(injury.querySelector(".acta__tab")?.className).toContain("acta__tab--casualty");
     expect(injury.querySelector(".acta__meta")?.textContent).toBe("Turno 6 · 0'");
-    const dataRows = Array.from(injury.querySelectorAll(".acta__row"));
-    expect(dataRows).toHaveLength(3);
-    expect(dataRows[0].querySelector("dt")?.textContent).toBe("Efecto");
-    expect(dataRows[0].querySelector("dd b")?.textContent).toBe("Se pierde el próximo partido");
-    expect(dataRows[1].querySelector("dt")?.textContent).toBe("Tirada 1D16");
-    expect(dataRows[1].querySelector("dd")?.className).toContain("acta__num");
-    expect(dataRows[1].querySelector("dd b")?.textContent).toBe("9");
-    expect(dataRows[2].querySelector("dt")?.textContent).toBe("Causa");
-    expect(dataRows[2].querySelector("dd")?.textContent).toBe("por Arnau (#2) · Bloqueo");
-    expect(Array.from(dataRows[2].querySelectorAll("dd b")).map((b) => b.textContent)).toEqual(["Arnau", "Bloqueo"]);
+    // BODY: only the attacker-side mark row (bold causer + cause).
+    const bodyData = injury.querySelector(".acta__body > .acta__data") as HTMLElement;
+    const bodyRows = Array.from(bodyData.querySelectorAll(".acta__row"));
+    expect(bodyRows).toHaveLength(1);
+    expect(bodyRows[0].querySelector("dt")?.textContent).toBe("Causa");
+    expect(bodyRows[0].querySelector("dd")?.textContent).toBe("por Arnau (#2) · Bloqueo");
+    expect(Array.from(bodyRows[0].querySelectorAll("dd b")).map((b) => b.textContent)).toEqual(["Arnau", "Bloqueo"]);
+    // VICTIM-NOTE: the roll + its consequences + the receiver's own badge.
+    const note = injury.querySelector(".victim__note") as HTMLElement;
+    expect(note).toBeTruthy();
+    expect(note.querySelector(".victim__head")?.textContent).toBe("Lo que informa quien la recibe");
+    const noteRows = Array.from(note.querySelectorAll(".acta__row"));
+    expect(noteRows).toHaveLength(2);
+    expect(noteRows[0].querySelector("dt")?.textContent).toBe("Tirada 1D16");
+    expect(noteRows[0].querySelector("dd")?.className).toContain("acta__num");
+    expect(noteRows[0].querySelector("dd b")?.textContent).toBe("9");
+    expect(noteRows[1].querySelector("dt")?.textContent).toBe("Efecto");
+    expect(noteRows[1].querySelector("dd b")?.textContent).toBe("Se pierde el próximo partido");
+    expect(note.textContent).toContain("Registrado por Dwarves");
+    // RAU-47 (kept): the VICTIM's card never shows earned SPP.
+    expect(injury.querySelector(".acta__spp")).toBeNull();
     expect(injury.querySelector(".ack")).toBeTruthy();
   });
 
-  it("locks the derived ACTION card on the causer's side: Bloqueo · ★2 + bold Acción victim, NO ack", () => {
+  it("locks the derived ACTION card on the causer's side: Bloqueo tab + ★2 on its SPP tab + bold Acción victim, NO ack", () => {
     const { container } = renderCards([
       ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 9, band: "permanent" }, "p2", 6, 3000),
     ]);
@@ -285,7 +363,10 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const action = rows.find((li) => li.querySelector(".acta__name")?.textContent === "Arnau #2") as HTMLElement;
     expect(action).toBeTruthy();
     expect(action.querySelector("article")?.classList.contains("home")).toBe(true);
-    expect(action.querySelector(".acta__tag")?.textContent).toBe("Bloqueo · ★2");
+    // WHY changed (T18, intentional): the «· ★2» SPP-as-title moved to the
+    // bottom-right tab; the category tab keeps the cause label only.
+    expect(action.querySelector(".acta__tab")?.textContent).toBe("Bloqueo");
+    expect(action.querySelector(".acta__spp")?.textContent).toBe("★2");
     expect(action.querySelector(".acta__pos")?.textContent).toBe("Human Thrower · Reavers");
     const row = action.querySelector(".acta__row") as HTMLElement;
     expect(row.querySelector("dt")?.textContent).toBe("Acción");
@@ -298,7 +379,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const { container } = renderCards([ev(7, "turnStart", "home", { reason: "injury" }, null, 4, 4600)]);
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("home")).toBe(true);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Inicio de turno");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Inicio de turno");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Turno 4 · 0'");
     expect(article.querySelector(".acta__name")?.textContent).toBe("Reavers");
     expect(article.querySelector(".acta__pos")?.textContent).toBe("Empieza el turno");
@@ -323,7 +404,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     ]);
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("home")).toBe(true);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Error costoso");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Error costoso");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Kickoff");
     expect(article.querySelector(".acta__name")?.textContent).toBe("Reavers");
     expect(article.querySelector(".acta__pos")?.textContent).toBe("Incidente grave");
@@ -339,7 +420,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     ]);
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("neutral")).toBe(true);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Factor de aficionados");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Factor de aficionados");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Kickoff");
     const rows = Array.from(article.querySelectorAll(".acta__row"));
     expect(rows).toHaveLength(2);
@@ -356,7 +437,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const { container } = renderCards([ev(1, "start", null, {}, null, 1, 1000)]);
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("neutral")).toBe(true);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Inicio del partido");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Inicio del partido");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Kickoff");
     expect(article.querySelector(".acta__name")).toBeNull();
     expect(article.querySelector(".acta__data")?.className).toContain("acta__data--flush");
@@ -369,7 +450,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
   it("locks the endHalf sheet: Fin de la mitad + Mitad 1 + a bold Minuto, no ack", () => {
     const { container } = renderCards([ev(3, "endHalf", null, {}, null, 4, 200000)]);
     const article = container.querySelector("article") as HTMLElement;
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Fin de la mitad");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Fin de la mitad");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Mitad 1");
     const row = article.querySelector(".acta__row") as HTMLElement;
     expect(row.querySelector("dt")?.textContent).toBe("Minuto");
@@ -380,7 +461,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
   it("locks the endMatch sheet: Fin del partido + Final + a bold Hora, no ack", () => {
     const { container } = renderCards([ev(2, "endMatch", null, {}, null, 8, 481000)]);
     const article = container.querySelector("article") as HTMLElement;
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Fin del partido");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Fin del partido");
     expect(article.querySelector(".acta__meta")?.textContent).toBe("Final");
     const row = article.querySelector(".acta__row") as HTMLElement;
     expect(row.querySelector("dt")?.textContent).toBe("Hora");
@@ -392,7 +473,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const { container } = renderCards([ev(9, "concede", "home", { winnerSide: "away" }, null, 3, 4000)]);
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("neutral")).toBe(true);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Concesión");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Concesión");
     expect(article.querySelector(".acta__name")?.textContent).toBe("Reavers");
     expect(article.querySelector(".acta__pos")?.textContent).toBe("Se rinde");
     const row = article.querySelector(".acta__row") as HTMLElement;
@@ -405,7 +486,7 @@ describe("B. LiveEventCardsActa — validated Acta rendered structure", () => {
     const { container } = renderCards([ev(7, "journeyman", "home", { count: 1, names: ["Aldric Martillo"] }, null, 1, 1000)]);
     const article = container.querySelector("article") as HTMLElement;
     expect(article.classList.contains("home")).toBe(true);
-    expect(article.querySelector(".acta__tag")?.textContent).toBe("Novato");
+    expect(article.querySelector(".acta__tab")?.textContent).toBe("Novato");
     expect(article.querySelector(".acta__name")?.textContent).toBe("Aldric Martillo");
     expect(article.querySelector(".acta__pos")?.textContent).toBe("Se une como novato");
     expect(article.querySelector(".acta__data")).toBeNull();
