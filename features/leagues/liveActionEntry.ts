@@ -150,8 +150,9 @@ export interface KnockdownCommand {
  * Builds the knockdown command from the completed chain selections. Null when
  * the chain is incomplete or the picked face is NOT among the rolled dice — or
  * is a Push (a push is never a derribo, so there is nothing to register).
- * The armour fields ride ONLY the defender's knockdown (S10.3 keeps both-down
- * and attacker-fall injuries in the backlog — just the row).
+ * The armour fields ride ONLY the defender's knockdown (T23 closed S10.3:
+ * the both-down armour/injury follow-ups land as their own rows, so this row
+ * keeps its shipped shape; the attacker-fall follow-up stays backlog).
  */
 export function buildKnockdownCommand(args: {
   recorderSide: "home" | "away";
@@ -191,6 +192,10 @@ export function buildKnockdownCommand(args: {
  * casualty WITHOUT a causer: the badge must name the victim's coach (the
  * recorder) and the causal context already rides the knockdown row. Null for a
  * missing victim or an out-of-range 1D16 (never a roll-less casualty).
+ *
+ * T23: `bothDown` stamps the DEC-1 «(Ambos derribados)» marker on the injury
+ * rows of a «Ambos caen» fall (the legacy both-down casualty carries it too)
+ * — still NEVER a causer (RAU-47 «no-causer pays no-★» is T24's surface).
  */
 export function buildVictimInjuryCommand(
   victimSide: "home" | "away",
@@ -198,20 +203,21 @@ export function buildVictimInjuryCommand(
   roll16: number,
   roll6?: number | "",
   cause: CasualtyCause = "block",
+  bothDown = false,
 ): LiveCommand | null {
   if (!victimId || !Number.isInteger(roll16) || roll16 < 1 || roll16 > 16) {
     return null;
   }
-  const base: LiveCommand = {
+  const casualty: Extract<LiveCommand, { type: "casualty" }> = {
     type: "casualty",
     side: victimSide,
     victimRosterId: victimId,
     cause,
     roll16,
   };
-  if (roll6 !== "" && roll6 != null)
-    (base as Extract<LiveCommand, { type: "casualty" }>).roll6 = roll6;
-  return base;
+  if (roll6 !== "" && roll6 != null) casualty.roll6 = roll6;
+  if (bothDown) casualty.bothDown = true;
+  return casualty;
 }
 
 /**

@@ -208,6 +208,19 @@ interface PendingInjury {
   id: number;
   victimId: string;
   victimSide: "home" | "away";
+  /** T23: the injury arose from a «Ambos caen» fall — keeps the DEC-1
+   *  «(Ambos derribados)» marker copy on its row (never a causer). */
+  bothDown?: boolean;
+}
+
+/** T23 (S10.3): one fallen player awaiting its armour 2D6 inside the chain —
+ *  `ownerSide` routes the broken-armour callout to the victim's OWNER
+ *  (S10.4.1: each victim's owner marks their own herida). */
+interface ArmourTarget {
+  playerId: string;
+  ownerSide: "home" | "away";
+  /** The catalog AV (null = unknown — never invented, never "broken"). */
+  av: number | null;
 }
 
 /** One artboard quick-capture action: icon + uppercase label stacked on a
@@ -450,6 +463,9 @@ export function LiveActionDock({
   // opened when the armour broke; dock-local (the flow surface owns the
   // hand-off between the two coaches).
   const [pendingInjuries, setPendingInjuries] = useState<PendingInjury[]>([]);
+  // T23 (S10.3): the fallen players still awaiting their armour 2D6 in the
+  // current chain (the «Ambos caen» face falls TWO: defender, then attacker).
+  const [armourTargets, setArmourTargets] = useState<ArmourTarget[]>([]);
 
   // Gates: spectator (no side) or a non-live match → no dock at all.
   if (viewerSide == null || status !== "live") return null;
@@ -465,6 +481,7 @@ export function LiveActionDock({
     setStepIndex(0);
     setSelections({});
     setReason(null); // no preselection: the reason chips start unpressed
+    setArmourTargets([]);
   };
 
   const close = () => {
@@ -472,12 +489,13 @@ export function LiveActionDock({
     setStepIndex(0);
     setSelections({});
     setReason(null);
+    setArmourTargets([]);
   };
 
   const nextStep = () => setStepIndex((i) => i + 1);
 
-  /** Fire a complete command and reset the flow. */
-  const submit = (cmd: LiveCommand | KnockdownCommand) => {
+  /** Fire a command WITHOUT closing the sheet (mid-chain entries — T23). */
+  const fire = (cmd: LiveCommand | KnockdownCommand) => {
     const source = flow;
     // T17 transport seam: `api.ts`'s `LiveCommand` is a fixed surface outside
     // this slice — the additive `knockdown` command (applied by the demo
@@ -493,6 +511,11 @@ export function LiveActionDock({
         ...next,
       }));
     }
+  };
+
+  /** Fire a complete command and reset the flow. */
+  const submit = (cmd: LiveCommand | KnockdownCommand) => {
+    fire(cmd);
     close();
   };
 
@@ -605,8 +628,11 @@ export function LiveActionDock({
   };
 
   /** T17: the picked face — a Push records nothing (no derribo); a defender
-   *  knockdown continues into the armour stage; both/attacker falls stop at
-   *  the standalone row (S10.3 injuries stay backlog). */
+   *  knockdown continues into the armour stage. T23 (S10.3 closed): «Ambos
+   *  caen» registers the row-only derribo (shipped shape, both players) AND
+   *  continues with one armour stage per fallen player — each broken armour
+   *  opens the victim OWNER's pending-injury callout (S10.4.1). An attacker
+   *  fall stays row-only (out of T23's scope). */
   const pickBlockFace = (face: BlockDieFace) => {
     if (viewerSide == null) return;
     const falls = knockdownVictimOf(face);
@@ -614,7 +640,14 @@ export function LiveActionDock({
       close();
       return;
     }
+    const oppSide: "home" | "away" = viewerSide === "home" ? "away" : "home";
+    const defenderTarget: ArmourTarget = {
+      playerId: selections.victimId ?? "",
+      ownerSide: oppSide,
+      av: victimStats?.av ?? null,
+    };
     if (falls === "defender") {
+      setArmourTargets([defenderTarget]);
       applyGuided({ ...selections, face }, true);
       return;
     }
@@ -625,46 +658,87 @@ export function LiveActionDock({
       blockDice: selections.blockDice ?? [],
       face,
     });
-    if (cmd) submit(cmd);
-    else close();
-  };
-
-  /** T17: records the armour 2D6 vs the victim's AV together with the
-   *  knockdown entry (S10.2 — standalone even when no injury follows) and,
-   *  when the armour breaks, hands the 1D16 to the VICTIM side's callout
-   *  (S10.4.1). */
-  const fireArmour = (armourRoll: number) => {
-    if (viewerSide == null) return;
-    const face = selections.face;
-    const causerId = selections.causerId;
-    const victimId = selections.victimId;
-    if (face == null || causerId == null || victimId == null) return;
-    const cmd = buildKnockdownCommand({
-      recorderSide: viewerSide,
-      causerId,
-      victimId,
-      blockDice: selections.blockDice ?? [],
-      face,
-      armourRoll,
-      victimAv: victimStats?.av ?? null,
-    });
     if (cmd == null) {
       close();
       return;
     }
-    const broken = cmd.armourBroken === true;
-    const victimSide: "home" | "away" = viewerSide === "home" ? "away" : "home";
-    submit(cmd);
-    if (broken) {
-      setPendingInjuries((prev) => [
-        ...prev,
-        { id: (prev[prev.length - 1]?.id ?? 0) + 1, victimId, victimSide },
+    if (falls === "both") {
+      // T23: the derribo row keeps its shipped shape (fires at face pick) and
+      // the chain CONTINUES: the defender's armour first, then the attacker's.
+      fire(cmd);
+      setSelections({ ...selections, face });
+      setArmourTargets([
+        defenderTarget,
+        {
+          playerId: selections.causerId ?? "",
+          ownerSide: viewerSide,
+          av: attackerStats?.av ?? null,
+        },
       ]);
+      nextStep();
+      return;
     }
+    submit(cmd); // attacker fall: row only
   };
 
+  /** T17/T23: the current fallen player's armour 2D6 vs their AV. A single
+   *  defender knockdown (T17) travels TOGETHER with the derribo entry (the
+   *  armour fields ride it) and ends the chain; the both-down follow-ups
+   *  (T23) are chain-internal — only a BROKEN armour leaves a trace: the
+   *  victim OWNER's pending-injury callout («solo si llega a producirse»). */
+  const fireArmour = (armourRoll: number) => {
+    const head = armourTargets[0];
+    if (head == null || viewerSide == null) {
+      close();
+      return;
+    }
+    // The break condition is the rulebook's »más de AR rompe« (strictly
+    // greater); an unknown AV never invents a break (honest degradation).
+    const broken = head.av != null && armourRoll > head.av;
+    const rest = armourTargets.slice(1);
+    setArmourTargets(rest);
+    if (selections.face !== "bothDown") {
+      const face = selections.face;
+      if (face == null || selections.causerId == null || selections.victimId == null) return;
+      const cmd = buildKnockdownCommand({
+        recorderSide: viewerSide,
+        causerId: selections.causerId,
+        victimId: selections.victimId,
+        blockDice: selections.blockDice ?? [],
+        face,
+        armourRoll,
+        victimAv: head.av,
+      });
+      if (cmd == null) {
+        close();
+        return;
+      }
+      submit(cmd);
+      if (broken) pushPendingInjury(head);
+      return;
+    }
+    // T23: the derribo row already fired at face pick — a broken armour only
+    // opens the victim OWNER's callout; the chain ends with the last target.
+    if (broken) pushPendingInjury(head);
+    if (rest.length === 0) close();
+  };
+
+  /** T17/T23: queue the broken-armour hand-off for the victim's OWNER — the
+   *  callout renders only in that coach's dock (S10.4.1). */
+  const pushPendingInjury = (target: ArmourTarget) =>
+    setPendingInjuries((prev) => [
+      ...prev,
+      {
+        id: (prev[prev.length - 1]?.id ?? 0) + 1,
+        victimId: target.playerId,
+        victimSide: target.ownerSide,
+        bothDown: selections.face === "bothDown",
+      },
+    ]);
+
   /** T17 (S10.4.1): the victim owner's roll-inclusive injury capture from the
-   *  pending callout — «solo si llega a producirse» (see «Sin herida»). */
+   *  pending callout — «solo si llega a producirse» (see «Sin herida»). T23:
+   *  a both-down injury keeps the DEC-1 marker on its row. */
   const fireVictimInjury = (
     pending: PendingInjury,
     roll16: number,
@@ -675,6 +749,8 @@ export function LiveActionDock({
       pending.victimId,
       roll16,
       roll6 ?? "",
+      "block",
+      pending.bothDown === true,
     );
     setPendingInjuries((prev) => prev.filter((item) => item.id !== pending.id));
     if (cmd) submit(cmd);
@@ -893,17 +969,20 @@ export function LiveActionDock({
             </div>
           ) : null}
 
-          {/* T17: the armour 2D6 vs the victim's AV (manual sum entry, same
-              pattern as the weather 2D6 stage). »más de AR rompe« is the
-              rulebook break condition (strictly greater). */}
+          {/* T17: the armour 2D6 vs the current fallen player's AV (manual
+              sum entry, same pattern as the weather 2D6 stage). »más de AR
+              rompe« is the rulebook break condition (strictly greater). T23:
+              the stage walks the chain's fallen players («Ambos caen» falls
+              TWO — defender first, then the attacker). */}
           {stage?.kind === "armourRoll" ? (
             <div data-testid="dock-armour-roll" className="space-y-2">
               <p className="text-xs text-slate">
                 {(() => {
-                  const victim = rival.find(
-                    (p) => p.rosterPlayerId === selections.victimId,
+                  const target = armourTargets[0];
+                  const victim = [...own, ...rival].find(
+                    (p) => p.rosterPlayerId === target?.playerId,
                   );
-                  const av = victimStats?.av ?? null;
+                  const av = target?.av ?? null;
                   return `Armadura de ${victim?.name ?? "la víctima"} · AR ${
                     av != null ? `${av}+` : "desconocida"
                   }${av != null ? ` · 2D6 (más de ${av} rompe)` : ""}`;
