@@ -748,7 +748,9 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     // scorer chip): through the dock (no selects). The row (★1) streams to both.
     await dockScoredAction(awayCoach, "Pase completo", 0);
     await expect(awayCoach.getByTestId("live-event-row").filter({ hasText: `${awayRoster[0].name}` }).filter({ hasText: "Pase completo" }).first()).toBeVisible();
-    await expect(awayCoach.getByText("★1")).toBeVisible();
+    // T24 follow-up: the SPP tabs now render on more rows, so «★1» is no
+    // longer unique on the page — scope to the first match.
+    await expect(awayCoach.getByText("★1").first()).toBeVisible();
 
     // [D] ACTIVE (away) Touchdown (★3) in TWO touches via the dock → the hero
     // score update (away +1) + the turn flips back to home.
