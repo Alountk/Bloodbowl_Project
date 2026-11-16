@@ -186,7 +186,9 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         half: 1,
         turnNumber: 3,
         activeSide: "home",
-        homeScore: 1,
+        // T22 residual (L74-L75): score = the narrative feed's TD tally —
+        // slice(0, 6) has 0 TDs, so home starts 0 (was 1, drifting).
+        homeScore: 0,
         awayScore: 0,
         events: narrativeEvents.slice(0, 6),
       };

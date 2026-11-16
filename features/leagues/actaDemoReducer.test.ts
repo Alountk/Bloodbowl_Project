@@ -418,6 +418,13 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.half).toBe(2);
   });
 
+  it("the primer-tercio preset score matches its narrative feed (T22 residual)", () => {
+    // WHY: the feed is the source of truth for anotaciones (T22); the preset
+    // carried homeScore 1 over a slice(0,6) feed with 0 TDs (L74 residual).
+    const s = demoState("primer-tercio");
+    expect(s.homeScore).toBe(0);
+  });
+
   it("every preset keeps the fixture viewer context the composition renders with", () => {
     const s = demoState("segundo-tercio");
     expect(s.viewerSide).toBe(liveState().viewerSide);
