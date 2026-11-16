@@ -686,15 +686,16 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
  */
 
 /**
- * Guided «+ Baja» capture on the real dock: cause «Bloqueo» → Causante (own
- * #1) → Víctima (rival #1) → injury roll 8 (Magullado — non-permanent, so the
- * guided flow fires on the roll chip with no 1D6 step).
+ * Guided «+ Baja» capture on the real dock: pick the cause (default
+ * «Bloqueo») → Causante (own #1) → Víctima (rival #1) → injury roll chip
+ * (default 8 — Magullado, non-permanent, so the guided flow fires on the roll
+ * chip with no 1D6 step).
  */
-const captureBaja = () => {
+const captureBaja = (cause = "Bloqueo", roll = 8) => {
   fireEvent.click(demoButton("+ Baja"));
   fireEvent.click(
     within(screen.getByTestId("live-action-modal")).getByRole("button", {
-      name: "Bloqueo",
+      name: cause,
     }),
   );
   fireEvent.click(
@@ -708,7 +709,7 @@ const captureBaja = () => {
     ).getByRole("button", { name: /#1/i }),
   );
   fireEvent.click(
-    within(screen.getByTestId("live-action-modal")).getByTestId("roll-option-8"),
+    within(screen.getByTestId("live-action-modal")).getByTestId(`roll-option-${roll}`),
   );
 };
 
@@ -1146,6 +1147,49 @@ describe("ActaDemoHarness — T20 (L70): earned SPP VISIBLE + mirrored on the de
     // SPP tab bottom-LEFT — the category tab's mirrored opposite (L70).
     expect(sppTab.className).toContain("mr-auto");
     expect(sppTab.className).not.toContain("ml-auto");
+  });
+});
+
+/**
+ * T24 (L78 + user corrections, «external-assets/Puntos de SPP.md»): the SPP
+ * earn rule end-to-end on the REAL dock. SÍ: the guided «+ Baja» through a
+ * valid Block/Blitz pays the causer +2 for EVERY injury-table result — USER
+ * verbatim: «magullado da 2 spp porque es una herida!» ZERO (user table):
+ * Faltas and the Both-Down/pifia injury rows (the `bothDown` flag rows).
+ */
+describe("ActaDemoHarness — T24 SPP earn rule on the real dock («Puntos de SPP.md», L78)", () => {
+  const casualtySppTab = (): HTMLElement | null => {
+    const row = enJuegoCard().querySelector(
+      '[data-testid="acta-event-row"][data-kind="casualty"]',
+    );
+    return row?.querySelector('[data-testid="acta-event-spp"]') ?? null;
+  };
+
+  it("the guided «+ Baja» pays the causer +2 for EVERY injury-table result — Magullado included («magullado da 2 spp porque es una herida!»)", () => {
+    startWithHomeReceiver();
+    captureBaja("Bloqueo", 8);
+    expect(casualtySppTab()?.textContent).toContain("+2 SPP");
+  });
+
+  it("Faltas pay NOTHING: a «+ Baja» with cause «Falta» and a resolved roll shows NO SPP tab", () => {
+    startWithHomeReceiver();
+    captureBaja("Falta", 12);
+    expect(casualtySppTab()).toBeNull();
+  });
+
+  it("Both-Down injury rows pay NOTHING: the T23 «Ambos caen» chain shows NO SPP tab on either owner-recorded injury row (the flagged flat +2 is gone)", () => {
+    startWithHomeReceiver();
+    captureBothDown("12", "11");
+    // Each victim owner marks their own herida (S10.4.1) — rolls 12 and 11.
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-12"));
+    fireEvent.click(perspective("Colmillos del Caos"));
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-11"));
+
+    const landed = turnCard(1, "Águilas de Khemri");
+    expect(rowKinds(landed)).toEqual(["knockdown", "casualty", "casualty"]);
+    expect(landed.querySelectorAll('[data-testid="acta-event-spp"]')).toHaveLength(0);
   });
 });
 

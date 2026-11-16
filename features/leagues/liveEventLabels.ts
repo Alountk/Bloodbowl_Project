@@ -401,15 +401,26 @@ export const SCORED_ACTION_LABELS: Record<string, string> = {
 };
 
 /** The SPP star total for an event (LM-19): TD ★3, Completion ★1, MVP ★4, a
- * lasting casualty ★2 (bruise ★0), and any other kind ★0. The LM-13 scored
- * actions follow the bb2025-rules PE table (`lib/rules/pe.ts`): interception
- * ★2, throw-team-mate ★1, landed-safe ★1.
+ * CAUSED casualty ★2, and any other kind ★0. The LM-13 scored actions follow
+ * the bb2025-rules PE table (`lib/rules/pe.ts`): interception ★2,
+ * throw-team-mate ★1, landed-safe ★1.
  *
- * T20 (L70): a casualty WITHOUT the server-derived `band` derives it from its
- * 1D16 roll (`resolveInjury`, the SAME rulebook table the row text uses) — the
- * demo's simulated server records the roll but never the band, and a row that
- * EARNED SPP must show it. The `band` field still wins when present, so every
- * production payload renders byte-identical. */
+ * T24 (L78 + the user's verbatim correction «magullado da 2 spp porque es una
+ * herida!», table «external-assets/Puntos de SPP.md»): a casualty pays ★2 to
+ * the causer when a VALID BLOCK action (Block/Blitz) knocked the victim down
+ * and the 1D16 injury roll resolved — ANY result, Magullado included. The
+ * threshold is the ROLL, never the band. ZERO (user table): Both-Down/pifias
+ * (payload.bothDown), auto-lesiones (selfInflicted), Faltas, crowd pushes,
+ * failed dodges — and a knockdown whose armour held (no roll, no band) pays
+ * nothing. Recovery (Apotecario/Regeneración) never removes the award: the
+ * band is final at roll time.
+ *
+ * T20 (L70) legacy branch (rows WITHOUT a recorded cause): the shipped band
+ * derivation stays — `band` wins when present, else the 1D16 roll derives it
+ * (`resolveInjury`, the SAME rulebook table the row text uses). T24 case-4
+ * «keep it working»: those rows' causer context rides the chain's «Derribo»
+ * row (pinned by lib/liveFeed.test.ts + MatchView.test.tsx, outside this
+ * slice's edit surfaces). */
 export function eventSpp(event: LiveEventLabelInput): number {
   switch (event.kind) {
     case "td":
@@ -422,9 +433,20 @@ export function eventSpp(event: LiveEventLabelInput): number {
     case "landedSafe":
       return 1;
     case "casualty": {
-      const band = typeof event.payload.band === "string" ? event.payload.band : null;
+      const payload = event.payload;
+      // ZERO rows (user table — see the doc comment above).
+      if (payload.bothDown === true) return 0;
+      if (payload.selfInflicted === true) return 0;
+      const cause = typeof payload.cause === "string" ? payload.cause : null;
+      if (cause === "dodge" || cause === "crowd" || cause === "foul") return 0;
+      const roll16 = typeof payload.roll16 === "number" ? payload.roll16 : null;
+      const band = typeof payload.band === "string" ? payload.band : null;
+      if (cause === "block" || cause === "blitz") {
+        // A resolved injury roll (roll16 or its derived band) pays — ANY result.
+        return roll16 != null || band != null ? 2 : 0;
+      }
+      // Legacy rows without a recorded cause keep the shipped band derivation.
       if (band) return bandToDisplay(band).stars;
-      const roll16 = typeof event.payload.roll16 === "number" ? event.payload.roll16 : null;
       return roll16 != null ? bandToDisplay(resolveInjury(roll16).kind).stars : 0;
     }
     case "mvp":

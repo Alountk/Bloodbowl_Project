@@ -457,21 +457,31 @@ function tabFor(event: LiveMatchEventDto): { label: string; injury?: boolean } {
 
 /** The inverted bottom SPP tab text (TD +3 · casualty +2 · completion +1 …) —
  *  rendered ONLY when earned (T18: SPP is a consequence, never a title).
- *  T20 (L70): the gate is the EARNER — a SELF-INFLICTED casualty (dodge/crowd)
- *  has no causer, so nobody earns its ★ (RAU-47 «no-causer pays no-★»). A
- *  CAUSED record may carry no `causerRosterId` of its own (the demo's split
- *  combat chain records the herida on the victim side — the causer context
- *  rides the chain's «Derribo» row), so the CAUSE is the earn signal, never
- *  the payload's causer field. */
+ *  T24 (L78, «external-assets/Puntos de SPP.md»): the gate is the EARNER — rows
+ *  that pay NOBODY never show a tab: a SELF-INFLICTED casualty (dodge/crowd)
+ *  has no causer (RAU-47 «no-causer pays no-★»), Faltas earn no SPP (user
+ *  table: «Faltas … no genera SPP»), and the Both-Down/pifia rows pay nothing
+ *  (the `bothDown` flag rides them precisely to zero them — T23's flagged flat
+ *  +2). The guard runs BEFORE the pending flat +2 so an unrolled foul/both-down
+ *  row can never flash a provisional award. A CAUSED record may carry no
+ *  `causerRosterId` of its own (the demo's split combat chain records the
+ *  herida on the victim side — the causer context rides the chain's «Derribo»
+ *  row), so the CAUSE is the earn signal, never the payload's causer field. */
 function sppMarkerFor(event: LiveMatchEventDto): { text: string; className: string } | null {
   if (event.kind === "casualty") {
     const cause = typeof event.payload.cause === "string" ? (event.payload.cause as CasualtyCause) : null;
-    if (event.payload.selfInflicted === true || (cause != null && SELF_CAUSES.includes(cause))) {
+    if (
+      event.payload.bothDown === true ||
+      event.payload.selfInflicted === true ||
+      cause === "foul" ||
+      (cause != null && SELF_CAUSES.includes(cause))
+    ) {
       return null;
     }
   }
-  // A pending casualty shows the flat causal +2 (artboard T5 row); a resolved
-  // one follows the shared `eventSpp` band rule (LM-18).
+  // A pending casualty shows the flat causal +2 (artboard T5 row — provisional
+  // until the roll settles the value); a resolved one follows the shared
+  // `eventSpp` rule (T24).
   const value = isPendingInjuryRoll(event) ? 2 : eventSpp(event);
   if (value <= 0) return null;
   return {

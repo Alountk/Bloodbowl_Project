@@ -595,7 +595,13 @@ describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)",
     expect(injury!.textContent).not.toContain("(★");
   });
 
-  it("BUSINESS RULE: a bruise earns NO star ANYWHERE (neither the causer's action card nor the victim's injury card)", () => {
+  it("WHY flipped (T24): a caused Magullado earns ★2 on the CAUSER's action card — the victim's injury card still shows none (RAU-47)", () => {
+    // WHY changed (T24, intentional): the old "a bruise earns NO star ANYWHERE"
+    // pin encoded the L78 bug. The USER's authority settles it — their table
+    // (external-assets/Puntos de SPP.md: «Causar una Baja … Provocar una baja
+    // legal mediante bloqueos válidos (Block / Blitz)» = 2 SPP) plus their
+    // verbatim correction «magullado da 2 spp porque es una herida!». The
+    // threshold is the injury ROLL (any result), never the band.
     const { container } = renderCards([
       ev(
         9,
@@ -613,12 +619,19 @@ describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)",
     const injury = rows.find((li) => li.querySelector(".name")?.textContent === "Blitzer B");
     expect(action).toBeTruthy();
     expect(injury).toBeTruthy();
-    expect(action!.querySelector(".stars")).toBeNull();
+    // The ★2 the CAUSER earns rides the derived action card…
+    expect(action!.querySelector(".stars")?.textContent).toBe("(★2)");
+    // …and ONLY there: the victim's injury card never shows earned points.
     expect(injury!.querySelector(".stars")).toBeNull();
-    expect(container.textContent).not.toContain("(★");
+    expect(injury!.textContent).not.toContain("(★");
   });
 
-  it("hides the star on the action card for a bruise casualty (★0) while a lasting band keeps it", () => {
+  it("WHY flipped (T24): the action card carries (★2) for EVERY caused injury — Magullado included, same as a lasting band", () => {
+    // WHY changed (T24, intentional): the old "hides the star … for a bruise
+    // casualty (★0)" pin encoded the L78 bug — USER verbatim: «magullado da 2
+    // spp porque es una herida!» (external-assets/Puntos de SPP.md). The band
+    // never gates the award: a resolved injury roll on a valid Block/Blitz
+    // pays the causer +2 either way.
     const { container } = renderCards([
       ev(9, "casualty", "away", { victimRosterId: "p2", causerRosterId: "p4", cause: "blitz", roll16: 7, band: "bruise" }, "p2", 6, 3000),
       ev(10, "casualty", "away", { victimRosterId: "p8", causerRosterId: "p4", cause: "block", roll16: 9, band: "apaleado" }, "p8", 6, 3100),
@@ -626,10 +639,11 @@ describe("LiveEventCards — derived ACTION card on the causer's side (RAU-39)",
     const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
     const bruiseAction = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau" && li.textContent?.includes("Blitz"));
     expect(bruiseAction).toBeTruthy();
-    // A bruise earns no XP → no star on the causer's card (never "(★0)").
-    expect(bruiseAction!.querySelector(".stars")).toBeNull();
+    // Magullado IS a herida → the causer's ★2 lands on the action card…
+    expect(bruiseAction!.querySelector(".stars")?.textContent).toBe("(★2)");
     const lastingAction = rows.find((li) => li.querySelector(".name")?.textContent === "Arnau" && li.textContent?.includes("Bloqueo"));
     expect(lastingAction).toBeTruthy();
+    // …identical to the lasting band (never "(★0)" — the award is flat +2).
     expect(lastingAction!.querySelector(".stars")?.textContent).toBe("(★2)");
   });
 

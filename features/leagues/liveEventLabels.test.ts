@@ -100,6 +100,85 @@ describe("eventSpp — stars per event kind (LM-19)", () => {
   });
 });
 
+/**
+ * T24 (L78 + the USER'S verbatim correction «magullado da 2 spp porque es una
+ * herida!»): the authoritative SPP table — «external-assets/Puntos de SPP.md».
+ * The threshold is NEVER the band: it is whether the victim was knocked down by
+ * a VALID BLOCK action (Block/Blitz) AND the 1D16 injury roll resolved — ANY
+ * result pays +2 to the causer, Magullado (1-8) included. ZERO cases (user
+ * table, all pinned):
+ *  - knockdown without a broken armour (no injury roll at all);
+ *  - Faltas (even when a casualty happens);
+ *  - Empujones al Público (crowd pushes);
+ *  - Caerse al Esquivar / auto-lesiones;
+ *  - Both-Down / pifias (the `bothDown` flag rows — the flag rides them
+ *    precisely to zero them);
+ *  - victim rows without an attributable causer (see the acta/timeline gates).
+ * Recovery (Apotecario/Regeneración) never removes an award: the value is a
+ * pure function of the recorded roll/band (final at roll time), so there is
+ * nothing to un-pay — the roll-resolved pins below already encode it.
+ */
+describe("eventSpp — T24 SPP table («Puntos de SPP.md», L78)", () => {
+  const caused = (payload: Record<string, unknown>) =>
+    ev("casualty", { victimRosterId: "p2", causerRosterId: "p4", ...payload });
+
+  it("SÍ · Causar una Baja: a valid-block casualty (Block/Blitz) with a resolved injury roll pays ★2 for EVERY result — Magullado included (user: «magullado da 2 spp porque es una herida!»)", () => {
+    for (const cause of ["block", "blitz"]) {
+      // Roll-only demo shape: the whole 1D16 table pays (1-8 Magullado … 15-16 Muerto).
+      for (const roll16 of [1, 3, 8, 9, 12, 13, 16]) {
+        expect(eventSpp(caused({ cause, roll16 }))).toBe(2);
+      }
+      // Band-carrying production shape: the band is the resolved result.
+      for (const band of ["bruise", "apaleado", "grave", "permanent", "dead"]) {
+        expect(eventSpp(caused({ cause, roll16: 3, band }))).toBe(2);
+      }
+    }
+  });
+
+  it("NO · a knockdown without a broken armour (no injury roll — no roll16, no band) pays NOTHING", () => {
+    expect(eventSpp(caused({ cause: "block" }))).toBe(0);
+    expect(eventSpp(caused({ cause: "blitz" }))).toBe(0);
+  });
+
+  it("NO · Faltas pay NOTHING — a foul-caused casualty earns ★0 even with a resolved dead result", () => {
+    expect(eventSpp(caused({ cause: "foul", roll16: 12, band: "grave" }))).toBe(0);
+    expect(eventSpp(caused({ cause: "foul", roll16: 16, band: "dead" }))).toBe(0);
+  });
+
+  it("NO · Empujones al Público (crowd) pay NOTHING", () => {
+    expect(eventSpp(ev("casualty", { victimRosterId: "p2", cause: "crowd", roll16: 12, band: "grave" }))).toBe(0);
+  });
+
+  it("NO · Caerse al Esquivar (failed dodge) and auto-lesiones pay NOTHING", () => {
+    expect(eventSpp(ev("casualty", { victimRosterId: "p2", cause: "dodge", roll16: 9 }))).toBe(0);
+    expect(eventSpp(ev("casualty", { victimRosterId: "p2", cause: "dodge", roll16: 9, selfInflicted: true }))).toBe(0);
+    expect(eventSpp(ev("casualty", { victimRosterId: "p2", cause: "block", roll16: 12, selfInflicted: true }))).toBe(0);
+  });
+
+  it("NO · Auto-lesiones y Pifias (Both-Down): a bothDown-flagged injury row pays NOTHING — with or without a causer on the row", () => {
+    // T23 victim-recorded shape (causer-less): the flag is the zero.
+    expect(eventSpp(ev("casualty", { victimRosterId: "a2", cause: "block", roll16: 12, bothDown: true }))).toBe(0);
+    // DEC-1 canonical shape (causer on the row): the flag still zeroes it.
+    expect(eventSpp(caused({ cause: "block", roll16: 11, band: "grave", bothDown: true }))).toBe(0);
+  });
+
+  it("NO · Bloqueos sin Baja: a knockdown without a casualty pays ★0", () => {
+    expect(eventSpp(ev("knockdown", { victimRosterId: "a2", causerRosterId: "h1", face: "defenderDown" }))).toBe(0);
+    expect(
+      eventSpp(
+        ev("knockdown", {
+          victimRosterId: "a2",
+          causerRosterId: "h1",
+          face: "defenderDown",
+          armourRoll: 5,
+          victimAv: 10,
+          armourBroken: false,
+        }),
+      ),
+    ).toBe(0);
+  });
+});
+
 describe("liveEventLabel", () => {
   it("labels a match start", () => {
     expect(liveEventLabel(ev("start"))).toBe("Inicio del partido");

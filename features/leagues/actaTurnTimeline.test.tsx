@@ -1449,14 +1449,18 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, vic
     expect(sppTab).not.toBeNull();
     expect(sppTab.textContent).toContain("+2 SPP");
     unmount();
-    // TRIANGULATE: a bruise (roll 1-8) still earns NOTHING — no tab at all.
+    // TRIANGULATE (WHY flipped, T24): a Magullado (roll 1-8) is STILL a herida
+    // and earns the causer's +2 — USER verbatim: «magullado da 2 spp porque es
+    // una herida!» The old "a bruise earns NOTHING" pin encoded the L78 bug.
     seqCounter = 0;
     render(
       <ActaTurnTimeline
         {...timelineProps({ events: [demoCasualtyEvent(3)] })}
       />,
     );
-    expect(rowOf("casualty").querySelector('[data-testid="acta-event-spp"]')).toBeNull();
+    expect(
+      rowOf("casualty").querySelector('[data-testid="acta-event-spp"]')?.textContent,
+    ).toContain("+2 SPP");
   });
 
   it("the SPP tab mirrors with the category tab: home rows hang it bottom-RIGHT (ml-auto), away rows bottom-LEFT (mr-auto) (L70)", () => {
@@ -1562,5 +1566,103 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, vic
     expect(
       rowOf("casualty").querySelector('[data-testid="acta-event-spp"]')?.textContent,
     ).toContain("+2 SPP");
+  });
+});
+
+/**
+ * T24 (L78 + user corrections, «external-assets/Puntos de SPP.md»): the SPP
+ * earn gate on the demo turn-card rows. SÍ: a valid Block/Blitz knockdown with
+ * a RESOLVED injury roll pays the causer +2 for ANY result («magullado da 2
+ * spp porque es una herida!»). ZERO (user table): Faltas, Both-Down/pifias (the
+ * `bothDown` flag rows — the flag rides them precisely to zero them),
+ * auto-lesiones, and a knockdown whose armour held. The provisional flat +2 on
+ * a PENDING valid-block row is the shipped artboard-T5 display (it settles at
+ * roll time).
+ */
+describe("ActaTurnTimeline — T24 SPP earn gate («Puntos de SPP.md», L78)", () => {
+  const sppTabOf = (kind = "casualty"): HTMLElement | null =>
+    document
+      .querySelector(`[data-testid="acta-event-row"][data-kind="${kind}"]`)
+      ?.querySelector('[data-testid="acta-event-spp"]') ?? null;
+
+  const injuryRow = (payload: Record<string, unknown>): LiveMatchEventDto =>
+    event({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "a2",
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: { victimRosterId: "a2", ...payload },
+    });
+
+  it("Faltas pay NOTHING: a foul-caused casualty with a resolved roll shows NO SPP tab (user table: «Faltas … no genera SPP»)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [injuryRow({ causerRosterId: "h3", cause: "foul", roll16: 12 })] })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("Both-Down/pifias pay NOTHING: a bothDown victim-recorded injury row shows NO SPP tab even with a resolved roll (T23's flagged flat +2 goes away)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [injuryRow({ cause: "block", roll16: 12, bothDown: true })] })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("…also when the both-down row carries its causer (the DEC-1 canonical shape) — the flag zeroes every both-down row", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [injuryRow({ causerRosterId: "h3", cause: "block", roll16: 11, bothDown: true })] })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("…and a PENDING both-down row never shows the provisional flat +2 (the flag rides before the roll)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [injuryRow({ cause: "block", bothDown: true })] })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("a PENDING valid-block casualty keeps the artboard-T5 provisional +2 until the injury roll resolves", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [injuryRow({ causerRosterId: "h3", cause: "block" })] })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+  });
+
+  it("Bloqueos sin Baja pay NOTHING: the standalone knockdown row never shows an SPP tab", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            event({
+              kind: "knockdown",
+              side: "home",
+              playerRosterId: "h1",
+              turnNumber: 5,
+              at: STARTED + 44 * MIN,
+              payload: { victimRosterId: "a2", causerRosterId: "h1", face: "defenderDown", armourRoll: 5, victimAv: 10, armourBroken: false },
+            }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf("knockdown")).toBeNull();
   });
 });
