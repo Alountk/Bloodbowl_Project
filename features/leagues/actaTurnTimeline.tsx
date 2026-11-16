@@ -12,6 +12,7 @@ import {
   eventSpp,
   KICKOFF_OUTCOME_LABELS,
   liveEventLabel,
+  whoLineLabel,
 } from "./liveEventLabels";
 import {
   buildGuidedCommand,
@@ -614,25 +615,52 @@ function EventRow({
   // injury roll + consequences live in the «Lo que informa quien la recibe»
   // sub-box with the RECEIVER's own badge.
   const voices = event.kind === "casualty" ? casualtyVoices(event) : null;
+  // T19 (artboard 04): the short who-line speaks for the ROW's own event side
+  // (the victim on a casualty row — LM-12), fixed, never the viewer's side.
+  const whoPlayer = event.side
+    ? resolvePlayer(
+        teams[event.side],
+        event.kind === "casualty" ? victimIdOf(event) : event.playerRosterId,
+      )
+    : null;
+  const who = whoPlayer && event.side ? whoLineLabel(whoPlayer.name, teams[event.side].name) : null;
+  // T19: home rows sit LEFT with the folder design; away rows MIRROR (tab
+  // right, right-aligned text). Row side = the EVENT's team side (fixed).
+  const mirrored = event.side === "away";
   return (
     <div
       data-testid="acta-event-row"
       data-kind={event.kind}
-      className={`relative pt-[26px] ${fresh ? "acta-motion-row-flash" : ""}`}
+      className={`relative pt-[26px] ${
+        mirrored
+          ? "w-[92%] ml-auto text-right"
+          : event.side === "home"
+            ? "w-[92%] mr-auto"
+            : ""
+      } ${fresh ? "acta-motion-row-flash" : ""}`}
     >
       <span
         data-testid="acta-event-tab"
-        className={`absolute left-0 top-0 flex h-[26px] items-center rounded-t-md px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${
+        className={`absolute ${mirrored ? "right-0" : "left-0"} top-0 flex h-[26px] items-center rounded-t-md px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${
           tab.injury ? "bg-red" : "bg-navy"
         }`}
       >
         {tab.label}
       </span>
       <div
-        className={`rounded-b-lg rounded-tr-lg border p-2.5 ${
+        className={`${mirrored ? "rounded-b-lg rounded-tl-lg" : "rounded-b-lg rounded-tr-lg"} border p-2.5 ${
           highlight ? "border-red/30 bg-red/5" : "border-border bg-white"
         }`}
       >
+        {/* T19: the who-line above the description (home navy / away red). */}
+        {who != null ? (
+          <p
+            data-testid="acta-event-who"
+            className={`text-xs font-bold ${mirrored ? "text-red" : "text-navy"}`}
+          >
+            {who}
+          </p>
+        ) : null}
         {/* The description gets the FULL width — the old inline category chip
             no longer steals it (T18, L60). */}
         <p className="text-sm text-ink">{subject}</p>
@@ -696,18 +724,25 @@ function CompactRow({
           : event.kind === "casualty"
             ? "medical"
             : "dots";
+  // T19: compact rows carry the same side identity (chat offset + name color
+  // per side — the name IS the compact who).
+  const mirrored = event.side === "away";
   return (
     <div
       data-testid="acta-event-row"
       data-kind={event.kind}
       data-compact="true"
       className={`flex items-start gap-2 border-b border-border pb-2 text-sm text-ink last:border-0 last:pb-0 ${
-        fresh ? "acta-motion-row-flash" : ""
-      }`}
+        mirrored
+          ? "w-[92%] ml-auto flex-row-reverse text-right"
+          : event.side === "home"
+            ? "w-[92%] mr-auto"
+            : ""
+      } ${fresh ? "acta-motion-row-flash" : ""}`}
     >
       <ActaIcon name={icon} className="mt-0.5 size-4 shrink-0 text-slate" />
       <p className="min-w-0 flex-1">
-        <strong className="text-navy">{name}</strong> {compactSentence(event, teams)}{" "}
+        <strong className={mirrored ? "text-red" : "text-navy"}>{name}</strong> {compactSentence(event, teams)}{" "}
         {/* S10.4.2: the compact-row variant of the capture-author badge. */}
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate">
           · {authorBadgeLabel(event, teams)}

@@ -68,12 +68,18 @@
   letter-spacing: .06em;
 }
 
-/* ---- side identity: sets --side for the top rule + tag ---- */
+/* ---- side identity: sets --side for the top rule + tag ----
+ * T19 (mirror-chat, artboard 04): the side ALSO decides the row side — home
+ * rows sit LEFT, away rows sit RIGHT (92% chat offset). */
 .home {
   --side: var(--color-navy);
+  width: 92%;
+  margin-right: auto;
 }
 .away {
   --side: var(--color-red);
+  width: 92%;
+  margin-left: auto;
 }
 .neutral {
   --side: var(--color-slate);
@@ -221,4 +227,40 @@
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* ---- T19 · mirror-chat side identity (design/acta-folder-tabs/04-mirror-chat,
+ * chosen D): away rows MIRROR — the category tab moves top-right, the body
+ * radius flips (square corner under the tab), the description/rolls/author
+ * text right-aligns and the who-line turns red. The CATEGORY tab colors stay
+ * per design A (navy; red ONLY Casualty — L67: side identity comes from the
+ * tab SIDE + alignment + who-line color) and the SPP tab keeps hanging
+ * bottom-right on both sides (artboard 04 .spp margin-left auto). ---- */
+.acta__who {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-navy);
+}
+.away .acta__tab {
+  left: auto;
+  right: 0;
+}
+.away .acta__body {
+  border-radius: 8px 0 8px 8px;
+}
+.away .acta__who {
+  color: var(--color-red);
+  text-align: right;
+}
+.away .acta__name {
+  text-align: right;
+}
+.away .acta__pos {
+  text-align: right;
+}
+/* The victim-note sub-box keeps living inside its own event's card (its row
+ * already carries the victim's side) — its text just follows the mirror. */
+.away .victim__note p {
+  text-align: right;
 }

@@ -1321,3 +1321,92 @@ describe("ActaTurnTimeline — T18 folder-tab acta rows (design/acta-folder-tabs
     expect(rows[0].textContent).toContain("Derribo · Ar 11 (10+) rota");
   });
 });
+
+describe("ActaTurnTimeline — T19 mirror-chat side identity (design/acta-folder-tabs/04)", () => {
+  it("home rows sit LEFT (92% hugging the left edge) with a navy who-line «Player · Team» above the description", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: closedTurnEvents(),
+          active: { status: "live", half: 1, turnNumber: 4, activeSide: "home" },
+        })}
+      />,
+    );
+    const rows = screen.getAllByTestId("acta-event-row");
+    const foulRow = rows.find((r) => r.getAttribute("data-kind") === "foul") as HTMLElement;
+    expect(foulRow.className).toContain("w-[92%]");
+    expect(foulRow.className).toContain("mr-auto");
+    // WHY new (T19, intentional — artboard 04 «Khalid · Águilas»): the short
+    // who-line sits above the description and is colored per side (home navy).
+    const who = foulRow.querySelector('[data-testid="acta-event-who"]') as HTMLElement;
+    expect(who).not.toBeNull();
+    expect(who.textContent).toBe("Brunhilda Eisenfaust · Reikland Reavers");
+    expect(who.className).toContain("text-navy");
+    // The tab keeps design A geometry on home rows (top-left).
+    const tab = foulRow.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
+    expect(tab.className).toContain("left-0");
+  });
+
+  it("away rows MIRROR: tab top-right (navy — never red), flipped body radius, right-aligned text and a red who-line", () => {
+    seqCounter = 0;
+    render(<ActaTurnTimeline {...timelineProps({ events: [tdEvent()] })} />);
+    const row = screen.getAllByTestId("acta-event-row")[0] as HTMLElement;
+    expect(row.className).toContain("w-[92%]");
+    expect(row.className).toContain("ml-auto");
+    expect(row.className).toContain("text-right");
+    const tab = row.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
+    expect(tab.className).toContain("right-0");
+    // CRITICAL (L67): the category tab colors stay per design A — navy default,
+    // red ONLY for Casualty. The away side identity comes from tab SIDE +
+    // alignment + who-line color, never from a red tab.
+    expect(tab.className).toContain("bg-navy");
+    expect(tab.className).not.toContain("bg-red");
+    // Body radius flips (top-right square where the mirrored tab meets it).
+    const body = row.querySelector("div") as HTMLElement;
+    expect(body.className).toContain("rounded-tl-lg");
+    expect(body.className).not.toContain("rounded-tr-lg");
+    // Red who-line above the description («Grishnak · Colmillos» shape).
+    const who = row.querySelector('[data-testid="acta-event-who"]') as HTMLElement;
+    expect(who.textContent).toBe('Morg "El Picador" · Gouged Eye');
+    expect(who.className).toContain("text-red");
+  });
+
+  it("the casualty who-line speaks for the row's own event side — the VICTIM (LM-12), fixed, never the viewer's side", () => {
+    seqCounter = 0;
+    render(<ActaTurnTimeline {...timelineProps({ events: [casualtyEvent(true)] })} />);
+    const row = screen.getAllByTestId("acta-event-row")[0] as HTMLElement;
+    expect(row.className).toContain("ml-auto"); // event.side = away → mirrored
+    const who = row.querySelector('[data-testid="acta-event-who"]') as HTMLElement;
+    expect(who.textContent).toBe("Ugluk · Gouged Eye");
+    expect(who.className).toContain("text-red");
+    // The casualty category tab stays RED (design A: red ONLY for Casualty).
+    const tab = row.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
+    expect(tab.className).toContain("bg-red");
+  });
+
+  it("closed compact rows carry the same side identity: chat offset + per-side name color (home navy / away red)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [tdEvent(), casualtyEvent(true), ...closedTurnEvents()],
+          active: { status: "finished", half: 1, turnNumber: 6, activeSide: "away" },
+        })}
+      />,
+    );
+    const compact = Array.from(
+      document.querySelectorAll('[data-testid="acta-event-row"][data-compact="true"]'),
+    ) as HTMLElement[];
+    expect(compact.length).toBe(3);
+    const homeRow = compact.find((r) => r.getAttribute("data-kind") === "foul") as HTMLElement;
+    expect(homeRow.className).toContain("w-[92%]");
+    expect(homeRow.className).toContain("mr-auto");
+    expect(homeRow.querySelector("strong")!.className).toContain("text-navy");
+    const awayRow = compact.find((r) => r.getAttribute("data-kind") === "casualty") as HTMLElement;
+    expect(awayRow.className).toContain("ml-auto");
+    expect(awayRow.className).toContain("text-right");
+    expect(awayRow.className).toContain("flex-row-reverse");
+    expect(awayRow.querySelector("strong")!.className).toContain("text-red");
+  });
+});

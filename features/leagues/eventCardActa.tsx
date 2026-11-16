@@ -14,6 +14,7 @@ import {
   casualtyRollLine,
   journeymanJoinLabel,
   bothDownMarkerLabel,
+  whoLineLabel,
   type TFunc,
 } from "./liveEventLabels";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
@@ -224,6 +225,7 @@ function ActaCard({
   tag,
   tabRed,
   meta,
+  who,
   name,
   dorsal,
   pos,
@@ -238,6 +240,8 @@ function ActaCard({
   /** L60/L63: the ONLY red category tab is the Casualty one. */
   tabRed?: boolean;
   meta: ReactNode;
+  /** T19 (artboard 04): the short who-line «Player · Team» above the description. */
+  who?: ReactNode;
   name?: ReactNode;
   dorsal?: number;
   pos?: ReactNode;
@@ -250,6 +254,8 @@ function ActaCard({
   ack?: ReactNode;
 }) {
   const hasHeader = name != null || pos != null;
+  // T19: mirrored (away) rows right-align the description/rolls/author text.
+  const mirrored = sideClass === styles.away;
   return (
     <article className={`${styles.acta} ${sideClass}`}>
       <div
@@ -264,6 +270,11 @@ function ActaCard({
         <div className={styles.acta__top}>
           <span className={styles.acta__meta}>{meta}</span>
         </div>
+        {who != null ? (
+          <p data-testid="acta-card-who" className={styles.acta__who}>
+            {who}
+          </p>
+        ) : null}
         {name != null ? (
           <h3 className={styles.acta__name}>
             {name}
@@ -272,7 +283,11 @@ function ActaCard({
         ) : null}
         {pos != null ? <p className={styles.acta__pos}>{pos}</p> : null}
         {author != null ? (
-          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate">
+          <p
+            className={`mt-1 text-[10px] font-bold uppercase tracking-wider text-slate${
+              mirrored ? " text-right" : ""
+            }`}
+          >
             {author}
           </p>
         ) : null}
@@ -536,6 +551,10 @@ export function LiveEventCardsActa({
           const name = player ? player.name : label;
           const dorsal = player?.dorsal;
           const pos = player && team ? `${positionName(team, player.positionalKey)} · ${team.name}` : undefined;
+          // T19 (artboard 04): the short who-line speaks for the ROW's own
+          // side (the victim on a casualty card — LM-12), fixed, never the
+          // viewer's perspective.
+          const who = player && team ? whoLineLabel(player.name, team.name) : undefined;
 
           // RAU-39: the derived action sheet on the CAUSER's side (the causer is
           // an OPPONENT of the victim per LM-12), no ack row.
@@ -556,6 +575,7 @@ export function LiveEventCardsActa({
                   tag={tag}
                   tabRed={event.kind === "casualty"}
                   meta={turnMeta}
+                  who={who}
                   author={authorLabel}
                   name={name}
                   dorsal={dorsal}
@@ -572,6 +592,7 @@ export function LiveEventCardsActa({
                     sideClass={event.side === "home" ? styles.away : styles.home}
                     tag={actionCard.label}
                     meta={turnMeta}
+                    who={whoLineLabel(actionCard.player.name, oppositeTeam.name)}
                     author={authorLabel}
                     name={actionCard.player.name}
                     dorsal={actionCard.player.dorsal}
