@@ -461,6 +461,23 @@ export function ActaDemoHarness({
           </button>
         </div>
 
+        {/* T22 · L51 (a): «Abrir cierre» — the closure ENTRY POINT restored
+            (the d1e6f72 trim removed it, leaving `openClosure` with no UI
+            caller). Shows only for a finished, unreported match whose
+            closure is not open yet; the form keeps its own canCloseActa
+            gate (ActaFlow below). */}
+        {state.status === "finished" &&
+        state.submittedBy == null &&
+        !state.closureOpen ? (
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => dispatch({ type: "openClosure" })}
+          >
+            Abrir cierre
+          </button>
+        ) : null}
+
         {/* Single-submitter banner (acta V2: no two-sided handshake) — parent
             gating mirroring MatchViewV2, which drops its closure banner once
             `detail.result` exists (the demo never synthesizes a result). */}

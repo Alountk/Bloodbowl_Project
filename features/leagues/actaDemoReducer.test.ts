@@ -87,6 +87,7 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
       causerRosterId: "c1",
       cause: "block",
       roll16: 11,
+      band: "grave",
     });
     expect(s.homeScore).toBe(0);
     expect(s.awayScore).toBe(0);

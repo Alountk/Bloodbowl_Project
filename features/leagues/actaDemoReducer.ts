@@ -1,4 +1,5 @@
 import { rollD6 } from "@/lib/random";
+import { permanentAttribute, resolveInjury } from "@/lib/rules/injuries";
 import {
   kickoffDuelResult,
   kickoffEventFor,
@@ -195,7 +196,10 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         status: "live",
         half: 2,
         turnNumber: 5,
-        homeScore: 2,
+        // T22 · L51 (b): score = the narrative feed's TD tally (1 home TD,
+        // seq 9) — `validateActa`'s Σ anotaciones == marcador guard blocks
+        // the closure save on any drift (the feed is the source of truth).
+        homeScore: 1,
         awayScore: 1,
         events: narrativeEvents.slice(0, 10),
       };
@@ -205,7 +209,9 @@ export function demoState(scenario: DemoScenario): ActaDemoState {
         status: "finished",
         half: 2,
         turnNumber: TURNS_PER_HALF,
-        homeScore: 2,
+        // T22 · L51 (b): same feed-aligned tally as «segundo-tercio» — the
+        // stock closure must save over these scores (see the T22 suite).
+        homeScore: 1,
         awayScore: 1,
         events: [...narrativeEvents],
       };
@@ -442,6 +448,16 @@ function applyCommand(state: ActaDemoState, raw: unknown): ActaDemoState {
       if (cmd.causerRosterId != null) payload.causerRosterId = cmd.causerRosterId;
       if (cmd.roll6 != null) payload.roll6 = cmd.roll6;
       if (cmd.bothDown != null) payload.bothDown = cmd.bothDown;
+      // T21: persist the derived band so demo casualty payloads converge with
+      // production (the victim-note «Efecto» row reads it; deriveCasualtyOutcome
+      // would throw on permanent without roll6, so derive the kind directly).
+      if (typeof cmd.roll16 === "number") {
+        const outcome = resolveInjury(cmd.roll16);
+        payload.band = outcome.kind;
+        if (outcome.kind === "permanent" && typeof cmd.roll6 === "number") {
+          payload.permanentAttribute = permanentAttribute(cmd.roll6);
+        }
+      }
       return appendEvents(state, [{ kind: "casualty", side, playerRosterId, payload }]);
     }
     case "knockdown": {
