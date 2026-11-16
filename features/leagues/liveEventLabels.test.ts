@@ -14,6 +14,8 @@ import {
   bothDownMarkerLabel,
   knockdownLabel,
   eventCategoryTab,
+  teamShortName,
+  whoLineLabel,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -421,5 +423,35 @@ describe("eventCategoryTab — folder-tab acta rows (T18, design/acta-folder-tab
     expect(eventCategoryTab(ev("foul"))).toBeNull();
     expect(eventCategoryTab(ev("mvp"))).toBeNull();
     expect(eventCategoryTab(ev("weather"))).toBeNull();
+  });
+});
+
+describe("whoLineLabel / teamShortName — the mirror-chat who-line (T19, artboard 04)", () => {
+  it("strips the trailing «de/del …» qualifier for the short team name («Águilas de Khemri» → «Águilas»)", () => {
+    // WHY new (T19, intentional — artboard 04 «Khalid · Águilas»): the who-line
+    // is SHORT by design; the demo's «X de/del Y» team names drop the qualifier.
+    expect(teamShortName("Águilas de Khemri")).toBe("Águilas");
+    expect(teamShortName("Colmillos del Caos")).toBe("Colmillos");
+    expect(teamShortName("Brutos de la Vega")).toBe("Brutos");
+  });
+
+  it("keeps qualifier-less names whole («Reikland Reavers» / «Gouged Eye» pass through)", () => {
+    expect(teamShortName("Reikland Reavers")).toBe("Reikland Reavers");
+    expect(teamShortName("Gouged Eye")).toBe("Gouged Eye");
+    expect(teamShortName("Dwarves")).toBe("Dwarves");
+  });
+
+  it("composes the who-line «Player · Team» (the artboard's «Khalid · Águilas» shape)", () => {
+    expect(whoLineLabel("Khalid el Impávido", "Águilas de Khemri")).toBe(
+      "Khalid el Impávido · Águilas",
+    );
+    expect(whoLineLabel("Grishnak Mordaz", "Colmillos del Caos")).toBe(
+      "Grishnak Mordaz · Colmillos",
+    );
+  });
+
+  it("never invents a short form for a single-word team (empty strip falls back to the name)", () => {
+    expect(whoLineLabel("Ugluk", "Gouged Eye")).toBe("Ugluk · Gouged Eye");
+    expect(whoLineLabel("Neb", "Dwarves")).toBe("Neb · Dwarves");
   });
 });

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { render, screen } from "@testing-library/react";
 import { LiveEventCardsActa } from "./eventCardActa";
 import type { MatchTeamDetail, LiveMatchEventDto } from "./api";
@@ -357,5 +359,91 @@ describe("LiveEventCardsActa — T18 folder-tab acta rows (design/acta-folder-ta
     expect(note.textContent).toContain("Registrado por Dwarves");
     // The injury roll lives ONLY in the note (the body keeps only the mark).
     expect(note.textContent).not.toContain("por Arnau");
+  });
+});
+
+describe("LiveEventCardsActa — T19 mirror-chat side identity (design/acta-folder-tabs/04)", () => {
+  it("home player rows carry the short who-line «Player · Team» above the description (artboard .who)", () => {
+    const { container } = renderActa([
+      ev({ kind: "completion", side: "home", playerRosterId: "p4", seq: 1 }),
+    ]);
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    const who = row.querySelector("[data-testid='acta-card-who']") as HTMLElement;
+    // WHY new (T19, intentional — artboard 04): a short who-line («Khalid ·
+    // Águilas») sits above the description so every row says WHOSE side it is.
+    expect(who).not.toBeNull();
+    expect(who.textContent).toBe("Arnau · Reavers");
+    // Above the name/description block in DOM order.
+    const name = row.querySelector(".acta__name") as HTMLElement;
+    expect(who.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("the who-line speaks for the ROW's own event side: the casualty card (victim side) and the derived action card (causer side) mirror opposite", () => {
+    // WHY (T19): row side is the EVENT's team side, fixed — never the viewer's.
+    // LM-12: a casualty's side is the VICTIM's side.
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 9, band: "apaleado" },
+      }),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const injury = rows.find((li) => li.querySelector(".acta__name")?.textContent === "Blitzer B #1") as HTMLElement;
+    expect(injury.querySelector("article")?.classList.contains("away")).toBe(true);
+    expect(injury.querySelector("[data-testid='acta-card-who']")?.textContent).toBe("Blitzer B · Dwarves");
+    const action = rows.find((li) => li.querySelector(".acta__name")?.textContent === "Arnau #2") as HTMLElement;
+    expect(action.querySelector("article")?.classList.contains("home")).toBe(true);
+    expect(action.querySelector("[data-testid='acta-card-who']")?.textContent).toBe("Arnau · Reavers");
+  });
+
+  it("CRITICAL (L67): the category tab keeps design-A colors — navy default, red ONLY for Casualty; an away tab is NEVER red", () => {
+    const { container } = renderActa([
+      ev({ kind: "completion", side: "away", playerRosterId: "p2", seq: 1 }),
+    ]);
+    const tab = container.querySelector("[data-testid='acta-card-tab']") as HTMLElement;
+    expect(tab.textContent).toBe("Pase completo");
+    expect(tab.className).not.toContain("acta__tab--casualty");
+  });
+
+  it("side-less rows render NO who-line (the color is per side — no side, no line)", () => {
+    const { container } = renderActa([
+      ev({ kind: "weather", side: null, playerRosterId: null, seq: 2, payload: { value: "rain", roll: 5 } }),
+    ]);
+    expect(container.querySelector("[data-testid='acta-card-who']")).toBeNull();
+  });
+
+  it("locks the mirror shell in the CSS module (tab right, flipped body radius, right-aligned text, red away who, chat offset)", () => {
+    // The geometry lives in CSS — these pins keep the mirror from silently
+    // collapsing back to the left design. WHY new (T19, user pick artboard D).
+    const css = readFileSync(path.join(__dirname, "eventCardActa.module.css"), "utf8");
+    const rule = (pattern: RegExp, label: string) => {
+      const m = pattern.exec(css);
+      if (!m) throw new Error(`mirror-lock: the "${label}" rule is missing from eventCardActa.module.css`);
+      return m[1].replace(/\s+/g, " ").trim();
+    };
+    // Category tab TOP-RIGHT on mirrored rows (position only — colors stay A).
+    const tab = rule(/\.away \.acta__tab\s*\{([\s\S]*?)\}/, ".away .acta__tab");
+    expect(tab).toContain("right: 0;");
+    // Body radius flips (top-right square where the tab meets the body).
+    expect(rule(/\.away \.acta__body\s*\{([\s\S]*?)\}/, ".away .acta__body")).toContain(
+      "border-radius: 8px 0 8px 8px;",
+    );
+    // Who-line: navy home text, RED away text right-aligned (side identity —
+    // this red is WHO text, never a category tab color).
+    expect(rule(/\.acta__who\s*\{([\s\S]*?)\}/, ".acta__who")).toContain("color: var(--color-navy);");
+    const awayWho = rule(/\.away \.acta__who\s*\{([\s\S]*?)\}/, ".away .acta__who");
+    expect(awayWho).toContain("color: var(--color-red);");
+    expect(awayWho).toContain("text-align: right;");
+    // Right-aligned description/rolls/author text on mirrored rows.
+    expect(rule(/\.away \.acta__name\s*\{([\s\S]*?)\}/, ".away .acta__name")).toContain("text-align: right;");
+    expect(rule(/\.away \.acta__pos\s*\{([\s\S]*?)\}/, ".away .acta__pos")).toContain("text-align: right;");
+    // Chat offset: home rows sit LEFT, away rows sit RIGHT (92% width).
+    const away = rule(/\.away\s*\{([\s\S]*?)\}/, ".away");
+    expect(away).toContain("width: 92%;");
+    expect(away).toContain("margin-left: auto;");
+    expect(rule(/\.home\s*\{([\s\S]*?)\}/, ".home")).toContain("margin-right: auto;");
   });
 });

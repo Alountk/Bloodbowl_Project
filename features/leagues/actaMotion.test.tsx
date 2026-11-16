@@ -198,6 +198,13 @@ function motionRule(name: string): string {
   return match![1].replace(/\s+/g, " ").trim();
 }
 
+/** The declarations of one `.acta-motion-*::after` overlay rule (T19). */
+function motionOverlayRule(name: string): string {
+  const match = css.match(new RegExp(`\\.${name}::after\\s*\\{([^}]*)\\}`));
+  expect(match, `.${name}::after rule missing from app/globals.css`).toBeTruthy();
+  return match![1].replace(/\s+/g, " ").trim();
+}
+
 const MOTION_CLASSES = [
   "acta-motion-fade-in-up",
   "acta-motion-pulse-glow",
@@ -224,7 +231,12 @@ describe("A. app/globals.css — artboard 09 keyframes with exact timings (MVA-6
     expect(css).toMatch(/@keyframes acta-pulseGlow\s*\{[\s\S]*?rgba\(209,\s*25,\s*56,\s*0\.4\)/);
     expect(css).toMatch(/@keyframes acta-badgePulse\s*\{[\s\S]*?scale\(1\.02\)/);
     expect(css).toMatch(/@keyframes acta-diceShake\s*\{[\s\S]*?rotate\(-22deg\)/);
-    expect(css).toMatch(/@keyframes acta-rowHighlightFlash\s*\{[\s\S]*?brightness\(1\.25\)/);
+    // WHY changed (T19, intentional — user bug L66 «el box-shadow se siente
+    // raro y arruina el diseño de carpeta»): the old scale+brightness flash
+    // became a subtle background TINT that fades out — no geometry pop.
+    expect(css).toMatch(
+      /@keyframes acta-rowHighlightFlash\s*\{[\s\S]*?background-color:\s*rgba\(209,\s*25,\s*56,\s*0\.12\)/,
+    );
     expect(css).toMatch(/@keyframes acta-floatUpFade\s*\{[\s\S]*?translate\(-50%,\s*-34px\)/);
   });
 
@@ -256,7 +268,10 @@ describe("A. app/globals.css — artboard 09 keyframes with exact timings (MVA-6
   });
 
   it("row flash / float feedback carry the artboard's exact durations + easings", () => {
-    expect(motionRule("acta-motion-row-flash")).toContain(
+    // WHY changed (T19, intentional — user bug L66): the flash effect moved
+    // from an inset red box-shadow outline on the row to a subtle background
+    // TINT on a fading ::after overlay (same 0.6s duration/easing, new home).
+    expect(motionOverlayRule("acta-motion-row-flash")).toContain(
       "animation: acta-rowHighlightFlash 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;",
     );
     expect(motionRule("acta-motion-float-feedback")).toContain(
@@ -264,6 +279,25 @@ describe("A. app/globals.css — artboard 09 keyframes with exact timings (MVA-6
     );
     // The float is anchored on its button exactly like artboard 09.
     expect(motionRule("acta-motion-float-feedback")).toContain("pointer-events: none;");
+  });
+
+  it("T19 row flash: NO box-shadow/outline — a subtle tint fade respects the folder shell (user bug L66)", () => {
+    // WHY new (T19): the `box-shadow: inset 0 0 0 2px #d11938` outline felt
+    // weird and ruined the folder design — the flash must be a low-alpha
+    // background tint fading out over the row, never a stroke that redraws
+    // the card geometry.
+    expect(motionRule("acta-motion-row-flash")).not.toContain("box-shadow");
+    expect(motionRule("acta-motion-row-flash")).not.toContain("outline");
+    expect(motionOverlayRule("acta-motion-row-flash")).not.toContain("box-shadow");
+    // The tint starts low-alpha red and ends FULLY transparent (fade out).
+    expect(css).toMatch(/background-color:\s*rgba\(209,\s*25,\s*56,\s*0\);/);
+    // The overlay never eats pointer events (it is pure decoration).
+    expect(motionOverlayRule("acta-motion-row-flash")).toContain("pointer-events: none;");
+    // Reduced motion stays MEANINGFUL: the overlay flashes nothing — no
+    // animation and no lingering static tint.
+    const rmBlock = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(rmBlock).toMatch(/\.acta-motion-row-flash::after\s*\{[^}]*animation: none/);
+    expect(rmBlock).toMatch(/\.acta-motion-row-flash::after\s*\{[^}]*background: transparent/);
   });
 
   it("MVA-6: prefers-reduced-motion: reduce neutralizes EVERY motion class (static sheet)", () => {

@@ -320,6 +320,28 @@ export function eventCategoryTab(
   }
 }
 
+/**
+ * T19 (mirror-chat who-line, design/acta-folder-tabs/04): the SHORT team name
+ * for the who-line («Khalid · Águilas» from «Águilas de Khemri») — a trailing
+ * «de/del/de la/…» qualifier is dropped (the demo's team names are «X de Y»).
+ * Qualifier-less names pass through whole (never throws, never empties).
+ */
+export function teamShortName(name: string): string {
+  const short = name
+    .replace(/\s+(?:de(?:l| la| los| las)?|of(?: the)?)\s.*$/i, "")
+    .trim();
+  return short.length > 0 ? short : name;
+}
+
+/**
+ * T19: the mirror-chat who-line copy «Player · Team» (artboard 04: «Khalid ·
+ * Águilas» / «Grishnak · Colmillos») — rendered above the row description,
+ * colored per side at the render site (home navy / away red).
+ */
+export function whoLineLabel(playerName: string, teamName: string): string {
+  return `${playerName} · ${teamShortName(teamName)}`;
+}
+
 /** A casualty band mapped to its Design-A display bucket (LM-18). */
 export interface BandDisplay {
   label: string;
