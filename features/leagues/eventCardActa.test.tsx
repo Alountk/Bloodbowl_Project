@@ -282,7 +282,7 @@ describe("LiveEventCardsActa — T18 folder-tab acta rows (design/acta-folder-ta
     expect(sppTab.textContent).toContain("★1");
   });
 
-  it("the SPP tab renders ONLY when earned (bruise ★0 → no tab at all)", () => {
+  it("WHY flipped (T24): a caused Magullado IS a herida — the action card carries the causer's ★2 even on a bruise roll (user: «magullado da 2 spp porque es una herida!»)", () => {
     const { container } = renderActa([
       ev({
         kind: "casualty",
@@ -298,12 +298,26 @@ describe("LiveEventCardsActa — T18 folder-tab acta rows (design/acta-folder-ta
         },
       }),
     ]);
-    for (const row of Array.from(
+    // WHY changed (T24, intentional): the old "bruise ★0 → no tab at all" pin
+    // encoded the L78 bug. The USER corrected the threshold verbatim — the
+    // threshold is the injury ROLL (any result), never the band, so every
+    // caused injury pays the causer ★2.
+    const rows = Array.from(
       container.querySelectorAll("[data-testid='live-event-row']"),
-    )) {
-      expect(row.querySelector("[data-testid='acta-card-spp']")).toBeNull();
-      expect(row.textContent).not.toContain("★");
-    }
+    );
+    const injury = rows.find(
+      (li) => li.querySelector(".acta__name")?.textContent === "Blitzer B #1",
+    ) as HTMLElement;
+    const action = rows.find(
+      (li) => li.querySelector(".acta__name")?.textContent === "Arnau #2",
+    ) as HTMLElement;
+    // The ★2 the CAUSER earns rides the derived action card…
+    expect(
+      action.querySelector("[data-testid='acta-card-spp']")?.textContent,
+    ).toContain("★2");
+    // …while the victim's injury card never shows earned points (RAU-47).
+    expect(injury.querySelector("[data-testid='acta-card-spp']")).toBeNull();
+    expect(injury.textContent).not.toContain("★");
   });
 
   it("the casualty sheet shows the red «Casualty» category tab (red only for Casualty)", () => {
@@ -445,6 +459,56 @@ describe("LiveEventCardsActa — T19 mirror-chat side identity (design/acta-fold
     expect(away).toContain("width: 92%;");
     expect(away).toContain("margin-left: auto;");
     expect(rule(/\.home\s*\{([\s\S]*?)\}/, ".home")).toContain("margin-right: auto;");
+  });
+});
+
+/**
+ * T24 (L78 + user corrections, «external-assets/Puntos de SPP.md»): the SPP
+ * earn rule on the acta cards. SÍ: a valid Block/Blitz knockdown with a
+ * RESOLVED injury roll pays the causer ★2 for ANY result. ZERO (user table):
+ * Faltas, Both-Down/pifias (the `bothDown` flag rows), auto-lesiones — and a
+ * victim row without an attributable causer shows NO tab rather than a wrong
+ * one (the causer context rides the chain's «Derribo» row; the timeline keeps
+ * that attribution, see actaTurnTimeline.test.tsx).
+ */
+describe("LiveEventCardsActa — T24 SPP earn rule («Puntos de SPP.md», L78)", () => {
+  it("Faltas pay NOTHING: the foul-caused casualty renders NO ★ anywhere (a foul earns no SPP even with a resolved roll)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: { victimRosterId: "p2", causerRosterId: "p4", cause: "foul", roll16: 12, band: "grave" },
+      }),
+    ]);
+    expect(container.textContent).not.toContain("★");
+  });
+
+  it("Both-Down/pifias pay NOTHING: the bothDown-flagged casualty (causer on the row — the DEC-1 canonical shape) renders NO ★ anywhere", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 11, band: "grave", bothDown: true },
+      }),
+    ]);
+    expect(container.textContent).not.toContain("★");
+  });
+
+  it("a victim-recorded row without an attributable causer renders NO tab anywhere («show no tab rather than a wrong one»)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: { victimRosterId: "p2", cause: "block", roll16: 12, band: "grave" },
+      }),
+    ]);
+    expect(container.textContent).not.toContain("★");
   });
 });
 

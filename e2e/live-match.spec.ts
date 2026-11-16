@@ -665,7 +665,9 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
       ).toHaveCount(0);
     }
 
-    // [B] BOTH-DOWN CANONICAL PAIR (LM-12/D1, DEC-1 ★2-symmetric). Both records
+    // [B] BOTH-DOWN CANONICAL PAIR (LM-12/D1; T24: record B pays NOTHING —
+    // user table «Both-Down / Pifias» = 0 SPP, superseding the old DEC-1
+    // ★2-symmetric pin). Both records
     // happen inside the away-active turn as CASUALTIES (they never flip the
     // turn): record A by the away ACTIVE over the dock (plain `block` casualty:
     // victim = a home defender, causer = an away blocker), then record B by the
@@ -705,14 +707,22 @@ test("two-context SSE sync + new-device recovery + result prefill", async ({ bro
     await dockTapOwn(homeCoach, 3);
     await dockTapRival(homeCoach, 4);
     await dockRollAndRecord(homeCoach, 11);
-    // DEC-1 ★2 on record-B causer's action card too (the both-down marker does
-    // NOT suppress PE under DEC-1), on both feeds; the victim injury card has no
-    // star but carries the marker copy once for the pair.
+    // WHY flipped (T24, intentional): record B pays NOTHING — the USER's table
+    // (external-assets/Puntos de SPP.md: «Auto-lesiones y Pifias (Both-Down /
+    // Cráneos): No» = 0 SPP) supersedes the old DEC-1 "the both-down marker
+    // does NOT suppress PE" pin. A caused Magullado still earns (verbatim:
+    // «magullado da 2 spp porque es una herida!») — but only on a VALID
+    // Block/Blitz injury, never on a both-down/pifia row. The victim injury
+    // card keeps the marker copy once for the pair (assertions below intact).
     const blockBLine = `Herida a ${awayBlockerDown.name}`;
     for (const page of [awayCoach, homeCoach]) {
+      // The causer's action-card row keeps its text but carries NO star.
+      await expect(
+        page.getByTestId("live-event-row").filter({ hasText: blockBLine }),
+      ).toBeVisible();
       await expect(
         page.getByTestId("live-event-row").filter({ hasText: blockBLine }).filter({ hasText: "★2" }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       await expect(
         page.getByTestId("live-event-row").filter({ hasText: `por ${homeDefenderCauser.name}` }).filter({ hasText: "★2" }),
       ).toHaveCount(0);
