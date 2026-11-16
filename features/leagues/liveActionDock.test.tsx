@@ -787,31 +787,21 @@ describe("Acta + Evento → Bloqueo (T17 combat chain)", () => {
     expect(screen.queryByTestId("live-action-modal")).toBeNull();
   });
 
-  it("«Ambos caen» / «El atacante cae» register the knockdown row ONLY (S10.3 backlog — no armour stage)", async () => {
+  it("«El atacante cae» registers the knockdown row ONLY (unchanged — the attacker-fall follow-up is out of T23's scope)", async () => {
+    // WHY renamed (T23, intentional): S10.3 closed — the «Ambos caen» half of
+    // the old row-only pin moved to the T23 chain tests below (armour per
+    // fallen player + owner-recorded injuries). The attacker-down face is
+    // deliberately UNCHANGED: row only.
     const onSubmit = vi.fn<MockControl>(async () => {});
     const { rerender } = renderActaDock({ onSubmit });
     walkToBlockRoll();
-    throwDice([2, 2]); // both faces Both Down
-    fireEvent.click(faceChip("Ambos caen"));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    // Standalone derribo entry, NO armour fields (both-down injuries backlog).
-    expect(onSubmit).toHaveBeenCalledWith({
-      type: "knockdown",
-      side: "home",
-      causerRosterId: "p1",
-      victimRosterId: "o1",
-      blockDice: ["bothDown", "bothDown"],
-      face: "bothDown",
-    });
-    expect(screen.queryByTestId("dock-armour-roll")).toBeNull();
-    // TRIANGULATE: the attacker-down face follows the same row-only path.
-    walkToBlockRoll();
     throwDice([1, 1]);
     fireEvent.click(faceChip("El atacante cae"));
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
-    expect(onSubmit.mock.calls[1][0]).toMatchObject({ face: "attackerDown" });
-    expect("armourRoll" in (onSubmit.mock.calls[1][0] as object)).toBe(false);
-    // Neither row opens a victim-side injury callout.
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ face: "attackerDown" });
+    expect("armourRoll" in (onSubmit.mock.calls[0][0] as object)).toBe(false);
+    expect(screen.queryByTestId("dock-armour-roll")).toBeNull();
+    // No victim-side injury callout opens for this face.
     asVictimView(rerender, onSubmit);
     expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
   });
@@ -886,6 +876,120 @@ describe("Acta + Evento → Bloqueo (T17 combat chain)", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     asVictimView(rerender, onSubmit);
     expect(screen.getByTestId("dock-pending-injury")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("dock-injury-dismiss"));
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+    expect(onSubmit).toHaveBeenCalledTimes(1); // only the knockdown
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * T23 (S4 step 4 — S10.3 CLOSED): the «Ambos caen» face WITH injuries. The
+ * knockdown row keeps its shipped shape (registered at face pick, row-only,
+ * both players) and the chain CONTINUES with one armour 2D6 stage per fallen
+ * player (defender first, then the attacker). A broken armour hands the 1D16
+ * to the VICTIM's OWNER through the same victim-side pending-injury callout
+ * (S10.4.1 «solo si llega a producirse» / «Sin herida») — so both players may
+ * fall out, one, or none. The resulting injury rows are causer-less
+ * victim-owner captures carrying the DEC-1 both-down marker.
+ * ------------------------------------------------------------------------- */
+
+describe("Acta + Evento → Bloqueo «Ambos caen» WITH injuries (T23 · S10.3)", () => {
+  it("keeps the row-only knockdown at face pick and continues with an armour stage per fallen player (defender, then attacker)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([2, 2]); // both faces «Ambos caen»
+    fireEvent.click(faceChip("Ambos caen"));
+    // WHY kept (T23): the «Derribo» row registers at face pick with its
+    // SHIPPED shape — both players, NO armour fields (the armour rolls ride
+    // the chain, their injuries ride their own rows).
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: "knockdown",
+      side: "home",
+      causerRosterId: "p1",
+      victimRosterId: "o1",
+      blockDice: ["bothDown", "bothDown"],
+      face: "bothDown",
+    });
+    // …and the chain CONTINUES: first the DEFENDER's armour (Vrok, AR 9+).
+    const armourStage = screen.getByTestId("dock-armour-roll");
+    expect(armourStage.textContent).toContain("Armadura de Vrok · AR 9+");
+    fireEvent.click(armourChip("5")); // 5 vs 9 -> aguanta
+    // Then the ATTACKER's armour (Aric, AR 9+) — same stage, next fallen.
+    expect(screen.getByTestId("dock-armour-roll").textContent).toContain(
+      "Armadura de Aric · AR 9+",
+    );
+    fireEvent.click(armourChip("5")); // aguanta
+    // Both armours held -> chain done, ONE command (the knockdown), no callout.
+    expect(screen.queryByTestId("live-action-modal")).toBeNull();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    asVictimView(rerender, onSubmit);
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+  });
+
+  it("S10.4.1: both armours break -> EACH victim's owner records their own 1D16 through their own callout (both-down injury, no causer)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([2, 2]);
+    fireEvent.click(faceChip("Ambos caen"));
+    fireEvent.click(armourChip("12")); // defender Vrok: 12 > 9 -> rota
+    fireEvent.click(armourChip("11")); // attacker Aric: 11 > 9 -> rota
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1)); // just the row
+    // The ATTACKER's owner (this viewer — S10.4.1) gets THEIR callout now…
+    const ownCallout = screen.getByTestId("dock-pending-injury");
+    expect(ownCallout.textContent).toContain("Aric (#1)");
+    // …and the defender's owner never sees it from here (exactly one).
+    expect(screen.getAllByTestId("dock-pending-injury")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-12"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+    expect(onSubmit.mock.calls[1][0]).toEqual({
+      type: "casualty",
+      side: "home",
+      victimRosterId: "p1",
+      cause: "block",
+      roll16: 12,
+      bothDown: true,
+    } as LiveCommand);
+
+    // The DEFENDER's owner (perspective flip) gets their own callout…
+    asVictimView(rerender, onSubmit);
+    const rivalCallout = screen.getByTestId("dock-pending-injury");
+    expect(rivalCallout.textContent).toContain("Vrok (#1)");
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-8"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(3));
+    // …and records their own herida: causer-less (badge names the recorder).
+    expect(onSubmit.mock.calls[2][0]).toEqual({
+      type: "casualty",
+      side: "away",
+      victimRosterId: "o1",
+      cause: "block",
+      roll16: 8,
+      bothDown: true,
+    } as LiveCommand);
+    expect("causerRosterId" in (onSubmit.mock.calls[2][0] as object)).toBe(false);
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+  });
+
+  it("only the broken player's owner gets a callout, and «Sin herida» dismisses it without any command («solo si llega a producirse»)", async () => {
+    const onSubmit = vi.fn<MockControl>(async () => {});
+    const { rerender } = renderActaDock({ onSubmit });
+    walkToBlockRoll();
+    throwDice([2, 2]);
+    fireEvent.click(faceChip("Ambos caen"));
+    fireEvent.click(armourChip("12")); // defender Vrok: rota
+    fireEvent.click(armourChip("5")); // attacker Aric: aguanta
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    // The unharmed attacker's owner gets NO callout…
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+    // …only the broken defender's owner does.
+    asVictimView(rerender, onSubmit);
+    expect(screen.getByTestId("dock-pending-injury").textContent).toContain(
+      "Vrok (#1)",
+    );
     fireEvent.click(screen.getByTestId("dock-injury-dismiss"));
     expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
     expect(onSubmit).toHaveBeenCalledTimes(1); // only the knockdown

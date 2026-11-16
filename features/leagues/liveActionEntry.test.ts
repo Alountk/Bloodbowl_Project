@@ -175,7 +175,10 @@ describe("liveActionEntry — T17 combat chain: knockdown -> armour -> victim in
     expect(cmd?.armourBroken).toBe(false);
   });
 
-  it("a non-defender knockdown entry carries NO armour fields (both-down injuries stay backlog, S10.3)", () => {
+  it("a non-defender knockdown entry carries NO armour fields (T23 keeps the both-down ROW shape — follow-ups ride their own rows)", () => {
+    // WHY renamed (T23, intentional): S10.3 closed — the both-down armour/
+    // injury follow-ups now exist, but as SEPARATE rows (the owner-recorded
+    // casualty captures). The «Derribo» row itself keeps its shipped shape.
     const cmd = buildKnockdownCommand({
       recorderSide: "away",
       causerId: "o2",
@@ -246,6 +249,26 @@ describe("liveActionEntry — T17 combat chain: knockdown -> armour -> victim in
     } as LiveCommand);
     expect(buildVictimInjuryCommand("away", "", 9)).toBeNull();
     expect(buildVictimInjuryCommand("away", "o1", 0)).toBeNull();
+  });
+
+  it("T23: buildVictimInjuryCommand stamps the both-down marker only on the «Ambos caen» follow-up (no causer — S10.4.1)", () => {
+    // WHY new (T23): the both-down injury keeps the DEC-1 «(Ambos derribados)»
+    // marker copy on its row (the legacy both-down casualty carries it too),
+    // but NEVER a causer — each victim's owner records their own herida and
+    // nobody pays ★ (RAU-47 is T24's surface; this only pins the payload).
+    const cmd = buildVictimInjuryCommand("home", "p1", 12, "", "block", true);
+    expect(cmd).toEqual({
+      type: "casualty",
+      side: "home",
+      victimRosterId: "p1",
+      cause: "block",
+      roll16: 12,
+      bothDown: true,
+    } as LiveCommand);
+    expect("causerRosterId" in (cmd ?? {})).toBe(false);
+    // The T17 chain (defender knockdown) stays byte-identical: NO marker key.
+    const plain = buildVictimInjuryCommand("away", "o1", 9) as Record<string, unknown>;
+    expect("bothDown" in (plain ?? {})).toBe(false);
   });
 });
 

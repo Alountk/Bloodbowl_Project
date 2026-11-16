@@ -130,7 +130,10 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(e.seq).toBeGreaterThan(MAX_FIXTURE_SEQ);
   });
 
-  it("submitCommand knockdown omits the armour fields when the chain stopped at the derribo (S10.2/S10.3 backlog)", () => {
+  it("submitCommand knockdown omits the armour fields on the both-down row (T23 keeps its shipped shape — follow-ups ride their own rows)", () => {
+    // WHY renamed (T23, intentional): S10.3 closed — the armour/injury
+    // follow-ups of a both-down now exist as SEPARATE casualty rows; the
+    // «Derribo» row keeps the payload shape pinned below.
     const s = reduce(state(), {
       type: "submitCommand",
       command: {
@@ -152,6 +155,32 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     });
     expect("armourRoll" in e.payload).toBe(false);
     expect("armourBroken" in e.payload).toBe(false);
+  });
+
+  it("submitCommand casualty keeps T21 band persistence on a both-down injury (marker + derived band land in the payload)", () => {
+    // WHY new (T23, characterization of the shipped T21 path): the both-down
+    // follow-up injuries are victim-owner casualty captures carrying the
+    // DEC-1 marker. The band must persist on that path too (the victim-note
+    // «Efecto» row reads it) — pinned so a payload regression is loud.
+    const cmd: LiveCommand = {
+      type: "casualty",
+      side: "home",
+      victimRosterId: "k1",
+      cause: "block",
+      roll16: 12,
+      bothDown: true,
+    };
+    const s = reduce(state(), { type: "submitCommand", command: cmd });
+    const e = s.events[s.events.length - 1];
+    expect(e.payload).toMatchObject({
+      victimRosterId: "k1",
+      cause: "block",
+      roll16: 12,
+      bothDown: true,
+      band: "grave",
+    });
+    // The injury is CAUSER-LESS (S10.4.1 — the badge names the recorder).
+    expect("causerRosterId" in e.payload).toBe(false);
   });
 
   it("submitCommand weather records a side-less weather event with the value + d6 payload (S2)", () => {

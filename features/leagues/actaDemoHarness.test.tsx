@@ -913,7 +913,8 @@ const report = () =>
  * through the dock's pending-injury callout. Rows land on the GAME TURN's card
  * (T16 grouping — unchanged here) with EACH recorder's author badge: the
  * tackler's coach reports the placaje, the victim's coach marks the herida.
- * Both-down/attacker-down injuries stay BACKLOG (S10.3): only the row.
+ * Both-down injuries landed in T23 (S10.3 closed — see its describe below);
+ * the attacker-down face stays BACKLOG: only the row.
  */
 
 /** «+ Evento» -> «Bloqueo» chain: causer own #1 (Khalid, blitz-ra FUE 3) vs
@@ -998,6 +999,126 @@ describe("ActaDemoHarness — T17: combat chain on the game-turn cards (S10.1/S1
     expect(card.textContent).toContain("Derribo · Ar 5 (10+) aguanta");
     fireEvent.click(perspective("Colmillos del Caos"));
     expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+  });
+});
+
+/**
+ * T23 · S4 step 4 (S10.3 CLOSED) — the «Ambos caen» face WITH injuries on the
+ * REAL dock: the knockdown row registers at face pick (shipped row shape) and
+ * the chain continues with one armour stage per fallen player; each broken
+ * armour opens the VICTIM OWNER's pending-injury callout (S10.4.1). Rows land
+ * on the GAME TURN's card (T16 grouping — untouched) with EACH recorder's
+ * badge: the tackler's coach reports the placaje, each victim's owner marks
+ * their own herida («solo si llega a producirse»).
+ */
+
+/** «+ Evento» -> «Bloqueo» -> both faces «Ambos caen» (dice 2+2): causer own
+ *  #1 (Khalid, blitz-ra AR 9) vs victim rival #1 (Grishnak, orc blitzer AR
+ *  10) — rolls the two armour sums (DEFENDER first, then the ATTACKER). */
+const captureBothDown = (armourDefender: string, armourAttacker: string) => {
+  fireEvent.click(demoButton("+ Evento"));
+  fireEvent.click(screen.getByRole("button", { name: "Bloqueo" }));
+  fireEvent.click(
+    within(
+      within(screen.getByTestId("live-action-modal")).getByTestId(
+        "dock-pool-own",
+      ),
+    ).getByRole("button", { name: /#1/i }),
+  );
+  fireEvent.click(
+    within(
+      within(screen.getByTestId("live-action-modal")).getByTestId(
+        "dock-pool-rival",
+      ),
+    ).getByRole("button", { name: /#1/i }),
+  );
+  dice.queue = [2, 2]; // both block dice land on «Ambos caen»
+  fireEvent.click(
+    within(screen.getByTestId("dock-block-roll")).getByRole("button", {
+      name: "Tirar dados de bloqueo",
+    }),
+  );
+  fireEvent.click(
+    within(screen.getByTestId("dock-block-face")).getByRole("button", {
+      name: "Ambos caen",
+    }),
+  );
+  fireEvent.click(
+    within(screen.getByTestId("dock-armour-roll")).getByRole("button", {
+      name: armourDefender,
+    }),
+  );
+  fireEvent.click(
+    within(screen.getByTestId("dock-armour-roll")).getByRole("button", {
+      name: armourAttacker,
+    }),
+  );
+};
+
+describe("ActaDemoHarness — T23: «Ambos caen» WITH injuries (S10.3 closed)", () => {
+  it("both armours break -> knockdown row + BOTH owner-recorded injuries on the SAME game-turn card, each with its recorder's badge", () => {
+    startWithHomeReceiver();
+    // Khalid #1 blocks Grishnak #1, both fall: Grishnak 12 > AR 10 -> rota,
+    // Khalid 11 > AR 9 -> rota (both injuries materialize).
+    captureBothDown("12", "11");
+
+    // The derribo row is already on the EN JUEGO card — shipped row shape
+    // («Derribo · ambos caen», both players, no armour line) with the
+    // tackler's coach badge.
+    const card = enJuegoCard();
+    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(rowKinds(card)).toEqual(["knockdown"]);
+    expect(card.textContent).toContain("Derribo · ambos caen");
+    expect(card.textContent).toContain("Registrado por Águilas de Khemri");
+
+    // S10.4.1: the ATTACKER's owner (Águilas, the viewer) records Khalid's
+    // herida through their OWN pending-injury callout…
+    const ownCallout = screen.getByTestId("dock-pending-injury");
+    expect(ownCallout.textContent).toContain("Khalid el Impávido (#1)");
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-12"));
+
+    // …then the DEFENDER's owner flips perspective and records Grishnak's.
+    fireEvent.click(perspective("Colmillos del Caos"));
+    const rivalCallout = screen.getByTestId("dock-pending-injury");
+    expect(rivalCallout.textContent).toContain("Grishnak Mordaz (#1)");
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-11"));
+
+    // ALL rows land on the SAME game-turn card (T16 grouping untouched:
+    // «placaje y herida de la misma jugada caen en la MISMA card») with EACH
+    // recorder's badge (S10.4.2) and the victim-side «Tirada 1D16» rows.
+    const landed = turnCard(1, "Águilas de Khemri");
+    expect(rowKinds(landed)).toEqual(["knockdown", "casualty", "casualty"]);
+    expect(landed.textContent).toContain("Tirada 1D16: 12");
+    expect(landed.textContent).toContain("Tirada 1D16: 11");
+    expect(landed.textContent).toContain("Registrado por Águilas de Khemri");
+    expect(landed.textContent).toContain("Registrado por Colmillos del Caos");
+    // WHY new (T23): the both-down injury rows keep the DEC-1 «(Ambos
+    // derribados)» marker copy (e2e pins its text — never rename it).
+    expect(landed.textContent).toContain("(Ambos derribados)");
+    // …and the victim side gets NO card of its own for this play (T16).
+    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+  });
+
+  it("one armour holds -> only the broken player's owner records an injury (both may fall out, one, or none)", () => {
+    startWithHomeReceiver();
+    // Grishnak 12 > AR 10 -> rota; Khalid 5 vs AR 9 -> aguanta.
+    captureBothDown("12", "5");
+
+    // The unharmed attacker's owner sees NO callout…
+    expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
+    // …only the broken defender's owner does («solo si llega a producirse»).
+    fireEvent.click(perspective("Colmillos del Caos"));
+    const callout = screen.getByTestId("dock-pending-injury");
+    expect(callout.textContent).toContain("Grishnak Mordaz (#1)");
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-8"));
+
+    const landed = turnCard(1, "Águilas de Khemri");
+    expect(rowKinds(landed)).toEqual(["knockdown", "casualty"]);
+    expect(landed.textContent).toContain("Registrado por Colmillos del Caos");
     expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
   });
 });
