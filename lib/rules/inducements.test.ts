@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   COMMON_INDUCEMENTS,
+  PRAYERS_OF_NUFFLE,
   RACE_SPECIAL_RULES,
+  activePrayersFromRolls,
   budgetForSide,
   cartCost,
+  crowdSppException,
   effectiveCost,
+  foulSppException,
   getInducement,
   inducementBudgetOf,
   inducementByDisplayName,
@@ -12,7 +16,9 @@ import {
   listInducements,
   maxAllowed,
   raceRules,
+  resolvePrayerRoll,
   validateCart,
+  type ActivePrayers,
   type InducementCartItem,
 } from "./inducements";
 
@@ -404,5 +410,70 @@ describe("validateCart (IND-3)", () => {
     // 3× bribes at the goblin 50k rate = 150k → fits; the base 100k would not.
     expect(validateCart({ items: [item("bribes", 3)], raceId: "goblin", budget: 150_000 }).ok).toBe(true);
     expect(validateCart({ items: [item("bribes", 3)], raceId: "orc", budget: 150_000 }).ok).toBe(false);
+  });
+});
+
+/**
+ * T25 (PR #415 follow-up): «Plegarias a Nuffle» (Prayers of Nuffle) — the
+ * CONFIRMED SPP-affecting blessings extracted from the rulebook's Prayers of
+ * Nuffle table (the OCR quotes are the authority): 10 «Pase perfecto», 11
+ * «Recepciones deslumbrantes», 12 «Apoyo del público», 13 «¡Con faltas y a lo
+ * loco!». The inducement is bought pre-match (10 000 GP, 0-3); ONE 1D16 roll
+ * per prayer bought determines WHICH blessing (no repeats) and the effect
+ * lasts the whole match. Only these four faces are confirmed — the rest of the
+ * table was NOT extracted and must never be invented.
+ */
+describe("T25 · Prayers of Nuffle — the 1D16 blessing rows («Plegarias a Nuffle»)", () => {
+  it("models exactly the four CONFIRMED rows, names verbatim from the rulebook table", () => {
+    expect(PRAYERS_OF_NUFFLE.map((b) => [b.roll, b.id, b.displayName])).toEqual([
+      [10, "perfect-pass", "Pase perfecto"],
+      [11, "dazzling-catches", "Recepciones deslumbrantes"],
+      [12, "crowd-support", "Apoyo del público"],
+      [13, "foul-and-frenzy", "¡Con faltas y a lo loco!"],
+    ]);
+  });
+
+  it("resolves the blessing keyed by the D16 result — and NOTHING for the unmodeled faces (never invents rows)", () => {
+    for (const blessing of PRAYERS_OF_NUFFLE) {
+      expect(resolvePrayerRoll(blessing.roll)).toBe(blessing);
+    }
+    for (const roll of [1, 2, 5, 9, 14, 15, 16, 0, 17, -1, 10.5]) {
+      expect(resolvePrayerRoll(roll)).toBeNull();
+    }
+  });
+
+  it("activePrayersFromRolls is ADDITIVE — every bought prayer's roll ADDS its blessing (the set is a list, never a single slot)", () => {
+    expect(activePrayersFromRolls([10])).toEqual(["perfect-pass"]);
+    expect(activePrayersFromRolls([10, 13])).toEqual(["perfect-pass", "foul-and-frenzy"]);
+    // Stable table order whatever the roll order (all three blessings at once).
+    expect(activePrayersFromRolls([13, 11, 12])).toEqual([
+      "dazzling-catches",
+      "crowd-support",
+      "foul-and-frenzy",
+    ]);
+  });
+
+  it("…deduplicates repeats (one roll per prayer bought, «sin repetidos») and ignores unmodeled faces", () => {
+    expect(activePrayersFromRolls([11, 11, 10])).toEqual(["perfect-pass", "dazzling-catches"]);
+    expect(activePrayersFromRolls([3, 9, 16])).toEqual([]);
+    expect(activePrayersFromRolls([])).toEqual([]);
+  });
+
+  it("foulSppException is TRUE only for prayer 13 — the foul=0 default needs the blessing (skill-based foul SPP is NOT modeled: clean seam)", () => {
+    const otherSets: ActivePrayers[] = [[], ["perfect-pass"], ["dazzling-catches"], ["crowd-support"]];
+    expect(foulSppException(["foul-and-frenzy"])).toBe(true);
+    expect(foulSppException(["foul-and-frenzy", "perfect-pass"])).toBe(true);
+    for (const prayers of otherSets) {
+      expect(foulSppException(prayers)).toBe(false);
+    }
+  });
+
+  it("crowdSppException is TRUE only for prayer 12 («Apoyo del público») — the crowd=0 default needs the blessing", () => {
+    const otherSets: ActivePrayers[] = [[], ["perfect-pass"], ["dazzling-catches"], ["foul-and-frenzy"]];
+    expect(crowdSppException(["crowd-support"])).toBe(true);
+    expect(crowdSppException(["crowd-support", "foul-and-frenzy"])).toBe(true);
+    for (const prayers of otherSets) {
+      expect(crowdSppException(prayers)).toBe(false);
+    }
   });
 });

@@ -599,3 +599,86 @@ export function inducementBudgetOf(
   };
   return budgetForSide(tvOf(home), tvOf(away));
 }
+
+/* ─── T25 · «Plegarias a Nuffle» (Prayers of Nuffle) ───────────────────────
+ *
+ * The CONFIRMED SPP-affecting blessings of the rulebook's Prayers of Nuffle
+ * table (the OCR quotes of the scanned PDF are the authority). The
+ * `prayers-to-nuffle` inducement (10 000 GP, 0-3 per team) is bought PRE-MATCH
+ * and each prayer bought rolls ONE 1D16 that determines WHICH blessing is
+ * active (no repeats); every effect lasts the whole match and is never applied
+ * to Star Players. Only results 10-13 are confirmed by the extracted material
+ * — the remaining faces were NOT extracted and must never be invented.
+ */
+
+/** The four confirmed blessing ids (rulebook table rows 10-13). */
+export type PrayerId =
+  | "perfect-pass"
+  | "dazzling-catches"
+  | "crowd-support"
+  | "foul-and-frenzy";
+
+/** One blessing row: the granting 1D16 result + its rulebook Spanish name. */
+export interface PrayerBlessing {
+  /** The 1D16 effect roll that grants the blessing (one roll per prayer bought). */
+  roll: number;
+  id: PrayerId;
+  /** Spanish display name — VERBATIM from the rulebook's Prayers of Nuffle
+   * table (the quoted authority; never translated or reworded). */
+  displayName: string;
+}
+
+/** The modeled Prayers-of-Nuffle rows (T25) — table order by D16 result. */
+export const PRAYERS_OF_NUFFLE: readonly PrayerBlessing[] = [
+  { roll: 10, id: "perfect-pass", displayName: "Pase perfecto" },
+  { roll: 11, id: "dazzling-catches", displayName: "Recepciones deslumbrantes" },
+  { roll: 12, id: "crowd-support", displayName: "Apoyo del público" },
+  { roll: 13, id: "foul-and-frenzy", displayName: "¡Con faltas y a lo loco!" },
+];
+
+/** The prayer-effect resolver keyed by the D16 result — null for every
+ * unmodeled face (never throws, never invents a row). */
+export function resolvePrayerRoll(roll: number): PrayerBlessing | null {
+  return PRAYERS_OF_NUFFLE.find((blessing) => blessing.roll === roll) ?? null;
+}
+
+/** The match's active-prayer set — a LIST, additive: each bought prayer's
+ * 1D16 roll ADDS its blessing (up to three may be active at once per team). */
+export type ActivePrayers = readonly PrayerId[];
+
+/** The per-side active-prayer sets of one match (T25). */
+export interface MatchActivePrayers {
+  home: ActivePrayers;
+  away: ActivePrayers;
+}
+
+/** Builds a team's active set from its bought prayers' effect rolls: every
+ * roll resolves through `resolvePrayerRoll` and ADDS its blessing; unmodeled
+ * faces add nothing; repeats add once (one roll per prayer bought — «sin
+ * repetidos»). Returned in table order for stable rendering. */
+export function activePrayersFromRolls(rolls: readonly number[]): ActivePrayers {
+  const active = new Set<PrayerId>();
+  for (const roll of rolls) {
+    const blessing = resolvePrayerRoll(roll);
+    if (blessing != null) active.add(blessing.id);
+  }
+  return PRAYERS_OF_NUFFLE.map((blessing) => blessing.id).filter((id) => active.has(id));
+}
+
+/** THE foul-SPP exception seam (T25): the SPP earn rule consults this
+ * predicate before paying a foul-caused injury. TRUE today only when prayer 13
+ * «¡Con faltas y a lo loco!» is active for the acting team («causing an Injury
+ * from a FAULT action earns 2 PE»); the default foul=0 stays pinned without it.
+ * Player-SKILL-based foul SPP was NOT found in the extracted rules material —
+ * a future skill-based exception belongs HERE (and must not invent skill
+ * names), never in the UI layer. */
+export function foulSppException(prayers: ActivePrayers): boolean {
+  return prayers.includes("foul-and-frenzy");
+}
+
+/** The crowd-push SPP exception seam (T25): TRUE today only when prayer 12
+ * «Apoyo del público» is active («if a rival player is Injured being pushed
+ * off the pitch, the pusher earns 2 PE»); the default crowd=0 stays pinned. */
+export function crowdSppException(prayers: ActivePrayers): boolean {
+  return prayers.includes("crowd-support");
+}
