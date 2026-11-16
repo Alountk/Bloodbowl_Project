@@ -455,9 +455,21 @@ function tabFor(event: LiveMatchEventDto): { label: string; injury?: boolean } {
   return eventCategoryTab(event) ?? { label: liveEventLabel(event) };
 }
 
-/** The bottom-right SPP tab text (TD +3 · casualty +2 · completion +1 …) —
- *  rendered ONLY when earned (T18: SPP is a consequence, never a title). */
+/** The inverted bottom SPP tab text (TD +3 · casualty +2 · completion +1 …) —
+ *  rendered ONLY when earned (T18: SPP is a consequence, never a title).
+ *  T20 (L70): the gate is the EARNER — a SELF-INFLICTED casualty (dodge/crowd)
+ *  has no causer, so nobody earns its ★ (RAU-47 «no-causer pays no-★»). A
+ *  CAUSED record may carry no `causerRosterId` of its own (the demo's split
+ *  combat chain records the herida on the victim side — the causer context
+ *  rides the chain's «Derribo» row), so the CAUSE is the earn signal, never
+ *  the payload's causer field. */
 function sppMarkerFor(event: LiveMatchEventDto): { text: string; className: string } | null {
+  if (event.kind === "casualty") {
+    const cause = typeof event.payload.cause === "string" ? (event.payload.cause as CasualtyCause) : null;
+    if (event.payload.selfInflicted === true || (cause != null && SELF_CAUSES.includes(cause))) {
+      return null;
+    }
+  }
   // A pending casualty shows the flat causal +2 (artboard T5 row); a resolved
   // one follows the shared `eventSpp` band rule (LM-18).
   const value = isPendingInjuryRoll(event) ? 2 : eventSpp(event);
@@ -649,7 +661,14 @@ function EventRow({
       </span>
       <div
         className={`${mirrored ? "rounded-b-lg rounded-tl-lg" : "rounded-b-lg rounded-tr-lg"} border p-2.5 ${
-          highlight ? "border-red/30 bg-red/5" : "border-border bg-white"
+          highlight ? "border-red/30" : "border-border"
+        } ${
+          // T20 (L70): the body BACKGROUND identifies WHO acted — navy tint on
+          // home rows, red tint on away rows («las aguilas azules y los
+          // colmillos los colmillos»). Low-alpha (WCAG AA for the body text —
+          // see eventCardActa.test.tsx's contrast lock); the tint is BODY
+          // identity, never the category tab (which keeps design A).
+          mirrored ? "bg-red/[0.025]" : event.side === "home" ? "bg-navy/[0.025]" : "bg-white"
         }`}
       >
         {/* T19: the who-line above the description (home navy / away red). */}
@@ -675,7 +694,15 @@ function EventRow({
         {voices != null ? (
           <div
             data-testid="acta-victim-note"
-            className="mt-2.5 rounded-r-md border border-border border-l-[3px] border-l-red bg-background px-2.5 py-2"
+            className={`mt-2.5 border border-border bg-background px-2.5 py-2 ${
+              // T20 (L70, the user's exact words): «cuando el jugador es el de
+              // la derecha deberiamos cambiar border-l-red y border-l-[3px] a
+              // border-r-red y border-r-[3px]» — the accent stays on the
+              // mirrored OUTER edge.
+              mirrored
+                ? "rounded-l-md border-r-[3px] border-r-red"
+                : "rounded-r-md border-l-[3px] border-l-red"
+            }`}
           >
             <p className="text-[10px] font-bold uppercase tracking-wider text-red">
               Lo que informa quien la recibe
@@ -690,7 +717,12 @@ function EventRow({
       {marker != null ? (
         <div
           data-testid="acta-event-spp"
-          className={`ml-auto w-fit rounded-b-lg border border-t-0 border-border bg-fill-hover px-3 py-1 text-[11px] font-bold ${marker.className}`}
+          className={`${
+            // T20 (L70): the SPP tab mirrors the category tab's side — home
+            // (tab top-left) hangs it bottom-right, away (tab top-right)
+            // bottom-left (resolves the L68 open flag in the mirrored sense).
+            mirrored ? "mr-auto" : "ml-auto"
+          } w-fit rounded-b-lg border border-t-0 border-border bg-fill-hover px-3 py-1 text-[11px] font-bold ${marker.className}`}
         >
           {marker.text}
         </div>

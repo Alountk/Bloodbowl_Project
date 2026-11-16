@@ -4,11 +4,14 @@
  * `design/acta-folder-tabs/01-folder-tabs.html` (artboard A, chosen — T18):
  * a folder with a category tab on the top-left (navy; red ONLY for Casualty),
  * the white body panel attached under it (full-width description) and the
- * inverted SPP tab at the bottom-right (only when earned). Inside the body the
- * v4 data sheet survives: optional serif name + position line, the capture
- * author badge (S10.4.2) and the dotted-leader `<dl>` data list where the
- * important values are bold; a casualty sheet adds the «Lo que informa quien
- * la recibe» victim-note sub-box (L62).
+ * inverted SPP tab at the bottom (bottom-RIGHT on home rows / bottom-LEFT on
+ * away rows — T20 mirrors it with the category tab), only when earned. Inside
+ * the body the v4 data sheet survives: optional serif name + position line,
+ * the capture author badge (S10.4.2) and the dotted-leader `<dl>` data list
+ * where the important values are bold; a casualty sheet adds the «Lo que
+ * informa quien la recibe» victim-note sub-box (L62) whose red accent border
+ * mirrors to the RIGHT on away rows (T20). T20 also tints the body by WHO
+ * acted (navy home / red away) — identity, never the category tab.
  *
  * Tokens come from the Tailwind v4 `@theme` block in `app/globals.css`; this
  * module never hardcodes a palette hex. The per-card side color is threaded
@@ -52,8 +55,10 @@
   box-sizing: border-box;
 }
 
-/* ---- inverted SPP tab (artboard .spp): bottom-right, ONLY when earned —
- * the ★N text that used to ride the card title («label · ★N») lives here. ---- */
+/* ---- inverted SPP tab (artboard .spp): bottom-right on home rows, ONLY when
+ * earned — the ★N text that used to ride the card title («label · ★N») lives
+ * here. T20 (L70): away rows mirror it to the bottom-left (see the T20
+ * section) — the category tab's mirrored opposite. ---- */
 .acta__spp {
   margin: -1px 0 0 auto;
   width: max-content;
@@ -234,8 +239,9 @@
  * radius flips (square corner under the tab), the description/rolls/author
  * text right-aligns and the who-line turns red. The CATEGORY tab colors stay
  * per design A (navy; red ONLY Casualty — L67: side identity comes from the
- * tab SIDE + alignment + who-line color) and the SPP tab keeps hanging
- * bottom-right on both sides (artboard 04 .spp margin-left auto). ---- */
+ * tab SIDE + alignment + who-line color). T20 supersedes the artboard-04
+ * SPP-side note: the SPP tab no longer hangs bottom-right on both sides — it
+ * mirrors with the category tab (home bottom-right / away bottom-left, L70). ---- */
 .acta__who {
   margin: 0 0 4px;
   font-size: 12px;
@@ -248,6 +254,8 @@
 }
 .away .acta__body {
   border-radius: 8px 0 8px 8px;
+  /* T20 (L70): the body tint identifies WHO acted (away = red). */
+  background: color-mix(in srgb, var(--color-red) 2.5%, var(--color-panel));
 }
 .away .acta__who {
   color: var(--color-red);
@@ -263,4 +271,29 @@
  * already carries the victim's side) — its text just follows the mirror. */
 .away .victim__note p {
   text-align: right;
+}
+
+/* ---- T20 (UX round 3, L70): the user's three acta-row fixes ----
+ * (1) body identity tint («las aguilas azules y los colmillos los colmillos»)
+ * — home rows a navy tint, away rows a red tint (the away half rides the T19
+ * `.away .acta__body` rule above); the CATEGORY tab keeps design-A colors
+ * (red ONLY Casualty) — the tint is body identity, never the tab. Low-alpha
+ * 2.5% is the WCAG-AA cap: it keeps every body text color ≥ 4.5:1 in BOTH
+ * palettes (the scoreboard-theme slate is the binding token — the tripwire
+ * lives in eventCardActa.test.tsx).
+ * (2) the SPP tab mirrors with the category tab: home (tab top-left) hangs it
+ * bottom-right (the base rule), away (tab top-right) bottom-left.
+ * (3) the victim-note accent flips to the RIGHT border on away rows
+ * («cambiar border-l-red y border-l-[3px] a border-r-red y border-r-[3px]»). */
+.home .acta__body {
+  background: color-mix(in srgb, var(--color-navy) 2.5%, var(--color-panel));
+}
+.away .acta__spp {
+  margin-left: 0;
+  margin-right: auto;
+}
+.away .victim__note {
+  border-left: 1px solid var(--color-border);
+  border-right: 3px solid var(--color-red);
+  border-radius: 6px 0 0 6px;
 }

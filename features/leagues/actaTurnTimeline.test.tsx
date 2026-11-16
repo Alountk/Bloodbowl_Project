@@ -1410,3 +1410,157 @@ describe("ActaTurnTimeline — T19 mirror-chat side identity (design/acta-folder
     expect(awayRow.querySelector("strong")!.className).toContain("text-red");
   });
 });
+
+describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, victim-note mirror, body identity tint", () => {
+  /** A DEMO-shaped casualty payload: the 1D16 roll but NO server `band`
+   *  (actaDemoReducer records the roll only — the band is derived). */
+  function demoCasualtyEvent(
+    roll16: number | null,
+    side: "home" | "away" = "away",
+  ): LiveMatchEventDto {
+    const victim = side === "away" ? "a2" : "h1";
+    const causer = side === "away" ? "h3" : "a1";
+    return event({
+      kind: "casualty",
+      side,
+      playerRosterId: victim,
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: {
+        victimRosterId: victim,
+        causerRosterId: causer,
+        cause: "block",
+        ...(roll16 != null ? { roll16 } : {}),
+      },
+    });
+  }
+
+  const rowOf = (kind: string): HTMLElement =>
+    document.querySelector(`[data-testid="acta-event-row"][data-kind="${kind}"]`) as HTMLElement;
+
+  it("the SPP tab renders whenever the row EARNS it — a resolved casualty with only the 1D16 roll (demo shape, no band) shows the causer's +2 SPP (L70)", () => {
+    seqCounter = 0;
+    const { unmount } = render(<ActaTurnTimeline {...timelineProps({ events: [demoCasualtyEvent(9)] })} />);
+    const row = rowOf("casualty");
+    const sppTab = row.querySelector('[data-testid="acta-event-spp"]') as HTMLElement;
+    // WHY new (T20, intentional): the user reports earned SPP are NOT showing —
+    // the tab vanished on every demo casualty because `eventSpp` keyed the band
+    // the payload never carries. Roll 9 = apaleado = lasting = the causer's ★2.
+    expect(sppTab).not.toBeNull();
+    expect(sppTab.textContent).toContain("+2 SPP");
+    unmount();
+    // TRIANGULATE: a bruise (roll 1-8) still earns NOTHING — no tab at all.
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [demoCasualtyEvent(3)] })}
+      />,
+    );
+    expect(rowOf("casualty").querySelector('[data-testid="acta-event-spp"]')).toBeNull();
+  });
+
+  it("the SPP tab mirrors with the category tab: home rows hang it bottom-RIGHT (ml-auto), away rows bottom-LEFT (mr-auto) (L70)", () => {
+    seqCounter = 0;
+    const homePass = event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 5, at: STARTED + 40 * MIN });
+    const homeRender = render(
+      <ActaTurnTimeline {...timelineProps({ events: [homePass] })} />,
+    );
+    // Home row: category tab top-left → SPP tab bottom-right (ml-auto).
+    const homeSpp = rowOf("completion").querySelector('[data-testid="acta-event-spp"]') as HTMLElement;
+    expect(homeSpp.className).toContain("ml-auto");
+    expect(homeSpp.className).not.toContain("mr-auto");
+    homeRender.unmount();
+
+    seqCounter = 0;
+    render(<ActaTurnTimeline {...timelineProps({ events: [demoCasualtyEvent(9)] })} />);
+    // Away row: category tab top-right → SPP tab bottom-LEFT (mr-auto).
+    const awaySpp = rowOf("casualty").querySelector('[data-testid="acta-event-spp"]') as HTMLElement;
+    expect(awaySpp.className).toContain("mr-auto");
+    expect(awaySpp.className).not.toContain("ml-auto");
+  });
+
+  it("the victim-note accent flips on mirrored rows: away rows carry the red rule on the RIGHT (border-r-[3px]/border-r-red), home rows keep it on the LEFT (L70)", () => {
+    seqCounter = 0;
+    const awayRender = render(<ActaTurnTimeline {...timelineProps({ events: [casualtyEvent(true)] })} />);
+    const awayNote = rowOf("casualty").querySelector('[data-testid="acta-victim-note"]') as HTMLElement;
+    // WHY changed (T20, intentional — the user's exact words): «cuando el
+    // jugador es el de la derecha deberiamos cambiar border-l-red y
+    // border-l-[3px] a border-r-red y border-r-[3px]» — the accent stays on
+    // the mirrored OUTER edge.
+    expect(awayNote.className).toContain("border-r-[3px]");
+    expect(awayNote.className).toContain("border-r-red");
+    expect(awayNote.className).not.toContain("border-l-[3px]");
+    expect(awayNote.className).not.toContain("border-l-red");
+    awayRender.unmount();
+
+    seqCounter = 0;
+    render(<ActaTurnTimeline {...timelineProps({ events: [demoCasualtyEvent(9, "home")] })} />);
+    const homeNote = rowOf("casualty").querySelector('[data-testid="acta-victim-note"]') as HTMLElement;
+    expect(homeNote.className).toContain("border-l-[3px]");
+    expect(homeNote.className).toContain("border-l-red");
+    expect(homeNote.className).not.toContain("border-r-red");
+  });
+
+  it("the action body background identifies WHO acted: navy tint on home rows, red tint on away rows (L70 «las aguilas azules y los colmillos los colmillos»)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [tdEvent(), event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 5, at: STARTED + 40 * MIN })],
+          active: { ...liveActive(), turnNumber: 6 },
+        })}
+      />,
+    );
+    // tdEvent is away and sits on the LIVE card — the old uniform live red
+    // (bg-red/5) painted BOTH sides; the tint is body identity now.
+    const awayBody = rowOf("td").querySelector("div") as HTMLElement;
+    expect(awayBody.className).toContain("bg-red/[0.025]");
+    expect(awayBody.className).not.toContain("bg-red/5");
+    expect(awayBody.className).not.toContain("bg-navy");
+    // Home row (completed card) gets the navy tint, never plain white.
+    const homeBody = rowOf("completion").querySelector("div") as HTMLElement;
+    expect(homeBody.className).toContain("bg-navy/[0.025]");
+    expect(homeBody.className).not.toContain("bg-white");
+    expect(homeBody.className).not.toContain("bg-red");
+  });
+
+  it("the SPP tab renders ONLY when someone EARNS it — a self-inflicted casualty (dodge/crowd) never shows one, whatever the roll (RAU-47 «no-causer pays no-★»)", () => {
+    // TRIANGULATE (T20): the earned-SPP gate is the CAUSE — dodge/crowd have
+    // no causer, so the victim's own row never shows an award. A CAUSED record
+    // keeps its ★2 even without a `causerRosterId` of its own (the demo's
+    // victim-recorded herida — the causer context rides the chain's row).
+    seqCounter = 0;
+    const pendingRender = render(<ActaTurnTimeline {...timelineProps({ events: [selfInflictedEvent()] })} />);
+    expect(rowOf("casualty").querySelector('[data-testid="acta-event-spp"]')).toBeNull();
+    pendingRender.unmount();
+
+    seqCounter = 0;
+    const resolvedSelf: LiveMatchEventDto = event({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "a2",
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: { selfInflicted: true, victimRosterId: "a2", cause: "dodge", roll16: 9 },
+    });
+    const selfRender = render(<ActaTurnTimeline {...timelineProps({ events: [resolvedSelf] })} />);
+    expect(rowOf("casualty").querySelector('[data-testid="acta-event-spp"]')).toBeNull();
+    selfRender.unmount();
+
+    // TRIANGULATE: the demo's victim-recorded CAUSED injury (cause block, no
+    // causerRosterId on the record) still shows the earned +2.
+    seqCounter = 0;
+    const victimRecord: LiveMatchEventDto = event({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "a2",
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: { victimRosterId: "a2", cause: "block", roll16: 12 },
+    });
+    render(<ActaTurnTimeline {...timelineProps({ events: [victimRecord] })} />);
+    expect(
+      rowOf("casualty").querySelector('[data-testid="acta-event-spp"]')?.textContent,
+    ).toContain("+2 SPP");
+  });
+});
