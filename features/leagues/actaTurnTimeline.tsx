@@ -8,6 +8,7 @@ import { deriveMinute } from "@/lib/liveFeed";
 import {
   bothDownMarkerLabel,
   causeLabel,
+  eventCategoryTab,
   eventSpp,
   KICKOFF_OUTCOME_LABELS,
   liveEventLabel,
@@ -39,10 +40,11 @@ import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
  *     the EN JUEGO / COMPLETADO / CERRADO state chip and "Min N'" label;
  *     left accent in the ACTING TEAM's color (S3: home navy · away red ·
  *     AMBOS EQUIPOS slate — never state-coded; the chips carry the state);
- *   - event rows (live/completed cards): kind badge (+1 TD / CASUALTY /
- *     +1 SPP…), bold player + muted role/number, one-line description and
- *     the SPP marker on the right — captured data renders WITHOUT re-entry
- *     (S3);
+ *   - event rows (live/completed cards): the T18 folder card — category tab
+ *     on the top-left («Casualty» red only, «Pase», «TD», «Derribo»…), bold
+ *     player + muted role/number and the one-line description at FULL width,
+ *     the capture-author badge, and earned SPP only on the inverted
+ *     bottom-right tab (captured data renders WITHOUT re-entry, S3);
  *   - compact icon + sentence rows on closed cards (T4 style);
  *   - the MVA-4 pending injury-roll callout inside the card owning a casualty
  *     whose 1D16 is still missing: warning label, player + armor-break line,
@@ -444,24 +446,16 @@ function opposite(side: "home" | "away"): "home" | "away" {
   return side === "home" ? "away" : "home";
 }
 
-/** The kind badge (artboard: "+1 TD" navy · "CASUALTY" red · "+1 SPP" gray). */
-function badgeFor(event: LiveMatchEventDto): { label: string; className: string } {
-  switch (event.kind) {
-    case "td":
-      return { label: "+1 TD", className: "bg-navy text-white" };
-    case "casualty":
-      return { label: "CASUALTY", className: "bg-red text-white" };
-    case "completion":
-      return { label: "+1 SPP", className: "bg-slate-strong text-panel" };
-    default:
-      return {
-        label: liveEventLabel(event),
-        className: "border border-border bg-fill-hover text-slate-strong",
-      };
-  }
+/** T18 (folder-tab acta rows, design/acta-folder-tabs/01): the CATEGORY tab —
+ *  short labels («Casualty» red only), never the SPP count (L60: «+1 SPP» was
+ *  never a title) and never the long composed chain label (it stays the row's
+ *  text). Unknown kinds keep their own label. */
+function tabFor(event: LiveMatchEventDto): { label: string; injury?: boolean } {
+  return eventCategoryTab(event) ?? { label: liveEventLabel(event) };
 }
 
-/** The right-hand SPP marker (TD +3 · casualty +2 · completion +1 …). */
+/** The bottom-right SPP tab text (TD +3 · casualty +2 · completion +1 …) —
+ *  rendered ONLY when earned (T18: SPP is a consequence, never a title). */
 function sppMarkerFor(event: LiveMatchEventDto): { text: string; className: string } | null {
   // A pending casualty shows the flat causal +2 (artboard T5 row); a resolved
   // one follows the shared `eventSpp` band rule (LM-18).
@@ -473,13 +467,30 @@ function sppMarkerFor(event: LiveMatchEventDto): { text: string; className: stri
   };
 }
 
+/**
+ * T18 (L62): the casualty row's two voices — the attacker-side mark (the
+ * cause + both-down marker, «X marca herida a Y» lives in the subject) and
+ * what the RECEIVER reports (the injury roll + its consequences, or its
+ * pending status). Both parts keep the shipped copy byte-identical (the
+ * composed `descriptionFor` string is `mark · note`).
+ */
+function casualtyVoices(event: LiveMatchEventDto): { mark: string; note: string } {
+  const bothDown = bothDownMarkerLabel(event.payload);
+  const suffix = bothDown ? ` (${bothDown})` : "";
+  const cause = typeof event.payload.cause === "string" ? causeLabel(event.payload.cause) : "Baja";
+  const roll16 = event.payload.roll16;
+  const note =
+    typeof roll16 === "number"
+      ? `Tirada 1D16: ${roll16} · ${bandLabel(resolveInjury(roll16).kind)}`
+      : "Tirada de lesión pendiente.";
+  return { mark: `${cause}${suffix}`, note };
+}
+
 /** The one-line event description (captured data, never re-entered — S3). */
 function descriptionFor(
   event: LiveMatchEventDto,
   teams: TeamMap,
 ): string {
-  const bothDown = bothDownMarkerLabel(event.payload);
-  const suffix = bothDown ? ` (${bothDown})` : "";
   switch (event.kind) {
     case "td":
       return "Touchdown anotado.";
@@ -490,13 +501,8 @@ function descriptionFor(
       return victim ? `Falta sobre ${victim.name} (#${victim.dorsal}).` : "Falta cometida.";
     }
     case "casualty": {
-      const cause = typeof event.payload.cause === "string" ? causeLabel(event.payload.cause) : "Baja";
-      const roll16 = event.payload.roll16;
-      if (typeof roll16 === "number") {
-        const outcome = resolveInjury(roll16);
-        return `${cause}${suffix} · Tirada 1D16: ${roll16} · ${bandLabel(outcome.kind)}`;
-      }
-      return `${cause}${suffix} · Tirada de lesión pendiente.`;
+      const { mark, note } = casualtyVoices(event);
+      return `${mark} · ${note}`;
     }
     case "mvp":
       return "MVP del partido.";
@@ -557,6 +563,18 @@ function authorBadgeLabel(event: LiveMatchEventDto, teams: TeamMap): string {
   return author != null ? `Registrado por ${teams[author].name}` : "Registro de sistema";
 }
 
+/**
+ * T18 (L62): the victim-note's own recorder badge — «Lo que informa quien la
+ * recibe» is reported by the RECEIVER's coach (a casualty's `side` is the
+ * victim's side, LM-12). Derived from the EXISTING payload — no new injury
+ * data flows.
+ */
+function victimBadgeLabel(event: LiveMatchEventDto, teams: TeamMap): string {
+  return event.side != null
+    ? `Registrado por ${teams[event.side].name}`
+    : "Registro de sistema";
+}
+
 function EventRow({
   event,
   teams,
@@ -568,7 +586,7 @@ function EventRow({
   highlight: boolean;
   fresh: boolean;
 }) {
-  const badge = badgeFor(event);
+  const tab = tabFor(event);
   const marker = sppMarkerFor(event);
   let subject: ReactNode;
   if (event.kind === "casualty" && event.side != null) {
@@ -591,30 +609,63 @@ function EventRow({
       liveEventLabel(event),
     );
   }
+  // T18 (L62) voice split: the body keeps the attacker-side mark («X marca
+  // herida a Y» = the subject + the cause line) with its recorder badge; the
+  // injury roll + consequences live in the «Lo que informa quien la recibe»
+  // sub-box with the RECEIVER's own badge.
+  const voices = event.kind === "casualty" ? casualtyVoices(event) : null;
   return (
     <div
       data-testid="acta-event-row"
       data-kind={event.kind}
-      className={`flex items-start gap-2.5 rounded-sm border p-2 ${
-        highlight ? "border-red/30 bg-red/5" : "border-border bg-white"
-      } ${fresh ? "acta-motion-row-flash" : ""}`}
+      className={`relative pt-[26px] ${fresh ? "acta-motion-row-flash" : ""}`}
     >
       <span
-        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${badge.className}`}
+        data-testid="acta-event-tab"
+        className={`absolute left-0 top-0 flex h-[26px] items-center rounded-t-md px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${
+          tab.injury ? "bg-red" : "bg-navy"
+        }`}
       >
-        {badge.label}
+        {tab.label}
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-ink">{subject}</p>
-        <p className="text-xs text-slate">{descriptionFor(event, teams)}</p>
+      <div
+        className={`rounded-b-lg rounded-tr-lg border p-2.5 ${
+          highlight ? "border-red/30 bg-red/5" : "border-border bg-white"
+        }`}
+      >
+        {/* The description gets the FULL width — the old inline category chip
+            no longer steals it (T18, L60). */}
+        <p className="text-sm text-ink">{subject}</p>
+        <p className="text-xs text-slate">
+          {voices != null ? voices.mark : descriptionFor(event, teams)}
+        </p>
         {/* S10.4.2 role transparency: who REGISTERED the capture (compact,
             secondary — never competes with the row itself on mobile). */}
         <p className="text-[10px] font-bold uppercase tracking-wider text-slate">
           {authorBadgeLabel(event, teams)}
         </p>
+        {voices != null ? (
+          <div
+            data-testid="acta-victim-note"
+            className="mt-2.5 rounded-r-md border border-border border-l-[3px] border-l-red bg-background px-2.5 py-2"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider text-red">
+              Lo que informa quien la recibe
+            </p>
+            <p className="mt-1 text-xs text-slate">{voices.note}</p>
+            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate">
+              {victimBadgeLabel(event, teams)}
+            </p>
+          </div>
+        ) : null}
       </div>
       {marker != null ? (
-        <span className={`shrink-0 text-[11px] font-bold ${marker.className}`}>{marker.text}</span>
+        <div
+          data-testid="acta-event-spp"
+          className={`ml-auto w-fit rounded-b-lg border border-t-0 border-border bg-fill-hover px-3 py-1 text-[11px] font-bold ${marker.className}`}
+        >
+          {marker.text}
+        </div>
       ) : null}
     </div>
   );

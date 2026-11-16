@@ -13,6 +13,7 @@ import {
   isBothDownCasualty,
   bothDownMarkerLabel,
   knockdownLabel,
+  eventCategoryTab,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -379,5 +380,46 @@ describe("knockdownLabel — the standalone derribo row (T17, S10.2)", () => {
     expect(liveEventLabel(ev("knockdown", { face: "bothDown" }))).toBe(
       "Derribo · ambos caen",
     );
+  });
+});
+
+describe("eventCategoryTab — folder-tab acta rows (T18, design/acta-folder-tabs/01)", () => {
+  it("names the scored kinds by WHAT HAPPENED — never by their SPP award", () => {
+    // L60/L63: the pase row title is «Pase», never «+1 SPP» (SPP is a
+    // consequence and lives on the bottom-right tab instead).
+    expect(eventCategoryTab(ev("completion"))).toEqual({ label: "Pase" });
+    expect(eventCategoryTab(ev("td"))).toEqual({ label: "TD" });
+  });
+
+  it("marks ONLY the casualty category as the red tab (goal: navy tabs, red only for Casualty)", () => {
+    expect(eventCategoryTab(ev("casualty", { band: "apaleado" }))).toEqual({
+      label: "Casualty",
+      injury: true,
+    });
+    expect(eventCategoryTab(ev("completion"))?.injury).toBeUndefined();
+    expect(eventCategoryTab(ev("td"))?.injury).toBeUndefined();
+  });
+
+  it("shortens the combat chain to its category: Derribo / Ambos derribados (never the long composed label)", () => {
+    // The composed «Derribo · Ar 9 (8+) rota» chain stays the row's text;
+    // the TAB is the short category (L60: the chip stole more width than the text).
+    expect(
+      eventCategoryTab(ev("knockdown", { face: "defenderDown", armourRoll: 9 })),
+    ).toEqual({ label: "Derribo" });
+    expect(eventCategoryTab(ev("knockdown", { face: "defenderStumbles" }))).toEqual({
+      label: "Derribo",
+    });
+    expect(eventCategoryTab(ev("knockdown", { face: "attackerDown" }))).toEqual({
+      label: "Derribo",
+    });
+    expect(eventCategoryTab(ev("knockdown", { face: "bothDown" }))).toEqual({
+      label: "Ambos derribados",
+    });
+  });
+
+  it("returns null for kinds with no combat/scored category — the caller keeps its own label", () => {
+    expect(eventCategoryTab(ev("foul"))).toBeNull();
+    expect(eventCategoryTab(ev("mvp"))).toBeNull();
+    expect(eventCategoryTab(ev("weather"))).toBeNull();
   });
 });

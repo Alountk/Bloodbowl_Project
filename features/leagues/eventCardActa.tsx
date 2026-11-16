@@ -8,6 +8,7 @@ import {
   outcomeLabel,
   formatTreasury,
   liveEventLabel,
+  eventCategoryTab,
   eventSpp,
   bandSubLabel,
   casualtyRollLine,
@@ -23,8 +24,10 @@ import styles from "./eventCardActa.module.css";
 
 /**
  * The v4 "Acta" event card set: a data-sheet style card that lives ALONGSIDE
- * the validated v3 compact rows (`LiveEventCards`). Source of truth for the
- * visual design: `previews/event-card-acta.html`.
+ * the validated v3 compact rows (`LiveEventCards`). The SHELL is the chosen
+ * folder-tab design (`design/acta-folder-tabs/01-folder-tabs.html`, T18):
+ * category tab on the top-left, body attached under it, earned SPP only on the
+ * inverted bottom-right tab.
  *
  * The event DERIVATION is copied verbatim from v3 (`liveEventCards.tsx`): the
  * local helpers `sideLookup`, `findPlayer`, `positionName`, `foulVictim`,
@@ -207,59 +210,107 @@ function ActaRow({
 }
 
 /**
- * The Acta card shell: header (tag/meta), optional serif name + dorsal,
- * optional position line, optional dotted-leader data list and optional ack
- * row. Data-only cards (no name/position) sit flush under the header.
- * `author` is the S10.4.2 capture-author badge («quién la registró») — a
- * compact secondary line so the 390px layout never breaks (T16).
+ * The Acta card shell (T18 folder card): category TAB on the top-left (navy;
+ * red ONLY for the Casualty category), the body panel attached under it —
+ * turn/minute meta, optional serif name + dorsal, optional position line, the
+ * S10.4.2 capture-author badge («quién la registró»), the dotted-leader data
+ * list, the optional victim-note sub-box (L62) and the optional ack row — and
+ * the inverted SPP tab at the bottom-right (only when earned). Data-only cards
+ * (no name/position) sit flush under the meta. `tag` is the tab text and never
+ * carries SPP (the ★N text rides `spp`).
  */
 function ActaCard({
   sideClass,
   tag,
+  tabRed,
   meta,
   name,
   dorsal,
   pos,
   author,
   rows,
+  victimNote,
+  spp,
   ack,
 }: {
   sideClass: string;
   tag: ReactNode;
+  /** L60/L63: the ONLY red category tab is the Casualty one. */
+  tabRed?: boolean;
   meta: ReactNode;
   name?: ReactNode;
   dorsal?: number;
   pos?: ReactNode;
   author?: ReactNode;
   rows?: ReactNode[];
+  /** T18 (L62): «Lo que informa quien la recibe» sub-box (casualty cards). */
+  victimNote?: ReactNode;
+  /** T18: the inverted bottom-right SPP tab — only when earned (the moved ★N). */
+  spp?: ReactNode;
   ack?: ReactNode;
 }) {
   const hasHeader = name != null || pos != null;
   return (
     <article className={`${styles.acta} ${sideClass}`}>
-      <div className={styles.acta__top}>
-        <span className={styles.acta__tag}>{tag}</span>
-        <span className={styles.acta__meta}>{meta}</span>
+      <div
+        data-testid="acta-card-tab"
+        className={
+          tabRed ? `${styles.acta__tab} ${styles["acta__tab--casualty"]}` : styles.acta__tab
+        }
+      >
+        {tag}
       </div>
-      {name != null ? (
-        <h3 className={styles.acta__name}>
-          {name}
-          {dorsal != null ? <span> #{dorsal}</span> : null}
-        </h3>
+      <div className={styles.acta__body}>
+        <div className={styles.acta__top}>
+          <span className={styles.acta__meta}>{meta}</span>
+        </div>
+        {name != null ? (
+          <h3 className={styles.acta__name}>
+            {name}
+            {dorsal != null ? <span> #{dorsal}</span> : null}
+          </h3>
+        ) : null}
+        {pos != null ? <p className={styles.acta__pos}>{pos}</p> : null}
+        {author != null ? (
+          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate">
+            {author}
+          </p>
+        ) : null}
+        {rows && rows.length > 0 ? (
+          <dl className={`${styles.acta__data} ${hasHeader ? "" : styles["acta__data--flush"]}`}>
+            {rows}
+          </dl>
+        ) : null}
+        {victimNote}
+        {ack}
+      </div>
+      {spp != null ? (
+        <div data-testid="acta-card-spp" className={styles.acta__spp}>
+          {spp}
+        </div>
       ) : null}
-      {pos != null ? <p className={styles.acta__pos}>{pos}</p> : null}
-      {author != null ? (
-        <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate">
-          {author}
+    </article>
+  );
+}
+
+/**
+ * T18 (L62, artboard .victim-note): the victim-note sub-box «Lo que informa
+ * quien la recibe» — the injury roll and its consequences belong to the
+ * opponent who receives it («El contrincante pondra que le ha pasado»), with
+ * ITS OWN recorder badge (the receiver's coach). Rendered only when there is
+ * something reported (roll or consequences) — no invented injury data flows.
+ */
+function VictimNote({ recorder, rows }: { recorder: ReactNode; rows: ReactNode[] }) {
+  return (
+    <div data-testid="acta-victim-note" className={styles.victim__note}>
+      <p className={styles.victim__head}>Lo que informa quien la recibe</p>
+      <dl className={`${styles.acta__data} ${styles["acta__data--flush"]}`}>{rows}</dl>
+      {recorder != null ? (
+        <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate">
+          {recorder}
         </p>
       ) : null}
-      {rows && rows.length > 0 ? (
-        <dl className={`${styles.acta__data} ${hasHeader ? "" : styles["acta__data--flush"]}`}>
-          {rows}
-        </dl>
-      ) : null}
-      {ack}
-    </article>
+    </div>
   );
 }
 
@@ -390,10 +441,16 @@ export function LiveEventCardsActa({
         //      LM-13 scored actions: interception / throwTeamMate / landedSafe) ----
         if (PLAYER_EVENT_KINDS.has(event.kind)) {
           const label = liveEventLabel(event, t);
-          // The casualty INJURY card is the victim's card — it never carries the
-          // SPP stars the CAUSER earns (those ride the derived action card).
-          const tag = event.kind !== "casualty" && spp > 0 ? `${label} · ★${spp}` : label;
+          // T18 (L60/L63): the category tab carries the LABEL only — the
+          // earned ★N moved to the bottom-right SPP tab (never «label · ★N» as
+          // the title). The casualty INJURY card is the victim's card — it
+          // never carries the SPP stars the CAUSER earns (those ride the
+          // derived action card) and its tab is the red «Casualty» category.
+          const category = eventCategoryTab(event);
+          const tag = category?.injury === true ? category.label : label;
+          const sppText = event.kind !== "casualty" && spp > 0 ? `★${spp}` : undefined;
           const rows: ReactNode[] = [];
+          let victimNote: ReactNode;
 
           if (event.kind === "td" && partialScores.has(event.seq)) {
             const partial = partialScores.get(event.seq)!;
@@ -418,25 +475,12 @@ export function LiveEventCardsActa({
           }
 
           if (event.kind === "casualty") {
-            const bandSub = bandSubLabel(event.payload, t);
-            if (bandSub) {
-              rows.push(
-                <ActaRow key="effect" label="Efecto">
-                  <b>{bandSub}</b>
-                </ActaRow>,
-              );
-            }
-            // Roll row: reuse `casualtyRollLine` ("Tirada 1D16: 9") and split the
-            // label from the number so the number can be bolded.
-            const rollLine = casualtyRollLine(event.payload, t);
-            const rollMatch = rollLine ? /^(.*?):\s*(\d+)$/.exec(rollLine) : null;
-            if (rollMatch) {
-              rows.push(
-                <ActaRow key="roll" label={rollMatch[1]} num>
-                  <b>{rollMatch[2]}</b>
-                </ActaRow>,
-              );
-            }
+            // T18 (L62) voice split (artboard .victim-note): the BODY keeps the
+            // attacker-side mark («X marca herida a Y» = the Causa row + the
+            // both-down marker) with its recorder badge (the T16 capture-author
+            // badge stays where it is); the injury roll + consequences move to
+            // the victim-note sub-box with the RECEIVER's own recorder badge —
+            // `event.side` is the victim's side (LM-12).
             const causeParts = team ? casualtyCauseParts(event.payload, oppositeTeam, oppositeRef, t) : null;
             const bothDownMarker = bothDownMarkerLabel(event.payload, t);
             if (causeParts && causeParts.cause) {
@@ -454,6 +498,37 @@ export function LiveEventCardsActa({
                   )}
                   {bothDownMarker ? <span> {bothDownMarker}</span> : null}
                 </ActaRow>,
+              );
+            }
+            const noteRows: ReactNode[] = [];
+            // Roll row: reuse `casualtyRollLine` ("Tirada 1D16: 9") and split the
+            // label from the number so the number can be bolded.
+            const rollLine = casualtyRollLine(event.payload, t);
+            const rollMatch = rollLine ? /^(.*?):\s*(\d+)$/.exec(rollLine) : null;
+            if (rollMatch) {
+              noteRows.push(
+                <ActaRow key="roll" label={rollMatch[1]} num>
+                  <b>{rollMatch[2]}</b>
+                </ActaRow>,
+              );
+            }
+            const bandSub = bandSubLabel(event.payload, t);
+            if (bandSub) {
+              noteRows.push(
+                <ActaRow key="effect" label="Efecto">
+                  <b>{bandSub}</b>
+                </ActaRow>,
+              );
+            }
+            if (noteRows.length > 0) {
+              const receiver = event.side === "home" ? homeTeam.name : awayTeam.name;
+              victimNote = (
+                <VictimNote
+                  recorder={
+                    event.side != null ? `Registrado por ${receiver}` : "Registro de sistema"
+                  }
+                  rows={noteRows}
+                />
               );
             }
           }
@@ -479,12 +554,15 @@ export function LiveEventCardsActa({
                 <ActaCard
                   sideClass={sideClass}
                   tag={tag}
+                  tabRed={event.kind === "casualty"}
                   meta={turnMeta}
                   author={authorLabel}
                   name={name}
                   dorsal={dorsal}
                   pos={pos}
                   rows={rows}
+                  victimNote={victimNote}
+                  spp={sppText}
                   ack={<EventAckRow event={event} now={now} />}
                 />
               </li>
@@ -492,7 +570,7 @@ export function LiveEventCardsActa({
                 <li key={`${event.seq}-action`} data-testid="live-event-row">
                   <ActaCard
                     sideClass={event.side === "home" ? styles.away : styles.home}
-                    tag={spp > 0 ? `${actionCard.label} · ★${spp}` : actionCard.label}
+                    tag={actionCard.label}
                     meta={turnMeta}
                     author={authorLabel}
                     name={actionCard.player.name}
@@ -508,6 +586,7 @@ export function LiveEventCardsActa({
                           ]
                         : []
                     }
+                    spp={spp > 0 ? `★${spp}` : undefined}
                   />
                 </li>
               ) : null}

@@ -1,26 +1,71 @@
 /**
  * "Acta" event cards (v4) — a data-sheet style card that lives ALONGSIDE the v3
- * compact rows (`liveEventCards.module.css`). Source of truth:
- * `previews/event-card-acta.html`. The geometry mirrors that preview 1:1:
- * a panel card with a 3px per-side top rule, a tag/meta header, an optional
- * serif name + position line, and a dotted-leader `<dl>` data list where the
- * important values are bold.
+ * compact rows (`liveEventCards.module.css`). Source of truth for the SHELL:
+ * `design/acta-folder-tabs/01-folder-tabs.html` (artboard A, chosen — T18):
+ * a folder with a category tab on the top-left (navy; red ONLY for Casualty),
+ * the white body panel attached under it (full-width description) and the
+ * inverted SPP tab at the bottom-right (only when earned). Inside the body the
+ * v4 data sheet survives: optional serif name + position line, the capture
+ * author badge (S10.4.2) and the dotted-leader `<dl>` data list where the
+ * important values are bold; a casualty sheet adds the «Lo que informa quien
+ * la recibe» victim-note sub-box (L62).
  *
  * Tokens come from the Tailwind v4 `@theme` block in `app/globals.css`; this
  * module never hardcodes a palette hex. The per-card side color is threaded
  * through the `--side` custom property, set by the `.home` / `.away` /
- * `.neutral` side classes.
+ * `.neutral` side classes (the body's top rule).
  */
 
-/* ---- base card ---- */
+/* ---- folder card (tab strip + attached body) ---- */
 .acta {
+  position: relative;
+  padding-top: 26px;
+  box-sizing: border-box;
+}
+.acta__tab {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--color-navy);
+  color: var(--color-panel);
+  border-radius: 6px 6px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+/* L60/L63: red ONLY for the Casualty category tab. */
+.acta__tab--casualty {
+  background: var(--color-red);
+}
+.acta__body {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
   border-top: 3px solid var(--side, var(--color-slate));
-  border-radius: 3px;
-  padding: 14px 18px 16px;
+  border-radius: 0 8px 8px 8px;
+  padding: 12px 14px 14px;
   box-shadow: 0 1px 0 rgba(43, 38, 24, .04);
   box-sizing: border-box;
+}
+
+/* ---- inverted SPP tab (artboard .spp): bottom-right, ONLY when earned —
+ * the ★N text that used to ride the card title («label · ★N») lives here. ---- */
+.acta__spp {
+  margin: -1px 0 0 auto;
+  width: max-content;
+  background: var(--color-fill-hover);
+  color: var(--color-navy);
+  border: 1px solid var(--color-border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 4px 12px 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
 }
 
 /* ---- side identity: sets --side for the top rule + tag ---- */
@@ -34,20 +79,14 @@
   --side: var(--color-slate);
 }
 
-/* ---- header row: event tag left, turn/minute meta right ---- */
+/* ---- header row inside the body: turn/minute meta (the category moved to
+ * the folder tab above — T18) ---- */
 .acta__top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   margin-bottom: 8px;
-}
-.acta__tag {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--side, var(--color-slate));
 }
 .acta__meta {
   font-size: 10px;
@@ -135,6 +174,31 @@
   justify-content: flex-end;
   gap: 6px;
   margin-top: 10px;
+}
+
+/* ---- T18 (L62): the victim-note sub-box «Lo que informa quien la recibe» —
+ * the injury roll + consequences as reported by the RECEIVER (artboard
+ * .victim-note): red left rule, the note head in red, its own recorder badge.
+ * Rendered only when the receiver has reported something. ---- */
+.victim__note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  background: var(--color-background);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-red);
+  border-radius: 0 6px 6px 0;
+}
+.victim__head {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--color-red);
+}
+.victim__note .acta__data {
+  border-top: 0;
+  padding-top: 2px;
 }
 
 /* ---- wide free-text row (kickoff rulebook effect) ----

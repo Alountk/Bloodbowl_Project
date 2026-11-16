@@ -288,6 +288,38 @@ export function formatTreasury(value: number, fn: TFunc = esT): string {
   return `${new Intl.NumberFormat("es-ES").format(value)}${fn("match.treasuryUnit")}`;
 }
 
+/**
+ * T18 (folder-tab acta rows, design/acta-folder-tabs/01): the CATEGORY tab of
+ * an acta row/card — the short labels the folder design puts on the top-left
+ * tab (L60 user words: «en la solapa pondriamos Casualty / Ambos derribados /
+ * etc»). Rules (L60/L61/L63):
+ *  - the tab names WHAT HAPPENED («Pase», «TD») — NEVER the SPP award (SPP is
+ *    a consequence and lives on the bottom-right tab);
+ *  - ONLY the casualty category takes the red tab (`injury`);
+ *  - the combat chain shortens to its category («Derribo» / «Ambos
+ *    derribados») — the composed «Derribo · Ar …» label stays the row's text.
+ * Null for kinds with no combat/scored category — the caller falls back to its
+ * own label (never throws).
+ */
+export function eventCategoryTab(
+  event: LiveEventLabelInput,
+): { label: string; injury?: boolean } | null {
+  switch (event.kind) {
+    case "casualty":
+      return { label: "Casualty", injury: true };
+    case "td":
+      return { label: "TD" };
+    case "completion":
+      return { label: "Pase" };
+    case "knockdown": {
+      const face = typeof event.payload.face === "string" ? event.payload.face : null;
+      return { label: face === "bothDown" ? "Ambos derribados" : "Derribo" };
+    }
+    default:
+      return null;
+  }
+}
+
 /** A casualty band mapped to its Design-A display bucket (LM-18). */
 export interface BandDisplay {
   label: string;

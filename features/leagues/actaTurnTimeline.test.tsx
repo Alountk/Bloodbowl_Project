@@ -326,7 +326,7 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
 });
 
 describe("ActaTurnTimeline — event rows (MVA-3 / B2)", () => {
-  it("event rows show kind badge, player name + role/number, description and the SPP marker", () => {
+  it("event rows show the category tab, player name + role/number, description and the SPP tab", () => {
     seqCounter = 0;
     render(
       <ActaTurnTimeline
@@ -335,19 +335,23 @@ describe("ActaTurnTimeline — event rows (MVA-3 / B2)", () => {
     );
 
     const cards = screen.getAllByTestId("acta-turn-card");
-    // TD row (artboard "+1 TD" badge + "+3 SPP" marker).
+    // TD row. WHY changed (T18, intentional title change): the old "+1 TD"
+    // inline badge became the folder-tab category «TD» — the count/SPP moved
+    // with the bottom-right SPP tab (design/acta-folder-tabs/01, L60/L63).
     const tdRow = cards[0].querySelector('[data-testid="acta-event-row"][data-kind="td"]');
     expect(tdRow).not.toBeNull();
-    expect(tdRow!.textContent).toContain("+1 TD");
+    expect(tdRow!.querySelector('[data-testid="acta-event-tab"]')!.textContent).toBe("TD");
     expect(tdRow!.textContent).toContain('Morg "El Picador"');
     expect(tdRow!.textContent).toContain("(Orc Blitzer #1)");
     expect(tdRow!.textContent).toContain("Touchdown anotado");
     expect(tdRow!.textContent).toContain("+3 SPP");
 
-    // Casualty row (artboard "CASUALTY" badge, causer → victim, "+2 SPP").
+    // Casualty row. WHY changed (T18, intentional title change): the
+    // "CASUALTY" badge is now the category tab «Casualty»; the causer → victim
+    // mark and the SPP tab stay.
     const casRow = cards[1].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]');
     expect(casRow).not.toBeNull();
-    expect(casRow!.textContent).toContain("CASUALTY");
+    expect(casRow!.querySelector('[data-testid="acta-event-tab"]')!.textContent).toBe("Casualty");
     expect(casRow!.textContent).toMatch(/Grashnak Viletooth \(#3\)\s*→\s*Ugluk \(#2\)/);
     expect(casRow!.textContent).toContain("+2 SPP");
   });
@@ -412,7 +416,9 @@ describe("ActaTurnTimeline — pending injury-roll callout (MVA-4 / B3)", () => 
 
     expect(document.querySelector('[data-testid="acta-injury-callout"]')).toBeNull();
     // The captured roll renders on the row without asking for it again.
-    expect(screen.getByTestId("acta-turn-timeline").textContent).toContain("CASUALTY");
+    // WHY the case changed (T18, intentional): the "CASUALTY" badge became the
+    // «Casualty» folder-tab category.
+    expect(screen.getByTestId("acta-turn-timeline").textContent).toContain("Casualty");
   });
 
   it("a casualty resolved by a later roll for the same victim clears the callout", () => {
@@ -1193,5 +1199,125 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
       "article",
     ) as HTMLElement;
     expect(neutral.textContent).toContain("Registro de sistema");
+  });
+});
+
+describe("ActaTurnTimeline — T18 folder-tab acta rows (design/acta-folder-tabs/01)", () => {
+  it("the pase row title says WHAT HAPPENED («Pase») — «+1 SPP» is a consequence and lives only on the bottom-right tab (L60)", () => {
+    seqCounter = 0;
+    const pass = event({
+      kind: "completion",
+      side: "home",
+      playerRosterId: "h2",
+      turnNumber: 5,
+      at: STARTED + 40 * MIN,
+    });
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [pass], active: { ...liveActive(), turnNumber: 6 } })}
+      />,
+    );
+
+    const row = document.querySelector(
+      '[data-testid="acta-event-row"][data-kind="completion"]',
+    ) as HTMLElement;
+    const tab = row.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
+    expect(tab.textContent).toBe("Pase");
+    // NEVER «+1 SPP» as the title (the old badge) — SPP is a consequence.
+    expect(tab.textContent).not.toContain("SPP");
+    // The old "+1 SPP" badge text moved onto the SPP tab.
+    const sppTab = row.querySelector('[data-testid="acta-event-spp"]') as HTMLElement;
+    expect(sppTab).not.toBeNull();
+    expect(sppTab.textContent).toContain("+1 SPP");
+  });
+
+  it("the SPP tab renders ONLY when earned (a foul earns none)", () => {
+    seqCounter = 0;
+    const foul = event({
+      kind: "foul",
+      side: "home",
+      playerRosterId: "h1",
+      turnNumber: 5,
+      at: STARTED + 40 * MIN,
+      payload: { victimRosterId: "a2" },
+    });
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [foul], active: { ...liveActive(), turnNumber: 6 } })}
+      />,
+    );
+
+    const row = document.querySelector(
+      '[data-testid="acta-event-row"][data-kind="foul"]',
+    ) as HTMLElement;
+    expect(row.querySelector('[data-testid="acta-event-spp"]')).toBeNull();
+  });
+
+  it("casualty rows split the voices: the attacker mark stays in the body with its badge, the injury roll/consequences live in «Lo que informa quien la recibe» with the receiver's badge (L62)", () => {
+    seqCounter = 0;
+    render(<ActaTurnTimeline {...timelineProps({ events: [casualtyEvent(true)] })} />);
+
+    const row = document.querySelector(
+      '[data-testid="acta-event-row"][data-kind="casualty"]',
+    ) as HTMLElement;
+    // BODY: «X marca herida a Y» (the causer → victim mark) + the cause + the
+    // capture-author badge (T16 derivation, untouched).
+    expect(row.textContent).toMatch(/Grashnak Viletooth \(#3\)\s*→\s*Ugluk \(#2\)/);
+    expect(row.textContent).toContain("Bloqueo");
+    expect(row.textContent).toContain("Registrado por Reikland Reavers");
+    // VICTIM-NOTE sub-box (artboard .victim-note): the injury roll + its
+    // consequences + the RECEIVER's own recorder badge (event.side = victim).
+    const note = row.querySelector('[data-testid="acta-victim-note"]') as HTMLElement;
+    expect(note).not.toBeNull();
+    expect(note.textContent).toContain("Lo que informa quien la recibe");
+    expect(note.textContent).toContain("Tirada 1D16: 9");
+    expect(note.textContent).toContain("Apaleado");
+    expect(note.textContent).toContain("Registrado por Gouged Eye");
+  });
+
+  it("knockdown rows keep the composed chain label AND get the short category tab (Derribo / Ambos derribados)", () => {
+    seqCounter = 0;
+    const knockdowns = [
+      event({
+        kind: "knockdown",
+        side: "home",
+        playerRosterId: "h1",
+        turnNumber: 5,
+        at: STARTED + 40 * MIN,
+        payload: {
+          victimRosterId: "a2",
+          causerRosterId: "h1",
+          face: "defenderDown",
+          armourRoll: 11,
+          victimAv: 10,
+          armourBroken: true,
+        },
+      }),
+      event({
+        kind: "knockdown",
+        side: "home",
+        playerRosterId: "h1",
+        turnNumber: 5,
+        at: STARTED + 41 * MIN,
+        payload: { victimRosterId: "a2", causerRosterId: "h1", face: "bothDown" },
+      }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: knockdowns, active: { ...liveActive(), turnNumber: 6 } })}
+      />,
+    );
+
+    const rows = Array.from(
+      document.querySelectorAll('[data-testid="acta-event-row"][data-kind="knockdown"]'),
+    ) as HTMLElement[];
+    expect(rows).toHaveLength(2);
+    // Short category tabs — the chip never steals more width than the text.
+    expect(rows[0].querySelector('[data-testid="acta-event-tab"]')!.textContent).toBe("Derribo");
+    expect(rows[1].querySelector('[data-testid="acta-event-tab"]')!.textContent).toBe(
+      "Ambos derribados",
+    );
+    // The composed label stays the row's text, byte-identical (demo-harness pin).
+    expect(rows[0].textContent).toContain("Derribo · Ar 11 (10+) rota");
   });
 });
