@@ -11,6 +11,7 @@
  */
 
 import { DEFAULT_LOCALE, t as translate } from "@/lib/i18n/dictionaries";
+import { resolveInjury } from "@/lib/rules/injuries";
 import type { IconName } from "./icons";
 
 /** The translator shape used by the label functions (es default fallback). */
@@ -402,7 +403,13 @@ export const SCORED_ACTION_LABELS: Record<string, string> = {
 /** The SPP star total for an event (LM-19): TD ★3, Completion ★1, MVP ★4, a
  * lasting casualty ★2 (bruise ★0), and any other kind ★0. The LM-13 scored
  * actions follow the bb2025-rules PE table (`lib/rules/pe.ts`): interception
- * ★2, throw-team-mate ★1, landed-safe ★1. */
+ * ★2, throw-team-mate ★1, landed-safe ★1.
+ *
+ * T20 (L70): a casualty WITHOUT the server-derived `band` derives it from its
+ * 1D16 roll (`resolveInjury`, the SAME rulebook table the row text uses) — the
+ * demo's simulated server records the roll but never the band, and a row that
+ * EARNED SPP must show it. The `band` field still wins when present, so every
+ * production payload renders byte-identical. */
 export function eventSpp(event: LiveEventLabelInput): number {
   switch (event.kind) {
     case "td":
@@ -416,7 +423,9 @@ export function eventSpp(event: LiveEventLabelInput): number {
       return 1;
     case "casualty": {
       const band = typeof event.payload.band === "string" ? event.payload.band : null;
-      return band ? bandToDisplay(band).stars : 0;
+      if (band) return bandToDisplay(band).stars;
+      const roll16 = typeof event.payload.roll16 === "number" ? event.payload.roll16 : null;
+      return roll16 != null ? bandToDisplay(resolveInjury(roll16).kind).stars : 0;
     }
     case "mvp":
       return 4;

@@ -77,6 +77,20 @@ describe("eventSpp — stars per event kind (LM-19)", () => {
     expect(eventSpp(ev("casualty"))).toBe(0);
   });
 
+  it("T20 (L70): a casualty carrying only the 1D16 roll derives its SPP from the rulebook table — the demo payloads never carry the server `band`", () => {
+    // WHY new (T20, intentional): `eventSpp` keyed casualty stars on
+    // `payload.band` alone, but the demo's simulated server records only the
+    // roll (`roll16`) and the band is derived from it — the same rulebook
+    // table the row text already uses. A row that EARNED SPP must show it.
+    expect(eventSpp(ev("casualty", { roll16: 9 }))).toBe(2); // 9-10 → apaleado (lasting)
+    expect(eventSpp(ev("casualty", { roll16: 12 }))).toBe(2); // 11-12 → grave (lasting)
+    expect(eventSpp(ev("casualty", { roll16: 3 }))).toBe(0); // 1-8 → bruise (★0)
+    // The server-derived band still WINS when present (production payloads
+    // and every shipped pin stay byte-identical).
+    expect(eventSpp(ev("casualty", { roll16: 3, band: "grave" }))).toBe(2);
+    expect(eventSpp(ev("casualty", { roll16: 9, band: "bruise" }))).toBe(0);
+  });
+
   it("non-scoring feed events are ★0", () => {
     expect(eventSpp(ev("turn"))).toBe(0);
     expect(eventSpp(ev("foul"))).toBe(0);

@@ -1001,6 +1001,32 @@ describe("ActaDemoHarness — T17: combat chain on the game-turn cards (S10.1/S1
   });
 });
 
+describe("ActaDemoHarness — T20 (L70): earned SPP VISIBLE + mirrored on the demo rows", () => {
+  it("the roll-12 grave row shows the causer's +2 SPP tab, mirrored bottom-left on the victim-side (away) row", () => {
+    startWithHomeReceiver();
+    captureBloqueo([6, 1], "11");
+    fireEvent.click(perspective("Colmillos del Caos"));
+    fireEvent.click(screen.getByTestId("dock-injury-roll"));
+    fireEvent.click(screen.getByTestId("roll-option-12"));
+
+    const landed = turnCard(1, "Águilas de Khemri");
+    const row = landed.querySelector(
+      '[data-testid="acta-event-row"][data-kind="casualty"]',
+    ) as HTMLElement;
+    const sppTab = row.querySelector('[data-testid="acta-event-spp"]') as HTMLElement;
+    // WHY new (T20, intentional): the user reports earned SPP are NOT showing.
+    // The demo's simulated server stores the 1D16 roll but never the derived
+    // `band`, so every demo casualty row lost its earned SPP tab. Roll 12 =
+    // grave = lasting = the CAUSER's +2 — the tab must render.
+    expect(sppTab).not.toBeNull();
+    expect(sppTab.textContent).toContain("+2 SPP");
+    // Mirrored with the row: the victim's side (Colmillos = away) hangs its
+    // SPP tab bottom-LEFT — the category tab's mirrored opposite (L70).
+    expect(sppTab.className).toContain("mr-auto");
+    expect(sppTab.className).not.toContain("ml-auto");
+  });
+});
+
 describe("ActaDemoHarness — T13: reload mid-wizard with the second coach (L48)", () => {
   it("the wizard reopens on coach B's SAME step with B's captures intact and coach A still shows completed", () => {
     reloadMidWizard();

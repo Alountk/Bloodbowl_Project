@@ -447,3 +447,115 @@ describe("LiveEventCardsActa — T19 mirror-chat side identity (design/acta-fold
     expect(rule(/\.home\s*\{([\s\S]*?)\}/, ".home")).toContain("margin-right: auto;");
   });
 });
+
+describe("LiveEventCardsActa — T20 UX round 3 (L70): SPP visible, victim-note mirror, body identity tint, SPP mirror", () => {
+  it("the derived action card keeps the earned ★2 when the casualty payload carries only the 1D16 roll (demo shape — no server band) (L70)", () => {
+    const { container } = renderActa([
+      ev({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "p2",
+        seq: 2,
+        payload: { victimRosterId: "p2", causerRosterId: "p4", cause: "block", roll16: 9 },
+      }),
+    ]);
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    expect(rows).toHaveLength(2);
+    // WHY new (T20, intentional): the user reports earned SPP are NOT showing —
+    // the demo's simulated server records the 1D16 roll but never the derived
+    // `band`, so the ★2 the CAUSER earned vanished from the action card. The
+    // roll is enough (9 = apaleado = lasting).
+    const action = rows[1] as HTMLElement;
+    const sppTab = action.querySelector("[data-testid='acta-card-spp']") as HTMLElement;
+    expect(sppTab).not.toBeNull();
+    expect(sppTab.textContent).toContain("★2");
+    // RAU-47 guard: the VICTIM's card still shows NO earned SPP.
+    expect((rows[0] as HTMLElement).querySelector("[data-testid='acta-card-spp']")).toBeNull();
+  });
+
+  it("locks the T20 shell in the CSS module: victim-note accent flips RIGHT on away rows, body tints identify the acting side, and the SPP tab mirrors bottom-left on away rows", () => {
+    // The geometry lives in CSS — these pins keep the T20 UX round (the user's
+    // verbatim fixes) from silently collapsing back. WHY new (T20, L70).
+    const css = readFileSync(path.join(__dirname, "eventCardActa.module.css"), "utf8");
+    const rule = (pattern: RegExp, label: string) => {
+      const m = pattern.exec(css);
+      if (!m) throw new Error(`t20-lock: the "${label}" rule is missing from eventCardActa.module.css`);
+      return m[1].replace(/\s+/g, " ").trim();
+    };
+    // (1) Victim-note mirroring (the user's exact words): «cuando el jugador
+    // es el de la derecha deberiamos cambiar border-l-red y border-l-[3px] a
+    // border-r-red y border-r-[3px]» — the accent stays on the mirrored OUTER
+    // edge; home/neutral keep the left rule as the default.
+    const awayNote = rule(/\.away \.victim__note\s*\{([\s\S]*?)\}/, ".away .victim__note");
+    expect(awayNote).toContain("border-right: 3px solid var(--color-red);");
+    expect(awayNote).toContain("border-left: 1px solid var(--color-border);");
+    expect(awayNote).toContain("border-radius: 6px 0 0 6px;");
+    const baseNote = rule(/\.victim__note\s*\{([\s\S]*?)\}/, ".victim__note");
+    expect(baseNote).toContain("border-left: 3px solid var(--color-red);");
+    // (2) Body identity tint (L70 «las aguilas azules y los colmillos los
+    // colmillos»): navy tint on home rows, red tint on away rows — the tint is
+    // BODY identity, never the category tab (which keeps design A).
+    const homeBody = rule(/\.home \.acta__body\s*\{([\s\S]*?)\}/, ".home .acta__body");
+    expect(homeBody).toContain("background: color-mix(in srgb, var(--color-navy) 2.5%, var(--color-panel));");
+    const awayBody = rule(/\.away \.acta__body\s*\{([\s\S]*?)\}/, ".away .acta__body");
+    expect(awayBody).toContain("background: color-mix(in srgb, var(--color-red) 2.5%, var(--color-panel));");
+    // The T19 mirror radius survives on the same rule.
+    expect(awayBody).toContain("border-radius: 8px 0 8px 8px;");
+    // (3) SPP mirror: home = bottom-right (base margin), away = bottom-left.
+    const awaySpp = rule(/\.away \.acta__spp\s*\{([\s\S]*?)\}/, ".away .acta__spp");
+    expect(awaySpp).toContain("margin-left: 0;");
+    expect(awaySpp).toContain("margin-right: auto;");
+    const baseSpp = rule(/\.acta__spp\s*\{([\s\S]*?)\}/, ".acta__spp");
+    expect(baseSpp).toContain("margin: -1px 0 0 auto;");
+  });
+
+  it("the side tints keep WCAG AA (≥4.5:1) for every body text color in BOTH palettes (the tint is identity, never contrast debt) (L70)", () => {
+    // Tripwire: the alpha is parsed FROM the module — strengthen the tint (or
+    // darken a text token in app/globals.css) and this fails first. Binding
+    // token: the scoreboard-theme slate (4.76:1 on white — the tightest text).
+    const css = readFileSync(path.join(__dirname, "eventCardActa.module.css"), "utf8");
+    const globals = readFileSync(path.join(__dirname, "..", "..", "app", "globals.css"), "utf8");
+    // Both palettes, in file order: the default Reglamento-vintage @theme
+    // first, the [data-theme="scoreboard"] override second.
+    const token = (name: string): [string, string] => {
+      const matches = [...globals.matchAll(new RegExp(`--color-${name}: (#[0-9a-f]{6});`, "g"))].map((m) => m[1]);
+      if (matches.length < 2) throw new Error(`contrast-lock: palette token "${name}" missing from app/globals.css`);
+      return [matches[0], matches[1]];
+    };
+    const [navy, red, panel, ink, slate, slateStrong] = (
+      ["navy", "red", "panel", "ink", "slate", "slate-strong"] as const
+    ).map(token);
+    const alphaOf = (side: "navy" | "red"): number => {
+      const m = new RegExp(`color-mix\\(in srgb, var\\(--color-${side}\\) ([0-9.]+)%, var\\(--color-panel\\)\\)`).exec(css);
+      if (!m) throw new Error(`contrast-lock: the ${side} body tint is missing from eventCardActa.module.css`);
+      return Number(m[1]) / 100;
+    };
+    const hex = (h: string): [number, number, number] => [
+      parseInt(h.slice(1, 3), 16),
+      parseInt(h.slice(3, 5), 16),
+      parseInt(h.slice(5, 7), 16),
+    ];
+    const lin = (c: number): number => {
+      const s = c / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    const lum = ([r, g, b]: [number, number, number]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    const mix = (fg: [number, number, number], bg: [number, number, number], a: number) =>
+      fg.map((c, i) => c * a + bg[i] * (1 - a)) as [number, number, number];
+    const ratio = (a: [number, number, number], b: [number, number, number]) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    for (let palette = 0; palette < 2; palette += 1) {
+      for (const [sideName, sideToken] of [["navy", navy], ["red", red]] as const) {
+        const bg = mix(hex(sideToken[palette]), hex(panel[palette]), alphaOf(sideName));
+        for (const textToken of [ink[palette], slate[palette], slateStrong[palette], sideToken[palette]]) {
+          expect(
+            ratio(hex(textToken), bg),
+            `${sideName} tint vs ${textToken} (palette ${palette}) must stay WCAG AA`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+});
