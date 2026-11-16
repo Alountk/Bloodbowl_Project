@@ -87,6 +87,7 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
       causerRosterId: "c1",
       cause: "block",
       roll16: 11,
+      band: "grave",
     });
     expect(s.homeScore).toBe(0);
     expect(s.awayScore).toBe(0);
@@ -415,6 +416,13 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     expect(s.status).toBe("finished");
     expect(s.closureOpen).toBe(false);
     expect(s.half).toBe(2);
+  });
+
+  it("the primer-tercio preset score matches its narrative feed (T22 residual)", () => {
+    // WHY: the feed is the source of truth for anotaciones (T22); the preset
+    // carried homeScore 1 over a slice(0,6) feed with 0 TDs (L74 residual).
+    const s = demoState("primer-tercio");
+    expect(s.homeScore).toBe(0);
   });
 
   it("every preset keeps the fixture viewer context the composition renders with", () => {
