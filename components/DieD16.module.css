@@ -1,0 +1,312 @@
+/**
+ * DieD16 — translucent jico-blue 16-face die (shared component, T33): an
+ * octagonal bipyramid — two 8-triangle pyramids = EXACTLY 16 faces.
+ *
+ * Visual source of truth: `design/die-roll/02-dice3d-16.html` (geometry) +
+ * `design/die-roll/03-d16-result-highlights.html` (highlight modes, L114/L116
+ * fixes). Geometry is kept EXACTLY as the artboards leave it (L111 closure):
+ * face 46x78, translateZ d=55 (= 60*cos 22.5°), tilt 45° (78*sin 45° = 55 = d),
+ * bottom faces at i*45 ALIGNED (no 22.5° offset). South-pole numbers keep
+ * their approved position (L115/L117: bottom spans de-mirrored with
+ * margin-top 30 — do NOT «improve» it).
+ *
+ * L114/L116 fixes carried here:
+ *  - `--flip` composes into the span transform so no highlight can clobber the
+ *    bottom faces' de-mirror scaleY(-1) (the effects never touch transform);
+ *  - the mode class lives on the WRAPPER containing badge + scene;
+ *  - NO number growth in the effects — color / halo / background flash only.
+ *
+ * The die keeps the user-approved jico translucent blue; back faces stay
+ * visible through the glass (L108). Highlight red/blue come from artboard 03.
+ */
+
+.wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The size prop scales the scene around its center (120px die-footprint
+   parity with DieD6: the bipyramid spans ~120px at scale 1). */
+.scene {
+  width: 200px;
+  height: 200px;
+  perspective: 760px;
+}
+
+.poly {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  /* Idle pose from the artboard; landing = face pose + SKEW + spin. */
+  transform: translate(-50%, -50%) rotateX(-14deg) rotateY(20deg);
+  transition: transform 0.9s cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+
+.face {
+  position: absolute;
+  width: 46px;
+  height: 78px;
+  left: -23px;
+  top: -78px;
+  transform-origin: 50% 100%;
+  --flip: 1;
+  background: linear-gradient(180deg, rgba(130, 172, 252, 0.5), rgba(64, 112, 230, 0.42));
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  display: flex;
+  justify-content: center;
+  transition: opacity 0.4s, background 0.4s, box-shadow 0.4s;
+}
+
+.face span {
+  margin-top: 44px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(30, 60, 140, 0.5);
+  transition: color 0.3s, text-shadow 0.3s, transform 0.3s;
+  /* --flip keeps the bottom faces' de-mirror through every highlight (L114). */
+  transform: scaleY(var(--flip));
+}
+
+/* Top pyramid (faces 1-8): apex up. */
+.t0 {
+  transform: rotateY(0deg) translateZ(55px) rotateX(45deg);
+}
+.t1 {
+  transform: rotateY(45deg) translateZ(55px) rotateX(45deg);
+}
+.t2 {
+  transform: rotateY(90deg) translateZ(55px) rotateX(45deg);
+}
+.t3 {
+  transform: rotateY(135deg) translateZ(55px) rotateX(45deg);
+}
+.t4 {
+  transform: rotateY(180deg) translateZ(55px) rotateX(45deg);
+}
+.t5 {
+  transform: rotateY(225deg) translateZ(55px) rotateX(45deg);
+}
+.t6 {
+  transform: rotateY(270deg) translateZ(55px) rotateX(45deg);
+}
+.t7 {
+  transform: rotateY(315deg) translateZ(55px) rotateX(45deg);
+}
+
+/* Bottom pyramid (faces 9-16): apex down (scaleY(-1) mirrors the triangle),
+   numbers de-mirrored via --flip. Margin-top 30 = the approved south-pole
+   position (L115/L117). */
+.b0,
+.b1,
+.b2,
+.b3,
+.b4,
+.b5,
+.b6,
+.b7 {
+  --flip: -1;
+}
+.b0 span,
+.b1 span,
+.b2 span,
+.b3 span,
+.b4 span,
+.b5 span,
+.b6 span,
+.b7 span {
+  margin-top: 30px;
+}
+.b0 {
+  transform: rotateY(0deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+.b1 {
+  transform: rotateY(45deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+.b2 {
+  transform: rotateY(90deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+.b3 {
+  transform: rotateY(135deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+.b4 {
+  transform: rotateY(180deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+.b5 {
+  transform: rotateY(225deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+.b6 {
+  transform: rotateY(270deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+.b7 {
+  transform: rotateY(315deg) translateZ(55px) rotateX(-45deg) scaleY(-1);
+}
+
+/* Mid-flight wobble: the independent `rotate` property composes with the
+   landing `transform` instead of fighting its transition. Two IDENTICAL
+   keyframes: every roll flips the class, and switching animation names
+   restarts the keyframe (class-based, no imperative DOM). */
+@keyframes wobble-a {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  30% {
+    rotate: -11deg;
+  }
+  65% {
+    rotate: 9deg;
+  }
+}
+@keyframes wobble-b {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  30% {
+    rotate: -11deg;
+  }
+  65% {
+    rotate: 9deg;
+  }
+}
+.tumbling-a {
+  animation: wobble-a 0.9s cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+.tumbling-b {
+  animation: wobble-b 0.9s cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+
+/* ---- result-highlight modes a-e (artboard 03, L114/L116 fixes) ---- */
+
+/* A · red halo on the number + the other faces dimmed. No scaling: growth
+   pushed the number over the triangle edges (L116). */
+.mode-a .face:not(.on) {
+  opacity: 0.4;
+}
+.halo span {
+  color: #d11938;
+  text-shadow: 0 0 9px rgba(209, 25, 56, 0.95), 0 0 22px rgba(209, 25, 56, 0.5);
+}
+
+/* B · the winning face layer pulses white 3 times and settles. */
+@keyframes facepulse {
+  0%,
+  100% {
+    background: linear-gradient(180deg, rgba(130, 172, 252, 0.5), rgba(64, 112, 230, 0.42));
+  }
+  50% {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(180, 210, 255, 0.9));
+  }
+}
+.mode-b .pulse {
+  animation: facepulse 0.42s ease 3;
+}
+
+/* C · floating «Resultado NN» badge pop beside the die. The mode class on the
+   wrapper is what makes this selector reach the badge (L114). */
+.badge {
+  position: absolute;
+  right: -6px;
+  top: 6px;
+  background: #d11938;
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px 11px;
+  font-weight: 800;
+  font-size: 24px;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0.3) rotate(-8deg);
+  transition: opacity 0.28s, transform 0.34s cubic-bezier(0.2, 1.6, 0.4, 1);
+  box-shadow: 0 6px 16px rgba(209, 25, 56, 0.35);
+}
+.badgeLabel {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.mode-c .badge.on {
+  opacity: 1;
+  transform: scale(1) rotate(-6deg);
+}
+
+/* D · spotlight: the winning face lit, everything else at 35%. */
+.mode-d .face:not(.on) {
+  opacity: 0.35;
+}
+.lit {
+  background: linear-gradient(180deg, rgba(160, 200, 255, 0.95), rgba(80, 140, 245, 0.85));
+  box-shadow: 0 0 18px 4px rgba(90, 150, 255, 0.75);
+}
+.lit span {
+  color: #fff;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+}
+
+/* E · red flash on the winning face — BACKGROUND, not border: the triangle
+   clip-path eats borders (L114). */
+@keyframes edgeflash {
+  0%,
+  100% {
+    background: linear-gradient(180deg, rgba(130, 172, 252, 0.5), rgba(64, 112, 230, 0.42));
+  }
+  50% {
+    background: linear-gradient(180deg, rgba(209, 25, 56, 0.85), rgba(140, 18, 45, 0.72));
+  }
+}
+.mode-e .flash {
+  animation: edgeflash 0.3s steps(1) 4;
+}
+
+/* ---- result line + roll button (artboard chrome) ---- */
+.result {
+  margin: 0;
+  min-height: 18px;
+  font-size: 13px;
+  color: #5a6478;
+}
+
+.btn {
+  font: 600 13px/1 inherit;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: #3f6fd8;
+  border: none;
+  padding: 11px 18px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #3563c6;
+}
+.btn:focus-visible {
+  outline: 3px solid #2b5bd7;
+  outline-offset: 2px;
+}
+.btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poly {
+    transition: none;
+  }
+  .tumbling-a,
+  .tumbling-b,
+  .pulse,
+  .flash {
+    animation: none;
+  }
+}
