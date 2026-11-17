@@ -1,0 +1,327 @@
+/**
+ * DieD6 — translucent jico-blue 3D cube (shared die component, T33).
+ *
+ * Visual source of truth: `design/die-roll/01-dice3d.html` (approved v3) for
+ * the cube, and `design/die-roll/03-d16-result-highlights.html` for the five
+ * result-highlight modes with their L114/L116 fixes:
+ *  - the mode class lives on the WRAPPER that contains badge + scene (L114:
+ *    the badge is a sibling of the scene, so scene-scoped selectors never
+ *    matched it);
+ *  - the effects never GROW the number — color / halo / background flash only
+ *    (L116: growth pushed the number over the face edges).
+ *
+ * The die keeps the user-approved jico translucent blue (L105): no rulebook
+ * tokens beyond the highlight red/blue taken from artboard 03 itself. Back
+ * faces stay visible through the glass — the expected jico look (L108), so no
+ * backface-visibility here. The d6 cube needs no --flip: its pips never mirror.
+ */
+
+.wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* The size prop scales the scene around its center (artboard 01 slider). */
+.scene {
+  width: 120px;
+  height: 120px;
+  perspective: 520px;
+}
+
+.cube {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  transform-style: preserve-3d;
+  transition: transform 0.9s cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+
+.face {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(130, 172, 252, 0.55), rgba(64, 112, 230, 0.45));
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow: inset 0 0 14px rgba(255, 255, 255, 0.35);
+  transition: opacity 0.4s, background 0.4s, box-shadow 0.4s;
+}
+
+.f1 {
+  transform: translateZ(60px);
+}
+.f2 {
+  transform: rotateY(180deg) translateZ(60px);
+}
+.f3 {
+  transform: rotateY(90deg) translateZ(60px);
+}
+.f4 {
+  transform: rotateY(-90deg) translateZ(60px);
+}
+.f5 {
+  transform: rotateX(90deg) translateZ(60px);
+}
+.f6 {
+  transform: rotateX(-90deg) translateZ(60px);
+}
+
+/* Canonical real-die pip pattern (L108): absolute positions per face —
+   1 center / 2 diagonal / 3 diagonal-3 / 4 corners / 5 quincunx /
+   6 two columns of three. */
+.p {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 2px rgba(30, 60, 140, 0.4);
+}
+.f1 > :nth-child(1) {
+  top: 50%;
+  left: 50%;
+}
+.f2 > :nth-child(1) {
+  top: 24%;
+  left: 26%;
+}
+.f2 > :nth-child(2) {
+  top: 76%;
+  left: 74%;
+}
+.f3 > :nth-child(1) {
+  top: 22%;
+  left: 24%;
+}
+.f3 > :nth-child(2) {
+  top: 50%;
+  left: 50%;
+}
+.f3 > :nth-child(3) {
+  top: 78%;
+  left: 76%;
+}
+.f4 > :nth-child(1) {
+  top: 24%;
+  left: 26%;
+}
+.f4 > :nth-child(2) {
+  top: 24%;
+  left: 74%;
+}
+.f4 > :nth-child(3) {
+  top: 76%;
+  left: 26%;
+}
+.f4 > :nth-child(4) {
+  top: 76%;
+  left: 74%;
+}
+.f5 > :nth-child(1) {
+  top: 22%;
+  left: 24%;
+}
+.f5 > :nth-child(2) {
+  top: 22%;
+  left: 76%;
+}
+.f5 > :nth-child(3) {
+  top: 50%;
+  left: 50%;
+}
+.f5 > :nth-child(4) {
+  top: 78%;
+  left: 24%;
+}
+.f5 > :nth-child(5) {
+  top: 78%;
+  left: 76%;
+}
+.f6 > :nth-child(1) {
+  top: 18%;
+  left: 26%;
+}
+.f6 > :nth-child(2) {
+  top: 18%;
+  left: 74%;
+}
+.f6 > :nth-child(3) {
+  top: 50%;
+  left: 26%;
+}
+.f6 > :nth-child(4) {
+  top: 50%;
+  left: 74%;
+}
+.f6 > :nth-child(5) {
+  top: 82%;
+  left: 26%;
+}
+.f6 > :nth-child(6) {
+  top: 82%;
+  left: 74%;
+}
+
+/* Mid-flight wobble: the independent `rotate` property composes with the
+   landing `transform` instead of fighting its transition (artboard 02). Two
+   IDENTICAL keyframes: every roll flips the class, and switching animation
+   names restarts the keyframe (class-based, no imperative DOM). */
+@keyframes wobble-a {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  30% {
+    rotate: -11deg;
+  }
+  65% {
+    rotate: 9deg;
+  }
+}
+@keyframes wobble-b {
+  0%,
+  100% {
+    rotate: 0deg;
+  }
+  30% {
+    rotate: -11deg;
+  }
+  65% {
+    rotate: 9deg;
+  }
+}
+.tumbling-a {
+  animation: wobble-a 0.9s cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+.tumbling-b {
+  animation: wobble-b 0.9s cubic-bezier(0.2, 0.75, 0.3, 1);
+}
+
+/* ---- result-highlight modes a-e (artboard 03, L114/L116 fixes) ---- */
+
+/* A · red halo on the number (the pips) + the other faces dimmed.
+   No scaling: growth pushed numbers over the edges (L116). */
+.mode-a .face:not(.on) {
+  opacity: 0.4;
+}
+.halo > .p {
+  background: rgba(209, 25, 56, 0.95);
+  box-shadow: 0 0 9px rgba(209, 25, 56, 0.95), 0 0 22px rgba(209, 25, 56, 0.5);
+}
+
+/* B · the winning face layer pulses white 3 times and settles. */
+@keyframes facepulse {
+  0%,
+  100% {
+    background: linear-gradient(135deg, rgba(130, 172, 252, 0.55), rgba(64, 112, 230, 0.45));
+  }
+  50% {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(180, 210, 255, 0.9));
+  }
+}
+.mode-b .pulse {
+  animation: facepulse 0.42s ease 3;
+}
+
+/* C · floating «Resultado NN» badge pop beside the die. The mode class on the
+   wrapper is what makes this selector reach the badge (L114). */
+.badge {
+  position: absolute;
+  right: -6px;
+  top: 6px;
+  background: #d11938;
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px 11px;
+  font-weight: 800;
+  font-size: 24px;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0.3) rotate(-8deg);
+  transition: opacity 0.28s, transform 0.34s cubic-bezier(0.2, 1.6, 0.4, 1);
+  box-shadow: 0 6px 16px rgba(209, 25, 56, 0.35);
+}
+.badgeLabel {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.mode-c .badge.on {
+  opacity: 1;
+  transform: scale(1) rotate(-6deg);
+}
+
+/* D · spotlight: the winning face lit, everything else at 35%. */
+.mode-d .face:not(.on) {
+  opacity: 0.35;
+}
+.lit {
+  background: linear-gradient(135deg, rgba(160, 200, 255, 0.95), rgba(80, 140, 245, 0.85));
+  box-shadow: 0 0 18px 4px rgba(90, 150, 255, 0.75);
+}
+.lit > .p {
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
+}
+
+/* E · red flash on the winning face (background, not border — a clip-path
+   triangle eats borders on the d16 and the fix stayed uniform, L114). */
+@keyframes edgeflash {
+  0%,
+  100% {
+    background: linear-gradient(135deg, rgba(130, 172, 252, 0.55), rgba(64, 112, 230, 0.45));
+  }
+  50% {
+    background: linear-gradient(135deg, rgba(209, 25, 56, 0.85), rgba(140, 18, 45, 0.72));
+  }
+}
+.mode-e .flash {
+  animation: edgeflash 0.3s steps(1) 4;
+}
+
+/* ---- result line + roll button (artboard chrome) ---- */
+.result {
+  margin: 0;
+  min-height: 20px;
+  font-size: 13px;
+  color: #5a6478;
+}
+
+.btn {
+  font: 600 13px/1 inherit;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: #3f6fd8;
+  border: none;
+  padding: 11px 18px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: #3563c6;
+}
+.btn:focus-visible {
+  outline: 3px solid #2b5bd7;
+  outline-offset: 2px;
+}
+.btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cube {
+    transition: none;
+  }
+  .tumbling-a,
+  .tumbling-b,
+  .pulse,
+  .flash {
+    animation: none;
+  }
+}

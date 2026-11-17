@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dice3D · componente reutilizable (estilo jico)</title>
+<style>
+  :root { --ink:#1a2340; --muted:#5a6478; --line:#d8deea; --bg:#f8fafc; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { width:390px; margin:0 auto; padding:16px 12px 32px; }
+  h1 { font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 4px; }
+  .lede { font-size:13px; color:var(--muted); margin:0 0 16px; }
+  section { background:#fff; border:1px solid var(--line); padding:16px; margin-bottom:16px; }
+  h2 { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#2b5bd7; margin:0 0 14px; }
+
+  /* ── escena y cubo translúcido azul (jico) ──
+     Caras traseras VISIBLES a través del vidrio = comportamiento esperado
+     (el look jico de dado translúcido). Las pipas van posicionadas en
+     porcentaje con el patrón canónico de dado real (1 centro · 2 diagonal ·
+     3 diagonal 3 · 4 esquinas · 5 esquinas+centro · 6 dos columnas de 3). */
+  .stage { display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .scene { width:120px; height:120px; perspective:520px; }
+  .cube { position:relative; width:120px; height:120px; transform-style:preserve-3d;
+          transform:rotateX(-16deg) rotateY(24deg);
+          transition:transform .9s cubic-bezier(.2,.75,.3,1); }
+  .face { position:absolute; inset:0; border-radius:16px;
+          background:linear-gradient(135deg, rgba(130,172,252,.55), rgba(64,112,230,.45));
+          border:1.5px solid rgba(255,255,255,.7);
+          box-shadow:inset 0 0 14px rgba(255,255,255,.35); }
+  .p { position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%;
+       background:rgba(255,255,255,.95); box-shadow:0 1px 2px rgba(30,60,140,.4); }
+
+  /* Patrón canónico por cara (top/left en %, centrados con margin -8) */
+  .f1 > :nth-child(1){ top:50%; left:50%; }
+  .f2 > :nth-child(1){ top:24%; left:26%; } .f2 > :nth-child(2){ top:76%; left:74%; }
+  .f3 > :nth-child(1){ top:22%; left:24%; } .f3 > :nth-child(2){ top:50%; left:50%; } .f3 > :nth-child(3){ top:78%; left:76%; }
+  .f4 > :nth-child(1){ top:24%; left:26%; } .f4 > :nth-child(2){ top:24%; left:74%; }
+  .f4 > :nth-child(3){ top:76%; left:26%; } .f4 > :nth-child(4){ top:76%; left:74%; }
+  .f5 > :nth-child(1){ top:22%; left:24%; } .f5 > :nth-child(2){ top:22%; left:76%; }
+  .f5 > :nth-child(3){ top:50%; left:50%; }
+  .f5 > :nth-child(4){ top:78%; left:24%; } .f5 > :nth-child(5){ top:78%; left:76%; }
+  .f6 > :nth-child(1){ top:18%; left:26%; } .f6 > :nth-child(2){ top:18%; left:74%; }
+  .f6 > :nth-child(3){ top:50%; left:26%; } .f6 > :nth-child(4){ top:50%; left:74%; }
+  .f6 > :nth-child(5){ top:82%; left:26%; } .f6 > :nth-child(6){ top:82%; left:74%; }
+
+  .f1 { transform:translateZ(60px); }
+  .f2 { transform:rotateY(180deg) translateZ(60px); }
+  .f3 { transform:rotateY(90deg) translateZ(60px); }
+  .f4 { transform:rotateY(-90deg) translateZ(60px); }
+  .f5 { transform:rotateX(90deg) translateZ(60px); }
+  .f6 { transform:rotateX(-90deg) translateZ(60px); }
+
+  .btn { font:600 13px/1 inherit; letter-spacing:.08em; text-transform:uppercase; color:#fff;
+         background:#3f6fd8; border:none; padding:11px 18px; cursor:pointer; }
+  .btn:hover { background:#3563c6; }
+  .btn:focus-visible { outline:3px solid #2b5bd7; outline-offset:2px; }
+  .result { font-size:13px; color:var(--muted); min-height:20px; }
+  .result b { color:#2b5bd7; font-size:16px; }
+
+  .chip { width:72px; height:72px; border-radius:12px; background:linear-gradient(135deg, rgba(130,172,252,.9), rgba(64,112,230,.8));
+          color:#fff; display:flex; align-items:center; justify-content:center; font:700 26px/1 inherit;
+          border:2px solid rgba(255,255,255,.75); transition:transform .6s cubic-bezier(.22,1,.36,1); }
+  .chip.rolling { animation:chiptumble .9s ease; }
+  @keyframes chiptumble { 0%{transform:rotate(0) scale(1)} 40%{transform:rotate(540deg) scale(.86)} 100%{transform:rotate(1080deg) scale(1)} }
+
+  .api { font-size:12.5px; }
+  .api li { margin-bottom:4px; }
+  @media (prefers-reduced-motion: reduce) { .cube,.chip { transition:none !important; } .chip.rolling { animation:none !important; } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Dice3D · componente reutilizable (estilo jico)</h1>
+  <p class="lede">Translúcido azul jico con caras traseras visibles (esperado), pipas con el patrón canónico de dado real y aterrizaje escorado. Cada tirada suma vueltas.</p>
+
+  <section>
+    <h2>1 · D6 translúcido — tirar</h2>
+    <div class="stage">
+      <div class="scene" aria-hidden="true"><div class="cube" id="cube">
+        <div class="face f1"><span class="p"></span></div>
+        <div class="face f2"><span class="p"></span><span class="p"></span></div>
+        <div class="face f3"><span class="p"></span><span class="p"></span><span class="p"></span></div>
+        <div class="face f4"><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span></div>
+        <div class="face f5"><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span></div>
+        <div class="face f6"><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span></div>
+      </div></div>
+      <p class="result" id="res">Pulsa para tirar</p>
+      <label style="font-size:12px;color:#5a6478">Tamaño <input type="range" id="size" min="72" max="168" value="120" style="vertical-align:middle"></label>
+      <button class="btn" id="roll">Tirar</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Variante chip (d16 / caras altas)</h2>
+    <div class="stage">
+      <div class="chip" id="chip" aria-hidden="true">7</div>
+      <p class="result">Para 1D16 (plegarias, lesiones): el chip gira y aterriza.</p>
+      <button class="btn" id="rollchip">Tirar 1D16</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · API propuesta (reutilizable)</h2>
+    <ul class="api">
+      <li><code>&lt;Die3D sides={6|16} value={n} rolling={bool} onRoll={fn} /&gt;</code></li>
+      <li>d6 → cubo translúcido 3D (estilo jico) · d16 → chip · auto-selección por <code>sides</code></li>
+      <li>Cada tirada suma vueltas (spin acumulativo); aterrizaje siempre escorado</li>
+      <li>Estados: reposo / rolling / resultado · <code>aria-live</code> · <code>prefers-reduced-motion</code></li>
+      <li>Futuro uso: wizard (die buttons), bloqueo, armadura, lesión, plegarias, cierre…</li>
+    </ul>
+  </section>
+</main>
+<script>
+  const facePose = { 1:{x:0,y:0}, 2:{x:0,y:180}, 3:{x:0,y:-90}, 4:{x:0,y:90}, 5:{x:-90,y:0}, 6:{x:90,y:0} };
+  const SKEW = { x:-16, y:24 };
+  let spinX = 0, spinY = 0;
+  const cube = document.getElementById('cube'), res = document.getElementById('res');
+  document.getElementById('roll').onclick = () => {
+    const v = 1 + Math.floor(Math.random() * 6);
+    res.textContent = 'Tirando…';
+    spinX += 360;
+    spinY += 720;
+    cube.style.transform = 'rotateX(' + (facePose[v].x + spinX + SKEW.x) + 'deg) rotateY(' + (facePose[v].y + spinY + SKEW.y) + 'deg)';
+    const done = () => { res.innerHTML = 'Resultado: <b>' + v + '</b>'; cube.removeEventListener('transitionend', done); };
+    cube.addEventListener('transitionend', done);
+  };
+  // Tamaño configurable (el componente real lleva la prop size en px).
+  document.getElementById('size').oninput = (e) => {
+    const s = Number(e.target.value);
+    document.querySelector('.scene').style.transform = 'scale(' + (s / 120) + ')';
+  };
+  const chip = document.getElementById('chip');
+  document.getElementById('rollchip').onclick = () => {
+    chip.classList.add('rolling');
+    setTimeout(() => { chip.classList.remove('rolling'); chip.textContent = 1 + Math.floor(Math.random() * 16); }, 900);
+  };
+</script>
+</body>
+</html>
