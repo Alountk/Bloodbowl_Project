@@ -606,3 +606,251 @@ describe("ActaPreMatchWizard — S8 · dinero disponible, categorías y Star Pla
     ).toBeTruthy();
   });
 });
+
+/**
+ * T28 (user L92): the «Plegarias a Nuffle» REVEAL step — shown ONLY when the
+ * coach bought «Plegarias a Nuffle» (>0). One 1D16 roll per prayer bought,
+ * repeating any result already obtained until every roll is distinct
+ * (rulebook: «repitiendo cualquier resultado que ya hayas obtenido»), each
+ * roll revealing its granted blessing (verbatim PRAYERS_OF_NUFFLE name +
+ * effect). Rolls persist per team as they happen (the demo `activePrayers`
+ * producer). Without prayers: NO step, NO state change (pinned).
+ */
+/** Steps 1-3 confirmed with «Plegarias a Nuffle» ×count in MY cart — the
+ *  wizard must open at the NEW reveal step (first pending). */
+function prayersSnapshot(count = 2): ActaPreMatchSnapshot {
+  return {
+    ...step3Snapshot(),
+    inducements: { home: [{ id: "prayers-to-nuffle", count }], away: [] },
+    inducementsDone: { home: true, away: false },
+  };
+}
+
+describe("ActaPreMatchWizard — T28 · «Plegarias a Nuffle» reveal step (L92)", () => {
+  /** Click the next PENDING «Tirar 1D16» button (recorded slots stay locked). */
+  const rollNext = () => {
+    const pending = screen
+      .getAllByRole("button", { name: "Tirar 1D16" })
+      .find((button) => !(button as HTMLButtonElement).disabled);
+    fireEvent.click(pending as HTMLButtonElement);
+  };
+
+  it("WITHOUT prayers bought there is NO reveal step — the four pinned rulebook steps stay byte-identical", () => {
+    // WHY (characterization + boundary pin): «no step shown unless count > 0».
+    renderWizard({ snapshot: step3Snapshot() });
+    const rail = screen.getByRole("list", { name: "Secuencia pre-partido" });
+    expect(
+      within(rail)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "✓ 1 · Los Hinchas",
+      "✓ 2 · El Clima",
+      "3 · Incentivos",
+      "4 · Equipo pateador",
+    ]);
+    expect(
+      screen.queryByRole("group", { name: "Paso 4 · Plegarias a Nuffle" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tirar 1D16" })).toBeNull();
+  });
+
+  it("WITH «Plegarias a Nuffle» ×N the wizard inserts «Plegarias a Nuffle» right after Incentivos and opens at it", () => {
+    renderWizard({ snapshot: prayersSnapshot(2) });
+    expect(step(4, "Plegarias a Nuffle")).toBeTruthy();
+    const rail = screen.getByRole("list", { name: "Secuencia pre-partido" });
+    expect(
+      within(rail)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "✓ 1 · Los Hinchas",
+      "✓ 2 · El Clima",
+      "✓ 3 · Incentivos",
+      "4 · Plegarias a Nuffle",
+      "5 · Equipo pateador",
+    ]);
+  });
+
+  it("one 1D16 per prayer bought: each roll reveals its granted blessing (verbatim name + effect) and commits it as it happens", () => {
+    const { onCommit } = renderWizard({
+      snapshot: prayersSnapshot(2),
+      dice: {
+        d3: vi.fn(() => 2),
+        d6: vi.fn(() => 5),
+        d16: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(13),
+      },
+    });
+    rollNext();
+    expect(onCommit).toHaveBeenCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 10,
+    });
+    const group = step(4, "Plegarias a Nuffle");
+    expect(group.textContent).toContain("Pase perfecto");
+    expect(group.textContent).toContain(
+      "Un Pase completado otorga +2 SPP en lugar de +1.",
+    );
+    rollNext();
+    expect(onCommit).toHaveBeenCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 13,
+    });
+    expect(group.textContent).toContain("¡Con faltas y a lo loco!");
+    expect(group.textContent).toContain(
+      "Causar una Lesión con una Falta otorga +2 SPP.",
+    );
+  });
+
+  it("a repeated result is RE-ROLLED («repitiendo cualquier resultado que ya hayas obtenido») — never recorded twice", () => {
+    const d16 = vi
+      .fn()
+      .mockReturnValueOnce(10)
+      .mockReturnValueOnce(10)
+      .mockReturnValueOnce(11);
+    const { onCommit } = renderWizard({
+      snapshot: prayersSnapshot(2),
+      dice: { d3: vi.fn(() => 2), d6: vi.fn(() => 5), d16 },
+    });
+    rollNext(); // 10 kept.
+    rollNext(); // 10 repeat → re-rolled → 11 kept.
+    expect(d16).toHaveBeenCalledTimes(3);
+    expect(onCommit).toHaveBeenCalledTimes(2);
+    expect(onCommit).toHaveBeenLastCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 11,
+    });
+    const group = step(4, "Plegarias a Nuffle");
+    expect(group.textContent.match(/Pase perfecto/g)).toHaveLength(1);
+    expect(group.textContent).toContain("Recepciones deslumbrantes");
+  });
+
+  it("an unmodeled D16 face is NEVER invented: the roll is kept as data and the reveal defers to the table (manual)", () => {
+    const { onCommit } = renderWizard({
+      snapshot: prayersSnapshot(1),
+      dice: {
+        d3: vi.fn(() => 2),
+        d6: vi.fn(() => 5),
+        d16: vi.fn(() => 7),
+      },
+    });
+    rollNext();
+    expect(onCommit).toHaveBeenCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 7,
+    });
+    const group = step(4, "Plegarias a Nuffle");
+    expect(group.textContent).toContain("Bendición no modelada");
+    expect(group.textContent).toContain("resolución manual");
+    expect(group.textContent).not.toMatch(
+      /Pase perfecto|Recepciones deslumbrantes|Apoyo del público|a lo loco/,
+    );
+  });
+
+  it("the sequence cannot leave the reveal step until every bought prayer has its own kept roll", () => {
+    renderWizard({
+      snapshot: prayersSnapshot(2),
+      dice: {
+        d3: vi.fn(() => 2),
+        d6: vi.fn(() => 5),
+        d16: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(11),
+      },
+    });
+    const next = () =>
+      screen.getByRole("button", {
+        name: "Avanzar al Equipo pateador",
+      }) as HTMLButtonElement;
+    expect(next().disabled).toBe(true);
+    rollNext();
+    expect(next().disabled).toBe(true);
+    rollNext();
+    expect(next().disabled).toBe(false);
+  });
+
+  it("rolls already persisted (reload) read DONE: the wizard skips the reveal step and the rail marks it ✓", () => {
+    renderWizard({
+      snapshot: {
+        ...prayersSnapshot(2),
+        prayerRolls: { home: [10, 13], away: [] },
+      },
+    });
+    // firstPending moves past the reveal step — straight to Paso 5.
+    expect(step(5, "Equipo pateador")).toBeTruthy();
+    const rail = screen.getByRole("list", { name: "Secuencia pre-partido" });
+    expect(
+      within(rail)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent)[3],
+    ).toBe("✓ 4 · Plegarias a Nuffle");
+  });
+});
+
+describe("ActaPreMatchSection — T28 · the granted blessings on the pre-match displays", () => {
+  it("«Lo que ha sucedido» (report) lists the granted blessings per side — names verbatim, honest note for unmodeled faces", () => {
+    render(
+      <ActaPreMatchSection
+        homeName={HOME}
+        awayName={AWAY}
+        homeBase={4}
+        awayBase={3}
+        viewerSide="home"
+        finance={FINANCE}
+        snapshot={{
+          ...emptySnapshot(),
+          prayerRolls: { home: [10, 7], away: [13] },
+        }}
+        onCommit={() => undefined}
+      />,
+    );
+    const report = screen.getByRole("region", { name: "Lo que ha sucedido" });
+    expect(report.textContent).toContain(
+      "Plegarias — Águilas de Khemri: Pase perfecto, 🎲7 sin modelar",
+    );
+    expect(report.textContent).toContain(
+      "Plegarias — Colmillos del Caos: ¡Con faltas y a lo loco!",
+    );
+  });
+
+  it("the grouped summary carries a «Plegarias» phase row with the granted names — and NO row when nobody rolled (byte-identical pin)", () => {
+    const blessed = render(
+      <ActaPreMatchSection
+        homeName={HOME}
+        awayName={AWAY}
+        homeBase={4}
+        awayBase={3}
+        viewerSide="home"
+        finance={FINANCE}
+        snapshot={{
+          ...completeSnapshot(),
+          prayerRolls: { home: [10], away: [13] },
+        }}
+        onCommit={() => undefined}
+      />,
+    );
+    const summary = screen.getByRole("region", { name: "Lo que ha sucedido" });
+    expect(summary.textContent).toContain("Plegarias");
+    expect(summary.textContent).toContain("Pase perfecto");
+    expect(summary.textContent).toContain("¡Con faltas y a lo loco!");
+    blessed.unmount();
+
+    render(
+      <ActaPreMatchSection
+        homeName={HOME}
+        awayName={AWAY}
+        homeBase={4}
+        awayBase={3}
+        viewerSide="home"
+        finance={FINANCE}
+        snapshot={completeSnapshot()}
+        onCommit={() => undefined}
+      />,
+    );
+    expect(
+      screen.getByRole("region", { name: "Lo que ha sucedido" }).textContent,
+    ).not.toContain("Plegarias");
+  });
+});

@@ -21,6 +21,7 @@ vi.mock("@/lib/random", async (importOriginal) => {
     ...actual,
     rollD3: () => dice.queue.shift() ?? 2,
     rollD6: () => dice.queue.shift() ?? 5,
+    rollD16: () => dice.queue.shift() ?? 10,
   };
 });
 
@@ -1637,5 +1638,145 @@ describe("ActaDemoHarness — T22: the stock fixtures close out cleanly (L51 deb
     expect(
       screen.getByText(/Resultado reportado por Águilas de Khemri/),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * T28 (user L92) — the «Plegarias a Nuffle» REVEAL step IS the demo's
+ * `activePrayers` producer: the per-team rolls persist on the pre-match state
+ * as they happen and feed every acta SPP consumer (the turn cards via the
+ * timeline's `activePrayers` prop, the acta feed call site). The reveal step
+ * appears ONLY when the coach bought «Plegarias a Nuffle» (>0).
+ */
+describe("ActaDemoHarness — T28: «Plegarias a Nuffle» rolls feed the acta's activePrayers (L92)", () => {
+  const rowSpp = (card: HTMLElement, kind: string): string | null =>
+    card
+      .querySelector(`[data-testid="acta-event-row"][data-kind="${kind}"]`)
+      ?.querySelector('[data-testid="acta-event-spp"]')?.textContent ?? null;
+
+  /** Crafted feed + per-team prayer rolls through the REAL v5 hydration
+   *  path (T27's seed pattern — the full pre-match shape, old saves safe). */
+  const seedPrayers = (
+    events: object[],
+    prayerRolls: { home: number[]; away: number[] },
+  ) => {
+    window.localStorage.setItem(
+      "bb-demo-partido",
+      JSON.stringify({
+        v: 5,
+        state: {
+          ...demoState("inicio"),
+          activeSide: "home",
+          events,
+          preMatch: {
+            fans: { home: null, away: null },
+            weatherDice: { home: null, away: null },
+            kickDice: { home: null, away: null },
+            inducementsDone: { home: false, away: false },
+            kicking: null,
+            prayerRolls,
+          },
+        },
+      }),
+    );
+    return render(<ActaDemoHarness />);
+  };
+
+  it("the real wizard flow: buying «Plegarias a Nuffle» adds the reveal step, the blessing reveals there and persists for the report", () => {
+    // Home (fan 1D3 = 2, clima 1D6 = 4, plegaria 1D16 = 10 — «Pase perfecto»)
+    // then the rival's fan 1D3 = 1 and clima 1D6 = 5 (the shared 2D6 needs
+    // BOTH coaches' dice before «El Clima» reads done).
+    dice.queue = [2, 4, 10, 1, 5];
+    render(<ActaDemoHarness />);
+    fireEvent.click(demoButton("Restablecer"));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    openWizard();
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avanzar a Incentivos" }));
+    // Buy ONE prayer → the NEW reveal step opens right after Incentivos.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Añadir Plegarias a Nuffle" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Avanzar a Plegarias a Nuffle" }),
+    );
+    const reveal = within(wizard()).getByRole("group", {
+      name: "Paso 4 · Plegarias a Nuffle",
+    });
+    fireEvent.click(within(reveal).getByRole("button", { name: "Tirar 1D16" }));
+    expect(reveal.textContent).toContain("Pase perfecto");
+    // Cerrar (the kick die is still out) → the report carries the blessing.
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    expect(report().textContent).toContain(
+      "Plegarias — Águilas de Khemri: Pase perfecto",
+    );
+    // The rival rolls their own weather die (per-side capture, S2c).
+    fireEvent.click(perspective("Colmillos del Caos"));
+    openWizard();
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    // The persisted roll reads DONE on reopen: home resumes at Paso 5 and the
+    // rail marks the reveal step ✓ (no «Tirar 1D16» ever asked again).
+    fireEvent.click(perspective("Águilas de Khemri"));
+    openWizard();
+    expect(
+      within(wizard()).getByRole("group", { name: "Paso 5 · Equipo pateador" }),
+    ).toBeTruthy();
+    const rail = screen.getByRole("list", { name: "Secuencia pre-partido" });
+    expect(
+      within(rail)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent)[3],
+    ).toBe("✓ 4 · Plegarias a Nuffle");
+  });
+
+  it("«Pase perfecto» (roll 10) pays the completion +2 SPP instead of +1 — the rolls reach the turn cards as activePrayers", () => {
+    const completion = {
+      seq: 50,
+      kind: "completion",
+      side: "home",
+      playerRosterId: "k1",
+      half: 1,
+      turnNumber: 1,
+      at: BASE + 10 * MIN,
+      payload: {},
+    };
+    const blessed = seedPrayers([completion], { home: [10], away: [] });
+    expect(rowSpp(enJuegoCard(), "completion")).toContain("+2 SPP");
+    blessed.unmount();
+
+    const plain = seedPrayers([completion], { home: [], away: [] });
+    expect(rowSpp(enJuegoCard(), "completion")).toContain("+1 SPP");
+    plain.unmount();
+  });
+
+  it("«¡Con faltas y a lo loco!» (roll 13) unlocks the foul +2 on the CAUSER side only — the foul=0 default stays pinned", () => {
+    const foulCasualty = {
+      seq: 50,
+      kind: "casualty",
+      side: "home",
+      playerRosterId: "k1",
+      half: 1,
+      turnNumber: 1,
+      at: BASE + 10 * MIN,
+      payload: { victimRosterId: "o1", causerRosterId: "k1", roll16: 12, cause: "foul" },
+    };
+    // The casualty row's earner is the CAUSER side (away — opposite the
+    // victim-side row), so the blessing unlocks there only.
+    const blessed = seedPrayers([foulCasualty], { home: [], away: [13] });
+    expect(rowSpp(enJuegoCard(), "casualty")).toContain("+2 SPP");
+    blessed.unmount();
+
+    const wrongSide = seedPrayers([foulCasualty], { home: [13], away: [] });
+    expect(rowSpp(enJuegoCard(), "casualty")).toBeNull();
+    wrongSide.unmount();
+
+    const plain = seedPrayers([foulCasualty], { home: [], away: [] });
+    expect(rowSpp(enJuegoCard(), "casualty")).toBeNull();
+    plain.unmount();
   });
 });

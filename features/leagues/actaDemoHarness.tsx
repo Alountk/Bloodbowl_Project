@@ -16,6 +16,10 @@ import { ActaKickoffGate } from "./actaKickoffGate";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
 import { ActaPreMatchSection, type PreMatchCommit } from "./actaPreMatchWizard";
+import {
+  activePrayersFromRolls,
+  type MatchActivePrayers,
+} from "@/lib/rules/inducements";
 import { weatherFromRoll } from "@/lib/rules/weather";
 import { turnSidesOf } from "./actaTurnSides";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
@@ -109,6 +113,12 @@ export function ActaFlow({
   // stays untouched; the production server never emits `kickoff` anyway.
   const kickoffRows = events.filter((event) => event.kind === "kickoff");
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
+  // T28 (L92): the pre-match «Plegarias a Nuffle» rolls become the team's
+  // active blessings — the SPP context every acta card consumes.
+  const activePrayers: MatchActivePrayers = {
+    home: activePrayersFromRolls(preMatch?.prayerRolls?.home ?? []),
+    away: activePrayersFromRolls(preMatch?.prayerRolls?.away ?? []),
+  };
 
   return (
     <div className="w-full px-4 pb-32 sm:px-6">
@@ -169,6 +179,7 @@ export function ActaFlow({
               away: false,
             },
             kickDice: preMatch?.kickDice ?? { home: null, away: null },
+            prayerRolls: preMatch?.prayerRolls,
             kicking: preMatch?.kicking ?? null,
           }}
           onCommit={onCommitPreMatch}
@@ -199,6 +210,7 @@ export function ActaFlow({
               homeTeam={detail.homeTeam}
               awayTeam={detail.awayTeam}
               now={now}
+              activePrayers={activePrayers}
             />
           </div>
         ) : null}
@@ -212,6 +224,7 @@ export function ActaFlow({
               now={now}
               active={state}
               viewerSide={state.viewerSide}
+              activePrayers={activePrayers}
               {...(finished ? {} : { onSubmit })}
             />
           </div>
