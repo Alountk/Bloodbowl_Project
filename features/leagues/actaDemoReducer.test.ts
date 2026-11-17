@@ -5,6 +5,7 @@ import { liveState, narrativeEvents } from "./actaFlow.fixtures";
 import {
   actaDemoReducer,
   demoState,
+  preMatchComplete,
   type ActaDemoAction,
   type ActaDemoState,
 } from "./actaDemoReducer";
@@ -458,5 +459,72 @@ describe("actaDemoReducer — demo match state machine (dual-view demo)", () => 
     const s = demoState("segundo-tercio");
     expect(s.viewerSide).toBe(liveState().viewerSide);
     expect(s.startedAt).toBe(liveState().startedAt);
+  });
+});
+
+/**
+ * T28 (user L92): the per-team «Plegarias a Nuffle» rolls — the demo
+ * producer for the team's `activePrayers` (lib/rules/inducements
+ * `activePrayersFromRolls`). One 1D16 per prayer bought, persisted as the
+ * team rolls; `prayerRolls` is an ADDITIVE optional field (a v5 save without
+ * it loads unchanged — no version bump).
+ */
+describe("actaDemoReducer — T28 · per-team prayer rolls (the activePrayers producer)", () => {
+  it("commitPreMatch «prayersRoll» persists the per-team roll as it happens", () => {
+    const s = reduce(state(), {
+      type: "commitPreMatch",
+      commit: { step: "prayersRoll", side: "home", roll: 10 },
+    });
+    expect(s.preMatch?.prayerRolls?.home).toEqual([10]);
+    expect(s.preMatch?.prayerRolls?.away).toEqual([]);
+    const s2 = reduce(s, {
+      type: "commitPreMatch",
+      commit: { step: "prayersRoll", side: "away", roll: 13 },
+    });
+    expect(s2.preMatch?.prayerRolls?.home).toEqual([10]);
+    expect(s2.preMatch?.prayerRolls?.away).toEqual([13]);
+  });
+
+  it("a repeat is NEVER stored («repitiendo cualquier resultado que ya hayas obtenido») and a non-1D16 face is rejected", () => {
+    const once = reduce(state(), {
+      type: "commitPreMatch",
+      commit: { step: "prayersRoll", side: "home", roll: 10 },
+    });
+    const twice = reduce(once, {
+      type: "commitPreMatch",
+      commit: { step: "prayersRoll", side: "home", roll: 10 },
+    });
+    expect(twice.preMatch?.prayerRolls?.home).toEqual([10]);
+    for (const roll of [0, 17, 7.5]) {
+      const rejected = reduce(once, {
+        type: "commitPreMatch",
+        commit: { step: "prayersRoll", side: "home", roll },
+      });
+      expect(rejected.preMatch?.prayerRolls?.home).toEqual([10]);
+    }
+  });
+
+  it("hydration: a v5 save WITHOUT prayerRolls loads unchanged and still completes (additive field — no version bump)", () => {
+    // WHY (characterization): the pre-T28 v5 shape carries no `prayerRolls`;
+    // the additive field must never break existing saves («old save without
+    // rolls -> loads»).
+    const saved: ActaDemoState = {
+      ...demoState("segundo-tercio"),
+      preMatch: {
+        fans: {
+          home: { base: 4, dice: 2, total: 6 },
+          away: { base: 3, dice: 1, total: 4 },
+        },
+        weatherDice: { home: 4, away: 3 },
+        kickDice: { home: 5, away: 3 },
+        inducementsDone: { home: true, away: true },
+        kicking: "home",
+      },
+    };
+    const s = actaDemoReducer(state(), { type: "hydrate", saved });
+    expect(s.preMatch?.kicking).toBe("home");
+    // Nothing invented: the old save keeps loading with no rolls at all.
+    expect(s.preMatch?.prayerRolls).toBeUndefined();
+    expect(preMatchComplete(s.preMatch)).toBe(true);
   });
 });

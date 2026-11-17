@@ -51,6 +51,15 @@ export interface ActaDemoPreMatch {
   kickDice: { home: number | null; away: number | null };
   /** Per-side inducement confirmation. */
   inducementsDone: { home: boolean; away: boolean };
+  /** T28 («Plegarias a Nuffle», L92): the per-side 1D16 prayer rolls — one
+   *  per «Plegaria a Nuffle» bought, persisted as the team rolls. The demo
+   *  producer for the team's `activePrayers` (lib/rules/inducements
+   *  `activePrayersFromRolls`). ADDITIVE optional field: a v5 save without it
+   *  loads unchanged (no version bump, no state change without prayers).
+   *  PRODUCTION live flow (liveMatch/liveStore producer + the
+   *  liveEventCards.tsx call site) stays OUT of scope — demo-first, MVT-6
+   *  stance (the T26 production half remains its own task). */
+  prayerRolls?: { home: number[]; away: number[] };
   /** Winner's decision: who kicks. */
   kicking: "home" | "away" | null;
 }
@@ -305,7 +314,11 @@ export function preMatchComplete(preMatch: ActaDemoPreMatch | null): boolean {
  * True when ONE side holds every pre-match mark (S7.3/S7.4): its fan line,
  * weather die, inducement confirmation and kick die. A null capture is never
  * complete. Who RECEIVES is a POST-sequence decision (S7.9): it gates the
- * whole match via `preMatchComplete`, never a single side. This is the ONLY
+ * whole match via `preMatchComplete`, never a single side. T28 («Plegarias de
+ * Nuffle»): the prayer rolls never gate a side — the wizard's forward-only
+ * sequence forces the reveal step (and its rolls) before the kick die, so
+ * `kickDice` already implies them (L56: no gate change, no state change
+ * without prayers). This is the ONLY
  * gate behind the closed sequence («una vez rellenado todo y le demos a
  * finalizar ya no podremos editar») and the «Esperando al contrincante…»
  * screen — no extra state flags.
@@ -662,6 +675,32 @@ export function actaDemoReducer(
             inducementsDone: {
               home: preMatch.inducementsDone.home || commit.side === "home",
               away: preMatch.inducementsDone.away || commit.side === "away",
+            },
+          },
+        };
+      }
+
+      if (commit.step === "prayersRoll") {
+        // T28 (L92): one 1D16 per «Plegaria a Nuffle» bought, persisted as
+        // the team rolls. The rulebook re-rolls repeats («repitiendo
+        // cualquier resultado que ya hayas obtenido») — the roller re-rolls
+        // them and the state NEVER stores one; a real face is 1-16 (never
+        // invented).
+        if (!Number.isInteger(commit.roll) || commit.roll < 1 || commit.roll > 16) {
+          return state;
+        }
+        const prayerRolls = {
+          home: preMatch.prayerRolls?.home ?? [],
+          away: preMatch.prayerRolls?.away ?? [],
+        };
+        if (prayerRolls[commit.side].includes(commit.roll)) return state;
+        return {
+          ...state,
+          preMatch: {
+            ...preMatch,
+            prayerRolls: {
+              ...prayerRolls,
+              [commit.side]: [...prayerRolls[commit.side], commit.roll],
             },
           },
         };

@@ -1,6 +1,6 @@
 import { Fragment, useState, type ReactNode } from "react";
 
-import { rollD3, rollD6 } from "@/lib/random";
+import { rollD3, rollD6, rollD16 } from "@/lib/random";
 import {
   displayNameOf,
   fundsForSide,
@@ -9,11 +9,13 @@ import {
   INDUCEMENT_CATEGORIES,
   isEligible,
   listInducements,
+  resolvePrayerRoll,
   STAR_MAX_PER_MATCH,
   standardCartCost,
   type InducementCartItem,
   type InducementEntry,
   type PersistedInducements,
+  type PrayerId,
   type RuleId,
   type SideFunds,
 } from "@/lib/rules/inducements";
@@ -44,6 +46,10 @@ export interface ActaPreMatchSnapshot {
   inducementsDone: { home: boolean; away: boolean };
   /** Per-side confirmed kick dice (the opposed 1D6). */
   kickDice: { home: number | null; away: number | null };
+  /** T28 («Plegarias a Nuffle», L92): the per-side kept 1D16 prayer rolls
+   *  (one per «Plegaria a Nuffle» bought). Optional — a pre-T28 snapshot
+   *  carries none and renders exactly as before. */
+  prayerRolls?: { home: number[]; away: number[] };
   /** Winner's decision: who kicks. */
   kicking: "home" | "away" | null;
 }
@@ -52,6 +58,7 @@ export type PreMatchCommit =
   | { step: "fanRoll"; side: "home" | "away"; line: FanFactorLine }
   | { step: "weatherRoll"; side: "home" | "away"; die: number }
   | { step: "inducements"; side: "home" | "away"; items: InducementCartItem[] }
+  | { step: "prayersRoll"; side: "home" | "away"; roll: number }
   | { step: "kickRoll"; side: "home" | "away"; die: number }
   | { step: "kickTie" }
   | { step: "kicking"; kicking: "home" | "away" };
@@ -83,8 +90,9 @@ export interface ActaPreMatchCaptureProps {
   finance: PreMatchFinance;
   snapshot: ActaPreMatchSnapshot;
   onCommit: (commit: PreMatchCommit) => void;
-  /** Injectable dice (auto roll); defaults to the real dice in lib/random. */
-  dice?: { d3: () => number; d6: () => number };
+  /** Injectable dice (auto roll); defaults to the real dice in lib/random.
+   *  `d16` feeds the T28 «Plegarias a Nuffle» reveal step. */
+  dice?: { d3: () => number; d6: () => number; d16?: () => number };
 }
 
 /**
@@ -115,12 +123,56 @@ export interface ActaPreMatchWizardProps extends ActaPreMatchCaptureProps {
 
 type Side = "home" | "away";
 
+/** The four rulebook steps — plus the T28 reveal step, inserted right after
+ *  Incentivos ONLY when the coach bought «Plegarias a Nuffle» (>0). */
 const STEPS = [
   { name: "Los Hinchas", next: "Avanzar al Clima" },
   { name: "El Clima", next: "Avanzar a Incentivos" },
   { name: "Incentivos", next: "Avanzar al Equipo pateador" },
   { name: "Equipo pateador", next: "Finalizar" },
 ] as const;
+
+const PRAYERS_STEP = {
+  name: "Plegarias a Nuffle",
+  next: "Avanzar al Equipo pateador",
+} as const;
+
+/** Step descriptions (byte-identical pinned copy; the reveal step is the
+ *  only new line). */
+const STEP_DESCRIPTIONS: Record<string, string> = {
+  "Los Hinchas": "La afición ocasional: aficionados dedicados + 1D3.",
+  "El Clima": "Cada entrenador lanza 1D6; la suma (2D6) resuelve el clima.",
+  Incentivos: "Compra lo que necesites con el dinero disponible",
+  [PRAYERS_STEP.name]:
+    "Cada Plegaria comprada tira 1D16 — se repite cualquier resultado ya obtenido hasta que todas sean distintas.",
+  "Equipo pateador":
+    "1D6 enfrentado; el ganador del sorteo decide quién recibe (empate: se repite).",
+};
+
+/* ─── T28 · «Plegarias a Nuffle» reveal copy ─────────────────────────────
+ *
+ * The reveal shows the blessing's VERBATIM name (PRAYERS_OF_NUFFLE rows via
+ * `resolvePrayerRoll`) plus its effect. `PrayerBlessing` carries no effect
+ * field (lib/rules/inducements.ts is a fixed surface in this slice), so the
+ * Spanish effect copy lives with the reveal UI — grounded in the T25 seams
+ * the model actually enforces (eventSpp rows 10-13, foulSppException /
+ * crowdSppException), never invented rule text. Unmodeled D16 faces (the
+ * table rows were never transcribed) reveal NO name — an honest manual note.
+ */
+const PRAYER_EFFECTS: Record<PrayerId, string> = {
+  "perfect-pass": "Un Pase completado otorga +2 SPP en lugar de +1.",
+  "dazzling-catches":
+    "La recepción de un Pase completado otorga +1 SPP adicional.",
+  "crowd-support":
+    "Si un rival es Lesionado al ser empujado fuera del campo, quien lo empuja gana +2 SPP.",
+  "foul-and-frenzy": "Causar una Lesión con una Falta otorga +2 SPP.",
+};
+
+/** One roll's short label — the blessing's verbatim name, or an honest note
+ *  for the unmodeled faces (never invented). */
+function prayerLabel(roll: number): string {
+  return resolvePrayerRoll(roll)?.displayName ?? `🎲${roll} sin modelar`;
+}
 
 const BTN =
   "rounded-sm border border-navy/30 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-wide text-navy hover:bg-fill-hover disabled:cursor-not-allowed disabled:opacity-40";
@@ -233,6 +285,90 @@ function DieCard({
         <p className="text-sm text-navy">{totalLine}</p>
       </div>
       {rivalLine}
+    </div>
+  );
+}
+
+/** T28 · the blessing reveal card: one 1D16 per prayer bought (the die
+ * button is the ONLY entry, S7.2 — locked once recorded) and the granted
+ * blessing — VERBATIM name + effect — revealed with the dice-reveal motion.
+ * Unmodeled faces stay honest: the roll is kept as data, the blessing text
+ * was never transcribed (manual resolution note). */
+function PrayerRevealCard({
+  label,
+  value,
+  recorded,
+  onRoll,
+}: {
+  label: string;
+  value: number | null;
+  recorded: boolean;
+  onRoll: () => void;
+}) {
+  const [rollSeq, setRollSeq] = useState(0);
+  const rolled = rollSeq > 0;
+  const blessing = value != null ? resolvePrayerRoll(value) : null;
+  return (
+    <div className="mt-3 border border-navy/15 bg-white px-4 py-3">
+      <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-navy">
+        {label}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <span
+          key={`glyph-${rollSeq}`}
+          aria-hidden="true"
+          data-testid="die-glyph"
+          className={`flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy${
+            rolled ? " dice-roll" : ""
+          }`}
+        >
+          {value ?? "–"}
+        </span>
+        <button
+          type="button"
+          className={BTN}
+          disabled={recorded}
+          onClick={() => {
+            setRollSeq((seq) => seq + 1);
+            onRoll();
+          }}
+        >
+          Tirar 1D16
+        </button>
+        <span
+          key={`status-${rollSeq}`}
+          role="status"
+          className={`font-display text-xs font-bold uppercase tracking-wide ${
+            recorded ? "text-red" : "text-ink/60"
+          }${rolled ? " dice-reveal" : ""}`}
+        >
+          {recorded ? "Registrado" : "Pendiente"}
+        </span>
+      </div>
+      {recorded && value != null ? (
+        <div
+          key={`reveal-${value}`}
+          className={`mt-2 border-l-2 border-red pl-3${
+            rolled ? " dice-reveal" : ""
+          }`}
+        >
+          {blessing != null ? (
+            <>
+              <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-red">
+                Bendición concedida
+              </p>
+              <p className="font-display text-lg font-bold text-navy">
+                {blessing.displayName}
+              </p>
+              <p className="text-sm text-ink">{PRAYER_EFFECTS[blessing.id]}</p>
+            </>
+          ) : (
+            <p className="text-sm text-ink">
+              🎲 {value} — Bendición no modelada; resolución manual en mesa.
+            </p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -457,24 +593,58 @@ export function ActaPreMatchWizard({
     myKickDie != null &&
     snapshot.kickDice[rivalSide] != null &&
     myKickDie === snapshot.kickDice[rivalSide];
+  const [cart, setCart] = useState<PersistedInducements>(() => ({
+    home: snapshot.inducements.home.map((item) => ({ ...item })),
+    away: snapshot.inducements.away.map((item) => ({ ...item })),
+  }));
+  // T28: the reveal step exists ONLY when this coach bought prayers (>0).
+  const prayerCount =
+    cart[viewerSide].find((item) => item.id === "prayers-to-nuffle")?.count ??
+    0;
+  const steps =
+    prayerCount > 0
+      ? [
+          STEPS[0],
+          STEPS[1],
+          { ...STEPS[2], next: `Avanzar a ${PRAYERS_STEP.name}` },
+          PRAYERS_STEP,
+          STEPS[3],
+        ]
+      : [...STEPS];
+  // Kept rolls: PERSISTED («as the team rolls») merged with this session's —
+  // the open transition computes `firstPending` before its own state reset,
+  // so done/display always count the persisted marks too. A slot per prayer
+  // bought; extra kept rolls only from foreign saves (defensive max).
+  const [prayerRecorded, setPrayerRecorded] = useState<{
+    home: number[];
+    away: number[];
+  }>(() => ({
+    home: snapshot.prayerRolls?.home ?? [],
+    away: snapshot.prayerRolls?.away ?? [],
+  }));
+  const shownRolls = [
+    ...prayerRecorded[viewerSide],
+    ...(snapshot.prayerRolls?.[viewerSide] ?? []).filter(
+      (roll) => !prayerRecorded[viewerSide].includes(roll),
+    ),
+  ];
+  const prayerSlots = Math.max(prayerCount, shownRolls.length);
+  const prayersDone = shownRolls.length >= prayerSlots;
   const stepDone = [
     snapshot.fans[viewerSide] != null,
     snapshot.weather != null,
     snapshot.inducementsDone[viewerSide],
+    ...(prayerCount > 0 ? [prayersDone] : []),
     myKickDie != null && !tiePending,
   ];
   const pendingIndex = stepDone.findIndex((done) => !done);
-  const firstPending = pendingIndex === -1 ? STEPS.length - 1 : pendingIndex;
+  const firstPending = pendingIndex === -1 ? steps.length - 1 : pendingIndex;
 
   const [lastOpen, setLastOpen] = useState(open);
   const [stepIndex, setStepIndex] = useState(firstPending);
   const [fanRecorded, setFanRecorded] = useState<number | null>(null);
   const [weatherRecorded, setWeatherRecorded] = useState<number | null>(null);
   const [kickRecorded, setKickRecorded] = useState<number | null>(null);
-  const [cart, setCart] = useState<PersistedInducements>(() => ({
-    home: snapshot.inducements.home.map((item) => ({ ...item })),
-    away: snapshot.inducements.away.map((item) => ({ ...item })),
-  }));
 
   const nameOf = (side: Side) => (side === "home" ? homeName : awayName);
   const baseOf = (side: Side) => (side === "home" ? homeBase : awayBase);
@@ -488,6 +658,10 @@ export function ActaPreMatchWizard({
       setFanRecorded(null);
       setWeatherRecorded(null);
       setKickRecorded(null);
+      setPrayerRecorded({
+        home: snapshot.prayerRolls?.home ?? [],
+        away: snapshot.prayerRolls?.away ?? [],
+      });
       setCart({
         home: snapshot.inducements.home.map((item) => ({ ...item })),
         away: snapshot.inducements.away.map((item) => ({ ...item })),
@@ -590,39 +764,41 @@ export function ActaPreMatchWizard({
   // S7 rules: a roll is entered ONCE (the die locks), and the forward button
   // only unlocks when this step's marks are in — the kick step needs my die
   // and a resolved toss; who receives is decided AFTER the wizard (S7.9).
+  // T28: the reveal step needs every bought prayer's kept roll.
   const recordedFan = fanRecorded != null || snapshot.fans[viewerSide] != null;
   const recordedWeather =
     weatherRecorded != null || snapshot.weatherDice[viewerSide] != null;
   const recordedKick =
     kickRecorded != null || snapshot.kickDice[viewerSide] != null;
+  const step = steps[stepIndex];
   const canAdvance =
-    stepIndex === 0
+    step.name === "Los Hinchas"
       ? recordedFan
-      : stepIndex === 1
+      : step.name === "El Clima"
         ? recordedWeather
-        : stepIndex === 2
+        : step.name === "Incentivos"
           ? true
-          : recordedKick && !kickTie;
+          : step.name === PRAYERS_STEP.name
+            ? prayersDone
+            : recordedKick && !kickTie;
 
   const advance = () => {
     if (!canAdvance) return;
-    if (stepIndex === 2) {
+    if (step.name === "Incentivos") {
       onCommit({
         step: "inducements",
         side: viewerSide,
         items: cart[viewerSide].map((item) => ({ ...item })),
       });
     }
-    if (stepIndex === STEPS.length - 1) {
+    if (stepIndex === steps.length - 1) {
       onFinish();
       return;
     }
-    setStepIndex((index) => Math.min(STEPS.length - 1, index + 1));
+    setStepIndex((index) => Math.min(steps.length - 1, index + 1));
   };
 
   if (!open) return null;
-
-  const step = STEPS[stepIndex];
 
   return (
     <div className="fixed inset-0 z-40 bg-ink/50">
@@ -650,7 +826,7 @@ export function ActaPreMatchWizard({
           aria-label="Secuencia pre-partido"
           className="flex divide-x divide-navy/15 border-b border-navy/15"
         >
-          {STEPS.map((entry, index) => (
+          {steps.map((entry, index) => (
             <li
               key={entry.name}
               aria-current={index === stepIndex ? "step" : undefined}
@@ -675,23 +851,15 @@ export function ActaPreMatchWizard({
         >
           <div className="border-l-2 border-red pl-3">
             <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-red">
-              Paso {stepIndex + 1} de 4
+              Paso {stepIndex + 1} de {steps.length}
             </p>
             <h3 className="font-display text-lg font-bold text-navy">
               {step.name}
             </h3>
-            <p className="text-sm text-ink">
-              {stepIndex === 0
-                ? "La afición ocasional: aficionados dedicados + 1D3."
-                : stepIndex === 1
-                  ? "Cada entrenador lanza 1D6; la suma (2D6) resuelve el clima."
-                  : stepIndex === 2
-                    ? "Compra lo que necesites con el dinero disponible"
-                    : "1D6 enfrentado; el ganador del sorteo decide quién recibe (empate: se repite)."}
-            </p>
+            <p className="text-sm text-ink">{STEP_DESCRIPTIONS[step.name]}</p>
           </div>
 
-          {stepIndex === 0 ? (
+          {step.name === "Los Hinchas" ? (
             <DieCard
               teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
               value={shownFan}
@@ -724,7 +892,7 @@ export function ActaPreMatchWizard({
             />
           ) : null}
 
-          {stepIndex === 1 ? (
+          {step.name === "El Clima" ? (
             <>
               <DieCard
                 teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
@@ -764,7 +932,7 @@ export function ActaPreMatchWizard({
             </>
           ) : null}
 
-          {stepIndex === 2 ? (
+          {step.name === "Incentivos" ? (
             <>
               <div
                 role="group"
@@ -1021,7 +1189,52 @@ export function ActaPreMatchWizard({
             </>
           ) : null}
 
-          {stepIndex === 3 ? (
+          {step.name === PRAYERS_STEP.name ? (
+            <div
+              role="group"
+              aria-label={`Plegarias a Nuffle ${nameOf(viewerSide)}`}
+              className="mt-3"
+            >
+              {Array.from({ length: prayerSlots }, (_, index) => (
+                <PrayerRevealCard
+                  key={index}
+                  label={`Plegaria ${index + 1} de ${prayerSlots} · ${nameOf(
+                    viewerSide,
+                  )}`}
+                  value={shownRolls[index] ?? null}
+                  recorded={index < shownRolls.length}
+                  onRoll={() => {
+                    const d16 = dice.d16 ?? rollD16;
+                    const seen = new Set(shownRolls);
+                    // Rulebook: «repitiendo cualquier resultado que ya hayas
+                    // obtenido» — re-roll a repeat until distinct. The bound
+                    // only guards a pathological stub; a real 1D16 terminates
+                    // and a repeat is NEVER stored.
+                    let value = d16();
+                    for (
+                      let attempts = 0;
+                      attempts < 32 && seen.has(value);
+                      attempts += 1
+                    ) {
+                      value = d16();
+                    }
+                    if (seen.has(value)) return;
+                    setPrayerRecorded((prev) => ({
+                      ...prev,
+                      [viewerSide]: [...prev[viewerSide], value],
+                    }));
+                    onCommit({
+                      step: "prayersRoll",
+                      side: viewerSide,
+                      roll: value,
+                    });
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {step.name === "Equipo pateador" ? (
             <DieCard
               teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
               value={shownKick}
@@ -1050,7 +1263,7 @@ export function ActaPreMatchWizard({
             />
           ) : null}
 
-          {stepIndex === 3 && kickTie ? (
+          {step.name === "Equipo pateador" && kickTie ? (
             <button
               type="button"
               className={`${BTN} mt-3`}
@@ -1063,7 +1276,7 @@ export function ActaPreMatchWizard({
             </button>
           ) : null}
 
-          {stepIndex === 3 && snapshot.kicking != null ? (
+          {step.name === "Equipo pateador" && snapshot.kicking != null ? (
             <p className="mt-3 text-sm font-semibold text-navy">
               Sorteo resuelto — quién recibe se decide fuera del wizard
             </p>
@@ -1077,11 +1290,13 @@ export function ActaPreMatchWizard({
         {/* S7: forward-only — once a step is behind you, there is no way back. */}
         <footer className="flex items-center justify-between gap-3 border-t border-navy/15 px-5 py-4">
           <p className="flex-1 text-center text-xs text-ink">
-            {stepIndex === 2
-              ? `Paso 3 de 4 · Gastado ${formatMo(spent)} M.O. · Disponible ${formatMo(
+            {step.name === "Incentivos"
+              ? `Paso ${stepIndex + 1} de ${
+                  steps.length
+                } · Gastado ${formatMo(spent)} M.O. · Disponible ${formatMo(
                   funds.restante,
                 )} M.O.`
-              : `Paso ${stepIndex + 1} de ${STEPS.length}`}
+              : `Paso ${stepIndex + 1} de ${steps.length}`}
           </p>
           <button
             type="button"
@@ -1139,6 +1354,17 @@ export function ActaPreMatchReport({
     lines.push(
       <p key={`ind-${side}`} className="text-sm text-navy">
         Incentivos — {nameOf(side)}: {joined}
+      </p>,
+    );
+  }
+  // T28: the granted blessings (only when a side rolled — never a phantom
+  // line without prayers).
+  for (const side of ["home", "away"] as const) {
+    const rolls = snapshot.prayerRolls?.[side] ?? [];
+    if (rolls.length === 0) continue;
+    lines.push(
+      <p key={`prayers-${side}`} className="text-sm text-navy">
+        Plegarias — {nameOf(side)}: {rolls.map(prayerLabel).join(", ")}
       </p>,
     );
   }
@@ -1231,6 +1457,15 @@ export function ActaPreMatchSummary({
         ? "home"
         : "away"
       : null;
+  // T28: the «Plegarias» phase row renders ONLY when some side rolled —
+  // without prayers the grouped display stays byte-identical.
+  const prayerCells = (side: Side) => {
+    const rolls = snapshot.prayerRolls?.[side] ?? [];
+    return rolls.length === 0 ? ["—"] : rolls.map(prayerLabel);
+  };
+  const anyPrayers = (["home", "away"] as const).some(
+    (side) => (snapshot.prayerRolls?.[side] ?? []).length > 0,
+  );
   return (
     <div
       role="region"
@@ -1293,6 +1528,26 @@ export function ActaPreMatchSummary({
               ))}
             </td>
           </tr>
+          {anyPrayers ? (
+            <tr className="border-b border-navy/10">
+              <th
+                scope="row"
+                className="py-1 pr-2 font-display font-bold text-navy"
+              >
+                Plegarias
+              </th>
+              <td className="py-1 pr-2">
+                {prayerCells("home").map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </td>
+              <td className="py-1">
+                {prayerCells("away").map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </td>
+            </tr>
+          ) : null}
           <tr className="border-b border-navy/10">
             <td className="py-1 text-xs text-ink/70" colSpan={3}>
               Caja menor: diferencia de VAE + gasto rival en incentivos (máx.

@@ -19,6 +19,7 @@ import {
 } from "./liveEventLabels";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
 import { captureAuthorOf } from "./actaTurnSides";
+import type { MatchActivePrayers } from "@/lib/rules/inducements";
 import { KICKOFF_EVENTS } from "@/lib/rules/kickoffEvents";
 import { weatherLabel } from "./matchSummary";
 import styles from "./eventCardActa.module.css";
@@ -401,6 +402,7 @@ export function LiveEventCardsActa({
   homeTeam,
   awayTeam,
   now,
+  activePrayers,
 }: {
   events: LiveMatchView["events"];
   startedAt: number | null;
@@ -408,6 +410,9 @@ export function LiveEventCardsActa({
   awayTeam: MatchTeamDetail;
   /** Current wall-clock (ms) for the non-blocking auto-verify derivation. */
   now: number;
+  /** T25/T28 («Plegarias a Nuffle»): the per-side active blessings — the
+   *  `eventSpp` context. Absent = the T24 earn rule exactly. */
+  activePrayers?: MatchActivePrayers;
 }) {
   const { t } = useI18n();
   if (events.length === 0) return null;
@@ -439,7 +444,22 @@ export function LiveEventCardsActa({
         const oppositeRef = isAway ? homeRef : awayRef;
         const player = team && event.playerRosterId && ref ? findPlayer(team, event.playerRosterId, ref) : undefined;
         const minute = deriveMinute(event.at, startedAt ?? 0);
-        const spp = eventSpp(event);
+        // T25 gap closed (T28): eventSpp consults the EARNING team's active
+        // blessings — a casualty pays its CAUSER side (opposite the victim's
+        // row side, LM-12), any other event its own acting side (the same
+        // rule as the timeline's earnerPrayersOf).
+        const earnerSide =
+          event.side == null
+            ? null
+            : event.kind === "casualty"
+              ? event.side === "home"
+                ? "away"
+                : "home"
+              : event.side;
+        const spp = eventSpp(
+          event,
+          earnerSide != null ? (activePrayers?.[earnerSide] ?? []) : [],
+        );
         const sideClass = isAway ? styles.away : isHome ? styles.home : styles.neutral;
         // S10.4.2 (T16): «quién la registró» — the capture author's badge; a
         // side-less system capture has no coach registrar to name.

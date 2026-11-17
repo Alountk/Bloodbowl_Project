@@ -4,6 +4,7 @@ import path from "node:path";
 import { render, screen } from "@testing-library/react";
 import { LiveEventCardsActa } from "./eventCardActa";
 import type { MatchTeamDetail, LiveMatchEventDto } from "./api";
+import type { MatchActivePrayers } from "@/lib/rules/inducements";
 
 /**
  * The production chronology renderer (MatchView.tsx / WatchMatchView.tsx) —
@@ -59,7 +60,11 @@ function ev(
   };
 }
 
-function renderActa(events: LiveMatchEventDto[], now = 2000) {
+function renderActa(
+  events: LiveMatchEventDto[],
+  now = 2000,
+  activePrayers?: MatchActivePrayers,
+) {
   return render(
     <LiveEventCardsActa
       events={events}
@@ -67,6 +72,7 @@ function renderActa(events: LiveMatchEventDto[], now = 2000) {
       homeTeam={homeTeam}
       awayTeam={awayTeam}
       now={now}
+      activePrayers={activePrayers}
     />,
   );
 }
@@ -708,5 +714,42 @@ describe("LiveEventCardsActa — T27 skill & team-rule SPP exceptions (L87/L88)"
       ev({ kind: "td", side: "home", playerRosterId: "p1", seq: 1 }),
     ]);
     expect(sppOf(td, "Blitzer A #1")).toContain("★3");
+  });
+});
+
+/**
+ * T28 (L92): the T25 call-site gap CLOSED — `eventSpp` now receives the
+ * EARNING team's active blessings (the pre-match «Plegarias a Nuffle»
+ * rolls). A casualty pays its CAUSER side (opposite the victim's row side),
+ * any other event its own acting side. Absent prop = the T24 earn rule
+ * exactly (every default stays pinned).
+ */
+describe("LiveEventCardsActa — T28: eventSpp consults the team's activePrayers (the T25 gap)", () => {
+  /** The ★SPP tab text of the single completion card rendered. */
+  const sppOf = (container: HTMLElement): string | null =>
+    container.querySelector("[data-testid='acta-card-spp']")?.textContent ?? null;
+
+  it("«Pase perfecto» (prayer 10): the completion card pays ★2 with the blessing and ★1 without it", () => {
+    const blessed = renderActa(
+      [ev({ kind: "completion", playerRosterId: "p4", seq: 1 })],
+      2000,
+      { home: ["perfect-pass"], away: [] },
+    );
+    expect(sppOf(blessed.container)).toContain("★2");
+    blessed.unmount();
+
+    const plain = renderActa([
+      ev({ kind: "completion", playerRosterId: "p4", seq: 1 }),
+    ]);
+    expect(sppOf(plain.container)).toContain("★1");
+  });
+
+  it("the blessing belongs to the EARNING side only: an away completion ignores home's «Pase perfecto»", () => {
+    const { container } = renderActa(
+      [ev({ kind: "completion", side: "away", playerRosterId: "p2", seq: 1 })],
+      2000,
+      { home: ["perfect-pass"], away: [] },
+    );
+    expect(sppOf(container)).toContain("★1");
   });
 });
