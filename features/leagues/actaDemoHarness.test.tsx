@@ -1683,10 +1683,14 @@ describe("ActaDemoHarness — T28: «Plegarias a Nuffle» rolls feed the acta's 
   };
 
   it("the real wizard flow: buying «Plegarias a Nuffle» adds the reveal step, the blessing reveals there and persists for the report", () => {
-    // Home (fan 1D3 = 2, clima 1D6 = 4, plegaria 1D16 = 10 — «Pase perfecto»)
-    // then the rival's fan 1D3 = 1 and clima 1D6 = 5 (the shared 2D6 needs
-    // BOTH coaches' dice before «El Clima» reads done).
-    dice.queue = [2, 4, 10, 1, 5];
+    // T29 (user L95): the prayer roll is the ONE manual roll of the sequence
+    // — the coach throws the real 1D16, types the result and «Aceptar» LOCKS
+    // it (the auto-roll die button is retired from this step), so the queue
+    // only carries the auto dice: home (fan 1D3 = 2, clima 1D6 = 4) then the
+    // rival's fan 1D3 = 1 and clima 1D6 = 5 (the shared 2D6 needs BOTH
+    // coaches' dice before «El Clima» reads done). The prayer result 10
+    // («Pase perfecto") is entered BY HAND.
+    dice.queue = [2, 4, 1, 5];
     render(<ActaDemoHarness />);
     fireEvent.click(demoButton("Restablecer"));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
@@ -1705,7 +1709,14 @@ describe("ActaDemoHarness — T28: «Plegarias a Nuffle» rolls feed the acta's 
     const reveal = within(wizard()).getByRole("group", {
       name: "Paso 4 · Plegarias a Nuffle",
     });
-    fireEvent.click(within(reveal).getByRole("button", { name: "Tirar 1D16" }));
+    // T29 (user L95): manual entry + «Aceptar» lock — no die button here.
+    const prayer = within(reveal).getByRole("group", {
+      name: "Plegaria 1 de 1 · Águilas de Khemri",
+    });
+    fireEvent.change(within(prayer).getByRole("spinbutton"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(within(prayer).getByRole("button", { name: "Aceptar" }));
     expect(reveal.textContent).toContain("Pase perfecto");
     // Cerrar (the kick die is still out) → the report carries the blessing.
     fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
@@ -1720,7 +1731,8 @@ describe("ActaDemoHarness — T28: «Plegarias a Nuffle» rolls feed the acta's 
     fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
     fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
     // The persisted roll reads DONE on reopen: home resumes at Paso 5 and the
-    // rail marks the reveal step ✓ (no «Tirar 1D16» ever asked again).
+    // rail marks the reveal step ✓ (T29: the accepted result is locked —
+    // never asked again).
     fireEvent.click(perspective("Águilas de Khemri"));
     openWizard();
     expect(
@@ -1778,5 +1790,135 @@ describe("ActaDemoHarness — T28: «Plegarias a Nuffle» rolls feed the acta's 
     const plain = seedPrayers([foulCasualty], { home: [], away: [] });
     expect(rowSpp(enJuegoCard(), "casualty")).toBeNull();
     plain.unmount();
+  });
+});
+
+/**
+ * T29 (user L95) — the point-5 SPP E2E equivalents, one per blessing: the
+ * prayer roll is the ONE MANUAL roll of the pre-match («esta de aqui es la
+ * unica tirada de esta parte que debemos de dar la opcion de manual» — the
+ * coach throws the real 1D16, types the result and «Aceptar» LOCKS it) and
+ * the accepted blessing pays its SPP on the acta cards end-to-end (manual
+ * entry -> prayerRolls -> activePrayers -> the card's ★ tab). These walk the
+ * manual control for the three remaining blessings (10 pass ★2 / 11 catch +1
+ * / 12 crowd ★2); the 13 -> foul ★2 pin is the seeded one just above (T28),
+ * with its earner-side negative.
+ */
+describe("ActaDemoHarness — T29: the MANUAL prayer roll pays the blessing SPP end-to-end (L95)", () => {
+  const rowSpp = (card: HTMLElement, kind: string): string | null =>
+    card
+      .querySelector(`[data-testid="acta-event-row"][data-kind="${kind}"]`)
+      ?.querySelector('[data-testid="acta-event-spp"]')?.textContent ?? null;
+
+  /** Crafted feed through the REAL v5 hydration (T27/T28 seed pattern) over
+   *  a FRESH pre-match, so the wizard walk lands on the manual reveal step. */
+  const seedMatch = (events: object[]) => {
+    window.localStorage.setItem(
+      "bb-demo-partido",
+      JSON.stringify({
+        v: 5,
+        state: {
+          ...demoState("inicio"),
+          activeSide: "home",
+          events,
+          preMatch: {
+            fans: { home: null, away: null },
+            weatherDice: { home: null, away: null },
+            kickDice: { home: null, away: null },
+            inducementsDone: { home: false, away: false },
+            kicking: null,
+          },
+        },
+      }),
+    );
+    return render(<ActaDemoHarness />);
+  };
+
+  /** The REAL wizard walk to the reveal step as Águilas: auto die buttons for
+   *  afición + clima (those rolls stay automatic), the «Plegarias a Nuffle»
+   *  purchase, then the 1D16 typed BY HAND and locked with «Aceptar» (T29:
+   *  the auto-roll die button is retired from this step). */
+  const acceptManualRoll = (roll: string) => {
+    openWizard();
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avanzar al Clima" }));
+    fireEvent.click(within(wizard()).getByRole("button", { name: "Tirar 1D6" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avanzar a Incentivos" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Añadir Plegarias a Nuffle" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Avanzar a Plegarias a Nuffle" }),
+    );
+    const prayer = within(wizard()).getByRole("group", {
+      name: "Plegaria 1 de 1 · Águilas de Khemri",
+    });
+    fireEvent.change(within(prayer).getByRole("spinbutton"), {
+      target: { value: roll },
+    });
+    fireEvent.click(within(prayer).getByRole("button", { name: "Aceptar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+  };
+
+  /** A casualty caused BY Águilas (the row's side is the VICTIM's — the
+   *  earner is the opposite side, so the blessing unlocks on home). */
+  const causedCasualty = (cause: string) => ({
+    seq: 50,
+    kind: "casualty",
+    side: "away",
+    playerRosterId: "o1",
+    half: 1,
+    turnNumber: 1,
+    at: BASE + 10 * MIN,
+    payload: { victimRosterId: "o1", causerRosterId: "k1", roll16: 12, cause },
+  });
+
+  it("manual 10 + «Aceptar»: «Pase perfecto» pays the completed pass ★2 on the acta card", () => {
+    seedMatch([
+      {
+        seq: 50,
+        kind: "completion",
+        side: "home",
+        playerRosterId: "k1",
+        half: 1,
+        turnNumber: 1,
+        at: BASE + 10 * MIN,
+        payload: {},
+      },
+    ]);
+    acceptManualRoll("10");
+    expect(report().textContent).toContain(
+      "Plegarias — Águilas de Khemri: Pase perfecto",
+    );
+    expect(rowSpp(enJuegoCard(), "completion")).toContain("+2 SPP");
+  });
+
+  it("manual 11 + «Aceptar»: «Recepciones deslumbrantes» pays the pass-catch +1 (★1 + catch ★1 = ★2) on the acta card", () => {
+    seedMatch([
+      {
+        seq: 50,
+        kind: "completion",
+        side: "home",
+        playerRosterId: "k1",
+        half: 1,
+        turnNumber: 1,
+        at: BASE + 10 * MIN,
+        payload: {},
+      },
+    ]);
+    acceptManualRoll("11");
+    expect(report().textContent).toContain(
+      "Plegarias — Águilas de Khemri: Recepciones deslumbrantes",
+    );
+    expect(rowSpp(enJuegoCard(), "completion")).toContain("+2 SPP");
+  });
+
+  it("manual 12 + «Aceptar»: «Apoyo del público» pays the crowd-push injury ★2 to the pusher on the acta card", () => {
+    seedMatch([causedCasualty("crowd")]);
+    acceptManualRoll("12");
+    expect(report().textContent).toContain(
+      "Plegarias — Águilas de Khemri: Apoyo del público",
+    );
+    expect(rowSpp(enJuegoCard(), "casualty")).toContain("+2 SPP");
   });
 });

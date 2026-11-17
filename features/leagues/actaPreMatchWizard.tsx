@@ -1,6 +1,6 @@
 import { Fragment, useState, type ReactNode } from "react";
 
-import { rollD3, rollD6, rollD16 } from "@/lib/random";
+import { rollD3, rollD6 } from "@/lib/random";
 import {
   displayNameOf,
   fundsForSide,
@@ -91,8 +91,9 @@ export interface ActaPreMatchCaptureProps {
   snapshot: ActaPreMatchSnapshot;
   onCommit: (commit: PreMatchCommit) => void;
   /** Injectable dice (auto roll); defaults to the real dice in lib/random.
-   *  `d16` feeds the T28 «Plegarias a Nuffle» reveal step. */
-  dice?: { d3: () => number; d6: () => number; d16?: () => number };
+   *  T29 (L95): the «Plegarias a Nuffle» reveal step is the ONE MANUAL roll of
+   *  this part (the coach throws the real 1D16) — no d16 rides here anymore. */
+  dice?: { d3: () => number; d6: () => number };
 }
 
 /**
@@ -105,7 +106,10 @@ export interface ActaPreMatchCaptureProps {
  * records the result directly («si le dan hara una tirada automatica y la
  * apuntara directamente, en vez de tener lo que tenemos ahora»), replacing
  * the Manual/Auto toggle; the die button is the ONLY entry for rolls — there
- * is no manual field (S7.2); after the LAST step the modal closes and
+ * is no manual field (S7.2) — EXCEPT the T29 «Plegarias a Nuffle» reveal step
+ * (L95): the prayer roll is the ONE manual entry of the sequence (the coach
+ * throws the real dice, types the 1-16 result and «Aceptar» locks it);
+ * after the LAST step the modal closes and
  * everything derives into
  * the acta («todo saldra como debiera (en la informacion de arriba y
  * abajo)»). Capture stays PER SIDE (S2c): the coach records only their own
@@ -144,7 +148,7 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
   "El Clima": "Cada entrenador lanza 1D6; la suma (2D6) resuelve el clima.",
   Incentivos: "Compra lo que necesites con el dinero disponible",
   [PRAYERS_STEP.name]:
-    "Cada Plegaria comprada tira 1D16 — se repite cualquier resultado ya obtenido hasta que todas sean distintas.",
+    "Tira 1D16 a mano por cada Plegaria, anota el resultado y pulsa «Aceptar» para fijarlo; un resultado repetido se vuelve a tirar.",
   "Equipo pateador":
     "1D6 enfrentado; el ganador del sorteo decide quién recibe (empate: se repite).",
 };
@@ -172,6 +176,18 @@ const PRAYER_EFFECTS: Record<PrayerId, string> = {
  *  for the unmodeled faces (never invented). */
 function prayerLabel(roll: number): string {
   return resolvePrayerRoll(roll)?.displayName ?? `🎲${roll} sin modelar`;
+}
+
+/** T29 · the persisted rolls seed the MANUAL slots in order (hydration keeps
+ *  accepted rolls LOCKED); the slots beyond stay empty = editable. */
+function seededPrayerSlots(persisted?: {
+  home: number[];
+  away: number[];
+}): { home: (number | null)[]; away: (number | null)[] } {
+  return {
+    home: [...(persisted?.home ?? [])],
+    away: [...(persisted?.away ?? [])],
+  };
 }
 
 const BTN =
@@ -289,69 +305,97 @@ function DieCard({
   );
 }
 
-/** T28 · the blessing reveal card: one 1D16 per prayer bought (the die
- * button is the ONLY entry, S7.2 — locked once recorded) and the granted
- * blessing — VERBATIM name + effect — revealed with the dice-reveal motion.
- * Unmodeled faces stay honest: the roll is kept as data, the blessing text
- * was never transcribed (manual resolution note). */
-function PrayerRevealCard({
+/** T29 · the MANUAL prayer card (L95): the coach throws the real 1D16 and
+ * enters its result in the 1-16 numeric control that replaced the auto-roll
+ * die button (retired from this step). «Aceptar» commits and LOCKS the roll —
+ * the input disappears into the revealed blessing («Bendición concedida» with
+ * the VERBATIM name + effect, or the honest unmodeled note) and there is no
+ * path back to editing it. The rulebook repeat rule is enforced at «Aceptar»
+ * time: a result already ACCEPTED by this team warns «Resultado repetido…»
+ * and nothing commits; equal values on unaccepted inputs are just edits. */
+function PrayerManualCard({
   label,
   value,
-  recorded,
-  onRoll,
+  taken,
+  onAccept,
 }: {
   label: string;
   value: number | null;
-  recorded: boolean;
-  onRoll: () => void;
+  taken: number[];
+  onAccept: (roll: number) => void;
 }) {
-  const [rollSeq, setRollSeq] = useState(0);
-  const rolled = rollSeq > 0;
+  const [draft, setDraft] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const accepted = value != null;
   const blessing = value != null ? resolvePrayerRoll(value) : null;
+  const accept = () => {
+    const roll = Number(draft);
+    if (draft.trim() === "" || !Number.isInteger(roll) || roll < 1 || roll > 16) {
+      setNotice("Introduce un número entero del 1 al 16.");
+      return;
+    }
+    if (taken.includes(roll)) {
+      setNotice("Resultado repetido: vuelve a tirar el 1D16 en mesa.");
+      return;
+    }
+    setNotice(null);
+    onAccept(roll);
+  };
   return (
-    <div className="mt-3 border border-navy/15 bg-white px-4 py-3">
+    <div
+      role="group"
+      aria-label={label}
+      className="mt-3 border border-navy/15 bg-white px-4 py-3"
+    >
       <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-navy">
         {label}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
+        {accepted ? (
+          <span
+            aria-hidden="true"
+            data-testid="die-glyph"
+            className="flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy"
+          >
+            {value}
+          </span>
+        ) : (
+          <>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={16}
+              step={1}
+              aria-label={`Resultado del 1D16 · ${label}`}
+              className="w-20 rounded-sm border border-navy/30 px-2 py-1.5 text-sm text-navy"
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setNotice(null);
+              }}
+            />
+            <button type="button" className={BTN} onClick={accept}>
+              Aceptar
+            </button>
+          </>
+        )}
         <span
-          key={`glyph-${rollSeq}`}
-          aria-hidden="true"
-          data-testid="die-glyph"
-          className={`flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy${
-            rolled ? " dice-roll" : ""
-          }`}
-        >
-          {value ?? "–"}
-        </span>
-        <button
-          type="button"
-          className={BTN}
-          disabled={recorded}
-          onClick={() => {
-            setRollSeq((seq) => seq + 1);
-            onRoll();
-          }}
-        >
-          Tirar 1D16
-        </button>
-        <span
-          key={`status-${rollSeq}`}
           role="status"
           className={`font-display text-xs font-bold uppercase tracking-wide ${
-            recorded ? "text-red" : "text-ink/60"
-          }${rolled ? " dice-reveal" : ""}`}
-        >
-          {recorded ? "Registrado" : "Pendiente"}
-        </span>
-      </div>
-      {recorded && value != null ? (
-        <div
-          key={`reveal-${value}`}
-          className={`mt-2 border-l-2 border-red pl-3${
-            rolled ? " dice-reveal" : ""
+            accepted ? "text-red" : "text-ink/60"
           }`}
         >
+          {accepted ? "Registrado" : "Pendiente"}
+        </span>
+      </div>
+      {notice != null ? (
+        <p role="alert" className="mt-2 text-sm text-red">
+          {notice}
+        </p>
+      ) : null}
+      {accepted ? (
+        <div key={`reveal-${value}`} className="mt-2 border-l-2 border-red pl-3">
           {blessing != null ? (
             <>
               <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-red">
@@ -611,25 +655,21 @@ export function ActaPreMatchWizard({
           STEPS[3],
         ]
       : [...STEPS];
-  // Kept rolls: PERSISTED («as the team rolls») merged with this session's —
-  // the open transition computes `firstPending` before its own state reset,
-  // so done/display always count the persisted marks too. A slot per prayer
-  // bought; extra kept rolls only from foreign saves (defensive max).
-  const [prayerRecorded, setPrayerRecorded] = useState<{
-    home: number[];
-    away: number[];
-  }>(() => ({
-    home: snapshot.prayerRolls?.home ?? [],
-    away: snapshot.prayerRolls?.away ?? [],
-  }));
-  const shownRolls = [
-    ...prayerRecorded[viewerSide],
-    ...(snapshot.prayerRolls?.[viewerSide] ?? []).filter(
-      (roll) => !prayerRecorded[viewerSide].includes(roll),
-    ),
-  ];
-  const prayerSlots = Math.max(prayerCount, shownRolls.length);
-  const prayersDone = shownRolls.length >= prayerSlots;
+  // T29 (L95): the MANUAL 1D16 results — ONE slot per prayer bought, kept per
+  // side. A non-null slot is ACCEPTED (locked — persisted through the
+  // «prayersRoll» commit); an empty slot still holds its editable input. The
+  // slots seed from the persisted rolls on mount/open (hydration renders
+  // accepted rolls LOCKED there too); the count is defensive (foreign saves
+  // may carry more rolls than the current cart).
+  const [prayerResults, setPrayerResults] = useState<{
+    home: (number | null)[];
+    away: (number | null)[];
+  }>(() => seededPrayerSlots(snapshot.prayerRolls));
+  const acceptedRolls = prayerResults[viewerSide].filter(
+    (roll): roll is number => roll != null,
+  );
+  const prayerSlots = Math.max(prayerCount, acceptedRolls.length);
+  const prayersDone = acceptedRolls.length >= prayerSlots;
   const stepDone = [
     snapshot.fans[viewerSide] != null,
     snapshot.weather != null,
@@ -658,10 +698,7 @@ export function ActaPreMatchWizard({
       setFanRecorded(null);
       setWeatherRecorded(null);
       setKickRecorded(null);
-      setPrayerRecorded({
-        home: snapshot.prayerRolls?.home ?? [],
-        away: snapshot.prayerRolls?.away ?? [],
-      });
+      setPrayerResults(seededPrayerSlots(snapshot.prayerRolls));
       setCart({
         home: snapshot.inducements.home.map((item) => ({ ...item })),
         away: snapshot.inducements.away.map((item) => ({ ...item })),
@@ -764,7 +801,7 @@ export function ActaPreMatchWizard({
   // S7 rules: a roll is entered ONCE (the die locks), and the forward button
   // only unlocks when this step's marks are in — the kick step needs my die
   // and a resolved toss; who receives is decided AFTER the wizard (S7.9).
-  // T28: the reveal step needs every bought prayer's kept roll.
+  // T28/T29: the reveal step needs every bought prayer's accepted roll.
   const recordedFan = fanRecorded != null || snapshot.fans[viewerSide] != null;
   const recordedWeather =
     weatherRecorded != null || snapshot.weatherDice[viewerSide] != null;
@@ -1196,37 +1233,26 @@ export function ActaPreMatchWizard({
               className="mt-3"
             >
               {Array.from({ length: prayerSlots }, (_, index) => (
-                <PrayerRevealCard
+                <PrayerManualCard
                   key={index}
                   label={`Plegaria ${index + 1} de ${prayerSlots} · ${nameOf(
                     viewerSide,
                   )}`}
-                  value={shownRolls[index] ?? null}
-                  recorded={index < shownRolls.length}
-                  onRoll={() => {
-                    const d16 = dice.d16 ?? rollD16;
-                    const seen = new Set(shownRolls);
-                    // Rulebook: «repitiendo cualquier resultado que ya hayas
-                    // obtenido» — re-roll a repeat until distinct. The bound
-                    // only guards a pathological stub; a real 1D16 terminates
-                    // and a repeat is NEVER stored.
-                    let value = d16();
-                    for (
-                      let attempts = 0;
-                      attempts < 32 && seen.has(value);
-                      attempts += 1
-                    ) {
-                      value = d16();
-                    }
-                    if (seen.has(value)) return;
-                    setPrayerRecorded((prev) => ({
-                      ...prev,
-                      [viewerSide]: [...prev[viewerSide], value],
-                    }));
+                  value={prayerResults[viewerSide][index] ?? null}
+                  taken={acceptedRolls}
+                  onAccept={(roll) => {
+                    // T29: «Aceptar» commits and LOCKS the slot — the card
+                    // already screened validation + duplicates and the
+                    // reducer re-checks them as defense in depth.
+                    setPrayerResults((prev) => {
+                      const rolls = [...prev[viewerSide]];
+                      rolls[index] = roll;
+                      return { ...prev, [viewerSide]: rolls };
+                    });
                     onCommit({
                       step: "prayersRoll",
                       side: viewerSide,
-                      roll: value,
+                      roll,
                     });
                   }}
                 />

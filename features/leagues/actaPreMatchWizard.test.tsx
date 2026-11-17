@@ -608,16 +608,22 @@ describe("ActaPreMatchWizard — S8 · dinero disponible, categorías y Star Pla
 });
 
 /**
- * T28 (user L92): the «Plegarias a Nuffle» REVEAL step — shown ONLY when the
- * coach bought «Plegarias a Nuffle» (>0). One 1D16 roll per prayer bought,
- * repeating any result already obtained until every roll is distinct
- * (rulebook: «repitiendo cualquier resultado que ya hayas obtenido»), each
- * roll revealing its granted blessing (verbatim PRAYERS_OF_NUFFLE name +
- * effect). Rolls persist per team as they happen (the demo `activePrayers`
- * producer). Without prayers: NO step, NO state change (pinned).
+ * T29 (user L95): the «Plegarias a Nuffle» reveal step is the ONLY MANUAL roll
+ * of this part — «esta de aqui es la unica tirada de esta parte que debemos de
+ * dar la opcion de manual». The coach throws the REAL 1D16 and enters the
+ * result in a 1-16 numeric control per prayer (the auto-roll die button and
+ * its RNG path are RETIRED from this step; every other step's die button
+ * stays). «Aceptar» commits and LOCKS the result (irreversible — the input
+ * disappears into the revealed blessing, including remount/hydration). The
+ * rulebook repeat rule («repitiendo cualquier resultado que ya hayas
+ * obtenido») is enforced at «Aceptar» time: a result already ACCEPTED by
+ * another prayer of the same team is refused with «Resultado repetido…» and
+ * nothing commits; equal values on UNACCEPTED inputs are just edits. Rolls
+ * persist per team as accepted (the demo `activePrayers` producer). Without
+ * prayers: NO step, NO state change (pinned).
  */
 /** Steps 1-3 confirmed with «Plegarias a Nuffle» ×count in MY cart — the
- *  wizard must open at the NEW reveal step (first pending). */
+ *  wizard must open at the reveal step (first pending). */
 function prayersSnapshot(count = 2): ActaPreMatchSnapshot {
   return {
     ...step3Snapshot(),
@@ -626,14 +632,18 @@ function prayersSnapshot(count = 2): ActaPreMatchSnapshot {
   };
 }
 
-describe("ActaPreMatchWizard — T28 · «Plegarias a Nuffle» reveal step (L92)", () => {
-  /** Click the next PENDING «Tirar 1D16» button (recorded slots stay locked). */
-  const rollNext = () => {
-    const pending = screen
-      .getAllByRole("button", { name: "Tirar 1D16" })
-      .find((button) => !(button as HTMLButtonElement).disabled);
-    fireEvent.click(pending as HTMLButtonElement);
-  };
+describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + accept-lock (L95)", () => {
+  /** One prayer's card — «Plegaria {n} de {total} · {equipo}». */
+  const card = (n: number, total = 2) =>
+    within(step(4, "Plegarias a Nuffle")).getByRole("group", {
+      name: `Plegaria ${n} de ${total} · ${HOME}`,
+    });
+  const inputOf = (el: HTMLElement) =>
+    within(el).getByRole("spinbutton") as HTMLInputElement;
+  const acceptOf = (el: HTMLElement) =>
+    within(el).getByRole("button", { name: "Aceptar" });
+  const enter = (el: HTMLElement, value: string) =>
+    fireEvent.change(inputOf(el), { target: { value } });
 
   it("WITHOUT prayers bought there is NO reveal step — the four pinned rulebook steps stay byte-identical", () => {
     // WHY (characterization + boundary pin): «no step shown unless count > 0».
@@ -672,103 +682,204 @@ describe("ActaPreMatchWizard — T28 · «Plegarias a Nuffle» reveal step (L92)
     ]);
   });
 
-  it("one 1D16 per prayer bought: each roll reveals its granted blessing (verbatim name + effect) and commits it as it happens", () => {
-    const { onCommit } = renderWizard({
-      snapshot: prayersSnapshot(2),
-      dice: {
-        d3: vi.fn(() => 2),
-        d6: vi.fn(() => 5),
-        d16: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(13),
-      },
-    });
-    rollNext();
+  it("per prayer a 1-16 numeric input replaces the auto-roll die button; «Aceptar» reveals the blessing and commits the result", () => {
+    const { onCommit, dice } = renderWizard({ snapshot: prayersSnapshot(2) });
+    // WHY (L95): the auto-roll die button and its RNG path are RETIRED from
+    // this step — the coach throws the real dice and types the result.
+    expect(screen.queryByRole("button", { name: "Tirar 1D16" })).toBeNull();
+    const first = card(1);
+    expect(inputOf(first).getAttribute("min")).toBe("1");
+    expect(inputOf(first).getAttribute("max")).toBe("16");
+    enter(first, "10");
+    fireEvent.click(acceptOf(first));
     expect(onCommit).toHaveBeenCalledWith({
       step: "prayersRoll",
       side: "home",
       roll: 10,
     });
-    const group = step(4, "Plegarias a Nuffle");
-    expect(group.textContent).toContain("Pase perfecto");
-    expect(group.textContent).toContain(
+    expect(first.textContent).toContain("Pase perfecto");
+    expect(first.textContent).toContain(
       "Un Pase completado otorga +2 SPP en lugar de +1.",
     );
-    rollNext();
+    const second = card(2);
+    enter(second, "13");
+    fireEvent.click(acceptOf(second));
     expect(onCommit).toHaveBeenCalledWith({
       step: "prayersRoll",
       side: "home",
       roll: 13,
     });
-    expect(group.textContent).toContain("¡Con faltas y a lo loco!");
-    expect(group.textContent).toContain(
+    expect(second.textContent).toContain("¡Con faltas y a lo loco!");
+    expect(second.textContent).toContain(
       "Causar una Lesión con una Falta otorga +2 SPP.",
     );
+    // The step never touched the RNG (dice belong to the OTHER steps only).
+    expect(dice.d3).not.toHaveBeenCalled();
+    expect(dice.d6).not.toHaveBeenCalled();
   });
 
-  it("a repeated result is RE-ROLLED («repitiendo cualquier resultado que ya hayas obtenido») — never recorded twice", () => {
-    const d16 = vi
-      .fn()
-      .mockReturnValueOnce(10)
-      .mockReturnValueOnce(10)
-      .mockReturnValueOnce(11);
-    const { onCommit } = renderWizard({
-      snapshot: prayersSnapshot(2),
-      dice: { d3: vi.fn(() => 2), d6: vi.fn(() => 5), d16 },
+  it("out-of-range or non-numeric results are REJECTED with the pinned inline error and nothing commits", () => {
+    const { onCommit } = renderWizard({ snapshot: prayersSnapshot(1) });
+    const first = card(1, 1);
+    const pinned = "Introduce un número entero del 1 al 16.";
+    // Empty (a non-numeric entry sanitizes the number input to empty).
+    fireEvent.click(acceptOf(first));
+    expect(within(first).getByText(pinned)).toBeTruthy();
+    enter(first, "abc");
+    fireEvent.click(acceptOf(first));
+    expect(within(first).getByText(pinned)).toBeTruthy();
+    for (const bad of ["0", "17", "3.5"]) {
+      enter(first, bad);
+      fireEvent.click(acceptOf(first));
+      expect(within(first).getByText(pinned)).toBeTruthy();
+    }
+    expect(onCommit).not.toHaveBeenCalled();
+    // The pinned error clears as soon as a valid 1-16 integer is accepted.
+    enter(first, "16");
+    fireEvent.click(acceptOf(first));
+    expect(onCommit).toHaveBeenCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 16,
     });
-    rollNext(); // 10 kept.
-    rollNext(); // 10 repeat → re-rolled → 11 kept.
-    expect(d16).toHaveBeenCalledTimes(3);
+  });
+
+  it("«Aceptar» LOCKS the prayer for good: the input disappears into the revealed blessing and no rerender brings it back", () => {
+    const { rerender } = renderWizard({ snapshot: prayersSnapshot(2) });
+    const first = card(1);
+    enter(first, "10");
+    fireEvent.click(acceptOf(first));
+    // Locked where it was accepted — nothing left to edit.
+    expect(within(first).queryByRole("spinbutton")).toBeNull();
+    expect(within(first).queryByRole("button", { name: "Aceptar" })).toBeNull();
+    expect(within(first).getByRole("status").textContent).toBe("Registrado");
+    expect(first.textContent).toContain("Pase perfecto");
+    // ONLY the other prayer is still editable.
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(1);
+    // The parent round-trip (the snapshot gains the accepted roll) never
+    // reopens the locked slot either.
+    rerender({
+      snapshot: { ...prayersSnapshot(2), prayerRolls: { home: [10], away: [] } },
+    });
+    const after = card(1);
+    expect(within(after).queryByRole("spinbutton")).toBeNull();
+    expect(screen.getAllByRole("spinbutton")).toHaveLength(1);
+    expect(after.textContent).toContain("Pase perfecto");
+  });
+
+  it("«Aceptar» with a result already ACCEPTED by this team is REJECTED («Resultado repetido…») and nothing commits", () => {
+    const { onCommit } = renderWizard({ snapshot: prayersSnapshot(2) });
+    const first = card(1);
+    enter(first, "10");
+    fireEvent.click(acceptOf(first));
+    const second = card(2);
+    enter(second, "10");
+    fireEvent.click(acceptOf(second));
+    // Pinned warning; the repeat commits NOTHING and the input stays open.
+    expect(
+      within(second).getByText(
+        "Resultado repetido: vuelve a tirar el 1D16 en mesa.",
+      ),
+    ).toBeTruthy();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(within(second).getByRole("spinbutton")).toBeTruthy();
+    // Editing to a fresh result accepts normally (the draft is just an edit).
+    enter(second, "13");
+    fireEvent.click(acceptOf(second));
     expect(onCommit).toHaveBeenCalledTimes(2);
     expect(onCommit).toHaveBeenLastCalledWith({
       step: "prayersRoll",
       side: "home",
-      roll: 11,
+      roll: 13,
     });
-    const group = step(4, "Plegarias a Nuffle");
-    expect(group.textContent.match(/Pase perfecto/g)).toHaveLength(1);
-    expect(group.textContent).toContain("Recepciones deslumbrantes");
   });
 
-  it("an unmodeled D16 face is NEVER invented: the roll is kept as data and the reveal defers to the table (manual)", () => {
+  it("TRIANGULATE · the duplicate rule is per TEAM: the rival's accepted result never blocks mine", () => {
     const { onCommit } = renderWizard({
-      snapshot: prayersSnapshot(1),
-      dice: {
-        d3: vi.fn(() => 2),
-        d6: vi.fn(() => 5),
-        d16: vi.fn(() => 7),
-      },
+      snapshot: { ...prayersSnapshot(1), prayerRolls: { home: [], away: [13] } },
     });
-    rollNext();
+    const first = card(1, 1);
+    enter(first, "13");
+    fireEvent.click(acceptOf(first));
+    expect(onCommit).toHaveBeenCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 13,
+    });
+  });
+
+  it("equal values on UNACCEPTED inputs are just edits — the duplicate rule bites only against ACCEPTED rolls", () => {
+    const { onCommit } = renderWizard({ snapshot: prayersSnapshot(2) });
+    const first = card(1);
+    const second = card(2);
+    enter(first, "5");
+    enter(second, "5");
+    // Two open drafts holding the same value: no warning, nothing locked.
+    expect(step(4, "Plegarias a Nuffle").textContent).not.toContain(
+      "Resultado repetido",
+    );
+    fireEvent.click(acceptOf(second)); // 5 accepted on the SECOND prayer.
+    expect(onCommit).toHaveBeenCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 5,
+    });
+    // Now the first input's 5 repeats an ACCEPTED roll → rejected.
+    fireEvent.click(acceptOf(first));
+    expect(
+      within(first).getByText(
+        "Resultado repetido: vuelve a tirar el 1D16 en mesa.",
+      ),
+    ).toBeTruthy();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unmodeled result is NEVER invented: the accepted roll is kept as data and the reveal defers to the table (manual)", () => {
+    const { onCommit } = renderWizard({ snapshot: prayersSnapshot(1) });
+    const first = card(1, 1);
+    enter(first, "7");
+    fireEvent.click(acceptOf(first));
     expect(onCommit).toHaveBeenCalledWith({
       step: "prayersRoll",
       side: "home",
       roll: 7,
     });
-    const group = step(4, "Plegarias a Nuffle");
-    expect(group.textContent).toContain("Bendición no modelada");
-    expect(group.textContent).toContain("resolución manual");
-    expect(group.textContent).not.toMatch(
+    expect(first.textContent).toContain("Bendición no modelada");
+    expect(first.textContent).toContain("resolución manual");
+    expect(first.textContent).not.toMatch(
       /Pase perfecto|Recepciones deslumbrantes|Apoyo del público|a lo loco/,
     );
   });
 
-  it("the sequence cannot leave the reveal step until every bought prayer has its own kept roll", () => {
-    renderWizard({
-      snapshot: prayersSnapshot(2),
-      dice: {
-        d3: vi.fn(() => 2),
-        d6: vi.fn(() => 5),
-        d16: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(11),
-      },
-    });
+  it("the sequence cannot leave the reveal step until every bought prayer has its own accepted result", () => {
+    renderWizard({ snapshot: prayersSnapshot(2) });
     const next = () =>
       screen.getByRole("button", {
         name: "Avanzar al Equipo pateador",
       }) as HTMLButtonElement;
     expect(next().disabled).toBe(true);
-    rollNext();
+    const first = card(1);
+    enter(first, "10");
+    fireEvent.click(acceptOf(first));
     expect(next().disabled).toBe(true);
-    rollNext();
+    const second = card(2);
+    enter(second, "11");
+    fireEvent.click(acceptOf(second));
     expect(next().disabled).toBe(false);
+  });
+
+  it("remount/hydration keeps accepted rolls LOCKED: persisted rolls render their blessing with no input and no «Aceptar»", () => {
+    renderWizard({
+      snapshot: { ...prayersSnapshot(2), prayerRolls: { home: [10], away: [] } },
+    });
+    // One roll of two is still out → the reveal step opens here.
+    const first = card(1);
+    expect(first.textContent).toContain("Pase perfecto");
+    expect(within(first).queryByRole("spinbutton")).toBeNull();
+    expect(within(first).queryByRole("button", { name: "Aceptar" })).toBeNull();
+    const second = card(2);
+    expect(within(second).getByRole("spinbutton")).toBeTruthy();
+    expect(within(second).getByRole("button", { name: "Aceptar" })).toBeTruthy();
   });
 
   it("rolls already persisted (reload) read DONE: the wizard skips the reveal step and the rail marks it ✓", () => {
