@@ -931,25 +931,38 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
     ).toBeNull();
   });
 
-  it("T31 · an auto roll re-takes internally until distinct and commits — repeating is impossible after an auto roll", () => {
+  it("T31 · an auto roll that repeats an accepted result INFORMS the coach instead of silently re-taking (L101/L102)", () => {
     const { onCommit, dice } = renderWizard({ snapshot: prayersSnapshot(2) });
     const first = card(1);
     enter(first, "10");
     fireEvent.click(acceptOf(first));
     const second = card(2);
-    // WHY (T31, user L101): auto rolls are accepted immediately — a repeat
-    // is re-taken inside the button, never surfaced to the coach.
-    dice.d16.mockReturnValueOnce(10).mockReturnValueOnce(14);
-    fireEvent.click(
-      within(second).getByRole("button", { name: "Tirar automático" }),
-    );
-    expect(dice.d16).toHaveBeenCalledTimes(2);
+    const auto = () =>
+      fireEvent.click(
+        within(second).getByRole("button", { name: "Tirar automático" }),
+      );
+    // WHY (T31, user L102): a repeat is INFORMED, never silently re-taken —
+    // «creo que lo mejor es informar que tiene que tirar de nuevo porque esa
+    // ya la tiene». Same pinned copy as the manual path.
+    dice.d16.mockReturnValue(10);
+    auto();
+    expect(
+      within(second).getByText(
+        "Resultado repetido: vuelve a tirar el 1D16 en mesa.",
+      ),
+    ).toBeTruthy();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    // Throwing again (auto or manual) to a fresh result accepts.
+    dice.d16.mockReturnValue(14);
+    auto();
     expect(onCommit).toHaveBeenLastCalledWith({
       step: "prayersRoll",
       side: "home",
       roll: 14,
     });
-    expect(within(second).queryByText("Resultado repetido")).toBeNull();
+    expect(
+      within(second).queryByText("Resultado repetido"),
+    ).toBeNull();
     expect(
       within(second).queryByRole("button", { name: "Aceptar" }),
     ).toBeNull();

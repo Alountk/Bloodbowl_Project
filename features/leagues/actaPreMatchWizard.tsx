@@ -380,13 +380,10 @@ function PrayerManualCard({
               type="button"
               className={BTN}
               onClick={() => {
-                // T31 (L101): the automatic roll COMMITS ITSELF — no sense
-                // in allowing repeats after an auto roll: re-takes until
-                // distinct from this team's accepted rolls and locks at once.
-                let roll = d16();
-                for (let guard = 0; taken.includes(roll) && guard < 32; guard += 1) {
-                  roll = d16();
-                }
+                // T31 (L101/L102): the automatic roll COMMITS ITSELF — but a
+                // repeat is never silently re-taken: INFORM the coach («esa
+                // ya la tiene») and let them throw again.
+                const roll = d16();
                 if (taken.includes(roll)) {
                   setNotice("Resultado repetido: vuelve a tirar el 1D16 en mesa.");
                   return;
