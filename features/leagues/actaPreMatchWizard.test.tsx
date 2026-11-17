@@ -49,7 +49,7 @@ function renderWizard(
   const onCommit = vi.fn();
   const onDismiss = vi.fn();
   const onFinish = vi.fn();
-  const dice = { d3: vi.fn(() => 2), d6: vi.fn(() => 5) };
+  const dice = { d3: vi.fn(() => 2), d6: vi.fn(() => 5), d16: vi.fn(() => 7) };
   const props: ComponentProps<typeof ActaPreMatchWizard> = {
     open: true,
     homeName: HOME,
@@ -611,9 +611,12 @@ describe("ActaPreMatchWizard — S8 · dinero disponible, categorías y Star Pla
  * T29 (user L95): the «Plegarias a Nuffle» reveal step is the ONLY MANUAL roll
  * of this part — «esta de aqui es la unica tirada de esta parte que debemos de
  * dar la opcion de manual». The coach throws the REAL 1D16 and enters the
- * result in a 1-16 numeric control per prayer (the auto-roll die button and
- * its RNG path are RETIRED from this step; every other step's die button
- * stays). «Aceptar» commits and LOCKS the result (irreversible — the input
+ * result in a 1-16 numeric control per prayer (the auto-roll die BUTTON —
+ * roll AND record — is retired from this step; every other step's die button
+ * stays). T30 (user L98): an optional «Tirar automático» button BEFORE
+ * «Aceptar» fills the manual input with a real 1D16 (injected rng) — the
+ * coach can still edit it; manual remains the main path. «Aceptar» commits
+ * and LOCKS the result (irreversible — the input
  * disappears into the revealed blessing, including remount/hydration). The
  * rulebook repeat rule («repitiendo cualquier resultado que ya hayas
  * obtenido») is enforced at «Aceptar» time: a result already ACCEPTED by
@@ -684,8 +687,9 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
 
   it("per prayer a 1-16 numeric input replaces the auto-roll die button; «Aceptar» reveals the blessing and commits the result", () => {
     const { onCommit, dice } = renderWizard({ snapshot: prayersSnapshot(2) });
-    // WHY (L95): the auto-roll die button and its RNG path are RETIRED from
-    // this step — the coach throws the real dice and types the result.
+    // WHY (L95, kept byte-identical): the auto-roll die BUTTON (roll AND
+    // record) is still absent from this step — T30's «Tirar automático» only
+    // FILLS the manual input (manual stays the main path).
     expect(screen.queryByRole("button", { name: "Tirar 1D16" })).toBeNull();
     const first = card(1);
     expect(inputOf(first).getAttribute("min")).toBe("1");
@@ -698,8 +702,11 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
       roll: 10,
     });
     expect(first.textContent).toContain("Pase perfecto");
+    // WHY (T30 pin update): the effect copy moved from the UI's local
+    // paraphrase into the model as the VERBATIM rulebook text (L98: full
+    // detail visible for every blessing).
     expect(first.textContent).toContain(
-      "Un Pase completado otorga +2 SPP en lugar de +1.",
+      "Cualquier jugador de tu equipo que logre realizar un Pase completo ganará 2 PE en lugar de 1.",
     );
     const second = card(2);
     enter(second, "13");
@@ -710,12 +717,16 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
       roll: 13,
     });
     expect(second.textContent).toContain("¡Con faltas y a lo loco!");
+    // WHY (T30 pin update): same — verbatim rulebook effect (was «Causar una
+    // Lesión con una Falta otorga +2 SPP.»).
     expect(second.textContent).toContain(
-      "Causar una Lesión con una Falta otorga +2 SPP.",
+      "Cualquier jugador de tu equipo que provoque una Lesión como resultado de una acción de Falta gana 2 PE.",
     );
-    // The step never touched the RNG (dice belong to the OTHER steps only).
+    // Manual entry touches NO RNG (the dice belong to the OTHER steps — and
+    // to T30's explicit «Tirar automático» button, not clicked here).
     expect(dice.d3).not.toHaveBeenCalled();
     expect(dice.d6).not.toHaveBeenCalled();
+    expect(dice.d16).not.toHaveBeenCalled();
   });
 
   it("out-of-range or non-numeric results are REJECTED with the pinned inline error and nothing commits", () => {
@@ -834,7 +845,11 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 
-  it("an unmodeled result is NEVER invented: the accepted roll is kept as data and the reveal defers to the table (manual)", () => {
+  it("a NON-SPP result is never invented as engine behavior: the reveal shows its FULL rulebook detail + the honest «Efecto en mesa (este motor no lo aplica)» note", () => {
+    // WHY (T30 rewrite): this pin held «Bendición no modelada…» for roll 7 —
+    // user L98 ordered ALL 16 rows modeled with full detail, so roll 7 now
+    // reveals «Tacos engrasados» + its verbatim effect; the honest note
+    // changed to «Efecto en mesa (este motor no lo aplica)».
     const { onCommit } = renderWizard({ snapshot: prayersSnapshot(1) });
     const first = card(1, 1);
     enter(first, "7");
@@ -844,11 +859,106 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
       side: "home",
       roll: 7,
     });
-    expect(first.textContent).toContain("Bendición no modelada");
-    expect(first.textContent).toContain("resolución manual");
-    expect(first.textContent).not.toMatch(
-      /Pase perfecto|Recepciones deslumbrantes|Apoyo del público|a lo loco/,
+    expect(first.textContent).toContain("Tacos engrasados");
+    expect(first.textContent).toContain(
+      "el atributo MV de ese jugador se reduce en 1 (hasta un mínimo de 1).",
     );
+    expect(first.textContent).toContain(
+      "Efecto en mesa (este motor no lo aplica)",
+    );
+    expect(first.textContent).not.toContain("Bendición no modelada");
+    expect(first.textContent).not.toContain("+ SPP");
+  });
+
+  it("T30 · the OCR-completed rows 1-2 render their full effect text in the reveal", () => {
+    renderWizard({ snapshot: prayersSnapshot(2) });
+    const first = card(1);
+    enter(first, "1");
+    fireEvent.click(acceptOf(first));
+    expect(first.textContent).toContain("Trampilla traicionera");
+    expect(first.textContent).toContain(
+      "éste rebota desde la casilla de la trampilla.",
+    );
+    const second = card(2);
+    enter(second, "2");
+    fireEvent.click(acceptOf(second));
+    expect(second.textContent).toContain("Amigo del árbitro");
+    expect(second.textContent).toContain("«Ahora que lo dices...»");
+  });
+
+  it("T30 · the «+ SPP» chip marks the SPP blessings (10/11/12/13) — the rest never carry it", () => {
+    renderWizard({ snapshot: prayersSnapshot(3) });
+    const first = card(1, 3);
+    enter(first, "10");
+    fireEvent.click(acceptOf(first));
+    expect(within(first).getByText("+ SPP")).toBeTruthy();
+    const second = card(2, 3);
+    enter(second, "13");
+    fireEvent.click(acceptOf(second));
+    expect(within(second).getByText("+ SPP")).toBeTruthy();
+    const third = card(3, 3);
+    enter(third, "5");
+    fireEvent.click(acceptOf(third));
+    expect(within(third).queryByText("+ SPP")).toBeNull();
+    expect(
+      within(third).getByText("Efecto en mesa (este motor no lo aplica)"),
+    ).toBeTruthy();
+  });
+
+  it("T30 · «Tirar automático» fills the manual input with a real 1D16 (injected rng) and the coach can still edit before «Aceptar» locks", () => {
+    const { onCommit, dice } = renderWizard({ snapshot: prayersSnapshot(1) });
+    const first = card(1, 1);
+    // The auto option sits BEFORE «Aceptar» — manual stays the main path.
+    const auto = within(first).getByRole("button", {
+      name: "Tirar automático",
+    });
+    fireEvent.click(auto);
+    expect(dice.d16).toHaveBeenCalledTimes(1);
+    expect(inputOf(first).value).toBe("7");
+    // Filled ≠ accepted: nothing commits and the input stays editable.
+    expect(onCommit).not.toHaveBeenCalled();
+    enter(first, "12");
+    fireEvent.click(acceptOf(first));
+    expect(onCommit).toHaveBeenCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 12,
+    });
+    // «Aceptar» lock semantics unchanged: no auto button, no input.
+    expect(
+      within(first).queryByRole("button", { name: "Tirar automático" }),
+    ).toBeNull();
+    expect(within(first).queryByRole("spinbutton")).toBeNull();
+  });
+
+  it("T30 · an auto roll keeps the pinned duplicate rule: «Aceptar» refuses a repeated result even when it came from the die", () => {
+    const { onCommit, dice } = renderWizard({ snapshot: prayersSnapshot(2) });
+    const first = card(1);
+    enter(first, "10");
+    fireEvent.click(acceptOf(first));
+    const second = card(2);
+    const auto = () =>
+      fireEvent.click(
+        within(second).getByRole("button", { name: "Tirar automático" }),
+      );
+    dice.d16.mockReturnValue(10);
+    auto();
+    fireEvent.click(acceptOf(second));
+    expect(
+      within(second).getByText(
+        "Resultado repetido: vuelve a tirar el 1D16 en mesa.",
+      ),
+    ).toBeTruthy();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    // Re-rolling the die to a fresh result accepts normally.
+    dice.d16.mockReturnValue(14);
+    auto();
+    fireEvent.click(acceptOf(second));
+    expect(onCommit).toHaveBeenLastCalledWith({
+      step: "prayersRoll",
+      side: "home",
+      roll: 14,
+    });
   });
 
   it("the sequence cannot leave the reveal step until every bought prayer has its own accepted result", () => {
@@ -901,7 +1011,7 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
 });
 
 describe("ActaPreMatchSection — T28 · the granted blessings on the pre-match displays", () => {
-  it("«Lo que ha sucedido» (report) lists the granted blessings per side — names verbatim, honest note for unmodeled faces", () => {
+  it("«Lo que ha sucedido» (report) lists the granted blessings per side — names verbatim (T30: every face resolves; junk rolls keep the honest fallback)", () => {
     render(
       <ActaPreMatchSection
         homeName={HOME}
@@ -918,8 +1028,11 @@ describe("ActaPreMatchSection — T28 · the granted blessings on the pre-match 
       />,
     );
     const report = screen.getByRole("region", { name: "Lo que ha sucedido" });
+    // WHY (T30 pin update): roll 7 was «🎲7 sin modelar» under the T25
+    // partial table; user L98 modeled ALL 16 rows, so it now reads its
+    // verbatim name.
     expect(report.textContent).toContain(
-      "Plegarias — Águilas de Khemri: Pase perfecto, 🎲7 sin modelar",
+      "Plegarias — Águilas de Khemri: Pase perfecto, Tacos engrasados",
     );
     expect(report.textContent).toContain(
       "Plegarias — Colmillos del Caos: ¡Con faltas y a lo loco!",

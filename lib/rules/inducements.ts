@@ -600,44 +600,159 @@ export function inducementBudgetOf(
   return budgetForSide(tvOf(home), tvOf(away));
 }
 
-/* ─── T25 · «Plegarias a Nuffle» (Prayers of Nuffle) ───────────────────────
+/* ─── T25/T30 · «Plegarias a Nuffle» (Prayers of Nuffle) ──────────────────
  *
- * The CONFIRMED SPP-affecting blessings of the rulebook's Prayers of Nuffle
- * table (the OCR quotes of the scanned PDF are the authority). The
- * `prayers-to-nuffle` inducement (10 000 GP, 0-3 per team) is bought PRE-MATCH
- * and each prayer bought rolls ONE 1D16 that determines WHICH blessing is
- * active (no repeats); every effect lasts the whole match and is never applied
- * to Star Players. Only results 10-13 are confirmed by the extracted material
- * — the remaining faces were NOT extracted and must never be invented.
+ * The FULL 1D16 Prayers-of-Nuffle table (T30, user rule L98: «model ALL 16 …
+ * EVERY prayer shows its effect»). Authority: the scanned rulebook page 151
+ * (OCR at 300/600 dpi of the «Reglamento 3a Temporada» photo PDF); the
+ * Spanish names are VERBATIM and the effect text is the rulebook's own
+ * wording (rows 1-2 completed from the scan — the T25-era partials ended at
+ * «…desde la casilla de la…» and «Ahora que lo dices…»). The
+ * `prayers-to-nuffle` inducement (10 000 GP, 0-3 per team) is bought
+ * PRE-MATCH and each prayer bought rolls ONE 1D16 that determines WHICH
+ * blessing is active (no repeats); every effect lasts the whole match and is
+ * never applied to Star Players.
+ *
+ * ENGINE SCOPE (honest, unchanged since T25): ONLY rows 10-13 carry an
+ * engine id — they are the SPP-modifying blessings the motor applies (the
+ * `eventSpp` / `foulSppException` / `crowdSppException` seams, behavior
+ * byte-identical to T25). Rows 1-9/14-16 carry their effect TEXT only: the
+ * tabletop applies them, this motor does not («Efecto en mesa») — never
+ * invented as engine behavior.
  */
 
-/** The four confirmed blessing ids (rulebook table rows 10-13). */
+/** The four SPP engine blessing ids (rulebook table rows 10-13) — the only
+ *  rows the match motor applies. */
 export type PrayerId =
   | "perfect-pass"
   | "dazzling-catches"
   | "crowd-support"
   | "foul-and-frenzy";
 
-/** One blessing row: the granting 1D16 result + its rulebook Spanish name. */
+/** One blessing row: the granting 1D16 result + its rulebook Spanish name +
+ *  its verbatim rulebook effect. `id` marks the SPP ENGINE rows (10-13);
+ *  every other row carries effect text only (no engine effect). */
 export interface PrayerBlessing {
   /** The 1D16 effect roll that grants the blessing (one roll per prayer bought). */
   roll: number;
-  id: PrayerId;
   /** Spanish display name — VERBATIM from the rulebook's Prayers of Nuffle
    * table (the quoted authority; never translated or reworded). */
-  displayName: string;
+  label: string;
+  /** The rulebook's effect text for the row (page-151 wording) — shown in
+   *  full by the reveal UI. */
+  effect: string;
+  /** SPP engine id — PRESENT ONLY on rows 10-13 (the blessings the motor
+   *  applies). Rows 1-9/14-16 carry effect text only (T30, L98). */
+  id?: PrayerId;
 }
 
-/** The modeled Prayers-of-Nuffle rows (T25) — table order by D16 result. */
+/** The modeled Prayers-of-Nuffle rows (T25 + T30) — full table, D16 order. */
 export const PRAYERS_OF_NUFFLE: readonly PrayerBlessing[] = [
-  { roll: 10, id: "perfect-pass", displayName: "Pase perfecto" },
-  { roll: 11, id: "dazzling-catches", displayName: "Recepciones deslumbrantes" },
-  { roll: 12, id: "crowd-support", displayName: "Apoyo del público" },
-  { roll: 13, id: "foul-and-frenzy", displayName: "¡Con faltas y a lo loco!" },
+  {
+    roll: 1,
+    label: "Trampilla traicionera",
+    effect:
+      "Cada vez que un Jugador, sea del equipo que sea, entra por cualquier motivo en una casilla que contiene una trampilla, tira 1D6. Con un 1, la trampilla se abre y el jugador cae por ella. Haz una tirada de Lesiones contra ese jugador como si hubiera sido empujado fuera del campo. Si el jugador era el portador del balón, éste rebota desde la casilla de la trampilla.",
+  },
+  {
+    roll: 2,
+    label: "Amigo del árbitro",
+    effect:
+      "Cuando Protestes al árbitro, trata cualquier resultado de 5 o 6 como un resultado de «Ahora que lo dices...».",
+  },
+  {
+    roll: 3,
+    label: "Puñal",
+    effect:
+      "Elige al azar un jugador de tu equipo que esté jugando este partido. Hasta el final del partido, dicho jugador obtiene el rasgo Apuñalar.",
+  },
+  {
+    roll: 4,
+    label: "Músculos de hierro",
+    effect:
+      "Elige un jugador de tu equipo que esté jugando este partido. Hasta el final del partido, dicho jugador aumenta en 1 su atributo AR, hasta un máximo de 11+.",
+  },
+  {
+    roll: 5,
+    label: "Nudilleras",
+    effect:
+      "Elige un jugador de tu equipo que esté jugando este partido. Hasta el final del partido, dicho jugador obtiene la habilidad Golpe mortífero.",
+  },
+  {
+    roll: 6,
+    label: "Malas costumbres",
+    effect:
+      "Elige al azar a 1D3 jugadores rivales que estén jugando este partido. Hasta el final del partido, esos jugadores obtienen el rasgo Solitario (2+).",
+  },
+  {
+    roll: 7,
+    label: "Tacos engrasados",
+    effect:
+      "Elige al azar a un Jugador rival que esté jugando este partido. Hasta el final del partido, el atributo MV de ese jugador se reduce en 1 (hasta un mínimo de 1).",
+  },
+  {
+    roll: 8,
+    label: "Bendición de Nuffle",
+    effect:
+      "Elige al azar a un jugador de tu equipo que esté jugando este partido. Hasta el final del partido, dicho jugador obtiene la habilidad Profesional.",
+  },
+  {
+    roll: 9,
+    label: "Topos bajo el campo",
+    effect:
+      "Los jugadores rivales aplican un modificador de -1 a sus intentos de forzar la marcha.",
+  },
+  {
+    roll: 10,
+    id: "perfect-pass",
+    label: "Pase perfecto",
+    effect:
+      "Cualquier jugador de tu equipo que logre realizar un Pase completo ganará 2 PE en lugar de 1.",
+  },
+  {
+    roll: 11,
+    id: "dazzling-catches",
+    label: "Recepciones deslumbrantes",
+    effect:
+      "Cualquier jugador de tu equipo que atrape con éxito el balón como resultado de una acción de Pase obtiene 1 PE.",
+  },
+  {
+    roll: 12,
+    id: "crowd-support",
+    label: "Apoyo del público",
+    effect:
+      "Si un Jugador rival resulta Lesionado al ser empujado fuera del campo, el jugador que lo ha empujado gana 2 PE.",
+  },
+  {
+    roll: 13,
+    id: "foul-and-frenzy",
+    label: "¡Con faltas y a lo loco!",
+    effect:
+      "Cualquier jugador de tu equipo que provoque una Lesión como resultado de una acción de Falta gana 2 PE.",
+  },
+  {
+    roll: 14,
+    label: "Pedrada",
+    effect:
+      "Una vez por partido, al inicio de cualquiera de tus turnos (antes de empezar a activar jugadores), puedes elegir al azar a un jugador rival que esté en el campo y tirar 1D6. Con 4+, un hincha enfurecido le lanza una piedra, y ese Jugador rival es inmediatamente Derribado.",
+  },
+  {
+    roll: 15,
+    label: "Escrutinio arbitral",
+    effect:
+      "Cualquier jugador rival que realice una acción de Falta será automáticamente Expulsado si rompe la armadura, aunque no saque un doble natural.",
+  },
+  {
+    roll: 16,
+    label: "Entrenamiento intensivo",
+    effect:
+      "Elige al azar a un jugador de tu equipo que esté jugando este partido. Hasta el final del partido, dicho jugador obtiene una habilidad Primaria a tu elección.",
+  },
 ];
 
-/** The prayer-effect resolver keyed by the D16 result — null for every
- * unmodeled face (never throws, never invents a row). */
+/** The prayer-effect resolver keyed by the D16 result — EVERY modeled face
+ * (1-16, T30: the table is fully transcribed) returns its row. Null is
+ * reserved for out-of-range garbage (never throws, never invents a row). */
 export function resolvePrayerRoll(roll: number): PrayerBlessing | null {
   return PRAYERS_OF_NUFFLE.find((blessing) => blessing.roll === roll) ?? null;
 }
@@ -653,16 +768,20 @@ export interface MatchActivePrayers {
 }
 
 /** Builds a team's active set from its bought prayers' effect rolls: every
- * roll resolves through `resolvePrayerRoll` and ADDS its blessing; unmodeled
- * faces add nothing; repeats add once (one roll per prayer bought — «sin
- * repetidos»). Returned in table order for stable rendering. */
+ * roll resolves through `resolvePrayerRoll` and an ENGINE row (id on 10-13)
+ * ADDS its blessing; rows carrying effect text only (1-9/14-16) add nothing —
+ * the motor does not apply them (T30, L98); repeats add once (one roll per
+ * prayer bought — «sin repetidos»). Returned in table order for stable
+ * rendering. */
 export function activePrayersFromRolls(rolls: readonly number[]): ActivePrayers {
   const active = new Set<PrayerId>();
   for (const roll of rolls) {
     const blessing = resolvePrayerRoll(roll);
-    if (blessing != null) active.add(blessing.id);
+    if (blessing?.id != null) active.add(blessing.id);
   }
-  return PRAYERS_OF_NUFFLE.map((blessing) => blessing.id).filter((id) => active.has(id));
+  return PRAYERS_OF_NUFFLE.map((blessing) => blessing.id).filter(
+    (id): id is PrayerId => id != null && active.has(id),
+  );
 }
 
 /** THE foul-SPP exception seam (T25): the SPP earn rule consults this

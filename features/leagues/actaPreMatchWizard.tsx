@@ -1,6 +1,6 @@
 import { Fragment, useState, type ReactNode } from "react";
 
-import { rollD3, rollD6 } from "@/lib/random";
+import { rollD3, rollD6, rollD16 } from "@/lib/random";
 import {
   displayNameOf,
   fundsForSide,
@@ -15,7 +15,6 @@ import {
   type InducementCartItem,
   type InducementEntry,
   type PersistedInducements,
-  type PrayerId,
   type RuleId,
   type SideFunds,
 } from "@/lib/rules/inducements";
@@ -92,8 +91,10 @@ export interface ActaPreMatchCaptureProps {
   onCommit: (commit: PreMatchCommit) => void;
   /** Injectable dice (auto roll); defaults to the real dice in lib/random.
    *  T29 (L95): the «Plegarias a Nuffle» reveal step is the ONE MANUAL roll of
-   *  this part (the coach throws the real 1D16) — no d16 rides here anymore. */
-  dice?: { d3: () => number; d6: () => number };
+   *  this part (the coach throws the real 1D16) — no die button rides here.
+   *  T30 (L98): `d16` feeds ONLY the optional «Tirar automático» button that
+   *  FILLS the manual input before «Aceptar» (manual stays the main path). */
+  dice?: { d3: () => number; d6: () => number; d16?: () => number };
 }
 
 /**
@@ -108,7 +109,9 @@ export interface ActaPreMatchCaptureProps {
  * the Manual/Auto toggle; the die button is the ONLY entry for rolls — there
  * is no manual field (S7.2) — EXCEPT the T29 «Plegarias a Nuffle» reveal step
  * (L95): the prayer roll is the ONE manual entry of the sequence (the coach
- * throws the real dice, types the 1-16 result and «Aceptar» locks it);
+ * throws the real dice, types the 1-16 result and «Aceptar» locks it; T30/L98
+ * adds an optional «Tirar automático» that FILLS the input before «Aceptar» —
+ * manual remains the main path);
  * after the LAST step the modal closes and
  * everything derives into
  * the acta («todo saldra como debiera (en la informacion de arriba y
@@ -153,29 +156,21 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
     "1D6 enfrentado; el ganador del sorteo decide quién recibe (empate: se repite).",
 };
 
-/* ─── T28 · «Plegarias a Nuffle» reveal copy ─────────────────────────────
+/* ─── T28/T30 · «Plegarias a Nuffle» reveal copy ─────────────────────────
  *
- * The reveal shows the blessing's VERBATIM name (PRAYERS_OF_NUFFLE rows via
- * `resolvePrayerRoll`) plus its effect. `PrayerBlessing` carries no effect
- * field (lib/rules/inducements.ts is a fixed surface in this slice), so the
- * Spanish effect copy lives with the reveal UI — grounded in the T25 seams
- * the model actually enforces (eventSpp rows 10-13, foulSppException /
- * crowdSppException), never invented rule text. Unmodeled D16 faces (the
- * table rows were never transcribed) reveal NO name — an honest manual note.
+ * The reveal shows the blessing's VERBATIM name + effect (both live in the
+ * model rows of `PRAYERS_OF_NUFFLE`, transcribed from the scanned rulebook
+ * page 151 — T30, L98: FULL detail visible for every blessing). The engine
+ * rows (10-13, the `id`-bearing ones) get the «+ SPP» chip; every other row
+ * carries the honest note «Efecto en mesa (este motor no lo aplica)». A roll
+ * outside 1-16 (junk data only — the input clamps) reveals NO name: an
+ * honest manual fallback, never invented.
  */
-const PRAYER_EFFECTS: Record<PrayerId, string> = {
-  "perfect-pass": "Un Pase completado otorga +2 SPP en lugar de +1.",
-  "dazzling-catches":
-    "La recepción de un Pase completado otorga +1 SPP adicional.",
-  "crowd-support":
-    "Si un rival es Lesionado al ser empujado fuera del campo, quien lo empuja gana +2 SPP.",
-  "foul-and-frenzy": "Causar una Lesión con una Falta otorga +2 SPP.",
-};
 
 /** One roll's short label — the blessing's verbatim name, or an honest note
- *  for the unmodeled faces (never invented). */
+ *  for junk values (never invented). */
 function prayerLabel(roll: number): string {
-  return resolvePrayerRoll(roll)?.displayName ?? `🎲${roll} sin modelar`;
+  return resolvePrayerRoll(roll)?.label ?? `🎲${roll} sin modelar`;
 }
 
 /** T29 · the persisted rolls seed the MANUAL slots in order (hydration keeps
@@ -305,23 +300,29 @@ function DieCard({
   );
 }
 
-/** T29 · the MANUAL prayer card (L95): the coach throws the real 1D16 and
- * enters its result in the 1-16 numeric control that replaced the auto-roll
- * die button (retired from this step). «Aceptar» commits and LOCKS the roll —
- * the input disappears into the revealed blessing («Bendición concedida» with
- * the VERBATIM name + effect, or the honest unmodeled note) and there is no
- * path back to editing it. The rulebook repeat rule is enforced at «Aceptar»
- * time: a result already ACCEPTED by this team warns «Resultado repetido…»
- * and nothing commits; equal values on unaccepted inputs are just edits. */
+/** T29/T30 · the MANUAL prayer card (L95/L98): the coach throws the real
+ * 1D16 and enters its result in the 1-16 numeric control — the optional
+ * «Tirar automático» button (T30, L98) sits BEFORE «Aceptar» and only FILLS
+ * the input with a real 1D16 (injected rng); the coach can still edit it and
+ * manual remains the main path. «Aceptar» commits and LOCKS the roll — the
+ * input disappears into the revealed blessing («Bendición concedida» with
+ * the VERBATIM name + full effect + the «+ SPP» chip on the engine rows, or
+ * the honest «Efecto en mesa» note) and there is no path back to editing it.
+ * The rulebook repeat rule is enforced at «Aceptar» time: a result already
+ * ACCEPTED by this team warns «Resultado repetido…» and nothing commits;
+ * equal values on unaccepted inputs are just edits. */
 function PrayerManualCard({
   label,
   value,
   taken,
+  d16,
   onAccept,
 }: {
   label: string;
   value: number | null;
   taken: number[];
+  /** Real 1D16 (lib/random, test-injectable) for «Tirar automático». */
+  d16: () => number;
   onAccept: (roll: number) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -375,6 +376,18 @@ function PrayerManualCard({
                 setNotice(null);
               }}
             />
+            <button
+              type="button"
+              className={BTN}
+              onClick={() => {
+                // T30 (L98): auto option BEFORE «Aceptar» — fills the manual
+                // input with a real 1D16; nothing locks until «Aceptar».
+                setDraft(String(d16()));
+                setNotice(null);
+              }}
+            >
+              Tirar automático
+            </button>
             <button type="button" className={BTN} onClick={accept}>
               Aceptar
             </button>
@@ -398,13 +411,25 @@ function PrayerManualCard({
         <div key={`reveal-${value}`} className="mt-2 border-l-2 border-red pl-3">
           {blessing != null ? (
             <>
-              <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-red">
-                Bendición concedida
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-display text-xs font-bold uppercase tracking-[0.16em] text-red">
+                  Bendición concedida
+                </p>
+                {blessing.id != null ? (
+                  <span className="border border-red px-1.5 py-0.5 font-display text-[10px] font-bold uppercase tracking-wide text-red">
+                    + SPP
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 font-display text-lg font-bold text-navy">
+                {blessing.label}
               </p>
-              <p className="font-display text-lg font-bold text-navy">
-                {blessing.displayName}
-              </p>
-              <p className="text-sm text-ink">{PRAYER_EFFECTS[blessing.id]}</p>
+              <p className="text-sm text-ink">{blessing.effect}</p>
+              {blessing.id == null ? (
+                <p className="mt-1 text-xs text-ink/70">
+                  Efecto en mesa (este motor no lo aplica)
+                </p>
+              ) : null}
             </>
           ) : (
             <p className="text-sm text-ink">
@@ -1240,6 +1265,7 @@ export function ActaPreMatchWizard({
                   )}`}
                   value={prayerResults[viewerSide][index] ?? null}
                   taken={acceptedRolls}
+                  d16={dice.d16 ?? rollD16}
                   onAccept={(roll) => {
                     // T29: «Aceptar» commits and LOCKS the slot — the card
                     // already screened validation + duplicates and the
