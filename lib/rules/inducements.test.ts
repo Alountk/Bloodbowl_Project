@@ -414,30 +414,83 @@ describe("validateCart (IND-3)", () => {
 });
 
 /**
- * T25 (PR #415 follow-up): «Plegarias a Nuffle» (Prayers of Nuffle) — the
- * CONFIRMED SPP-affecting blessings extracted from the rulebook's Prayers of
- * Nuffle table (the OCR quotes are the authority): 10 «Pase perfecto», 11
- * «Recepciones deslumbrantes», 12 «Apoyo del público», 13 «¡Con faltas y a lo
- * loco!». The inducement is bought pre-match (10 000 GP, 0-3); ONE 1D16 roll
- * per prayer bought determines WHICH blessing (no repeats) and the effect
- * lasts the whole match. Only these four faces are confirmed — the rest of the
- * table was NOT extracted and must never be invented.
+ * T25 + T30 (user L98): «Plegarias a Nuffle» (Prayers of Nuffle) — the FULL
+ * 1D16 table transcribed from the scanned rulebook page 151 (OCR 300/600dpi).
+ * EVERY face carries its verbatim Spanish name + effect (user rule L98:
+ * «model ALL 16 … EVERY prayer shows its effect»). The inducement is bought
+ * pre-match (10 000 GP, 0-3); ONE 1D16 roll per prayer bought determines WHICH
+ * blessing (no repeats) and the effect lasts the whole match.
+ *
+ * ENGINE SCOPE (honest, unchanged since T25): ONLY rows 10-13 carry an engine
+ * id — the SPP-modifying blessings the motor applies (eventSpp / foul /
+ * crowd seams). Rows 1-9/14-16 carry effect TEXT only (the tabletop applies
+ * them, this motor does not).
  */
-describe("T25 · Prayers of Nuffle — the 1D16 blessing rows («Plegarias a Nuffle»)", () => {
-  it("models exactly the four CONFIRMED rows, names verbatim from the rulebook table", () => {
-    expect(PRAYERS_OF_NUFFLE.map((b) => [b.roll, b.id, b.displayName])).toEqual([
+describe("T25/T30 · Prayers of Nuffle — the 1D16 blessing rows («Plegarias a Nuffle»)", () => {
+  it("models ALL 16 rows in table order — names verbatim from the rulebook table (T30, L98: the table is fully transcribed)", () => {
+    // WHY (T30 pin update): the T25 pin held the four CONFIRMED rows only;
+    // user L98 ordered ALL 16 modeled with full detail, so this pin now
+    // carries the whole page-151 table.
+    expect(PRAYERS_OF_NUFFLE.map((b) => [b.roll, b.id ?? null, b.label])).toEqual([
+      [1, null, "Trampilla traicionera"],
+      [2, null, "Amigo del árbitro"],
+      [3, null, "Puñal"],
+      [4, null, "Músculos de hierro"],
+      [5, null, "Nudilleras"],
+      [6, null, "Malas costumbres"],
+      [7, null, "Tacos engrasados"],
+      [8, null, "Bendición de Nuffle"],
+      [9, null, "Topos bajo el campo"],
       [10, "perfect-pass", "Pase perfecto"],
       [11, "dazzling-catches", "Recepciones deslumbrantes"],
       [12, "crowd-support", "Apoyo del público"],
       [13, "foul-and-frenzy", "¡Con faltas y a lo loco!"],
+      [14, null, "Pedrada"],
+      [15, null, "Escrutinio arbitral"],
+      [16, null, "Entrenamiento intensivo"],
     ]);
   });
 
-  it("resolves the blessing keyed by the D16 result — and NOTHING for the unmodeled faces (never invents rows)", () => {
+  it("EVERY row carries its effect text — including the two OCR-completed rows 1-2 (full detail visible per L98)", () => {
+    for (const blessing of PRAYERS_OF_NUFFLE) {
+      expect(blessing.effect.length).toBeGreaterThan(10);
+    }
+    // Row 1 completed from page 151: the partial ended at «…desde la casilla
+    // de la…» — the scan reads «…de la trampilla.».
+    expect(resolvePrayerRoll(1)?.effect).toContain(
+      "Si el jugador era el portador del balón, éste rebota desde la casilla de la trampilla.",
+    );
+    // Row 2 completed from page 151: the quoted protest result is the
+    // rulebook's own «Ahora que lo dices...».
+    expect(resolvePrayerRoll(2)?.effect).toContain(
+      "Cuando Protestes al árbitro, trata cualquier resultado de 5 o 6 como un resultado de «Ahora que lo dices...».",
+    );
+  });
+
+  it("row 9 effect follows the SCANNED rulebook wording («modificador de -1») — the task brief's «+1» paraphrase was wrong (verified visually at 600dpi)", () => {
+    expect(resolvePrayerRoll(9)?.effect).toBe(
+      "Los jugadores rivales aplican un modificador de -1 a sus intentos de forzar la marcha.",
+    );
+  });
+
+  it("the SPP engine ids live on EXACTLY rows 10-13 — the rest carry effect text only (no engine effect, T30)", () => {
+    const engineRows = PRAYERS_OF_NUFFLE.filter((b) => b.id != null);
+    expect(engineRows.map((b) => [b.roll, b.id])).toEqual([
+      [10, "perfect-pass"],
+      [11, "dazzling-catches"],
+      [12, "crowd-support"],
+      [13, "foul-and-frenzy"],
+    ]);
+  });
+
+  it("resolvePrayerRoll returns the row for EVERY 1-16 face and NOTHING outside (never throws, never invents rows)", () => {
+    // WHY (T30 pin update): the T25 twin pinned faces 1-9/14-16 as null
+    // («unmodeled»); user L98 ordered the FULL table transcribed, so every
+    // modeled face now resolves. Null is reserved for out-of-range garbage.
     for (const blessing of PRAYERS_OF_NUFFLE) {
       expect(resolvePrayerRoll(blessing.roll)).toBe(blessing);
     }
-    for (const roll of [1, 2, 5, 9, 14, 15, 16, 0, 17, -1, 10.5]) {
+    for (const roll of [0, 17, -1, 10.5]) {
       expect(resolvePrayerRoll(roll)).toBeNull();
     }
   });
@@ -453,7 +506,11 @@ describe("T25 · Prayers of Nuffle — the 1D16 blessing rows («Plegarias a Nuf
     ]);
   });
 
-  it("…deduplicates repeats (one roll per prayer bought, «sin repetidos») and ignores unmodeled faces", () => {
+  it("…deduplicates repeats (one roll per prayer bought, «sin repetidos») and keeps rows with no engine id out of the set", () => {
+    // WHY (T30 retitled): the assertions are byte-identical to T25 — the
+    // semantics are KEPT — but «unmodeled faces» is now «rows with no engine
+    // id»: rolls 3/9/16 resolve to modeled rows (1-9/14-16) whose effects the
+    // motor does not apply, so they still add nothing here.
     expect(activePrayersFromRolls([11, 11, 10])).toEqual(["perfect-pass", "dazzling-catches"]);
     expect(activePrayersFromRolls([3, 9, 16])).toEqual([]);
     expect(activePrayersFromRolls([])).toEqual([]);
