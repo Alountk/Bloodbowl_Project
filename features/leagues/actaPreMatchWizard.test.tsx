@@ -905,60 +905,54 @@ describe("ActaPreMatchWizard — T29 · «Plegarias a Nuffle» manual entry + ac
     ).toBeTruthy();
   });
 
-  it("T30 · «Tirar automático» fills the manual input with a real 1D16 (injected rng) and the coach can still edit before «Aceptar» locks", () => {
+  it("T31 · «Tirar automático» AUTO-ACCEPTS the roll (L101: no sense in repeating after an auto roll)", () => {
     const { onCommit, dice } = renderWizard({ snapshot: prayersSnapshot(1) });
     const first = card(1, 1);
-    // The auto option sits BEFORE «Aceptar» — manual stays the main path.
     const auto = within(first).getByRole("button", {
       name: "Tirar automático",
     });
+    // WHY (T31, user L101 verbatim): «si tira de manera automática la tirada
+    // es autoaceptada. No tiene sentido que deje repetir la tirada» — one
+    // die roll commits and locks directly; no input, no «Aceptar» step.
+    dice.d16.mockReturnValue(7);
     fireEvent.click(auto);
     expect(dice.d16).toHaveBeenCalledTimes(1);
-    expect(inputOf(first).value).toBe("7");
-    // Filled ≠ accepted: nothing commits and the input stays editable.
-    expect(onCommit).not.toHaveBeenCalled();
-    enter(first, "12");
-    fireEvent.click(acceptOf(first));
     expect(onCommit).toHaveBeenCalledWith({
       step: "prayersRoll",
       side: "home",
-      roll: 12,
+      roll: 7,
     });
-    // «Aceptar» lock semantics unchanged: no auto button, no input.
+    expect(within(first).queryByRole("spinbutton")).toBeNull();
+    expect(
+      within(first).queryByRole("button", { name: "Aceptar" }),
+    ).toBeNull();
     expect(
       within(first).queryByRole("button", { name: "Tirar automático" }),
     ).toBeNull();
-    expect(within(first).queryByRole("spinbutton")).toBeNull();
   });
 
-  it("T30 · an auto roll keeps the pinned duplicate rule: «Aceptar» refuses a repeated result even when it came from the die", () => {
+  it("T31 · an auto roll re-takes internally until distinct and commits — repeating is impossible after an auto roll", () => {
     const { onCommit, dice } = renderWizard({ snapshot: prayersSnapshot(2) });
     const first = card(1);
     enter(first, "10");
     fireEvent.click(acceptOf(first));
     const second = card(2);
-    const auto = () =>
-      fireEvent.click(
-        within(second).getByRole("button", { name: "Tirar automático" }),
-      );
-    dice.d16.mockReturnValue(10);
-    auto();
-    fireEvent.click(acceptOf(second));
-    expect(
-      within(second).getByText(
-        "Resultado repetido: vuelve a tirar el 1D16 en mesa.",
-      ),
-    ).toBeTruthy();
-    expect(onCommit).toHaveBeenCalledTimes(1);
-    // Re-rolling the die to a fresh result accepts normally.
-    dice.d16.mockReturnValue(14);
-    auto();
-    fireEvent.click(acceptOf(second));
+    // WHY (T31, user L101): auto rolls are accepted immediately — a repeat
+    // is re-taken inside the button, never surfaced to the coach.
+    dice.d16.mockReturnValueOnce(10).mockReturnValueOnce(14);
+    fireEvent.click(
+      within(second).getByRole("button", { name: "Tirar automático" }),
+    );
+    expect(dice.d16).toHaveBeenCalledTimes(2);
     expect(onCommit).toHaveBeenLastCalledWith({
       step: "prayersRoll",
       side: "home",
       roll: 14,
     });
+    expect(within(second).queryByText("Resultado repetido")).toBeNull();
+    expect(
+      within(second).queryByRole("button", { name: "Aceptar" }),
+    ).toBeNull();
   });
 
   it("the sequence cannot leave the reveal step until every bought prayer has its own accepted result", () => {

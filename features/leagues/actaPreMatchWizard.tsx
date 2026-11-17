@@ -380,10 +380,19 @@ function PrayerManualCard({
               type="button"
               className={BTN}
               onClick={() => {
-                // T30 (L98): auto option BEFORE «Aceptar» — fills the manual
-                // input with a real 1D16; nothing locks until «Aceptar».
-                setDraft(String(d16()));
+                // T31 (L101): the automatic roll COMMITS ITSELF — no sense
+                // in allowing repeats after an auto roll: re-takes until
+                // distinct from this team's accepted rolls and locks at once.
+                let roll = d16();
+                for (let guard = 0; taken.includes(roll) && guard < 32; guard += 1) {
+                  roll = d16();
+                }
+                if (taken.includes(roll)) {
+                  setNotice("Resultado repetido: vuelve a tirar el 1D16 en mesa.");
+                  return;
+                }
                 setNotice(null);
+                onAccept(roll);
               }}
             >
               Tirar automático
