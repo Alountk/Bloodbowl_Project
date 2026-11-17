@@ -17,6 +17,7 @@ import {
   eventCategoryTab,
   teamShortName,
   whoLineLabel,
+  provisionalCasualtySpp,
   type LiveEventLabelInput,
 } from "./liveEventLabels";
 
@@ -343,14 +344,21 @@ describe("liveEventLabel", () => {
   });
 });
 
-describe("CAUSE_LABELS — five casualty causes to display labels (MVT-5)", () => {
+describe("CAUSE_LABELS — casualty causes to display labels (MVT-5 + T27)", () => {
   it("maps every cause exactly", () => {
+    // WHY changed (T27, intentional): the map pinned the five MVT-5 causes
+    // byte-exactly; the T27 skill rows (L87/L88) record two NEW causes —
+    // `specialAction` (a casualty caused by a SPECIAL ACTION) and
+    // `thrownLanding` (the Lanzar compañero landing/bounce hit) — and both
+    // need a Spanish label so the acta never falls back to bare codes.
     expect(CAUSE_LABELS).toEqual({
       blitz: "Blitz",
       foul: "Falta",
       dodge: "Esquivando — se cayó",
       crowd: "El público",
       block: "Bloqueo",
+      specialAction: "Acción especial",
+      thrownLanding: "Aterrizó sobre el rival",
     });
   });
 
@@ -637,5 +645,200 @@ describe("whoLineLabel / teamShortName — the mirror-chat who-line (T19, artboa
   it("never invents a short form for a single-word team (empty strip falls back to the name)", () => {
     expect(whoLineLabel("Ugluk", "Gouged Eye")).toBe("Ugluk · Gouged Eye");
     expect(whoLineLabel("Neb", "Dwarves")).toBe("Neb · Dwarves");
+  });
+});
+
+/**
+ * T27 (L87/L88 — the user's verbatim skill/team map, the authority): three
+ * SKILLS grant SPP outside the default rule and one TEAM special rule modifies
+ * the amounts. The per-player flags ride the payload as `causerSkills` (the
+ * roster record's skill refs — see `features/teams/data/skills.ts`) and the
+ * per-team flag as `brawlinBrutes`; the earn rule stays data-driven (no new
+ * arguments). Defaults pinned (user): special-action 0 without «Innovador
+ * Violento», thrown-landing 0 without «Vuelo Letal», dodge-fall 0 without
+ * «Llave de Brazo», foul 0 without prayer 13 (L87: «para las faltas no hay una
+ * habilidad, solo plegarias»), TD ★3 and casualty ★2 without the team rule.
+ */
+describe("eventSpp — T27 skill & team-rule exceptions (L87/L88 — the user's map)", () => {
+  const caused = (payload: Record<string, unknown>) =>
+    ev("casualty", { victimRosterId: "p2", causerRosterId: "p4", ...payload });
+
+  it("(a) «Innovador Violento»: a SPECIAL-ACTION-caused casualty pays ★2 to that player — the default is 0 without it", () => {
+    const skills = ["Innovador Violento"];
+    // ANY injury-table result pays (the T24 threshold — Magullado included).
+    for (const roll16 of [1, 9, 12, 16]) {
+      expect(eventSpp(caused({ cause: "specialAction", roll16, causerSkills: skills }))).toBe(2);
+    }
+    // Band-carrying production shape resolves the same.
+    expect(
+      eventSpp(caused({ cause: "specialAction", roll16: 12, band: "grave", causerSkills: skills })),
+    ).toBe(2);
+    // DEFAULT (user): special-action casualties pay 0 without the skill.
+    expect(eventSpp(caused({ cause: "specialAction", roll16: 12 }))).toBe(0);
+    expect(
+      eventSpp(
+        caused({
+          cause: "specialAction",
+          roll16: 12,
+          causerSkills: ["Llave de Brazo", "Vuelo Letal", "Right Stuff"],
+        }),
+      ),
+    ).toBe(0);
+    // No resolved injury (the armour held) pays nothing even with the skill.
+    expect(eventSpp(caused({ cause: "specialAction", causerSkills: skills }))).toBe(0);
+  });
+
+  it("(b) «Vuelo Letal» («Right-Stuff only»): a thrown-landing knockdown casualty pays ★2 to the thrown player (the causer) — default 0", () => {
+    const skills = ["Vuelo Letal", "Right Stuff"];
+    expect(
+      eventSpp(caused({ cause: "thrownLanding", roll16: 12, causerSkills: skills })),
+    ).toBe(2);
+    // Magullado IS a herida (T24 threshold) on this row too.
+    expect(
+      eventSpp(caused({ cause: "thrownLanding", roll16: 3, band: "bruise", causerSkills: skills })),
+    ).toBe(2);
+    // «Right-Stuff only» (user verbatim): the skill without Right Stuff pays nothing.
+    expect(
+      eventSpp(caused({ cause: "thrownLanding", roll16: 12, causerSkills: ["Vuelo Letal"] })),
+    ).toBe(0);
+    // DEFAULT: a thrown-landing knockdown pays 0 without «Vuelo Letal».
+    expect(eventSpp(caused({ cause: "thrownLanding", roll16: 12 }))).toBe(0);
+    expect(
+      eventSpp(caused({ cause: "thrownLanding", roll16: 12, causerSkills: ["Innovador Violento"] })),
+    ).toBe(0);
+    // The armour held (no roll/band) pays nothing even with the skill.
+    expect(eventSpp(caused({ cause: "thrownLanding", causerSkills: skills }))).toBe(0);
+  });
+
+  it("(c) «Llave de Brazo»: an escape-fall (dodge/jump/leap) casualty pays ★2 — the failed-dodge default stays 0 without it", () => {
+    const skills = ["Llave de Brazo"];
+    for (const roll16 of [1, 9, 16]) {
+      expect(eventSpp(caused({ cause: "dodge", roll16, causerSkills: skills }))).toBe(2);
+    }
+    // DEFAULT (the T24 row kept): failed-dodge falls pay 0 without the skill.
+    expect(eventSpp(caused({ cause: "dodge", roll16: 9 }))).toBe(0);
+    expect(
+      eventSpp(caused({ cause: "dodge", roll16: 9, causerSkills: ["Innovador Violento"] })),
+    ).toBe(0);
+    // The armour held pays nothing even with the skill.
+    expect(eventSpp(caused({ cause: "dodge", causerSkills: skills }))).toBe(0);
+  });
+
+  it("«Brutos Peleones» (team rule): a CAUSED casualty pays ★3 instead of ★2 — every ★2 casualty row (T24 block/blitz, the T25 prayer unlocks, the three skill rows and the T20 legacy rows)", () => {
+    const BB = { brawlinBrutes: true };
+    expect(eventSpp(caused({ cause: "block", roll16: 12, ...BB }))).toBe(3);
+    expect(eventSpp(caused({ cause: "blitz", roll16: 3, band: "bruise", ...BB }))).toBe(3);
+    expect(eventSpp(caused({ cause: "foul", roll16: 12, ...BB }), ["foul-and-frenzy"])).toBe(3);
+    expect(eventSpp(caused({ cause: "crowd", roll16: 9, ...BB }), ["crowd-support"])).toBe(3);
+    expect(
+      eventSpp(
+        caused({ cause: "specialAction", roll16: 12, causerSkills: ["Innovador Violento"], ...BB }),
+      ),
+    ).toBe(3);
+    expect(
+      eventSpp(
+        caused({
+          cause: "thrownLanding",
+          roll16: 12,
+          causerSkills: ["Vuelo Letal", "Right Stuff"],
+          ...BB,
+        }),
+      ),
+    ).toBe(3);
+    expect(
+      eventSpp(caused({ cause: "dodge", roll16: 9, causerSkills: ["Llave de Brazo"], ...BB })),
+    ).toBe(3);
+    // The T20 legacy band rows pay the same modified casualty award.
+    expect(eventSpp(ev("casualty", { band: "grave", brawlinBrutes: true }))).toBe(3);
+    // DEFAULT (user): the caused casualty pays ★2 without the team rule.
+    expect(eventSpp(caused({ cause: "block", roll16: 12 }))).toBe(2);
+  });
+
+  it("«Brutos Peleones»: a Touchdown pays ★2 instead of ★3 — and the TD ★3 default stays pinned without the team rule", () => {
+    expect(eventSpp(ev("td", { brawlinBrutes: true }))).toBe(2);
+    expect(eventSpp(ev("td"))).toBe(3);
+  });
+
+  it("«Brutos Peleones» touches NEITHER the other award rows NOR the zero rows", () => {
+    const BB = { brawlinBrutes: true };
+    expect(eventSpp(ev("completion", BB))).toBe(1);
+    expect(eventSpp(ev("completion", BB), ["perfect-pass"])).toBe(2); // prayers still compose
+    expect(eventSpp(ev("interception", BB))).toBe(2); // ★2 interception ≠ casualty row
+    expect(eventSpp(ev("throwTeamMate", BB))).toBe(1);
+    expect(eventSpp(ev("landedSafe", BB))).toBe(1);
+    expect(eventSpp(ev("mvp", BB))).toBe(4);
+    // Zero rows stay zero with the flag.
+    expect(eventSpp(caused({ cause: "foul", roll16: 12, ...BB }))).toBe(0); // no prayer 13
+    expect(eventSpp(caused({ cause: "block", roll16: 12, bothDown: true, ...BB }))).toBe(0);
+    expect(eventSpp(caused({ cause: "specialAction", roll16: 12, ...BB }))).toBe(0); // no skill
+    expect(eventSpp(caused({ cause: "block", ...BB }))).toBe(0); // the armour held
+  });
+
+  it("L87: «para las faltas no hay una habilidad, solo plegarias» — the three skills NEVER unlock faltas or crowd pushes", () => {
+    const skills = ["Innovador Violento", "Vuelo Letal", "Right Stuff", "Llave de Brazo"];
+    expect(eventSpp(caused({ cause: "foul", roll16: 12, causerSkills: skills }))).toBe(0);
+    expect(eventSpp(caused({ cause: "crowd", roll16: 9, causerSkills: skills }))).toBe(0);
+    // …and prayer 13 remains the ONLY foul unlock (the T25 row unchanged).
+    expect(
+      eventSpp(caused({ cause: "foul", roll16: 12, causerSkills: skills }), ["foul-and-frenzy"]),
+    ).toBe(2);
+  });
+
+  it("the ZERO rows stay pinned under the flags (both-down / auto-lesiones / an unrecorded cause keeps the T20 derivation)", () => {
+    const skills = ["Innovador Violento", "Vuelo Letal", "Right Stuff", "Llave de Brazo"];
+    expect(
+      eventSpp(
+        caused({
+          cause: "block",
+          roll16: 12,
+          bothDown: true,
+          causerSkills: skills,
+          brawlinBrutes: true,
+        }),
+      ),
+    ).toBe(0);
+    expect(
+      eventSpp(caused({ cause: "specialAction", roll16: 12, selfInflicted: true, causerSkills: skills })),
+    ).toBe(0);
+    // A legacy row (no recorded cause) keeps the T20 band derivation — the
+    // flags never convert a bruise into an award.
+    expect(eventSpp(caused({ roll16: 3, causerSkills: skills }))).toBe(0);
+  });
+
+  it("the two new casualty causes carry their Spanish labels (CAUSE_LABELS never falls back to bare codes)", () => {
+    expect(CAUSE_LABELS.specialAction).toBe("Acción especial");
+    expect(CAUSE_LABELS.thrownLanding).toBe("Aterrizó sobre el rival");
+  });
+});
+
+/**
+ * T27 · the PENDING rows' provisional causal (the artboard-T5 flat award shown
+ * until the injury roll settles): the same row logic as `eventSpp` with the
+ * roll assumed resolved — so a row that settles at ★0 never flashes a tab.
+ */
+describe("provisionalCasualtySpp — T27 on the artboard-T5 provisional causal", () => {
+  const caused = (payload: Record<string, unknown>) =>
+    ev("casualty", { victimRosterId: "p2", causerRosterId: "p4", ...payload });
+
+  it("a pending causal row provisions the award the roll will settle — ★2 normally, ★3 under «Brutos Peleones»", () => {
+    expect(provisionalCasualtySpp(caused({ cause: "block" }))).toBe(2);
+    expect(provisionalCasualtySpp(caused({ cause: "block", brawlinBrutes: true }))).toBe(3);
+    expect(
+      provisionalCasualtySpp(caused({ cause: "specialAction", causerSkills: ["Innovador Violento"] })),
+    ).toBe(2);
+    // The T20 flat causal with no recorded cause is preserved.
+    expect(provisionalCasualtySpp(caused({}))).toBe(2);
+  });
+
+  it("every zero row provisions NOTHING (no provisional flash for unmet seams or flags)", () => {
+    expect(provisionalCasualtySpp(caused({ cause: "specialAction" }))).toBe(0);
+    expect(
+      provisionalCasualtySpp(caused({ cause: "thrownLanding", causerSkills: ["Vuelo Letal"] })),
+    ).toBe(0); // Right-Stuff only
+    expect(provisionalCasualtySpp(caused({ cause: "dodge" }))).toBe(0);
+    expect(provisionalCasualtySpp(caused({ cause: "foul" }))).toBe(0); // no prayer 13
+    expect(provisionalCasualtySpp(caused({ cause: "foul" }), ["foul-and-frenzy"])).toBe(2);
+    expect(provisionalCasualtySpp(caused({ cause: "block", bothDown: true }))).toBe(0);
+    expect(provisionalCasualtySpp(caused({ cause: "block", selfInflicted: true }))).toBe(0);
   });
 });

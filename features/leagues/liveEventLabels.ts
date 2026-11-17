@@ -17,6 +17,7 @@ import {
   type ActivePrayers,
 } from "@/lib/rules/inducements";
 import { resolveInjury } from "@/lib/rules/injuries";
+import { sppSkillFlags } from "@/features/teams/data/skills";
 import type { IconName } from "./icons";
 
 /** The translator shape used by the label functions (es default fallback). */
@@ -55,9 +56,13 @@ export function outcomeLabel(outcome: string, fn: TFunc = esT): string {
 }
 
 /**
- * The five casualty causes mapped to their display labels (MVT-5): `blitz` →
+ * The casualty causes mapped to their display labels (MVT-5): `blitz` →
  * "Blitz", `foul` → "Falta", `dodge` → "Esquivando — se cayó", `crowd` → "El
  * público", `block` → "Bloqueo". `penetration` was folded into `blitz` (RAU-41).
+ * T27 (L87/L88) adds the two skill-row causes: `specialAction` — a casualty
+ * caused by a SPECIAL ACTION (Motosierra, Apuñalar, Vomitar proyectiles,
+ * Aliento de fuego, Bomba… — the open set is display detail, never an award
+ * switch) — and `thrownLanding` — the Lanzar compañero landing/bounce hit.
  * Callers map an unknown cause through the index so it never throws (bare value
  * fallback).
  */
@@ -67,6 +72,8 @@ export const CAUSE_LABELS: Record<string, string> = {
   dodge: "Esquivando — se cayó",
   crowd: "El público",
   block: "Bloqueo",
+  specialAction: "Acción especial",
+  thrownLanding: "Aterrizó sobre el rival",
 };
 
 /**
@@ -437,11 +444,25 @@ export const SCORED_ACTION_LABELS: Record<string, string> = {
  * the same completion row, 12 «Apoyo del público» pays +2 for a crowd-push
  * Injury (via `crowdSppException`). Absent/empty set = T24 exactly: the
  * default ZERO rows (foul/crowd/dodge/both-down/self-inflicted/no-roll) all
- * stay pinned — each exception is per-prayer, never a global switch. */
+ * stay pinned — each exception is per-prayer, never a global switch.
+ *
+ * T27 (L87/L88 — the user's verbatim skill/team map): the per-player skill
+ * flags ride the casualty payload as `causerSkills` (the causer's roster
+ * record refs — resolved through the features/teams/data/skills catalog) and
+ * the per-team «Brutos Peleones» flag as `brawlinBrutes`. THREE skill rows pay
+ * the ★2 casualty award on TOP of the T24 zero map: `specialAction` casualties
+ * pay with «Innovador Violento», `thrownLanding` knockdowns pay with «Vuelo
+ * Letal» (Right-Stuff only — folded into the flag) and escape-fall (`dodge`)
+ * casualties pay with «Llave de Brazo» — each DEFAULT stays ★0 without its
+ * skill. «Brutos Peleones» MODIFIES the amounts instead: a CAUSED casualty
+ * pays ★3 instead of ★2 and a TD ★2 instead of ★3 (nothing else moves). L87
+ * closes the skill seam for Faltas: «para las faltas no hay una habilidad,
+ * solo plegarias» — the three skills never unlock foul/crowd rows. */
 export function eventSpp(event: LiveEventLabelInput, activePrayers: ActivePrayers = []): number {
   switch (event.kind) {
     case "td":
-      return 3;
+      // T27 «Brutos Peleones» (L88): a Touchdown pays ★2 instead of ★3.
+      return event.payload.brawlinBrutes === true ? 2 : 3;
     case "completion": {
       // T25 rows 10/11: the completed-pass award (★1) becomes 2 with «Pase
       // perfecto», and the catch adds its own +1 with «Recepciones
@@ -456,40 +477,101 @@ export function eventSpp(event: LiveEventLabelInput, activePrayers: ActivePrayer
     case "throwTeamMate":
     case "landedSafe":
       return 1;
-    case "casualty": {
-      const payload = event.payload;
-      // ZERO rows (user table — see the doc comment above).
-      if (payload.bothDown === true) return 0;
-      if (payload.selfInflicted === true) return 0;
-      const cause = typeof payload.cause === "string" ? payload.cause : null;
-      const roll16 = typeof payload.roll16 === "number" ? payload.roll16 : null;
-      const band = typeof payload.band === "string" ? payload.band : null;
-      // A resolved injury roll (roll16 or its derived band) pays — ANY result.
-      const injuryResolved = roll16 != null || band != null;
-      if (cause === "block" || cause === "blitz") {
-        return injuryResolved ? 2 : 0;
-      }
-      // T25 row 13: the foul=0 default consults the `foulSppException` seam —
-      // only «¡Con faltas y a lo loco!» unlocks it, and only for a caused
-      // Injury (same resolved-roll threshold as the block/blitz row).
-      if (cause === "foul") {
-        return injuryResolved && foulSppException(activePrayers) ? 2 : 0;
-      }
-      // T25 row 12: the crowd=0 default consults the `crowdSppException`
-      // seam — «si un rival resulta Lesionado», the pusher earns 2.
-      if (cause === "crowd") {
-        return injuryResolved && crowdSppException(activePrayers) ? 2 : 0;
-      }
-      if (cause === "dodge") return 0;
-      // Legacy rows without a recorded cause keep the shipped band derivation.
-      if (band) return bandToDisplay(band).stars;
-      return roll16 != null ? bandToDisplay(resolveInjury(roll16).kind).stars : 0;
-    }
+    case "casualty":
+      return casualtySpp(event.payload, activePrayers, false);
     case "mvp":
       return 4;
     default:
       return 0;
   }
+}
+
+/** The stored skill refs carried on a casualty payload (`causerSkills` — the
+ *  causer's roster record), defensively filtered (never throws). */
+function causerSkillRefs(payload: Record<string, unknown>): string[] {
+  const raw = payload.causerSkills;
+  return Array.isArray(raw) ? raw.filter((ref): ref is string => typeof ref === "string") : [];
+}
+
+/** «Brutos Peleones» (T27, L88): a CAUSED casualty pays ★3 instead of ★2 —
+ *  the flag modifies the ★2 casualty award only; zero rows stay zero. */
+function brawlinCasualtyAward(base: number, brawlinBrutes: boolean): number {
+  return base === 2 && brawlinBrutes ? 3 : base;
+}
+
+/** The casualty-award rows (T24 + T25 + T27), shared by the settled award
+ *  (`eventSpp`) and the pending rows' provisional causal
+ *  (`provisionalCasualtySpp`). `provisional` assumes the injury roll WILL
+ *  resolve: a causal row provisions the award it will settle (★3 under
+ *  «Brutos Peleones») and every zero row still provisions NOTHING — an unmet
+ *  seam or flag never flashes a tab. */
+function casualtySpp(
+  payload: Record<string, unknown>,
+  activePrayers: ActivePrayers,
+  provisional: boolean,
+): number {
+  // ZERO rows (user table — see the doc comment above).
+  if (payload.bothDown === true || payload.selfInflicted === true) return 0;
+  const cause = typeof payload.cause === "string" ? payload.cause : null;
+  const roll16 = typeof payload.roll16 === "number" ? payload.roll16 : null;
+  const band = typeof payload.band === "string" ? payload.band : null;
+  const flags = sppSkillFlags(causerSkillRefs(payload));
+  const bb = payload.brawlinBrutes === true;
+  const pay = () => brawlinCasualtyAward(2, bb);
+  // A resolved injury roll (roll16 or its derived band) pays — ANY result.
+  const injuryResolved = roll16 != null || band != null || provisional;
+  if (cause === "block" || cause === "blitz") {
+    return injuryResolved ? pay() : 0;
+  }
+  // T25 row 13: the foul=0 default consults the `foulSppException` seam —
+  // only «¡Con faltas y a lo loco!» unlocks it (L87: NO skill ever does),
+  // and only for a caused Injury (same resolved-roll threshold).
+  if (cause === "foul") {
+    return injuryResolved && foulSppException(activePrayers) ? pay() : 0;
+  }
+  // T25 row 12: the crowd=0 default consults the `crowdSppException`
+  // seam — «si un rival resulta Lesionado», the pusher earns 2.
+  if (cause === "crowd") {
+    return injuryResolved && crowdSppException(activePrayers) ? pay() : 0;
+  }
+  // T27 (c) «Llave de Brazo»: the escape-fall (dodge/jump/leap out of the
+  // defensive zone — the demo's «Esquivando — se cayó» record) pays its SPP
+  // to the causer; the failed-dodge default stays ★0 without the skill.
+  if (cause === "dodge") {
+    return injuryResolved && flags["Llave de Brazo"] ? pay() : 0;
+  }
+  // T27 (a) «Innovador Violento»: a SPECIAL-ACTION-caused casualty pays its
+  // SPP to that player (the open action set — Motosierra, Apuñalar, Vomitar
+  // proyectiles, Aliento de fuego, Bomba… — is display detail only); the
+  // default stays ★0 without the skill.
+  if (cause === "specialAction") {
+    return injuryResolved && flags["Innovador Violento"] ? pay() : 0;
+  }
+  // T27 (b) «Vuelo Letal» (Right-Stuff only — folded into the flag): the
+  // thrown-landing knockdown counts the thrown player as the causer when the
+  // rival is hurt; the default stays ★0 without the skill.
+  if (cause === "thrownLanding") {
+    return injuryResolved && flags["Vuelo Letal"] ? pay() : 0;
+  }
+  // Legacy rows without a recorded cause keep the shipped band derivation.
+  if (!provisional) {
+    if (band) return brawlinCasualtyAward(bandToDisplay(band).stars, bb);
+    return roll16 != null
+      ? brawlinCasualtyAward(bandToDisplay(resolveInjury(roll16).kind).stars, bb)
+      : 0;
+  }
+  // The provisional flat causal for an unrecorded/future cause (artboard T5).
+  return pay();
+}
+
+/** The PENDING rows' provisional causal (artboard-T5 flat award shown until
+ *  the injury roll settles): the same rows as `eventSpp` with the roll assumed
+ *  resolved, so the marker never flashes an award the roll will zero. */
+export function provisionalCasualtySpp(
+  event: LiveEventLabelInput,
+  activePrayers: ActivePrayers = [],
+): number {
+  return casualtySpp(event.payload, activePrayers, true);
 }
 
 /** A label for a single live event; casualty payloads reuse the rulebook band. */

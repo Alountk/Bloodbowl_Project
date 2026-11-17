@@ -623,3 +623,90 @@ describe("LiveEventCardsActa — T20 UX round 3 (L70): SPP visible, victim-note 
     }
   });
 });
+
+/**
+ * T27 (L87/L88 — the user's verbatim skill/team map): the derived action card
+ * on the CAUSER's side carries the flag rows' awards. The per-player flags ride
+ * the casualty payload as `causerSkills` (the roster record's skill refs) and
+ * the per-team flag as `brawlinBrutes` — data-driven, the card layer needs no
+ * new props. Defaults pinned (user): special-action / thrown-landing /
+ * dodge-fall render NO ★ without their skill, TD renders ★3 without the team
+ * rule, and the victim's card never shows earned points (RAU-47).
+ */
+describe("LiveEventCardsActa — T27 skill & team-rule SPP exceptions (L87/L88)", () => {
+  const caused = (payload: Record<string, unknown>) =>
+    ev({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "p2",
+      seq: 2,
+      payload: { victimRosterId: "p2", causerRosterId: "p4", ...payload },
+    });
+
+  /** The ★SPP tab on the row whose player line reads `{name} #n`. */
+  const sppOf = (container: HTMLElement, name: string): string | null => {
+    const rows = Array.from(container.querySelectorAll("[data-testid='live-event-row']"));
+    const row = rows.find(
+      (li) => li.querySelector(".acta__name")?.textContent === name,
+    ) as HTMLElement | undefined;
+    return row?.querySelector("[data-testid='acta-card-spp']")?.textContent ?? null;
+  };
+
+  it("(a) «Innovador Violento»: the special-action casualty carries the causer's ★2 on the derived action card — the victim's card shows NO ★", () => {
+    const { container } = renderActa([
+      caused({ cause: "specialAction", roll16: 12, causerSkills: ["Innovador Violento"] }),
+    ]);
+    expect(sppOf(container, "Arnau #2")).toContain("★2");
+    expect(sppOf(container, "Blitzer B #1")).toBeNull();
+  });
+
+  it("(a) DEFAULT: the special-action casualty renders NO ★ anywhere without «Innovador Violento»", () => {
+    const { container } = renderActa([
+      caused({ cause: "specialAction", roll16: 12 }),
+    ]);
+    expect(container.textContent).not.toContain("★");
+  });
+
+  it("(b) «Vuelo Letal» (Right-Stuff only): the thrown-landing row carries the thrown player's ★2 — the skill without Right Stuff renders NO ★", () => {
+    const { container } = renderActa([
+      caused({
+        cause: "thrownLanding",
+        roll16: 12,
+        causerSkills: ["Vuelo Letal", "Right Stuff"],
+      }),
+    ]);
+    expect(sppOf(container, "Arnau #2")).toContain("★2");
+
+    const { container: noRightStuff } = renderActa([
+      caused({ cause: "thrownLanding", roll16: 12, causerSkills: ["Vuelo Letal"] }),
+    ]);
+    expect(noRightStuff.textContent).not.toContain("★");
+  });
+
+  it("(c) «Llave de Brazo»: the escape-fall row flips from the T24 zero to ★2 with the skill — the default failed-dodge row renders NO ★", () => {
+    const { container } = renderActa([
+      caused({ cause: "dodge", roll16: 9, causerSkills: ["Llave de Brazo"] }),
+    ]);
+    expect(sppOf(container, "Arnau #2")).toContain("★2");
+
+    const { container: bare } = renderActa([caused({ cause: "dodge", roll16: 9 })]);
+    expect(bare.textContent).not.toContain("★");
+  });
+
+  it("«Brutos Peleones»: a caused casualty carries ★3 instead of ★2 — and a TD ★2 instead of ★3 (the TD ★3 default stays pinned)", () => {
+    const { container } = renderActa([
+      caused({ cause: "block", roll16: 12, brawlinBrutes: true }),
+    ]);
+    expect(sppOf(container, "Arnau #2")).toContain("★3");
+
+    const { container: bbTd } = renderActa([
+      ev({ kind: "td", side: "home", playerRosterId: "p1", seq: 1, payload: { brawlinBrutes: true } }),
+    ]);
+    expect(sppOf(bbTd, "Blitzer A #1")).toContain("★2");
+
+    const { container: td } = renderActa([
+      ev({ kind: "td", side: "home", playerRosterId: "p1", seq: 1 }),
+    ]);
+    expect(sppOf(td, "Blitzer A #1")).toContain("★3");
+  });
+});

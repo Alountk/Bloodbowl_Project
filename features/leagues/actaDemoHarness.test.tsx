@@ -10,6 +10,7 @@ import {
 
 import { ActaDemoHarness } from "./actaDemoHarness";
 import { demoState } from "./actaDemoReducer";
+import { BASE, MIN } from "./actaFlow.fixtures";
 
 // Deterministic dice for die-button rolls (S3 · T4 kickoff walk): a per-test
 // queue, defaulting to the wizard's classic 2/5 demo rolls.
@@ -1190,6 +1191,130 @@ describe("ActaDemoHarness — T24 SPP earn rule on the real dock («Puntos de SP
     const landed = turnCard(1, "Águilas de Khemri");
     expect(rowKinds(landed)).toEqual(["knockdown", "casualty", "casualty"]);
     expect(landed.querySelectorAll('[data-testid="acta-event-spp"]')).toHaveLength(0);
+  });
+});
+
+/**
+ * T27 (L87/L88): the skill/team SPP map end-to-end on the REAL harness. The
+ * guided dock vocabulary can only pin the DEFAULT rows (it has no
+ * special-action / thrown-landing cause and the demo reducer stamps no skill
+ * flags) — those pin through the REAL dock; the flag rows ride crafted events
+ * through the REAL v5 hydration path (the same persistence contract the reload
+ * tests pin). Defaults covered here: a TD pays +3 without «Brutos Peleones»
+ * and a failed dodge pays NOTHING without «Llave de Brazo».
+ */
+describe("ActaDemoHarness — T27 skill & team-rule SPP rows (L87/L88)", () => {
+  const rowSpp = (card: HTMLElement, kind: string): string | null =>
+    card
+      .querySelector(`[data-testid="acta-event-row"][data-kind="${kind}"]`)
+      ?.querySelector('[data-testid="acta-event-spp"]')?.textContent ?? null;
+
+  it("the dock's «+ TD» pays the standard +3 SPP (the TD default without «Brutos Peleones»)", () => {
+    startWithHomeReceiver();
+    capture("+ TD");
+    expect(rowSpp(enJuegoCard(), "td")).toContain("+3 SPP");
+  });
+
+  it("the dock's self-inflicted «Baja propia» failed dodge pays NOTHING (the dodge-fall default without «Llave de Brazo»)", () => {
+    startWithHomeReceiver();
+    fireEvent.click(perspective("Colmillos del Caos"));
+    fireEvent.click(demoButton("Baja propia"));
+    const modal = screen.getByTestId("live-action-modal");
+    fireEvent.click(
+      within(within(modal).getByTestId("dock-pool-own")).getByRole("button", {
+        name: /#1/i,
+      }),
+    );
+    fireEvent.click(
+      within(modal).getByRole("button", { name: "Esquivando — se cayó" }),
+    );
+    fireEvent.click(within(modal).getByTestId("roll-option-8"));
+    expect(rowSpp(enJuegoCard(), "casualty")).toBeNull();
+  });
+
+  /** Crafted casualty row for the REAL v5 hydration path. */
+  const flaggedCasualty = (payload: Record<string, unknown>) => ({
+    seq: 50,
+    kind: "casualty",
+    side: "home",
+    playerRosterId: "k1",
+    half: 1,
+    turnNumber: 1,
+    at: BASE + 10 * MIN,
+    payload: { victimRosterId: "o1", causerRosterId: "k1", roll16: 12, ...payload },
+  });
+
+  /** Load a crafted feed through the REAL v5 hydration path — home is playing
+   *  T1 (the active side whose game turn the captures land on, T16 grouping). */
+  const seedMatch = (events: object[]) => {
+    window.localStorage.setItem(
+      "bb-demo-partido",
+      JSON.stringify({
+        v: 5,
+        state: { ...demoState("inicio"), activeSide: "home", events },
+      }),
+    );
+    return render(<ActaDemoHarness />);
+  };
+
+  it("«Innovador Violento»: the special-action casualty shows the causer's +2 SPP — and NO tab without the skill (the special-action default)", () => {
+    const withSkill = seedMatch([
+      flaggedCasualty({ cause: "specialAction", causerSkills: ["Innovador Violento"] }),
+    ]);
+    expect(rowSpp(enJuegoCard(), "casualty")).toContain("+2 SPP");
+    withSkill.unmount();
+
+    const bare = seedMatch([flaggedCasualty({ cause: "specialAction" })]);
+    expect(rowSpp(enJuegoCard(), "casualty")).toBeNull();
+    bare.unmount();
+  });
+
+  it("«Vuelo Letal» (Right-Stuff only): the thrown-landing casualty shows +2 SPP — the skill without Right Stuff shows NO tab", () => {
+    const withSkill = seedMatch([
+      flaggedCasualty({
+        cause: "thrownLanding",
+        causerSkills: ["Vuelo Letal", "Right Stuff"],
+      }),
+    ]);
+    expect(rowSpp(enJuegoCard(), "casualty")).toContain("+2 SPP");
+    withSkill.unmount();
+
+    const noRightStuff = seedMatch([
+      flaggedCasualty({ cause: "thrownLanding", causerSkills: ["Vuelo Letal"] }),
+    ]);
+    expect(rowSpp(enJuegoCard(), "casualty")).toBeNull();
+    noRightStuff.unmount();
+  });
+
+  it("«Llave de Brazo»: the escape-fall casualty flips to +2 SPP with the skill", () => {
+    const withSkill = seedMatch([
+      flaggedCasualty({ cause: "dodge", causerSkills: ["Llave de Brazo"] }),
+    ]);
+    expect(rowSpp(enJuegoCard(), "casualty")).toContain("+2 SPP");
+    withSkill.unmount();
+  });
+
+  it("«Brutos Peleones»: the caused casualty shows +3 SPP instead of +2 and the TD +2 instead of +3", () => {
+    const casualty = seedMatch([
+      flaggedCasualty({ cause: "block", brawlinBrutes: true }),
+    ]);
+    expect(rowSpp(enJuegoCard(), "casualty")).toContain("+3 SPP");
+    casualty.unmount();
+
+    const td = seedMatch([
+      {
+        seq: 51,
+        kind: "td",
+        side: "home",
+        playerRosterId: "k1",
+        half: 1,
+        turnNumber: 1,
+        at: BASE + 12 * MIN,
+        payload: { brawlinBrutes: true },
+      },
+    ]);
+    expect(rowSpp(enJuegoCard(), "td")).toContain("+2 SPP");
+    td.unmount();
   });
 });
 

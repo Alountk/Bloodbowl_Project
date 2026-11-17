@@ -252,6 +252,12 @@ const SKILL_DEFS = [
   { id: "kick", name: "Kick", category: "general", translations: [{ id: "es", translation: "Patada" }] },
   { id: "kick-team-mate", name: "Kick Team-mate", category: "trait", translations: [{ id: "es", translation: "Chutar compañero" }] },
   { id: "leap", name: "Leap", category: "agility" },
+  {
+    id: "lethal-flight",
+    name: "Lethal Flight",
+    category: "devious",
+    translations: [{ id: "es", translation: "Vuelo letal" }],
+  },
   { id: "loner-3-plus", name: "Loner (3+)", category: "trait" },
   { id: "loner-4-plus", name: "Loner (4+)", category: "trait", translations: [{ id: "es", translation: "Solitario (4+)" }] },
   { id: "low-blow", name: "Low Blow", category: "trait" },
@@ -389,6 +395,12 @@ const SKILL_DEFS = [
   { id: "troll-hatred", name: "Troll Hatred", category: "trait" },
   { id: "unchannelled-fury", name: "Unchannelled Fury", category: "trait", translations: [{ id: "es", translation: "Ira descontrolada" }] },
   { id: "very-long-legs", name: "Very Long Legs", category: "trait" },
+  {
+    id: "violent-innovator",
+    name: "Violent Innovator",
+    category: "devious",
+    translations: [{ id: "es", translation: "Innovador violento" }],
+  },
   { id: "wrestle", name: "Wrestle", category: "general", translations: [{ id: "es", translation: "Forcejear" }] },
 ] as const satisfies readonly RawSkillDef[];
 
@@ -417,4 +429,74 @@ export function getSkillById(id: string): SkillCatalogEntry | undefined {
 
 export function getSkillByName(name: string): SkillCatalogEntry | undefined {
   return skillsByName.get(normalizeSkillName(name));
+}
+
+/* ─── T27 (L87/L88 — user verbatim) · SPP-exception skills ──────────────────
+ *
+ * The earn rule (features/leagues/liveEventLabels.ts) is data-driven: the
+ * per-player flags are derived from the roster record's skill refs (catalog
+ * ids OR rulebook random-table names — the `skillKey` convention in
+ * lib/progression), and the flags record is keyed by the USER'S EXACT three
+ * names — «Innovador Violento», «Vuelo Letal», «Llave de Brazo» — and by
+ * nothing else (the rule map never invents skill names). The per-team
+ * «Brutos Peleones» flag is team data, not a skill (L88).
+ */
+
+/** The three SPP-exception skills, keyed by the user's EXACT names (L87). */
+export type SppSkillName = "Innovador Violento" | "Vuelo Letal" | "Llave de Brazo";
+
+/** The per-player SPP skill flags the earn rule consumes. */
+export type SppSkillFlags = Record<SppSkillName, boolean>;
+
+/** The catalog skill behind each exception name (single source of truth). */
+const SPP_SKILL_IDS: Record<SppSkillName, SkillId> = {
+  "Innovador Violento": "violent-innovator",
+  "Vuelo Letal": "lethal-flight",
+  "Llave de Brazo": "arm-bar",
+};
+
+/** «Right-Stuff only» (user verbatim): «Vuelo Letal» only works for players
+ *  holding Right Stuff («Humanoide bala») — folded into the flag. */
+const RIGHT_STUFF_ID: SkillId = "right-stuff";
+
+/** True when any stored ref resolves to the catalog skill (id or name — the
+ *  name lookup is case-insensitive, so user spellings resolve too). */
+function ownsSkill(skills: readonly string[], id: SkillId): boolean {
+  return skills.some((ref) => (getSkillById(ref) ?? getSkillByName(ref))?.id === id);
+}
+
+/** Derives the per-player SPP skill flags from roster skill refs.
+ *  - «Innovador Violento»: special-action casualties pay their SPP to the
+ *    causer (default 0 — the earn rule keys the row on the cause);
+ *  - «Vuelo Letal»: thrown-landing knockdowns count the thrown player as the
+ *    causer — «Right-Stuff only», so the flag needs Right Stuff too;
+ *  - «Llave de Brazo»: escape-fall casualties pay their SPP (default 0). */
+export function sppSkillFlags(skills: readonly string[]): SppSkillFlags {
+  return {
+    "Innovador Violento": ownsSkill(skills, SPP_SKILL_IDS["Innovador Violento"]),
+    "Vuelo Letal":
+      ownsSkill(skills, SPP_SKILL_IDS["Vuelo Letal"]) && ownsSkill(skills, RIGHT_STUFF_ID),
+    "Llave de Brazo": ownsSkill(skills, SPP_SKILL_IDS["Llave de Brazo"]),
+  };
+}
+
+/** «Only players with a trait allowing Special Actions can have it» (L87, user
+ *  verbatim): the five SPECIAL-ACTION traits the user NAMED — «Motosierra,
+ *  Apuñalar, Vomitar proyectiles, Aliento de fuego, Bomba, etc.» — resolved to
+ *  their catalog ids. The user's «etc.» keeps the real set OPEN: this list
+ *  pins ONLY the five named traits and must never be silently widened with
+ *  invented names. */
+export const SPECIAL_ACTION_TRAITS = [
+  "chainsaw", // Motosierra
+  "stab", // Apuñalar
+  "projectile-vomit", // Vomitar proyectiles
+  "fire-breathing", // Aliento de fuego
+  "bombardier", // Bomba
+] as const satisfies readonly SkillId[];
+
+/** Acquisition eligibility for «Innovador Violento»: at least one special
+ *  action trait (the earn rule itself keys the payment on the SPECIAL-ACTION
+ *  cause — this predicate is the possession rule, not an award switch). */
+export function canHaveViolentInnovator(skills: readonly string[]): boolean {
+  return SPECIAL_ACTION_TRAITS.some((id) => ownsSkill(skills, id));
 }
