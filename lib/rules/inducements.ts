@@ -669,9 +669,10 @@ export function activePrayersFromRolls(rolls: readonly number[]): ActivePrayers 
  * predicate before paying a foul-caused injury. TRUE today only when prayer 13
  * «¡Con faltas y a lo loco!» is active for the acting team («causing an Injury
  * from a FAULT action earns 2 PE»); the default foul=0 stays pinned without it.
- * Player-SKILL-based foul SPP was NOT found in the extracted rules material —
- * a future skill-based exception belongs HERE (and must not invent skill
- * names), never in the UI layer. */
+ * L87 CLOSES the skill question (user verbatim: «para las faltas no hay una
+ * habilidad, solo plegarias»): there is NO skill-based foul SPP and none may be
+ * added — prayer 13 is the ONLY unlock. (T27's skill rows — «Innovador
+ * Violento», «Vuelo Letal», «Llave de Brazo» — never touch faltas.) */
 export function foulSppException(prayers: ActivePrayers): boolean {
   return prayers.includes("foul-and-frenzy");
 }

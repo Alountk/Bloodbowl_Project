@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  crowdSppException,
-  foulSppException,
   type ActivePrayers,
   type MatchActivePrayers,
 } from "@/lib/rules/inducements";
@@ -18,6 +16,7 @@ import {
   eventSpp,
   KICKOFF_OUTCOME_LABELS,
   liveEventLabel,
+  provisionalCasualtySpp,
   whoLineLabel,
 } from "./liveEventLabels";
 import {
@@ -480,38 +479,26 @@ function tabFor(event: LiveMatchEventDto): { label: string; injury?: boolean } {
  *  has no causer (RAU-47 «no-causer pays no-★»), Faltas earn no SPP (user
  *  table: «Faltas … no genera SPP»), and the Both-Down/pifia rows pay nothing
  *  (the `bothDown` flag rides them precisely to zero them — T23's flagged flat
- *  +2). The guard runs BEFORE the pending flat +2 so an unrolled foul/both-down
- *  row can never flash a provisional award. A CAUSED record may carry no
- *  `causerRosterId` of its own (the demo's split combat chain records the
- *  herida on the victim side — the causer context rides the chain's «Derribo»
- *  row), so the CAUSE is the earn signal, never the payload's causer field.
- *  T25 («Plegarias a Nuffle»): the foul/crowd zero-rows consult the per-prayer
- *  exception seams (`foulSppException`/`crowdSppException`) — the blessing
- *  unlocks the award for the EARNING team only; both-down / self-inflicted /
- *  dodge rows have NO exception and stay pinned at zero. */
+ *  +2). A CAUSED record may carry no `causerRosterId` of its own (the demo's
+ *  split combat chain records the herida on the victim side — the causer
+ *  context rides the chain's «Derribo» row), so the CAUSE is the earn signal,
+ *  never the payload's causer field. T25 («Plegarias a Nuffle»): the foul/crowd
+ *  zero-rows consult the per-prayer exception seams — the blessing unlocks the
+ *  award for the EARNING team only. T27 (L87/L88): the skill/team rows ride
+ *  the same shared rule (flags in the payload — `causerSkills` /
+ *  `brawlinBrutes`), so every zero seam and flag is enforced in ONE place: a
+ *  pending row provisions its causal award (★3 under «Brutos Peleones») and an
+ *  unmet seam/flag provisions NOTHING — never a provisional flash. */
 function sppMarkerFor(
   event: LiveMatchEventDto,
   prayers: ActivePrayers,
 ): { text: string; className: string } | null {
-  if (event.kind === "casualty") {
-    const cause = typeof event.payload.cause === "string" ? (event.payload.cause as CasualtyCause) : null;
-    if (event.payload.bothDown === true || event.payload.selfInflicted === true) {
-      return null;
-    }
-    if (cause === "foul" && !foulSppException(prayers)) {
-      return null;
-    }
-    if (cause === "crowd" && !crowdSppException(prayers)) {
-      return null;
-    }
-    if (cause != null && SELF_CAUSES.includes(cause) && cause !== "crowd") {
-      return null;
-    }
-  }
-  // A pending casualty shows the flat causal +2 (artboard T5 row — provisional
-  // until the roll settles the value); a resolved one follows the shared
-  // `eventSpp` rule (T24 + the T25 blessings).
-  const value = isPendingInjuryRoll(event) ? 2 : eventSpp(event, prayers);
+  // A pending casualty provisions the flat causal (artboard T5 row — settles
+  // at roll time); a resolved one follows the shared `eventSpp` rule (T24 +
+  // the T25 blessings + the T27 flag rows).
+  const value = isPendingInjuryRoll(event)
+    ? provisionalCasualtySpp(event, prayers)
+    : eventSpp(event, prayers);
   if (value <= 0) return null;
   return {
     text: `+${value} SPP`,

@@ -1889,3 +1889,232 @@ describe("ActaTurnTimeline — T25 Prayers of Nuffle SPP exceptions", () => {
     expect(sppTabOf()).toBeNull();
   });
 });
+
+/**
+ * T27 (L87/L88 — the user's verbatim skill/team map): the SPP marker follows
+ * the data-driven flag rows on the acta turn cards. The per-player flags ride
+ * the event payload as `causerSkills` (the roster record's skill refs) and the
+ * per-team flag as `brawlinBrutes` — no new props. Defaults pinned (user):
+ * special-action / thrown-landing / dodge-fall show NO tab without their skill,
+ * TD shows +3 without the team rule, and no unmet row ever flashes the
+ * provisional flat award.
+ */
+describe("ActaTurnTimeline — T27 skill & team-rule SPP exceptions (L87/L88)", () => {
+  const sppTabOf = (kind = "casualty"): HTMLElement | null =>
+    document
+      .querySelector(`[data-testid="acta-event-row"][data-kind="${kind}"]`)
+      ?.querySelector('[data-testid="acta-event-spp"]') ?? null;
+
+  const injuryRow = (payload: Record<string, unknown>): LiveMatchEventDto =>
+    event({
+      kind: "casualty",
+      side: "away",
+      playerRosterId: "a2",
+      turnNumber: 5,
+      at: STARTED + 44 * MIN,
+      payload: { victimRosterId: "a2", causerRosterId: "h3", ...payload },
+    });
+
+  it("(a) «Innovador Violento»: a special-action casualty shows the causer's +2 SPP — and NO tab at all without the skill (the special-action default)", () => {
+    seqCounter = 0;
+    const withSkill = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            injuryRow({ cause: "specialAction", roll16: 12, causerSkills: ["Innovador Violento"] }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+    withSkill.unmount();
+
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "specialAction", roll16: 12 })],
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("(b) «Vuelo Letal» (Right-Stuff only): the thrown-landing row pays the thrown player +2 — the skill without Right Stuff and the flagless default stay silent", () => {
+    seqCounter = 0;
+    const withSkill = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            injuryRow({
+              cause: "thrownLanding",
+              roll16: 12,
+              causerSkills: ["Vuelo Letal", "Right Stuff"],
+            }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+    withSkill.unmount();
+
+    seqCounter = 0;
+    const noRightStuff = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            injuryRow({ cause: "thrownLanding", roll16: 12, causerSkills: ["Vuelo Letal"] }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+    noRightStuff.unmount();
+
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "thrownLanding", roll16: 12 })],
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("(c) «Llave de Brazo»: the escape-fall row flips from the T24 zero to +2 with the skill — the default failed-dodge row stays silent", () => {
+    seqCounter = 0;
+    const withSkill = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            injuryRow({ cause: "dodge", roll16: 9, causerSkills: ["Llave de Brazo"] }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+    withSkill.unmount();
+
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "dodge", roll16: 9 })],
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+
+  it("«Brutos Peleones»: a caused casualty shows +3 SPP instead of +2 — and +2 on a TD instead of +3", () => {
+    seqCounter = 0;
+    const casualty = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "block", roll16: 12, brawlinBrutes: true })],
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+3 SPP");
+    casualty.unmount();
+
+    seqCounter = 0;
+    const td = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            event({
+              kind: "td",
+              side: "home",
+              playerRosterId: "h1",
+              turnNumber: 5,
+              at: STARTED + 44 * MIN,
+              payload: { brawlinBrutes: true },
+            }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf("td")?.textContent).toContain("+2 SPP");
+    td.unmount();
+
+    // DEFAULT (user): TD ★3 without the team rule.
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            event({
+              kind: "td",
+              side: "home",
+              playerRosterId: "h1",
+              turnNumber: 5,
+              at: STARTED + 44 * MIN,
+              payload: {},
+            }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf("td")?.textContent).toContain("+3 SPP");
+  });
+
+  it("«Brutos Peleones» leaves the other award rows untouched (the pass row keeps its +1)", () => {
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            event({
+              kind: "completion",
+              side: "home",
+              playerRosterId: "h2",
+              turnNumber: 5,
+              at: STARTED + 44 * MIN,
+              payload: { brawlinBrutes: true },
+            }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf("completion")?.textContent).toContain("+1 SPP");
+  });
+
+  it("pending rows provision the modified causal (flat +2 → +3 under «Brutos Peleones») and never flash for unmet rows", () => {
+    seqCounter = 0;
+    const bb = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "block", brawlinBrutes: true })],
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+3 SPP");
+    bb.unmount();
+
+    seqCounter = 0;
+    const flagged = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [
+            injuryRow({ cause: "specialAction", causerSkills: ["Innovador Violento"] }),
+          ],
+        })}
+      />,
+    );
+    expect(sppTabOf()?.textContent).toContain("+2 SPP");
+    flagged.unmount();
+
+    // No provisional flash for the unmet special-action default.
+    seqCounter = 0;
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [injuryRow({ cause: "specialAction" })],
+        })}
+      />,
+    );
+    expect(sppTabOf()).toBeNull();
+  });
+});
