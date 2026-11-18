@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "comments": [
+    {
+      "id": "e3bdcm2k",
+      "file": "01-folder-tabs.html",
+      "selector": "body > main > section > article:nth-of-type(4) > div:nth-of-type(3)",
+      "excerpt": "+1 SPP · Sefu",
+      "comment": "aqui hay un problema, si te fijas el border radius deberia estar a la inversa no deberia empezar por el top si no por el bottom",
+      "createdAt": "2026-11-16T08:42:32.025Z",
+      "status": "resolved",
+      "sentAt": "2026-11-16T08:42:32.049Z",
+      "resolvedAt": "2026-11-16T08:43:02.210Z"
+    },
+    {
+      "id": "13ywxkpa",
+      "file": "01-folder-tabs.html",
+      "selector": "body > main > section > article:nth-of-type(2) > div:nth-of-type(2)",
+      "excerpt": "Ushtep bloquea a Durburz · Empujón Bloqueo 2D6 FUE · sin derribo Registrado por Águilas de Khemri",
+      "comment": "Los empujones nunca deberiamos contemplarlos como datos.",
+      "createdAt": "2026-11-16T08:43:22.612Z",
+      "status": "resolved",
+      "sentAt": "2026-11-16T08:43:22.638Z",
+      "resolvedAt": "2026-11-16T08:44:09.855Z"
+    },
+    {
+      "id": "4g86bkkl",
+      "file": "01-folder-tabs.html",
+      "selector": "body > main > section > article:nth-of-type(1) > div:nth-of-type(2)",
+      "excerpt": "Khalid hace una herida a Grishnak Bloqueo 2D6 FUE · Derribo · Armadura 2D6 = 9 vs Ar 8 · rota · Lesión 1D16 = 12 Registrado por Colmillos del Caos",
+      "comment": "los casualty no deberiamos tirarlos nosotros, solo deberiamos marcar quien hace la herida y quien la recibe. El contrincante pondra que le ha pasado (tirada de herida y si tiene más consecuencias)",
+      "createdAt": "2026-11-16T08:45:23.496Z",
+      "status": "resolved",
+      "sentAt": "2026-11-16T08:45:23.514Z",
+      "resolvedAt": "2026-11-16T08:46:05.580Z"
+    },
+    {
+      "id": "e8kicyqt",
+      "file": "01-folder-tabs.html",
+      "selector": "body > main > section > article:nth-of-type(1) > div:nth-of-type(3)",
+      "excerpt": "+2 SPP · Khalid",
+      "comment": "el border radius de esto no esta bien ya que queda recto y nada redondeado",
+      "createdAt": "2026-11-16T08:48:31.046Z",
+      "status": "resolved",
+      "sentAt": null,
+      "resolvedAt": "2026-11-16T08:50:59.401Z"
+    }
+  ]
+}

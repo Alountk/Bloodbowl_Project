@@ -1,0 +1,27 @@
+{
+  "title": "Dice3D — reusable animated die component",
+  "brief": "Abstract the dice-roll animation (reference: codepen.io/jico 3D Dice with CSS; project already has the wizard DieCard and the artboard-09 diceShake) into ONE reusable component for the whole site: d6 as a real 3D CSS cube tumbling to its landing face, a chip variant for 1D16, states (rest/rolling/result), reduced-motion fallback. Mobile-first 390px, rulebook-light tokens. v2: user approved the d6 as-is (L110); added a size slider (scale-based size prop) and a true 3D D16 as an octagonal bipyramid (16 triangular faces).",
+  "artboards": [
+    {
+      "file": "01-dice3d.html",
+      "title": "Dice3D",
+      "tradeoff": "True 3D cube for d6 (the reference's charm) + honest chip for d16; two visual families to keep until a single-geometry solution exists",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "02-dice3d-16.html",
+      "title": "Dice3D 16 — octaedro octogonal",
+      "tradeoff": "A real 16-face polyhedron (8+8 triangles) in CSS 3D with the jico glass look; denser geometry than the cube, numbers of back faces show through the glass",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "03-d16-result-highlights.html",
+      "title": "D16 · 5 resaltados del resultado",
+      "tradeoff": "Five competing result-highlight styles for the 16-face die (A red-halo, B layer pulse, C floating badge, D spotlight, E border flash) selectable live; C is the most visible from afar, A/D keep the die itself as the hero",
+      "width": 390,
+      "height": 844
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "comments": [
+    {
+      "id": "upfeakez",
+      "file": "01-dice3d.html",
+      "selector": "body > main > section:nth-of-type(1) > div",
+      "excerpt": "Pulsa para tirar TIRAR",
+      "comment": "no salen los puntos donde tocan, es un defecto del screenshot?",
+      "createdAt": "2026-11-17T17:28:57.317Z",
+      "status": "open",
+      "sentAt": null,
+      "resolvedAt": null
+    }
+  ]
+}

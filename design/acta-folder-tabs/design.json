@@ -1,0 +1,49 @@
+{
+  "title": "Acta rows — folder-tab categorization",
+  "brief": "Redesign of the live acta event rows (mobile 390px): the category chip was stealing width from the description and SPP appeared as the row title. User direction: a folder with a tab — category on a top-left tab (Casualty / Ambos derribados / Pase...), description with full width, and earned SPP only on a bottom-right tab, only when earned.",
+  "feature": "odd/tasks/demo-partido-bb2025.md",
+  "artboards": [
+    {
+      "file": "01-folder-tabs.html",
+      "title": "A · Folder tabs",
+      "tradeoff": "Closest to the user's folder idea: top-left category tab + inverted SPP tab bottom-right; stacked rows get taller",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "02-side-tab.html",
+      "title": "B · Side tab",
+      "tradeoff": "Vertical category tab keeps the maximum description width at all times; vertical text is slightly harder to scan",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "03-archiver-label.html",
+      "title": "C · Archiver label",
+      "tradeoff": "Strong archival character with the perforated band and SPP stamp; more visual noise than the other two",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "04-mirror-chat.html",
+      "title": "D · Mirror chat",
+      "tradeoff": "Fullest side identity (chat-like); mirrored text alignment can read slightly awkward",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "05-mirror-identity-tab.html",
+      "title": "E · Identity tab",
+      "tradeoff": "Folder structure stays stable, only the identity edge + tab side mirror; side reads at a glance, content never mirrors",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "06-mirror-player-badge.html",
+      "title": "F · Player badge",
+      "tradeoff": "Player-first (dorsal+name badge): clearest WHO acted; slightly busier rows",
+      "width": 390,
+      "height": 844
+    }
+  ]
+}
