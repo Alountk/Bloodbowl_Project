@@ -71,6 +71,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-bloodbowl}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bloodbowl}
       POSTGRES_DB: ${POSTGRES_DB:-bloodbowl}
+    ports:
+      # Loopback-only publish, required by host tooling: the CI/local auth e2e
+      # leg (`pnpm run test:e2e:auth`) boots `next dev` against
+      # localhost:5433 and fails with P1001 without it. Bound to 127.0.0.1 so
+      # no LAN peer can reach Postgres; `web` uses the in-network service name
+      # and never uses this port. Configurable via POSTGRES_PORT if it clashes
+      # on the Dokploy host.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - bloodbowl_postgres_data:/var/lib/postgresql/data
     healthcheck:
