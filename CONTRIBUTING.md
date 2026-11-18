@@ -65,7 +65,7 @@ Ver [README.md](./README.md) y [docs/auth.md](./docs/auth.md).
 
 ## Reportar bugs / pedir features
 
-Usá las plantillas de issues (bug report / feature request). Incluí: pasos para reproducir, comportamiento esperado vs actual, y si afecta solo a producción (LAN/Arcane) o también a local — **si solo es producción, verificá que el contenedor tenga la imagen `latest`** (muchos bugs "persistentes" son imagen vieja).
+Usá las plantillas de issues (bug report / feature request). Incluí: pasos para reproducir, comportamiento esperado vs actual, y si afecta solo a producción (bb.marchan.dev / Dokploy) o también a local — **si solo es producción, verificá que el servicio tenga la imagen `latest`** (botón Deploy en Dokploy; muchos bugs "persistentes" son imagen vieja).
 
 ## Trabajo con agentes de IA
 

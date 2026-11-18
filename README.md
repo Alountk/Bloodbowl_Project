@@ -90,21 +90,19 @@ pnpm docker:build        # Build local image
 pnpm playground          # migrate + seed + dev (playground)
 ```
 
-### 3. Deploy (Docker / Arcane)
+### 3. Deploy (Docker / Dokploy)
 
 See [docs/auth.md](./docs/auth.md) for the full detail. Summary:
 
+- Production runs on **Dokploy** at <https://bb.marchan.dev>: Traefik routes the domain to the `web` container. The app listens on `3444` inside the container and `docker-compose.yml` publishes **no** host port for `web` — only Traefik reaches it (a Dokploy domain targeting the default `3000` gets a 404).
 - The image is built and published to **GHCR** from GitHub Actions (push to `main`); CI publishes date-versioned tags and a weekly workflow prunes the 10 oldest images. Two targets are published: `:latest` (web runner) and `:migrate` (Prisma CLI only).
-- `docker-compose.yml`: `web` service (image `ghcr.io/<org>/bloodbowl_project:latest`) + `postgres` on a shared network, plus a one-shot `migrate` service (image `...:migrate`).
-- Migrations run in the `migrate` service (`prisma migrate deploy`), one-shot, before `web` (`depends_on: service_completed_successfully`) — automatic on every `docker compose up -d`.
-- Environment variables: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `AUTH_MODE=auth`, `POSTGRES_PORT` (default 5433).
+- `docker-compose.yml`: `web` service (image `ghcr.io/<org>/bloodbowl_project:latest`) on the external `dokploy-network` + `postgres` (loopback-only host port, default `5433`, kept for the auth e2e leg), plus a one-shot `migrate` service (image `...:migrate`).
+- Migrations run in the `migrate` service (`prisma migrate deploy`), one-shot, before `web` (`depends_on: service_completed_successfully`) — automatic on every stack (re)deploy.
+- Environment variables: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, `AUTH_MODE=auth`, `POSTGRES_PORT` (default 5433), `APP_URL` (`https://bb.marchan.dev`, base for absolute links in outgoing mail).
 
-```bash
-docker compose pull
-docker compose up -d
-```
+To ship a new `main`: CI publishes `:latest`, then trigger the Dokploy service's **Deploy** (it pulls `:latest` and re-runs the full stack, `migrate` before `web`) — or let the auto-deploy webhook do it on push.
 
-> **Deploy change:** the old `docker compose pull web && docker compose up -d --force-recreate web` command is scoped to `web` and would skip the new `migrate` service (leaving the DB unmigrated). Always run the full stack as shown above.
+> **Deploy change:** the old `docker compose pull web && docker compose up -d --force-recreate web` command is scoped to `web` and skips the `migrate` service (leaving the DB unmigrated). Any redeploy path must run the full stack.
 
 ---
 
@@ -186,7 +184,7 @@ pnpm dev:docker:down          # keeps the Postgres volume
 
 ## Documentation
 
-- [docs/auth.md](./docs/auth.md) — Auth, PostgreSQL, migrations, auth e2e, Arcane deploy.
+- [docs/auth.md](./docs/auth.md) — Auth, PostgreSQL, migrations, auth e2e, Dokploy deploy.
 - [ROADMAP.md](./ROADMAP.md) — Feature/bug history and pending roadmap.
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — How to contribute (branches, commits, PRs, tests).
 
