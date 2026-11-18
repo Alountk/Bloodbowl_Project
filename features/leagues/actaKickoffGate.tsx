@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { DieD6 } from "@/components/DieD6";
+
 import {
   KICKOFF_EVENTS,
   KICKOFF_FREE_RECEPTION_QUOTE,
@@ -63,7 +65,10 @@ export interface ActaKickoffGateProps {
   onSkipDuel: () => void;
 }
 
-/** Editorial die card (the wizard's DieCard pattern): face + dice BUTTON. */
+/** Editorial die card (the wizard's DieCard pattern): face + dice BUTTON.
+ * T34 (L121): the face is the shared DieD6 (highlight default "none"); its
+ * roll button carries the pinned «Tirar 1D6 · TÚ/RIVAL» names via rollLabel
+ * and the trigger is withheld once recorded (U12's one-shot roll). */
 function GateDie({
   label,
   value,
@@ -84,27 +89,22 @@ function GateDie({
       <p className="w-full font-display text-xs font-bold uppercase tracking-wide text-navy">
         {label}
       </p>
-      <span
-        key={`glyph-${rollSeq}`}
-        aria-hidden
-        data-testid="die-glyph"
-        className={`flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy${
-          rolled ? " dice-roll" : ""
-        }`}
-      >
-        {value ?? "–"}
-      </span>
-      <button
-        type="button"
-        className={BTN}
-        disabled={recorded}
-        onClick={() => {
-          setRollSeq((seq) => seq + 1);
-          onRoll();
-        }}
-      >
-        {dieLabel}
-      </button>
+      {/* Controlled wiring (T34): the RNG/state stay with the gate and feed
+          `value`; no trigger after the recorded throw (the die locks). */}
+      <DieD6
+        value={value}
+        size={40}
+        label={`Dado 1D6 · ${label}`}
+        rollLabel={dieLabel}
+        onRoll={
+          recorded
+            ? undefined
+            : () => {
+                setRollSeq((seq) => seq + 1);
+                onRoll();
+              }
+        }
+      />
       <span
         key={`status-${rollSeq}`}
         role="status"
