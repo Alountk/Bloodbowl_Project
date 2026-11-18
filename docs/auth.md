@@ -107,12 +107,22 @@ This runs `scripts/test-e2e-auth.sh`, which:
 
 The default `pnpm run test:e2e` is unchanged and stays anonymous (`local`).
 
-## Deployment (Arcane)
+## Deployment (Dokploy)
 
-- Ensure Arcane deploys the **postgres** service and wires `DATABASE_URL`,
-  `AUTH_SECRET`, and `AUTH_TRUST_HOST` into the `web` service (see
-  `docker-compose.yml`). Without Postgres the auth signup/login/team APIs will
-  not work.
+Production runs on **Dokploy** from this repo's `docker-compose.yml`, public
+domain <https://bb.marchan.dev>:
+
+- Traefik routes the domain to the `web` container on port **3444** (the
+  app's `PORT`). `docker-compose.yml` publishes no host port for `web`, so a
+  Dokploy domain must target `3444` — pointing it at the default `3000`
+  returns a 404.
+- The stack joins the external `dokploy-network`; `postgres` publishes only
+  `127.0.0.1:${POSTGRES_PORT:-5433}` (the host-loopback leg the auth e2e
+  needs) and is never reachable off-host.
+- Wire `DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST`, and `APP_URL`
+  (`https://bb.marchan.dev` — absolute links in outgoing mail are built from
+  it) into the service env. Without Postgres the auth signup/login/team APIs
+  will not work.
 - Ensure migrations run before the server accepts traffic (compose `migrate`
   service, gated by `web.depends_on`); for an existing database, run
   `pnpm prisma migrate deploy` against it during the rollout.
@@ -123,22 +133,26 @@ The default `pnpm run test:e2e` is unchanged and stays anonymous (`local`).
   gates it via `service_completed_successfully`) — the runner entrypoint no
   longer runs migrations (see the Open Question in `design.md`).
 
-### Deploy automation (webhook → Arcane)
+### Deploy automation (push → GHCR → Dokploy)
 
-- A GitHub repo webhook (`web`) points at
-  `https://arcane.androemda-surf.uk/api/webhooks/trigger/arc_wh_...` and fires
-  on every push to `main`. The Arcane trigger must run
-  `docker compose pull && docker compose up -d` (full stack: `migrate` must run
-  before `web`, so a `web`-scoped command would skip migrations).
-- The `pull` step is **mandatory**: `up -d` alone can reuse a locally cached
-  image, so a freshly published `latest` is missed until a manual pull. This
-  caused a stale-image bug (old slug error kept running after the fix merged).
+- `.github/workflows/docker-publish.yml` fires on every push to `main` and
+  publishes both image targets (`:latest` and `:migrate`) to GHCR.
+- Redeploying production = the Dokploy compose service's **Deploy** action
+  (equivalent to `docker compose pull && docker compose up -d` on a host: it
+  pulls the freshly published `:latest` and runs the full stack, so `migrate`
+  runs before `web`). A `web`-scoped update would skip migrations.
+- Optional: wire Dokploy's auto-deploy webhook (service deploy URL → GitHub
+  repo webhook on push to `main`) so merges redeploy without a manual click.
+- The pull step is **mandatory** on any path: a restart/`up -d` alone reuses
+  the locally cached image, so a freshly published `latest` is missed until a
+  pull. This caused a stale-image bug (old slug error kept running after the
+  fix merged).
 - Image tags published by `.github/workflows/docker-publish.yml`:
-  `latest` (mutable, used by Arcane), `<YYYY.MM.DD>-<run number>`
+  `latest` (mutable, used in production), `<YYYY.MM.DD>-<run number>`
   (e.g. `2026.08.11-3`, monotonic and human-readable), and `<git sha>`
-  (exact traceability). To pin Arcane to a specific version instead of
+  (exact traceability). To pin Dokploy to a specific version instead of
   `latest`, reference `ghcr.io/alountk/bloodbowl_project:<YYYY.MM.DD>-<n>`
   in `docker-compose.yml`.
 - If a "fixed" bug still reproduces in production, first check the running
-  image is current: `docker compose pull && docker compose up -d` (a `web`-scoped
-  command skips the `migrate` service).
+  image is current (Dokploy **Deploy** pulls `latest`) and that `migrate`
+  ran for this rollout (a `web`-scoped command skips it).
