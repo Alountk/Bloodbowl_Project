@@ -178,6 +178,14 @@ describe("DieD6 — tamaño, interacción y accesibilidad", () => {
     expect(onRoll).toHaveBeenCalledTimes(1);
   });
 
+  // T34: los call sites fijan nombres exactos («Tirar 1D6») — pin de accesibilidad preservado.
+  it("rollLabel pone el texto EXACTO del botón de tirar", () => {
+    const onRoll = vi.fn();
+    render(<DieD6 value={null} onRoll={onRoll} rollLabel="Tirar 1D6" />);
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6" }));
+    expect(onRoll).toHaveBeenCalledTimes(1);
+  });
+
   it("el botón queda deshabilitado mientras rolling", () => {
     render(<DieD6 value={1} rolling onRoll={() => {}} />);
     const btn = must(screen.getByRole("button", { name: "Tirar" }) as HTMLButtonElement | null);

@@ -331,3 +331,15 @@ describe("U12 · L32 — manual or automatic 2D6, per-coach duel, optional skip"
     ).toBeNull();
   });
 });
+
+describe("ActaKickoffGate — T34 · migración del dado del duelo a DieD6", () => {
+  // WHY (T34, L121): the duel dice (one 1D6 per coach) migrate to the shared
+  // DieD6 (highlight default "none") keeping their pinned button names via
+  // the component's rollLabel prop.
+
+  it("los dos dados 1D6 del duelo se renderizan con el componente DieD6 (TÚ y RIVAL)", () => {
+    gate({ d1: 1, d2: 5, followUp: { home: null, away: null } });
+    expect(screen.getByRole("img", { name: /Dado 1D6 · TÚ/ })).toBeTruthy();
+    expect(screen.getByRole("img", { name: /Dado 1D6 · RIVAL/ })).toBeTruthy();
+  });
+});

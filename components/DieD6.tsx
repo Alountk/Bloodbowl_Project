@@ -48,6 +48,9 @@ export interface DieD6Props {
   label?: string;
   /** Spanish result text; defaults to «Resultado: n». */
   resultText?: (n: number) => string;
+  /** Spanish roll-button label; defaults to «Tirar». T34: migrated call sites
+   *  pin exact button names («Tirar 1D6»…) — this text renders verbatim. */
+  rollLabel?: string;
 }
 
 /** Jico skewed landing (approved v3): never face-on. */
@@ -112,6 +115,7 @@ export function DieD6({
   size = 120,
   label = "Dado 1D6",
   resultText = (n) => `Resultado: ${n}`,
+  rollLabel = "Tirar",
 }: DieD6Props) {
   const [roll, setRoll] = useState<RollState>(() => ({
     prev: value,
@@ -202,7 +206,7 @@ export function DieD6({
       </p>
       {onRoll && (
         <button type="button" className={styles.btn} onClick={onRoll} disabled={rolling}>
-          Tirar
+          {rollLabel}
         </button>
       )}
     </div>

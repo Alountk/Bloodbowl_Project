@@ -1085,3 +1085,61 @@ describe("ActaPreMatchSection — T28 · the granted blessings on the pre-match 
     ).not.toContain("Plegarias");
   });
 });
+
+describe("ActaPreMatchWizard — T34 · migración del dado a los componentes DieD6/DieD16", () => {
+  // WHY (T34, L121): the die FACE visuals migrate to the shared controlled
+  // components (PR #423) with highlight defaulting to "none". Per-site pins:
+  // the component must render with the RIGHT sides (1D6 -> DieD6, 1D16 ->
+  // DieD16). The Los Hinchas 1D3 glyph is deliberately NOT migrated (a DieD6
+  // would show 6 pips for a 1D3 result — out of coverage, kept as-is).
+
+  it("el paso El Clima muestra la tirada 1D6 con el componente DieD6", () => {
+    const snapshot = emptySnapshot();
+    snapshot.fans.home = { base: 4, dice: 1, total: 5 };
+    renderWizard({ snapshot });
+    expect(screen.getByRole("img", { name: "Dado 1D6" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tirar 1D6" })).toBeTruthy();
+  });
+
+  it("el paso Equipo pateador muestra la tirada 1D6 con el componente DieD6", () => {
+    renderWizard({ snapshot: readySnapshot() });
+    expect(screen.getByRole("img", { name: "Dado 1D6" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tirar 1D6" })).toBeTruthy();
+  });
+
+  it("el resultado ACEPTADO de una plegaria se muestra con el componente DieD16", () => {
+    renderWizard({ snapshot: prayersSnapshot(1) });
+    const card = within(step(4, "Plegarias a Nuffle")).getByRole("group", {
+      name: `Plegaria 1 de 1 · ${HOME}`,
+    });
+    fireEvent.change(within(card).getByRole("spinbutton"), {
+      target: { value: "8" },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Aceptar" }));
+    expect(within(card).getByRole("img", { name: /Dado 1D16/ })).toBeTruthy();
+    // The prayer step keeps its manual contract: NO die roll button here.
+    expect(screen.queryByRole("button", { name: "Tirar 1D16" })).toBeNull();
+  });
+
+  it("TRIANGULA · el paso Los Hinchas (1D3) conserva el glyph plano — fuera de cobertura", () => {
+    // WHY (T34 boundary): DieD6 shows 6 pips — a 1D3 result on that cube
+    // would lie about the roll. The 1D3 site is deliberately NOT migrated.
+    renderWizard();
+    expect(screen.getByTestId("die-glyph")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Dado 1D6" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Tirar 1D3" })).toBeTruthy();
+  });
+
+  it("TRIANGULA · tras registrar en un sitio migrado NO queda dispara de re-tirada (lock S7)", () => {
+    // WHY (T34 contract): on migrated sites the DieD6 trigger is withheld
+    // once recorded (the component renders its button only with onRoll) —
+    // «una vez tirado los dados, ya no se puede volver a tirar» (S7.6).
+    const snapshot = emptySnapshot();
+    snapshot.fans.home = { base: 4, dice: 1, total: 5 };
+    const { onCommit } = renderWizard({ snapshot });
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D6" }));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Tirar 1D6" })).toBeNull();
+    expect(step(2, "El Clima").textContent).toMatch(/Registrado/);
+  });
+});

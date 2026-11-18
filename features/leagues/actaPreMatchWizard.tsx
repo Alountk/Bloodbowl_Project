@@ -1,5 +1,7 @@
 import { Fragment, useState, type ReactNode } from "react";
 
+import { DieD6 } from "@/components/DieD6";
+import { DieD16 } from "@/components/DieD16";
 import { rollD3, rollD6, rollD16 } from "@/lib/random";
 import {
   displayNameOf,
@@ -233,11 +235,18 @@ function WeatherTable({ sum }: { sum: number | null }) {
 
 /** Editorial die card: face + dice BUTTON (roll records directly) with the
  * roll animation — LOCKED once recorded: a finished roll never re-rolls (the
- * only re-roll path is the kick tie's «Repetir tirada»). */
+ * only re-roll path is the kick tie's «Repetir tirada»).
+ *
+ * T34 (L121): the die FACE visual migrates to the shared controlled
+ * components (PR #423), highlight at its default "none". `sides` decides:
+ * 6 renders the shared DieD6 (its own roll button carries the pinned
+ * «Tirar 1D6» name via rollLabel); 3 KEEPS the flat glyph — a DieD6 would
+ * show 6 pips for a 1D3 result (out of component coverage, kept as-is). */
 function DieCard({
   teamLabel,
   value,
   dieLabel,
+  sides,
   recorded,
   onRoll,
   totalLine,
@@ -246,6 +255,8 @@ function DieCard({
   teamLabel: string;
   value: number | null;
   dieLabel: string;
+  /** Roll shape: 3 = flat glyph (kept), 6 = shared DieD6 (T34). */
+  sides: 3 | 6;
   recorded: boolean;
   onRoll: () => void;
   totalLine: ReactNode;
@@ -259,27 +270,49 @@ function DieCard({
         {teamLabel}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <span
-          key={`glyph-${rollSeq}`}
-          aria-hidden="true"
-          data-testid="die-glyph"
-          className={`flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy${
-            rolled ? " dice-roll" : ""
-          }`}
-        >
-          {value ?? "–"}
-        </span>
-        <button
-          type="button"
-          className={BTN}
-          disabled={recorded}
-          onClick={() => {
-            setRollSeq((seq) => seq + 1);
-            onRoll();
-          }}
-        >
-          {dieLabel}
-        </button>
+        {sides === 6 ? (
+          /* Controlled wiring (T34): the RNG/state stay here and feed the die
+           * `value`; the roll trigger is withheld once recorded so the S7 lock
+           * («una vez tirado los dados, ya no se puede volver a tirar») holds
+           * — no dead re-roll button is offered. */
+          <DieD6
+            value={value}
+            size={40}
+            rollLabel={dieLabel}
+            onRoll={
+              recorded
+                ? undefined
+                : () => {
+                    setRollSeq((seq) => seq + 1);
+                    onRoll();
+                  }
+            }
+          />
+        ) : (
+          <>
+            <span
+              key={`glyph-${rollSeq}`}
+              aria-hidden="true"
+              data-testid="die-glyph"
+              className={`flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy${
+                rolled ? " dice-roll" : ""
+              }`}
+            >
+              {value ?? "–"}
+            </span>
+            <button
+              type="button"
+              className={BTN}
+              disabled={recorded}
+              onClick={() => {
+                setRollSeq((seq) => seq + 1);
+                onRoll();
+              }}
+            >
+              {dieLabel}
+            </button>
+          </>
+        )}
         <span
           key={`status-${rollSeq}`}
           role="status"
@@ -353,13 +386,10 @@ function PrayerManualCard({
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         {accepted ? (
-          <span
-            aria-hidden="true"
-            data-testid="die-glyph"
-            className="flex h-10 w-10 items-center justify-center border border-navy/30 bg-white font-display text-lg font-bold text-navy"
-          >
-            {value}
-          </span>
+          /* T34 (L121): the recorded 1D16 face is the shared DieD16,
+           * display-only — the manual entry above already committed the roll
+           * (no die button rides this step, per T29/L95). */
+          <DieD16 value={value} size={40} label={`Dado 1D16 · ${label}`} />
         ) : (
           <>
             <input
@@ -932,6 +962,7 @@ export function ActaPreMatchWizard({
               teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
               value={shownFan}
               dieLabel="Tirar 1D3"
+              sides={3}
               recorded={recordedFan}
               onRoll={() => {
                 const value = dice.d3();
@@ -966,6 +997,7 @@ export function ActaPreMatchWizard({
                 teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
                 value={shownWeather}
                 dieLabel="Tirar 1D6"
+                sides={6}
                 recorded={recordedWeather}
                 onRoll={() => {
                   const value = dice.d6();
@@ -1297,6 +1329,7 @@ export function ActaPreMatchWizard({
               teamLabel={`Tu tirada · ${nameOf(viewerSide)}`}
               value={shownKick}
               dieLabel="Tirar 1D6"
+              sides={6}
               recorded={recordedKick}
               onRoll={() => {
                 const value = dice.d6();
