@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F · Player badge — filas por lado</title>
+<style>
+  :root { --navy:#12225a; --red:#d11938; --bg:#f8fafc; --ink:#1a2340; --muted:#5a6478; --line:#d8deea; --panel:#ffffff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { width:390px; margin:0 auto; padding:16px 12px 32px; }
+  h1 { font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 4px; }
+  .lede { font-size:13px; color:var(--muted); margin:0 0 18px; }
+  .turn-head { display:flex; align-items:center; gap:8px; margin:0 2px 10px; }
+  .turn-head h2 { font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--navy); margin:0; }
+  .turn-head .badge { font-size:10px; letter-spacing:.08em; text-transform:uppercase; background:#e6ebf5; color:var(--navy); border-radius:3px; padding:2px 6px; }
+
+  /* Fila con badge de JUGADOR protagonista + alineación por lado (sin espejar la estructura) */
+  .row { position:relative; margin:0 0 22px; padding-top:26px; width:94%; }
+  .row.home { margin-right:auto; }
+  .row.away { margin-left:auto; }
+  .tab { position:absolute; top:0; height:26px; display:flex; align-items:center; padding:0 12px;
+    font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#fff; background:var(--navy); border-radius:6px 6px 0 0; }
+  .row.home .tab { left:0; }
+  .row.away .tab { right:0; background:var(--red); }
+  .body { background:var(--panel); border:1px solid var(--line); border-radius:0 8px 8px 8px; padding:12px 14px 14px; display:flex; gap:10px; align-items:flex-start; }
+  .row.away .body { flex-direction:row-reverse; border-radius:8px 0 8px 8px; }
+  .player {
+    flex:0 0 44px; height:44px; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#fff; font-weight:700; line-height:1.05;
+  }
+  .row.home .player { background:var(--navy); }
+  .row.away .player { background:var(--red); }
+  .player .num { font-size:15px; }
+  .player .pos { font-size:8px; letter-spacing:.06em; opacity:.85; }
+  .content { flex:1; min-width:0; }
+  .row.away .content { text-align:right; }
+  .desc { font-size:15px; margin:0; }
+  .rolls { margin:6px 0 0; font-size:13px; color:var(--muted); }
+  .rolls code { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  .author { margin:8px 0 0; font-size:11px; color:var(--muted); }
+  .spp { position:absolute; bottom:-10px; width:max-content; background:#e9edf6; color:var(--navy); border:1px solid var(--line);
+    border-radius:10px; padding:3px 10px; font-size:11px; font-weight:700; }
+  .row.home .spp { right:12px; }
+  .row.away .spp { left:12px; }
+  .spp b { color:var(--red); }
+  :focus-visible { outline:3px solid var(--navy); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>F · Player badge</h1>
+  <p class="lede">El protagonista manda: badge con dorsal y posición del JUGADOR que actúa, la fila se alinea a su lado (izq/der) y el mirroring es de contenido, no de estructura.</p>
+
+  <section aria-label="T3">
+    <div class="turn-head"><h2>T3 · Águilas de Khemri</h2><span class="badge">En juego</span></div>
+
+    <article class="row home">
+      <div class="tab">Casualty</div>
+      <div class="body">
+        <div class="player"><span class="num">1</span><span class="pos">Khalid</span></div>
+        <div class="content">
+          <p class="desc"><strong>Khalid</strong> marca herida a <strong>Grishnak</strong></p>
+          <p class="rolls">Bloqueo <code>2D6 FUE</code> · Derribo · Armadura <code>2D6 = 9</code> vs Ar 8 · <strong>rota</strong></p>
+          <p class="author">Registrado por Águilas de Khemri</p>
+        </div>
+      </div>
+      <div class="spp"><b>+2 SPP</b> · Khalid</div>
+    </article>
+
+    <article class="row away">
+      <div class="tab">Lo que informa quien la recibe</div>
+      <div class="body">
+        <div class="player"><span class="num">1</span><span class="pos">Grishnak</span></div>
+        <div class="content">
+          <p class="desc"><strong>Grishnak</strong> · Tirada de herida <code>1D16 = 12</code></p>
+          <p class="rolls">Consecuencias informadas por el contrincante</p>
+          <p class="author">Registrado por Colmillos del Caos</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="row away">
+      <div class="tab">Derribo</div>
+      <div class="body">
+        <div class="player"><span class="num">5</span><span class="pos">Ugluk</span></div>
+        <div class="content">
+          <p class="desc"><strong>Ugluk</strong> derriba a <strong>Neb</strong></p>
+          <p class="rolls">Bloqueo <code>2D6 FUE</code> · Armadura <code>2D6 = 6</code> vs Ar 9 · aguanta</p>
+          <p class="author">Registrado por Colmillos del Caos</p>
+        </div>
+      </div>
+    </article>
+  </section>
+</main>
+</body>
+</html>

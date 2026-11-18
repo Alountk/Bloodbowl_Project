@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "chosen": "04-mirror-chat.html",
+  "handoffs": {
+    "01-folder-tabs.html": {
+      "status": "implemented",
+      "queued": false,
+      "sentAt": "2026-11-16T08:49:58.205Z",
+      "startedAt": "2026-11-16T08:50:59.401Z",
+      "implementedAt": "2026-11-16T09:53:54.808Z",
+      "feature": "odd/tasks/demo-partido-bb2025.md",
+      "note": "Diseño A implementado en las filas del acta — PR #410, suite verde; pendiente de tu prueba en /demo/partido",
+      "previewUrl": "http://localhost:3000/demo/partido"
+    },
+    "04-mirror-chat.html": {
+      "status": "implemented",
+      "queued": false,
+      "sentAt": "2026-11-16T10:21:04.318Z",
+      "startedAt": "2026-11-16T10:21:41.247Z",
+      "implementedAt": "2026-11-16T10:57:05.206Z",
+      "feature": "odd/tasks/demo-partido-bb2025.md",
+      "note": "Mirror chat + fix del flash implementados — PR #411, suite verde; pendiente de tu prueba",
+      "previewUrl": "http://localhost:3000/demo/partido"
+    }
+  }
+}

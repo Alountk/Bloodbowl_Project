@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D16 · 5 resaltados del resultado</title>
+<style>
+  :root { --ink:#1a2340; --muted:#5a6478; --line:#d8deea; --bg:#f8fafc; --red:#d11938; --blue:#2b5bd7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { width:390px; margin:0 auto; padding:16px 12px 32px; }
+  h1 { font-size:13px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 4px; }
+  .lede { font-size:13px; color:var(--muted); margin:0 0 14px; }
+  section { background:#fff; border:1px solid var(--line); padding:14px; margin-bottom:14px; }
+  h2 { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--blue); margin:0 0 10px; }
+
+  /* ── variantes de resaltado ── */
+  .pick { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .pick label { font-size:11.5px; font-weight:600; padding:6px 9px; border:1px solid var(--line); cursor:pointer; background:#fff; color:var(--muted); }
+  .pick input { display:none; }
+  .pick input:checked + span { }
+  .pick label:has(input:checked) { border-color:var(--blue); color:var(--blue); background:#eef3fd; }
+  .btn { font:600 13px/1 inherit; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:#3f6fd8; border:none; padding:10px 18px; cursor:pointer; }
+  .btn:focus-visible { outline:3px solid var(--blue); outline-offset:2px; }
+
+  .stage { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .scene { width:190px; height:190px; perspective:760px; }
+  .poly { position:absolute; left:50%; top:50%; width:0; height:0; transform-style:preserve-3d;
+          transform:translate(-50%,-50%) rotateX(-14deg) rotateY(20deg); transition:transform .9s cubic-bezier(.2,.75,.3,1); }
+  .poly.tumbling { animation:wobble .9s ease; }
+  @keyframes wobble { 0%,100%{rotate:0deg} 30%{rotate:-11deg} 65%{rotate:9deg} }
+  .fc { position:absolute; width:46px; height:78px; left:-23px; top:-78px; transform-origin:50% 100%; --flip:1;
+        background:linear-gradient(180deg, rgba(130,172,252,.5), rgba(64,112,230,.42));
+        border:1px solid rgba(255,255,255,.65); clip-path:polygon(50% 0, 100% 100%, 0 100%);
+        display:flex; justify-content:center; transition:opacity .4s, background .4s, box-shadow .4s; }
+  .fc span { margin-top:44px; font-size:12px; font-weight:700; color:rgba(255,255,255,.95); text-shadow:0 1px 2px rgba(30,60,140,.5); transition:color .3s, text-shadow .3s, transform .3s; transform:scaleY(var(--flip)); }
+  .t0{transform:rotateY(0deg) translateZ(55px) rotateX(45deg)} .t1{transform:rotateY(45deg) translateZ(55px) rotateX(45deg)}
+  .t2{transform:rotateY(90deg) translateZ(55px) rotateX(45deg)} .t3{transform:rotateY(135deg) translateZ(55px) rotateX(45deg)}
+  .t4{transform:rotateY(180deg) translateZ(55px) rotateX(45deg)} .t5{transform:rotateY(225deg) translateZ(55px) rotateX(45deg)}
+  .t6{transform:rotateY(270deg) translateZ(55px) rotateX(45deg)} .t7{transform:rotateY(315deg) translateZ(55px) rotateX(45deg)}
+  .b0 span,.b1 span,.b2 span,.b3 span,.b4 span,.b5 span,.b6 span,.b7 span{transform:scaleY(var(--flip)); margin-top:30px;}
+  .poly .b0,.poly .b1,.poly .b2,.poly .b3,.poly .b4,.poly .b5,.poly .b6,.poly .b7 { --flip:-1; }
+  .b0{transform:rotateY(0deg) translateZ(55px) rotateX(-45deg) scaleY(-1)} .b1{transform:rotateY(45deg) translateZ(55px) rotateX(-45deg) scaleY(-1)}
+  .b2{transform:rotateY(90deg) translateZ(55px) rotateX(-45deg) scaleY(-1)} .b3{transform:rotateY(135deg) translateZ(55px) rotateX(-45deg) scaleY(-1)}
+  .b4{transform:rotateY(180deg) translateZ(55px) rotateX(-45deg) scaleY(-1)} .b5{transform:rotateY(225deg) translateZ(55px) rotateX(-45deg) scaleY(-1)}
+  .b6{transform:rotateY(270deg) translateZ(55px) rotateX(-45deg) scaleY(-1)} .b7{transform:rotateY(315deg) translateZ(55px) rotateX(-45deg) scaleY(-1)}
+
+  .result { font-size:13px; color:var(--muted); min-height:18px; }
+  .result b { color:var(--blue); font-size:15px; }
+
+  /* A · número rojo con halo + resto atenuado */
+  .mode-a .fc:not(.on) { opacity:.4; }
+  .mode-a .fc.on span { color:var(--red); text-shadow:0 0 9px rgba(209,25,56,.95), 0 0 22px rgba(209,25,56,.5); /* sin escala: el crecimiento sacaba el número de las aristas */ }
+  /* B · pulso de la capa de la cara */
+  .mode-b .fc.on { animation:facepulse .42s ease 3; }
+  @keyframes facepulse { 0%,100%{background:linear-gradient(180deg, rgba(130,172,252,.5), rgba(64,112,230,.42))}
+                         50%{background:linear-gradient(180deg, rgba(255,255,255,.95), rgba(180,210,255,.9))} }
+  /* C · badge flotante con pop */
+  #badge { position:absolute; right:-6px; top:6px; background:var(--red); color:#fff; border-radius:10px;
+           padding:6px 11px; font-weight:800; font-size:24px; line-height:1; opacity:0; transform:scale(.3) rotate(-8deg);
+           transition:opacity .28s, transform .34s cubic-bezier(.2,1.6,.4,1); box-shadow:0 6px 16px rgba(209,25,56,.35); }
+  #badge small { display:block; font-size:8.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; opacity:.85; }
+  .mode-c #badge.on { opacity:1; transform:scale(1) rotate(-6deg); }
+  /* D · spotlight: solo la cara ganadora iluminada */
+  .mode-d .fc:not(.on) { opacity:.35; }
+  .mode-d .fc.on { background:linear-gradient(180deg, rgba(160,200,255,.95), rgba(80,140,245,.85));
+                   box-shadow:0 0 18px 4px rgba(90,150,255,.75); }
+  .mode-d .fc.on span { color:#fff; text-shadow:0 0 6px rgba(255,255,255,.9); /* sin escala (misma razón que A) */ }
+  /* E · flash de la cara ganadora: el border lo recorta el clip-path del
+     triángulo, así que el destello va en el FONDO (rojo translúcido). */
+  .mode-e .fc.on { animation:edgeflash .3s steps(1) 4; }
+  @keyframes edgeflash { 0%,100%{background:linear-gradient(180deg, rgba(130,172,252,.5), rgba(64,112,230,.42))} 50%{background:linear-gradient(180deg, rgba(209,25,56,.85), rgba(140,18,45,.72))} }
+  .mode-e .fc.on span { color:#fff; /* sin escala: el flash lo hace el fondo */ }
+
+  @media (prefers-reduced-motion: reduce) {
+    .poly,.poly.tumbling { transition:none; animation:none; }
+    .mode-b .fc.on, .mode-e .fc.on { animation:none; }
+    .mode-a .fc.on span, .mode-d .fc.on span, .mode-e .fc.on span { }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>D16 · 5 resaltados del resultado</h1>
+  <p class="lede">Elige una sugerencia y tira — cada una resalta la cara ganadora a su manera. Especialmente para el D16, donde costaba saber cuál salió.</p>
+
+  <section>
+    <h2>Sugerencias</h2>
+    <div class="pick" id="pick">
+      <label><input type="radio" name="mode" value="a" checked><span>A · Rojo con halo</span></label>
+      <label><input type="radio" name="mode" value="b"><span>B · Pulso de capa</span></label>
+      <label><input type="radio" name="mode" value="c"><span>C · Badge flotante</span></label>
+      <label><input type="radio" name="mode" value="d"><span>D · Spotlight</span></label>
+      <label><input type="radio" name="mode" value="e"><span>E · Flash de borde</span></label>
+    </div>
+    <div class="stage mode-a" id="stage" style="position:relative">
+      <div class="scene" id="scene" aria-hidden="true"><div class="poly" id="poly">
+        <div class="fc t0"><span>1</span></div><div class="fc t1"><span>2</span></div>
+        <div class="fc t2"><span>3</span></div><div class="fc t3"><span>4</span></div>
+        <div class="fc t4"><span>5</span></div><div class="fc t5"><span>6</span></div>
+        <div class="fc t6"><span>7</span></div><div class="fc t7"><span>8</span></div>
+        <div class="fc b0"><span>9</span></div><div class="fc b1"><span>10</span></div>
+        <div class="fc b2"><span>11</span></div><div class="fc b3"><span>12</span></div>
+        <div class="fc b4"><span>13</span></div><div class="fc b5"><span>14</span></div>
+        <div class="fc b6"><span>15</span></div><div class="fc b7"><span>16</span></div>
+      </div></div>
+      <div id="badge"><small>Resultado</small>16</div>
+      <p class="result" id="res">Pulsa para tirar</p>
+      <button class="btn" id="roll">Tirar 1D16</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Qué hace cada una</h2>
+    <p style="font-size:12.5px; margin:0; color:#5a6478">
+      <b>A</b> · el número sale en rojo con halo y crece; las demás caras se atenúan.<br>
+      <b>B</b> · la capa de la cara ganadora parpadea 3 veces en blanco y se asienta.<br>
+      <b>C</b> · un badge «Resultado NN» hace pop junto al dado (el más evidente de lejos).<br>
+      <b>D</b> · spotlight: la cara ganadora iluminada, todo lo demás al 35%.<br>
+      <b>E</b> · el borde de la cara destella en rojo 4 veces con el número grande.
+    </p>
+  </section>
+</main>
+<script>
+  const faces = {};
+  for (let i = 0; i < 8; i++) { faces[i+1] = { x:-45, y:-i*45 }; faces[i+9] = { x:45, y:-i*45 }; }
+  const SKEW = { x:-8, y:12 };
+  let spinX = 0, spinY = 0;
+  const poly = document.getElementById('poly'), scene = document.getElementById('scene'),
+        badge = document.getElementById('badge'), res = document.getElementById('res');
+  const modes = () => document.querySelector('input[name=mode]:checked').value;
+  const stage = document.getElementById('stage');
+  document.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => {
+    // La clase de modo va en el STAGE (ancestro de la escena y del badge —
+    // antes vivía solo en la escena y el badge quedaba fuera del alcance).
+    stage.className = 'stage mode-' + r.value;
+  });
+  document.getElementById('roll').onclick = () => {
+    const v = 1 + Math.floor(Math.random()*16);
+    res.textContent = 'Tirando…';
+    scene.querySelectorAll('.fc.on').forEach(e => e.classList.remove('on'));
+    badge.classList.remove('on');
+    spinX += 360; spinY += 720;
+    poly.classList.remove('tumbling'); void poly.offsetWidth; poly.classList.add('tumbling');
+    poly.style.transform = 'translate(-50%,-50%) rotateX(' + (faces[v].x + spinX + SKEW.x) + 'deg) rotateY(' + (faces[v].y + spinY + SKEW.y) + 'deg)';
+    const done = (e) => {
+      if (e.propertyName !== 'transform') return;
+      poly.removeEventListener('transitionend', done);
+      const cls = v <= 8 ? '.t' + (v-1) : '.b' + (v-9);
+      const face = poly.querySelector(cls);
+      if (face) { void face.offsetWidth; face.classList.add('on'); }
+      badge.innerHTML = '<small>Resultado</small>' + v;
+      if (modes() === 'c') badge.classList.add('on');
+      res.innerHTML = 'Resultado: <b>' + v + '</b>';
+    };
+    poly.addEventListener('transitionend', done);
+  };
+</script>
+</body>
+</html>
