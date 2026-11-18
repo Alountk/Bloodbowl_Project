@@ -1213,3 +1213,67 @@ describe("ActaPreMatchWizard — T34/T35 · migración del dado a los componente
     expect(step(2, "El Clima").textContent).toMatch(/Registrado/);
   });
 });
+
+describe("ActaPreMatchWizard — T36 · el dado revelado tira AL MONTAR y a tamaño grande (L126)", () => {
+  // WHY (T36, user L126 verbatim): «cuando hacemos el tirar automatico sale
+  // de golpe el dado con el resultado, lo suoyo seria tirar automatico, que
+  // saliera el dado y hiciera la animacion mostrando el resultado. tambien
+  // el dado se ve muy pequeño» — ANY accept («Tirar automático» or manual
+  // «Aceptar») mounts the accepted DieD16 with animateOnMount so the die
+  // APPEARS and PLAYS the roll, and the die is drawn big (default 120).
+
+  const cardOf = (n: number, total = 1) =>
+    within(step(4, "Plegarias a Nuffle")).getByRole("group", {
+      name: `Plegaria ${n} de ${total} · ${HOME}`,
+    });
+  const liveOf = (el: HTMLElement) =>
+    must(el.querySelector<HTMLElement>('[aria-live="polite"]'));
+
+  it("«Tirar automático» monta el dado EN VUELO y juega la tirada hasta el resultado", () => {
+    const { dice } = renderWizard({ snapshot: prayersSnapshot(1) });
+    dice.d16.mockReturnValue(7);
+    fireEvent.click(
+      within(cardOf(1)).getByRole("button", { name: "Tirar automático" }),
+    );
+    const card = cardOf(1);
+    const cube = must(card.querySelector<HTMLElement>(".poly"));
+    // Mount roll in flight: entry-animation marker + wobble + «Tirando…».
+    expect(cube.classList.contains("die-roll-in")).toBe(true);
+    expect(cube.classList.contains("tumbling-a")).toBe(true);
+    expect(liveOf(card).textContent).toBe("Tirando…");
+    landRoll(cube);
+    expect(liveOf(card).textContent).toBe("Resultado: 7");
+  });
+
+  it("«Aceptar» manual también monta el dado EN VUELO — cualquier aceptación juega la animación", () => {
+    renderWizard({ snapshot: prayersSnapshot(1) });
+    const card = cardOf(1);
+    fireEvent.change(within(card).getByRole("spinbutton"), {
+      target: { value: "13" },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Aceptar" }));
+    const cube = must(card.querySelector<HTMLElement>(".poly"));
+    expect(cube.classList.contains("die-roll-in")).toBe(true);
+    expect(cube.classList.contains("tumbling-a")).toBe(true);
+    expect(liveOf(card).textContent).toBe("Tirando…");
+    landRoll(cube);
+    expect(liveOf(card).textContent).toBe("Resultado: 13");
+  });
+
+  it("el dado revelado se dibuja GRANDE: size 120 (escala 1, caja 200px) que cabe en la tarjeta de 390px", () => {
+    // WHY (T36 size decision): 120 = the component default (3× the old 40).
+    // The d16 scene box is size × 200/120 = 200px at 120, and the accepted
+    // row (box 200 + gap 12 + «Registrado» ~95px ≈ 307px) fits the card's
+    // content width at 390px (390 − px-4·2 − borders ≈ 354px) with no wrap.
+    renderWizard({ snapshot: prayersSnapshot(1) });
+    const card = cardOf(1);
+    fireEvent.change(within(card).getByRole("spinbutton"), {
+      target: { value: "8" },
+    });
+    fireEvent.click(within(card).getByRole("button", { name: "Aceptar" }));
+    const scene = must(card.querySelector<HTMLElement>(".scene"));
+    expect(scene.style.transform).toContain("scale(1)");
+    expect(parseFloat(scene.style.width)).toBeCloseTo(200);
+    expect(parseFloat(scene.style.height)).toBeCloseTo(200);
+  });
+});

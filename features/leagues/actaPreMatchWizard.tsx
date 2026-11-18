@@ -361,10 +361,18 @@ function PrayerManualCard({
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         {accepted ? (
-          /* T34 (L121): the recorded 1D16 face is the shared DieD16,
-           * display-only — the manual entry above already committed the roll
-           * (no die button rides this step, per T29/L95). */
-          <DieD16 value={value} size={40} label={`Dado 1D16 · ${label}`} />
+          /* T34 (L121) + T36 (L126): the recorded 1D16 face is the shared
+           * DieD16 — and since T29's manual step MOUNTS it right when the
+           * roll is accepted, it carries `animateOnMount` so «que saliera el
+           * dado y hiciera la animacion» (ANY accept path — «Tirar
+           * automático» or manual «Aceptar» — plays the roll). Size stays at
+           * the 120 default (3× the old 40): at 390px the size-tracked scene
+           * box (200px) + gap + status chip fit the card on one line. */
+          <DieD16
+            value={value}
+            animateOnMount
+            label={`Dado 1D16 · ${label}`}
+          />
         ) : (
           <>
             <input

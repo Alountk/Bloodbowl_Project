@@ -29,6 +29,15 @@
  * roll flips `tumbling-a`/`tumbling-b`, and switching animation names restarts
  * the keyframe while the independent `rotate` property stays composable with
  * the landing `transform`.
+ *
+ * T36 (L126): `animateOnMount` plays the roll when the die MOUNTS already
+ * holding a value (the prayer reveal step). A CSS transition cannot run on
+ * first paint, so the mount flight is an ENTRY ANIMATION (`.die-roll-in`,
+ * whose keyframes ride the component-rendered stylesheet below and read the
+ * `--die-from` before-pose): same 0.9s spin + wobble, settling via
+ * animationend into the same reveal gate — transitionend keeps settling
+ * value changes. Under prefers-reduced-motion the entry animation is off and
+ * the result is revealed instantly (the RM path).
  */
 import { useState } from "react";
 import styles from "./DieD16.module.css";
@@ -53,6 +62,10 @@ export interface DieD16Props {
   /** Spanish roll-button label; defaults to «Tirar». T34: migrated call sites
    *  pin exact button names («Tirar 1D6»…) — this text renders verbatim. */
   rollLabel?: string;
+  /** T36 (L126): play the roll when the die mounts already holding a value
+   *  («que saliera el dado y hiciera la animacion»). Default false: a die
+   *  that mounts with a value shows it revealed (hydration cases). */
+  animateOnMount?: boolean;
 }
 
 /** Scaled jico skew (L112 judgment call kept: -8/12 vs the d6's -16/24). */
@@ -61,6 +74,16 @@ const SKEW = { x: -8, y: 12 };
 const SPIN = { x: 360, y: 720 };
 const FLIGHT_TEXT = "Tirando…";
 const IDLE_TEXT = "Pulsa para tirar";
+
+/** T36 · the mount-roll entry stylesheet, rendered by the component (the
+ * module CSS owns the value-change transition; this owns the FIRST-PAINT
+ * flight). `die-roll-in` animates `transform` from `--die-from` (the landing
+ * pose WITHOUT the spin) to the inline landing pose = the same cumulative
+ * spin a value change would play; `die-wobble` duplicates the wobble
+ * keyframes under a literal name so the entry animation can carry both
+ * motions (the `.die-roll-in` `animation` shorthand supersedes the
+ * `tumbling-*` one during the flight). Reduced motion: no animation. */
+const ROLL_IN_STYLE = `@keyframes die-roll-in{from{transform:var(--die-from)}}@keyframes die-wobble{0%,100%{rotate:0deg}30%{rotate:-11deg}65%{rotate:9deg}}.die-roll-in{animation:die-roll-in .9s cubic-bezier(.2,.75,.3,1),die-wobble .9s cubic-bezier(.2,.75,.3,1)}@media (prefers-reduced-motion:reduce){.die-roll-in{animation:none}}`;
 
 function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -98,6 +121,9 @@ interface RollState {
   spinY: number;
   /** Result revealed (transitionend / reduced-motion / initial value). */
   revealed: number | null;
+  /** The animateOnMount roll: settles via its entry animation (animationend)
+   *  — cleared by the next value change. */
+  mountRoll: boolean;
 }
 
 export function DieD16({
@@ -109,14 +135,22 @@ export function DieD16({
   label = "Dado 1D16",
   resultText = (n) => `Resultado: ${n}`,
   rollLabel = "Tirar",
+  animateOnMount = false,
 }: DieD16Props) {
-  const [roll, setRoll] = useState<RollState>(() => ({
-    prev: value,
-    seq: 0,
-    spinX: 0,
-    spinY: 0,
-    revealed: value,
-  }));
+  const [roll, setRoll] = useState<RollState>(() => {
+    // T36: animateOnMount + a value on FIRST render = the roll runs at mount
+    // (the exact sequence of a value change: spin + wobble + reveal at the
+    // end). Reduced motion reuses the instant-reveal path.
+    const plays = animateOnMount && value != null;
+    return {
+      prev: value,
+      seq: plays ? 1 : 0,
+      spinX: plays ? SPIN.x : 0,
+      spinY: plays ? SPIN.y : 0,
+      revealed: plays ? (prefersReducedMotion() ? value : null) : value,
+      mountRoll: plays,
+    };
+  });
 
   // Adjust state when the controlled `value` changes: one roll per change.
   if (roll.prev !== value) {
@@ -129,6 +163,7 @@ export function DieD16({
       // Reduced motion lands instantly and reveals: with no transition there
       // is no transitionend to wait for (L112).
       revealed: instant ? value : null,
+      mountRoll: false,
     });
   }
 
@@ -136,6 +171,16 @@ export function DieD16({
     // Only the landing `transform` settles the result (face effects also
     // transition on bubbling events).
     if (e.target !== e.currentTarget || e.propertyName !== "transform") return;
+    if (value != null) {
+      setRoll((r) => (r.revealed === value ? r : { ...r, revealed: value }));
+    }
+  };
+
+  const handleAnimationEnd = (e: React.AnimationEvent<HTMLDivElement>) => {
+    // T36: the mount roll SETTLES through its entry animation (first paint
+    // has no transition to end). Any other animation (the wobble keyframes
+    // on a normal roll) never settles a result.
+    if (e.target !== e.currentTarget || !roll.mountRoll) return;
     if (value != null) {
       setRoll((r) => (r.revealed === value ? r : { ...r, revealed: value }));
     }
@@ -150,6 +195,13 @@ export function DieD16({
       : `translate(-50%,-50%) rotateX(${(top ? -45 : 45) + roll.spinX + SKEW.x}deg) rotateY(${
           -i * 45 + roll.spinY + SKEW.y
         }deg)`;
+  // T36: the entry-animation before-pose = the landing pose WITHOUT the spin.
+  const fromTransform = `translate(-50%,-50%) rotateX(${
+    (top ? -45 : 45) + SKEW.x
+  }deg) rotateY(${-i * 45 + SKEW.y}deg)`;
+  const cubeStyle: React.CSSProperties = roll.mountRoll
+    ? ({ transform, "--die-from": fromTransform } as React.CSSProperties)
+    : { transform };
 
   const text =
     rolling || (value != null && roll.revealed == null)
@@ -161,19 +213,26 @@ export function DieD16({
 
   return (
     <div className={cx(styles.wrapper, highlight !== "none" && styles[`mode-${highlight}`])}>
+      {roll.mountRoll ? <style>{ROLL_IN_STYLE}</style> : null}
       <div
         className={styles.scene}
-        style={{ transform: `scale(${size / 120})` }}
+        style={{
+          width: (size * 200) / 120,
+          height: (size * 200) / 120,
+          transform: `scale(${size / 120})`,
+        }}
         role="img"
         aria-label={label}
       >
         <div
           className={cx(
             styles.poly,
+            roll.mountRoll && "die-roll-in",
             roll.seq > 0 && (roll.seq % 2 ? styles["tumbling-a"] : styles["tumbling-b"]),
           )}
-          style={{ transform }}
+          style={cubeStyle}
           onTransitionEnd={handleTransitionEnd}
+          onAnimationEnd={handleAnimationEnd}
         >
           {Array.from({ length: 16 }, (_, idx) => {
             const face = idx + 1;

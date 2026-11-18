@@ -232,3 +232,82 @@ describe("DieD16 — tamaño, interacción y accesibilidad", () => {
     expect(cubeOf(container).classList.contains("tumbling-b")).toBe(true);
   });
 });
+
+describe("DieD16 — animateOnMount (T36, L126)", () => {
+  // WHY (T36, user L126 verbatim): «que saliera el dado y hiciera la
+  // animacion mostrando el resultado» — a die that MOUNTS already holding a
+  // value (the prayer reveal step after «Aceptar») must PLAY the roll, not
+  // appear with the result. A CSS transition cannot run on first paint, so
+  // the mount flight is an ENTRY ANIMATION (`.die-roll-in`, rendered from the
+  // component with its `--die-from` before-pose) and it settles via
+  // animationend — transitionend stays the settle signal for value changes.
+
+  it("animateOnMount con valor al montar LANZA LA TIRADA: wobble + pose con spin y el resultado al asentar", () => {
+    const { container } = render(<DieD16 value={5} animateOnMount />);
+    const cube = cubeOf(container);
+    // Roll in flight: the wobble class + the landing pose WITH the
+    // cumulative spin (cara 5 {-45,-180} + {360,720} + SKEW {-8,12}).
+    expect(cube.classList.contains("tumbling-a")).toBe(true);
+    expect(cube.style.transform).toContain("rotateX(307deg)");
+    expect(cube.style.transform).toContain("rotateY(552deg)");
+    // The entry animation contract: marker class + its before-pose var + the
+    // keyframes stylesheet — this is what actually MOVES in a real browser.
+    expect(cube.classList.contains("die-roll-in")).toBe(true);
+    expect(cube.getAttribute("style")).toContain("--die-from");
+    expect(cube.getAttribute("style")).toContain("rotateX(-53deg)");
+    expect(container.querySelector("style")?.textContent).toContain(
+      "die-roll-in",
+    );
+    expect(liveOf(container).textContent).toBe("Tirando…");
+    // Settled (jsdom: synthetic transitionend — the same reveal gate the
+    // component keeps for value changes).
+    landRoll(cube);
+    expect(liveOf(container).textContent).toBe("Resultado: 5");
+  });
+
+  it("sin animateOnMount NO hay tirada al montar: el dado monta ya revelado (pin)", () => {
+    const { container } = render(<DieD16 value={5} animateOnMount={false} />);
+    const cube = cubeOf(container);
+    expect(cube.className).not.toMatch(/tumbling|die-roll-in/);
+    expect(cube.style.transform).toContain("rotateX(-53deg)");
+    expect(liveOf(container).textContent).toBe("Resultado: 5");
+  });
+
+  it("animateOnMount con prefers-reduced-motion revela al instante (sin esperar el asentado)", () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+    } as MediaQueryList);
+    const { container } = render(<DieD16 value={5} animateOnMount />);
+    expect(liveOf(container).textContent).toBe("Resultado: 5");
+  });
+
+  it("TRIANGULATE · tras el montaje rige el cambio de valor normal (spin acumulado, reveal al asentar)", () => {
+    const { container, rerender } = render(<DieD16 value={5} animateOnMount />);
+    rerender(<DieD16 value={12} animateOnMount />);
+    const cube = cubeOf(container);
+    // Roll 2: spin acumulado {720, 1440}; el vuelo de montaje ya pasó.
+    expect(cube.classList.contains("die-roll-in")).toBe(false);
+    expect(cube.classList.contains("tumbling-b")).toBe(true);
+    expect(cube.style.transform).toContain("rotateX(757deg)");
+    expect(cube.style.transform).toContain("rotateY(1317deg)");
+    expect(liveOf(container).textContent).toBe("Tirando…");
+    landRoll(cube);
+    expect(liveOf(container).textContent).toBe("Resultado: 12");
+  });
+
+  it("la caja de la escena SIGUE al size (sin caja fija desperdiciada — el contenedor del usuario)", () => {
+    // WHY (user stake: «mira no vaya a ser por el contenedor»): the scene
+    // box tracks the die footprint (size × 200/120 — the d16 artboard's
+    // flight margin around the 120px die) instead of reserving a fixed
+    // 200px box around a visually scaled die.
+    const { container, rerender } = render(<DieD16 value={1} size={60} />);
+    const scene = must(container.querySelector<HTMLElement>(".scene"));
+    expect(scene.style.width).toBe("100px");
+    expect(scene.style.height).toBe("100px");
+    expect(scene.style.transform).toContain("scale(0.5)");
+    rerender(<DieD16 value={1} size={240} />);
+    expect(scene.style.width).toBe("400px");
+    expect(scene.style.height).toBe("400px");
+    expect(scene.style.transform).toContain("scale(2)");
+  });
+});
