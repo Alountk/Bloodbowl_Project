@@ -2,6 +2,8 @@ import type { ComponentProps } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { rollD3 } from "@/lib/random";
+
 import {
   ActaPreMatchSection,
   ActaPreMatchWizard,
@@ -69,7 +71,29 @@ function renderWizard(
   const rerender = (
     next: Partial<ComponentProps<typeof ActaPreMatchWizard>> = {},
   ) => view.rerender(<ActaPreMatchWizard {...props} {...next} />);
-  return { onCommit, onDismiss, onFinish, dice, rerender };
+  return {
+    onCommit,
+    onDismiss,
+    onFinish,
+    dice,
+    rerender,
+    container: view.container,
+    unmount: view.unmount,
+  };
+}
+
+function must<T extends Element>(el: T | null): T {
+  if (!el) throw new Error("expected element not found");
+  return el;
+}
+
+/** DieD6 landing convention (components/DieD6.test.tsx): jsdom runs no CSS
+ * transitions, so the reveal (transitionend-driven in a real browser) fires
+ * through a synthetic transitionend with propertyName "transform". */
+function landRoll(cube: Element) {
+  const ev = new Event("transitionend", { bubbles: true });
+  Object.defineProperty(ev, "propertyName", { value: "transform" });
+  fireEvent(cube, ev);
 }
 
 const dialog = () => screen.getByRole("dialog", { name: "Antes del partido" });
@@ -150,20 +174,31 @@ describe("ActaPreMatchWizard — modal «Antes del partido» (S6 · Opción 5)",
   });
 
   it("clicking the die plays the roll animation and reveals the result", () => {
-    renderWizard();
+    // WHY (T35, L124 — the die-glyph pin follows the DOM change): Los Hinchas
+    // renders DieD6 now. Intent kept: the roll plays the die animation (was
+    // dice-roll on the flat glyph, now the cube's tumbling wobble class — the
+    // DieD6 convention) and reveals the result (the die's «Resultado: n» live
+    // text after the landing settles; the status span keeps its own
+    // dice-reveal class — DieCard, unchanged).
+    const { container } = renderWizard();
     fireEvent.click(screen.getByRole("button", { name: "Tirar 1D3" }));
-    // The die glyph spins on roll; the recorded result is revealed after it.
-    expect(screen.getByTestId("die-glyph").className).toMatch(/dice-roll/);
+    const cube = must(container.querySelector(".cube"));
+    expect(cube.className).toMatch(/tumbling/);
     expect(screen.getByRole("status").className).toMatch(/dice-reveal/);
+    landRoll(cube);
+    expect(
+      container.querySelector('[aria-live="polite"]')?.textContent,
+    ).toBe("Resultado: 2");
   });
 
   it("the die cannot be rolled again once it has been recorded", () => {
+    // WHY (T35, L124 migration = the same T34 delta): on a migrated site the
+    // trigger is WITHHELD once recorded — no dead re-roll button is offered
+    // (stronger than the old disabled-button pin, same intent: no re-roll).
+    // «una vez tirado los dados, ya no se puede volver a tirar» (S7.6).
     renderWizard();
-    const die = screen.getByRole("button", { name: "Tirar 1D3" });
-    expect((die as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(die);
-    const after = screen.getByRole("button", { name: "Tirar 1D3" });
-    expect((after as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Tirar 1D3" }));
+    expect(screen.queryByRole("button", { name: "Tirar 1D3" })).toBeNull();
     expect(step(1, "Los Hinchas").textContent).toMatch(/Registrado/);
   });
 
@@ -1086,12 +1121,12 @@ describe("ActaPreMatchSection — T28 · the granted blessings on the pre-match 
   });
 });
 
-describe("ActaPreMatchWizard — T34 · migración del dado a los componentes DieD6/DieD16", () => {
+describe("ActaPreMatchWizard — T34/T35 · migración del dado a los componentes DieD6/DieD16", () => {
   // WHY (T34, L121): the die FACE visuals migrate to the shared controlled
   // components (PR #423) with highlight defaulting to "none". Per-site pins:
   // the component must render with the RIGHT sides (1D6 -> DieD6, 1D16 ->
-  // DieD16). The Los Hinchas 1D3 glyph is deliberately NOT migrated (a DieD6
-  // would show 6 pips for a 1D3 result — out of coverage, kept as-is).
+  // DieD16). T35 SUPERSEDES the T34 boundary: the Los Hinchas 1D3 site is
+  // migrated too (L124) — it IS a real D6 with a grouped 1-3 result.
 
   it("el paso El Clima muestra la tirada 1D6 con el componente DieD6", () => {
     const snapshot = emptySnapshot();
@@ -1121,13 +1156,48 @@ describe("ActaPreMatchWizard — T34 · migración del dado a los componentes Di
     expect(screen.queryByRole("button", { name: "Tirar 1D16" })).toBeNull();
   });
 
-  it("TRIANGULA · el paso Los Hinchas (1D3) conserva el glyph plano — fuera de cobertura", () => {
-    // WHY (T34 boundary): DieD6 shows 6 pips — a 1D3 result on that cube
-    // would lie about the roll. The 1D3 site is deliberately NOT migrated.
+  it("TRIANGULA · el paso Los Hinchas (1D3) ahora muestra el dado D6 — T35", () => {
+    // WHY (T35 · the T34 boundary pin is FLIPPED, L124 verbatim): «en este
+    // caso es un dado de 6 pero 1y2 el resultado es 1, 3 y 4 el resultado es
+    // 2, 5 y 6 el resultado es tres» — it IS a DieD6 landing on face 1, 2 or
+    // 3 of the cube. The flat glyph is gone; «Tirar 1D3» stays VERBATIM.
     renderWizard();
-    expect(screen.getByTestId("die-glyph")).toBeTruthy();
-    expect(screen.queryByRole("img", { name: "Dado 1D6" })).toBeNull();
+    expect(screen.getByRole("img", { name: "Dado 1D6" })).toBeTruthy();
+    expect(screen.queryByTestId("die-glyph")).toBeNull();
     expect(screen.getByRole("button", { name: "Tirar 1D3" })).toBeTruthy();
+  });
+
+  it("TRIANGULA · la tirada agrupa el D6 (1-2→1, 3-4→2, 5-6→3) — la regla del usuario (L124)", () => {
+    // WHY (T35, L124 verbatim): «en este caso es un dado de 6 pero 1y2 el
+    // resultado es 1, 3 y 4 el resultado es 2, 5 y 6 el resultado es tres».
+    // The dice queue carries the RAW D6 faces; the grouping is the caller's
+    // roll pipeline (lib/random rollD3 = ceil(d6/2) — kept exactly as-is) and
+    // the site must DISPLAY the grouped 1-3, never the raw face.
+    for (const [raw, grouped] of [
+      [1, 1],
+      [2, 1],
+      [3, 2],
+      [4, 2],
+      [5, 3],
+      [6, 3],
+    ] as Array<[number, number]>) {
+      const queue = [raw];
+      const { container, unmount } = renderWizard({
+        dice: {
+          d3: () => rollD3(() => ((queue.shift() ?? 1) - 1) / 6),
+          d6: vi.fn(() => 5),
+        },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Tirar 1D3" }));
+      const cube = must(container.querySelector(".cube"));
+      landRoll(cube);
+      expect(
+        container.querySelector('[aria-live="polite"]')?.textContent,
+        `la cara cruda ${raw} del D6 se agrupa a ${grouped}`,
+      ).toBe(`Resultado: ${grouped}`);
+      expect(step(1, "Los Hinchas").textContent).toContain(`4 + ${grouped} =`);
+      unmount();
+    }
   });
 
   it("TRIANGULA · tras registrar en un sitio migrado NO queda dispara de re-tirada (lock S7)", () => {
