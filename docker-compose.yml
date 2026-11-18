@@ -1,22 +1,20 @@
-# Blood Bowl Web — runs the latest published image from GHCR.
-# Usage: docker compose up -d
-# `pull_policy: always` ensures every up pulls the newest `latest` image.
-# The stack has three services: `migrate` (one-shot `prisma migrate deploy`,
-# tag `:migrate`) runs to completion before `web` starts, then `postgres`.
+# Blood Bowl Web — Dokploy deployment from the published GHCR images.
+# Usage: Dokploy `docker compose up -d` (or local `docker compose up -d` on a
+# host running Dokploy). `pull_policy: always` ensures every deploy pulls the
+# newest `latest` / `:migrate` images.
 #
-# Connectivity: ALL services live in this stack and share `arcane_net`, so the
-# web reaches postgres by its SERVICE NAME — no host hop, no published port
-# involved, and no dependency on how the host resolves `host.docker.internal`
-# (on a Linux Engine that alias is a bridge address, which cannot reach a
-# loopback-bound publish; on Docker Desktop it happens to work — see issue #308).
-# `extra_hosts` below stays as the escape hatch for a DATABASE_URL override that
-# deliberately targets the host instead.
+# Services: `migrate` (one-shot `prisma migrate deploy`, tag `:migrate`) runs to
+# completion before `web` starts, then `postgres`.
+#
+# Dokploy/Traefik routing: `web` publishes NO host port — Traefik reaches it
+# over the external `dokploy-network`. Configure the Dokploy domain target port
+# as 3444 (the container's `ENV PORT`), not Dokploy's default 3000.
+# `postgres` is intentionally unpublished: it is only reachable in-network.
 services:
-  # One-shot migrations (palanca A): `prisma migrate deploy` against the same
-  # DATABASE_URL as `web`, then exits 0. `restart: "no"` + `web.depends_on:
-  # condition: service_completed_successfully` means `docker compose up -d`
-  # always runs migrations before the server — the flow the runner entrypoint
-  # used to own, now without shipping the Prisma CLI in the runtime image.
+  # One-shot migrations: `prisma migrate deploy` against the same DATABASE_URL
+  # as `web`, then exits 0. `restart: "no"` + `web.depends_on:
+  # condition: service_completed_successfully` means every deploy applies
+  # migrations before the server starts.
   migrate:
     image: ghcr.io/alountk/bloodbowl_project:migrate
     pull_policy: always
@@ -25,7 +23,6 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # Same connection string and override semantics as `web` below.
       DATABASE_URL: ${DATABASE_URL:-postgresql://bloodbowl:bloodbowl@postgres:5432/bloodbowl?schema=public}
     networks:
       - arcane_net
@@ -34,67 +31,46 @@ services:
     image: ghcr.io/alountk/bloodbowl_project:latest
     pull_policy: always
     restart: unless-stopped
-    ports:
-      - "3444:3444"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
-      # Migrations run first, in the dedicated one-shot `migrate` image. The
-      # `service_completed_successfully` condition keeps migrations automatic:
-      # a plain `docker compose up -d` applies them before the server starts.
       migrate:
         condition: service_completed_successfully
     environment:
-      # Full control from the environment: set DATABASE_URL in the .env when you
-      # need a custom connection string. Unset, it falls back to the `postgres`
-      # service of THIS stack (in-network, port 5432 inside the container — the
-      # host-published port below is irrelevant to the web).
       DATABASE_URL: ${DATABASE_URL:-postgresql://bloodbowl:bloodbowl@postgres:5432/bloodbowl?schema=public}
-      # Required for Auth.js on a LAN/HTTP host. Override in production with the
-      # real session secret; the `:?` makes compose fail fast without it.
+      # Required for Auth.js behind the Traefik HTTPS proxy; compose fails fast
+      # without it. Generate with: openssl rand -base64 32
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — generate with `openssl rand -base64 32`}
-      # Env-driven so production can set "false" behind HTTPS; default "true"
-      # preserves the LAN/HTTP Arcane deploy.
+      # true lets Auth.js trust Traefik's x-forwarded-* headers.
       AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
       # `auth` enforces login + Postgres persistence. Production MUST stay `auth`.
       AUTH_MODE: ${AUTH_MODE:-auth}
       # Structured logging level (lib/logger.ts): debug | info | warn | error.
-      # Logs are JSON lines on stdout, queryable with `docker logs <c> | jq`.
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Public base URL, used to build absolute links inside notification emails.
+      # Public base URL (https://<domain>), used for absolute links in emails.
       APP_URL: ${APP_URL:-}
-      # Email delivery (Resend HTTP API). When either is unset the app falls back
-      # to a console transport that logs the message instead of sending it, so a
-      # missing credential degrades to "no email", never to a broken request.
+      # Email delivery (Resend HTTP API); unset degrades to console transport.
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-}
-    # Persist locally-stored avatars across container recreation. The local
-    # driver writes under `public/uploads`; a named volume keeps those files out
-    # of the ephemeral container layer (and survives the image being replaced).
-    # The S3 driver is the durable path for real deployments.
+    # Persist locally-stored avatars across container recreation (the S3 driver
+    # is the durable path for real deployments).
     volumes:
       - web_uploads:/app/public/uploads
     networks:
       - arcane_net
+      - dokploy-network
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      # Set a strong password in .env on any shared host (defaults are for the
-      # local stack only). The published port is loopback-bound above.
+      # Override in Dokploy's environment on any shared host (defaults are for
+      # the local stack only).
       POSTGRES_USER: ${POSTGRES_USER:-bloodbowl}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bloodbowl}
       POSTGRES_DB: ${POSTGRES_DB:-bloodbowl}
-    ports:
-      # Published port is configurable; the default 5433 avoids the common 5432
-      # clash with other Postgres instances on the same host. Bound to
-      # loopback so a LAN peer cannot reach Postgres with the default creds.
-      # This publish is ONLY for the host (psql on the box) — the web service
-      # never uses it: it talks to `postgres:5432` over `arcane_net` above.
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - bloodbowl_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -106,14 +82,14 @@ services:
       - arcane_net
 
 networks:
-  # Shared bridge so web can reach postgres by hostname. If the orchestrator
-  # already manages a network with this name, switch to `external: true`.
-  # NOTE: even if this network is ignored, host.docker.internal keeps working.
+  # Internal bridge: web reaches postgres by service name.
   arcane_net:
     driver: bridge
+  # Created by Dokploy; Traefik attaches here to route to `web`.
+  dokploy-network:
+    external: true
 
 volumes:
   bloodbowl_postgres_data:
-  # Persistent store for locally-stored avatars (mounted at
-  # /app/public/uploads on the web service).
+  # Persistent store for locally-stored avatars (/app/public/uploads).
   web_uploads:
