@@ -31,3 +31,46 @@ if (typeof Element !== "undefined" && typeof Element.prototype.scrollBy !== "fun
     scrollBy(): void {},
   });
 }
+
+/**
+ * jsdom ships no window.matchMedia (vitest's environment never added it).
+ * Tests exercise reduced-motion by spying on it:
+ * `vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true })`, which
+ * throws "can only spy on a function. Received undefined" when the method is
+ * absent. Provide an OWN, configurable no-op so vi.spyOn/restore keep working,
+ * while keeping every other component at the same observable state as the
+ * absent-method world: a desktop jsdom viewport (min-width queries match,
+ * max-width and prefers-reduced-motion do not), mirroring useIsDesktop's
+ * documented default (desktop=true without matchMedia) and the die tests'
+ * default (no reduced motion). Tests needing different matches still replace
+ * it per test via spyOn or the mockMatchMedia helper.
+ */
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  // Standard desktop viewport for a non-visual jsdom window.
+  const JSDOM_VIEWPORT_WIDTH = 1280;
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value(query: string): MediaQueryList {
+      const matches = (() => {
+        const min = /min-width:\s*(\d+)px/.exec(query);
+        if (min) return JSDOM_VIEWPORT_WIDTH >= Number(min[1]);
+        const max = /max-width:\s*(\d+)px/.exec(query);
+        if (max) return JSDOM_VIEWPORT_WIDTH <= Number(max[1]);
+        return false; // prefers-reduced-motion, orientation, color scheme, ...
+      })();
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addListener(): void {},
+        removeListener(): void {},
+        addEventListener(): void {},
+        removeEventListener(): void {},
+        dispatchEvent(): boolean {
+          return false;
+        },
+      } as MediaQueryList;
+    },
+  });
+}
