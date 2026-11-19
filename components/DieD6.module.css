@@ -24,15 +24,26 @@
   gap: 14px;
 }
 
-/* The size prop scales the scene around its center (artboard 01 slider). */
+/* The size prop scales the scene around its center (artboard 01 slider).
+   The fixed 120px cube is CENTERED inside the (possibly smaller) size box so
+   the scale maps it exactly onto the footprint: with a top-left-anchored cube,
+   scaling from the box center lands the painted die shifted down-right (and
+   the perspective origin, the box center, off the cube center), so at size 40
+   it overlapped the result line and the texts below — the /demo/partido
+   DieCard bug. Centered, the perspective/skew inflation stays symmetric and
+   the wrapper gap (14px) absorbs it. `flex: none` keeps the cube at 120px. */
 .scene {
   width: 120px;
   height: 120px;
   perspective: 520px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .cube {
   position: relative;
+  flex: none;
   width: 120px;
   height: 120px;
   transform-style: preserve-3d;
