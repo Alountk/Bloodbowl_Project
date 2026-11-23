@@ -220,6 +220,7 @@ describe("GET /api/watch/[token]", () => {
       "homeScore",
       "homeTurnMs",
       "paused",
+      "prayerRolls",
       "seq",
       "startedAt",
       "status",
@@ -274,6 +275,25 @@ describe("GET /api/watch/[token]", () => {
 
     expect(body.live?.events.map((event) => event.seq)).toEqual([1, 3]);
     expect(body.live?.events.map((event) => event.kind)).toEqual(["start", "td"]);
+  });
+
+  it("exposes the recorded prayerRolls on the guest live view (frozen ruling 2026-11-23)", async () => {
+    primeReads(
+      resolveRow(),
+      buildFixture({ liveMatch: liveRow({ prayerRolls: { home: [10], away: [] } }) }),
+    );
+
+    const body = (await (await get()).json()) as ReducedBody;
+
+    expect(body.live?.prayerRolls).toEqual({ home: [10], away: [] });
+  });
+
+  it("serves explicit null prayerRolls when the live row has none recorded", async () => {
+    primeReads(resolveRow(), buildFixture({ liveMatch: liveRow() }));
+
+    const body = (await (await get()).json()) as ReducedBody;
+
+    expect(body.live?.prayerRolls).toBeNull();
   });
 
   it("derives the live clock from the persisted accumulators", async () => {

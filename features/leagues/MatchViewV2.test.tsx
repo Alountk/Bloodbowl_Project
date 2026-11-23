@@ -768,3 +768,45 @@ describe("Slice F (T5) — V1 pins: legacy closure modals unchanged on flag OFF"
     expect(document.querySelector('[data-testid="acta-closure"]')).toBeNull();
   });
 });
+
+/**
+ * MVT-12/S3 (threading): the recorded prayer faces (`prayerRolls`, LM-34)
+ * derive the per-side `MatchActivePrayers` via `matchActivePrayersFromRolls`
+ * and reach the acta timeline's SPP marker — «Pase perfecto» (face 10) pays a
+ * completed pass +2 SPP instead of the shared T24 default +1. Pins BOTH
+ * `ActaTurnTimeline` call sites (the live shell and the finished sheet).
+ */
+describe("MatchViewV2 — MVT-12/S3: activePrayers threading into the acta timeline", () => {
+  const completionEvents: LiveMatchView["events"] = [
+    { seq: 3, kind: "completion", side: "away", playerRosterId: "p3", half: 1, turnNumber: 2, payload: {}, at: 4000 },
+  ];
+
+  it("live shell: face 10 «Pase perfecto» renders the completion marker as +2 SPP", async () => {
+    await mountV2Detail(
+      detailWithLive(liveRow({ events: completionEvents, prayerRolls: { home: [], away: [10] } })),
+    );
+    const row = await screen.findByTestId("acta-event-row");
+    expect(row.textContent).toContain("+2 SPP");
+  });
+
+  it("finished sheet: the SAME derivation drives the persisted timeline (+2 SPP)", async () => {
+    await mountV2Detail(
+      detailWithLive(
+        liveRow({
+          status: "finished",
+          finishedAt: 900_000,
+          events: completionEvents,
+          prayerRolls: { home: [], away: [10] },
+        }),
+      ),
+    );
+    const row = await screen.findByTestId("acta-event-row");
+    expect(row.textContent).toContain("+2 SPP");
+  });
+
+  it("nothing recorded keeps the shared T24 earn rule (+1 SPP)", async () => {
+    await mountV2Detail(detailWithLive(liveRow({ events: completionEvents })));
+    const row = await screen.findByTestId("acta-event-row");
+    expect(row.textContent).toContain("+1 SPP");
+  });
+});

@@ -49,8 +49,14 @@ function stubEventSource() {
   );
 }
 
-/** A reduced guest live view (no private fields, `viewerSide` forced null). */
-function watchView(overrides: Partial<WatchLiveView> = {}): WatchLiveView {
+/** A reduced guest live view (no private fields, `viewerSide` forced null).
+ *  `prayerRolls` (LM-34) may ride the frame beyond the reduced DTO type — the
+ *  view reads it defensively for the MVT-12/S3 SPP threading. */
+function watchView(
+  overrides: Partial<WatchLiveView> & {
+    prayerRolls?: { home: number[]; away: number[] } | null;
+  } = {},
+): WatchLiveView {
   return {
     seq: 5,
     status: "live",
@@ -187,5 +193,28 @@ describe("WatchMatchView — public read-only match", () => {
 
     await waitFor(() => expect(screen.getByTestId("watch-score-home").textContent).toBe("3"));
     expect(screen.getByTestId("watch-score-away").textContent).toBe("2");
+  });
+
+  it("threads the recorded prayer rolls into the guest ★SPP marker (MVT-12/S3: face 10 «Pase perfecto» → ★2)", async () => {
+    const events: WatchLiveView["events"] = [
+      { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+      { seq: 2, kind: "completion", side: "away", playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 2000 },
+    ];
+    // The away completion EARNS on the away side (the card's own side) →
+    // away's face 10 («Pase perfecto») pays ★2 instead of the default ★1.
+    fetchMock.mockResolvedValue(
+      jsonResponse(watchDto({ live: watchView({ events, prayerRolls: { home: [], away: [10] } }) })),
+    );
+    const { unmount } = render(<WatchMatchView token="tok-1" />);
+
+    await waitFor(() => expect(document.querySelector("[data-testid='acta-card-spp']")).toBeTruthy());
+    expect(document.querySelector("[data-testid='acta-card-spp']")?.textContent).toBe("★2");
+    unmount();
+
+    // Nothing recorded keeps the shared T24 earn rule (★1) pinned.
+    fetchMock.mockResolvedValue(jsonResponse(watchDto({ live: watchView({ events }) })));
+    render(<WatchMatchView token="tok-1" />);
+    await waitFor(() => expect(document.querySelector("[data-testid='acta-card-spp']")).toBeTruthy());
+    expect(document.querySelector("[data-testid='acta-card-spp']")?.textContent).toBe("★1");
   });
 });

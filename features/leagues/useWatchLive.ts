@@ -95,6 +95,10 @@ export function useWatchLive({ token }: UseWatchLiveParams): UseWatchLiveResult 
       const view = parsed as WatchFrame;
       setLive((prev) => ({
         ...view,
+        // LM-34 (frozen ruling 2026-11-23): a frame that OMITS `prayerRolls`
+        // means "unchanged" (the member-side `mergedPrayerRolls` twin) — only
+        // an EXPLICIT value applies. Snapshots always carry the key explicitly.
+        prayerRolls: view.prayerRolls !== undefined ? view.prayerRolls : (prev?.prayerRolls ?? null),
         // Hub frames carry only the DELTA events of their transition; merge so
         // a `state` frame never wipes the accumulated timeline.
         events: prev != null ? upsertEvents(prev.events, view.events ?? []) : (view.events ?? []),

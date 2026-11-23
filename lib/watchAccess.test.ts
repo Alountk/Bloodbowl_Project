@@ -183,6 +183,30 @@ describe("reduceWatchFrame", () => {
     expect(view.events[1]).not.toHaveProperty("ackStatus");
   });
 
+  it("exposes `prayerRolls` on the guest view when the frame carries them (frozen ruling 2026-11-23)", () => {
+    const view = reduceWatchFrame(frame({ prayerRolls: { home: [10], away: [] } }));
+
+    expect(view.prayerRolls).toEqual({ home: [10], away: [] });
+  });
+
+  it("omits `prayerRolls` when the frame lacks the key (omission = unchanged)", () => {
+    const view = reduceWatchFrame(frame());
+
+    expect(view).not.toHaveProperty("prayerRolls");
+  });
+
+  it("drops malformed prayer faces and keeps only valid 1-16 integers", () => {
+    const view = reduceWatchFrame(frame({ prayerRolls: { home: [17, "x"], away: [] } }));
+
+    expect(view.prayerRolls).toEqual({ home: [], away: [] });
+  });
+
+  it("passes an explicit null roll state through as null", () => {
+    const view = reduceWatchFrame(frame({ prayerRolls: null }));
+
+    expect(view.prayerRolls).toBeNull();
+  });
+
   it("tolerates a frame with no events (transitions that emit none)", () => {
     const view = reduceWatchFrame(frame({ events: undefined }));
 

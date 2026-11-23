@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { useI18n } from "@/lib/i18n";
 import { can } from "@/lib/permissions";
 import { PE_MVP } from "@/lib/rules";
+import { matchActivePrayersFromRolls } from "@/lib/rules/inducements";
 import {
   createShareLink,
   getMatchDetail,
@@ -440,6 +441,10 @@ function ActiveMatchBody({
     }),
     [hookLive, detail.live, viewerSide],
   );
+  // MVT-12/S3: THE production derivation (LM-34) — the per-side blessings feed
+  // the timeline's `eventSpp` markers (`ActaTurnTimeline` resolves the earner
+  // side per event, exactly as the demo timeline does).
+  const activePrayers = matchActivePrayersFromRolls(state.prayerRolls);
   const clock = useLiveClock(state);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -532,6 +537,7 @@ function ActiveMatchBody({
                 active={state}
                 viewerSide={state.viewerSide}
                 onSubmit={act}
+                activePrayers={activePrayers}
               />
             </div>
           ) : null}
@@ -610,6 +616,8 @@ function FinishedMatchBody({
   // The parent only mounts this zone with a live row, so the fallback shape
   // never renders (kept as a defensive guard).
   if (live == null) return null;
+  // MVT-12/S3: the same LM-34 derivation over the persisted `prayerRolls`.
+  const activePrayers = matchActivePrayersFromRolls(live.prayerRolls);
   const names = { home: detail.homeTeam.name, away: detail.awayTeam.name };
   const rows = buildSummaryFeedRows(detail);
   const weatherNow = latestWeather(live.events, detail.result?.weather ?? null);
@@ -687,6 +695,7 @@ function FinishedMatchBody({
           now={live.startedAt != null ? live.startedAt + live.elapsed : 0}
           active={live}
           viewerSide={viewerSide}
+          activePrayers={activePrayers}
         />
       </div>
       {/* Slice F (T5): ONE closure surface inside the sheet (MAW-10) — the

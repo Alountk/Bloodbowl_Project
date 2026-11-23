@@ -9,6 +9,7 @@ import { LiveEventCardsActa } from "./eventCardActa";
 import { MatchTimelineBar } from "./matchTimelineBar";
 import { Icon } from "./icons";
 import type { MatchTeamDetail } from "./api";
+import { matchActivePrayersFromRolls } from "@/lib/rules/inducements";
 
 /**
  * The PUBLIC guest watch page (MSL-6). A lean, read-only view of a shared match:
@@ -44,6 +45,21 @@ function toMatchTeamDetail(team: WatchTeam): MatchTeamDetail {
 
 function scoreText(value: number | null): string {
   return value == null ? "–" : String(value);
+}
+
+/**
+ * LM-34/S3: reads the `prayerRolls` field off a live view (`null` = nothing
+ * recorded yet, absent = not part of this payload). Mirrors MatchView's
+ * `prayerRollsOf` — defensive because the reduced guest DTO type lags the
+ * field (lib/watchAccess.ts whitelist, out of this slice's surfaces).
+ */
+function prayerRollsOf(view: unknown): { home: number[]; away: number[] } | null {
+  if (view != null && typeof view === "object" && "prayerRolls" in view) {
+    return (
+      (view as { prayerRolls?: { home: number[]; away: number[] } | null }).prayerRolls ?? null
+    );
+  }
+  return null;
 }
 
 export function WatchMatchView({ token }: { token: string }) {
@@ -106,6 +122,10 @@ export function WatchMatchView({ token }: { token: string }) {
 
   const homeTeam = toMatchTeamDetail(dto.homeTeam);
   const awayTeam = toMatchTeamDetail(dto.awayTeam);
+  // MVT-12/S3: THE production derivation (LM-34) — the per-side blessings feed
+  // the feed's `eventSpp` markers (`LiveEventCardsActa` resolves the earner
+  // side per event, exactly as the demo timeline does).
+  const activePrayers = matchActivePrayersFromRolls(prayerRollsOf(live));
   const isLive = live?.status === "live";
   const isFinished = live?.status === "finished";
   const scoreHome = live ? live.homeScore : dto.fixture.homeScore;
@@ -165,6 +185,7 @@ export function WatchMatchView({ token }: { token: string }) {
             homeTeam={homeTeam}
             awayTeam={awayTeam}
             now={live.startedAt != null ? live.startedAt + live.elapsed : 0}
+            activePrayers={activePrayers}
           />
         </div>
       ) : null}

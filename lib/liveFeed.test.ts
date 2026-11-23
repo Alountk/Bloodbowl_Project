@@ -114,6 +114,25 @@ describe("deriveTeamStats — per-team TD/completions/casualties/fouls/★ (LM-1
   });
 });
 
+describe("deriveTeamStats — MVT-12 prayer-aware SPP totals (T26b S4a)", () => {
+  it("pays a completion ★2 under the EARNE side's «Pase perfecto» (default ★1)", () => {
+    const events = [ev("completion", "home")];
+    expect(deriveTeamStats(events).home.spp).toBe(1);
+    expect(deriveTeamStats(events, { home: ["perfect-pass"], away: [] }).home.spp).toBe(2);
+    // The rival's prayers never pay the home earner (wrong-side pin).
+    expect(deriveTeamStats(events, { home: [], away: ["perfect-pass"] }).home.spp).toBe(1);
+  });
+
+  it("pays a foul-caused casualty from the CAUSER side's «Con faltas y a lo loco» (opposite of the victim)", () => {
+    const events = [ev("casualty", "away", { cause: "foul", roll16: 12 })];
+    // Attribution stays with the victim side (away); the VALUE consults home.
+    expect(deriveTeamStats(events).away.spp).toBe(0);
+    expect(deriveTeamStats(events, { home: ["foul-and-frenzy"], away: [] }).away.spp).toBe(2);
+    // The victim side's own prayer never pays its own foul casualty (wrong-side pin).
+    expect(deriveTeamStats(events, { home: [], away: ["foul-and-frenzy"] }).away.spp).toBe(0);
+  });
+});
+
 describe("derivePartialScore — per-TD partial score by seq (MVT-1/D5)", () => {
   it("accumulates TDs per side in seq order so a home TD then an away TD yields (1-0) then (1-1)", () => {
     const events = [

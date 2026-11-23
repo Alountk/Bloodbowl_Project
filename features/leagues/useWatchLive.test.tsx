@@ -142,6 +142,58 @@ describe("useWatchLive — connect / snapshot / frames", () => {
     expect(result.current.live?.events.map((e) => e.seq)).toEqual([1, 5, 10]);
   });
 
+  it("keeps the snapshot prayerRolls across delta frames that omit the key (mergedPrayerRolls twin)", async () => {
+    const { result } = renderHook(() => useWatchLive({ token: "tok-1" }));
+    const es = instances[0];
+
+    await act(async () => {
+      es.dispatch(
+        "snapshot",
+        JSON.stringify(watchView({ seq: 9, prayerRolls: { home: [10], away: [] } })),
+      );
+    });
+    expect(result.current.live?.prayerRolls).toEqual({ home: [10], away: [] });
+
+    await act(async () => {
+      es.dispatch(
+        "event",
+        JSON.stringify({
+          ...watchView({ seq: 10, activeSide: "away" }),
+          events: [watchEvent(10, "td")],
+        }),
+        "10",
+      );
+    });
+
+    expect(result.current.live?.seq).toBe(10);
+    expect(result.current.live?.prayerRolls).toEqual({ home: [10], away: [] });
+  });
+
+  it("applies an explicit prayerRolls value carried by a delta frame", async () => {
+    const { result } = renderHook(() => useWatchLive({ token: "tok-1" }));
+    const es = instances[0];
+
+    await act(async () => {
+      es.dispatch(
+        "snapshot",
+        JSON.stringify(watchView({ seq: 9, prayerRolls: { home: [10], away: [] } })),
+      );
+    });
+
+    await act(async () => {
+      es.dispatch(
+        "event",
+        JSON.stringify({
+          ...watchView({ seq: 10, prayerRolls: { home: [], away: [15] } }),
+          events: [watchEvent(10, "td")],
+        }),
+        "10",
+      );
+    });
+
+    expect(result.current.live?.prayerRolls).toEqual({ home: [], away: [15] });
+  });
+
   it("converges on a reconnect snapshot (replaces the accumulated timeline)", async () => {
     const { result } = renderHook(() => useWatchLive({ token: "tok-1" }));
     const es = instances[0];
