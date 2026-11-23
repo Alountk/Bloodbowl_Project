@@ -16,6 +16,7 @@ import {
   type InducementCartItem,
   type PersistedInducements,
 } from "@/lib/rules";
+import { matchActivePrayersFromRolls, resolvePrayerRoll, type MatchActivePrayers } from "@/lib/rules/inducements";
 import { deriveTeamStats, type TeamStats } from "@/lib/liveFeed";
 import { can } from "@/lib/permissions";
 import { createShareLink, getMatchDetail, resetLiveMatch, type LiveMatchView, type LiveMatchViewState, type LiveCommand, type MatchDetail, type MatchTeamDetail } from "./api";
@@ -357,6 +358,215 @@ function ConcedeControls({
   );
 }
 
+/** LM-34: the per-side recorded prayer faces (`LiveMatch.prayerRolls`). */
+type PrayerRolls = { home: number[]; away: number[] };
+/** LM-34: `prayerRolls` is `null` while nothing was ever recorded. */
+type PrayerRollsState = PrayerRolls | null;
+/** Stable empty roll list — identity is compared by the block's optimistic
+ *  mirror guard, so never allocate a fresh `[]` per render. */
+const NO_ROLLS: readonly number[] = [];
+
+/**
+ * LM-34/S2d: reads the `prayerRolls` field off a live view (`null` = nothing
+ * recorded yet, absent = not part of this payload). The field rides the SAME
+ * live-view state path as `inducements` (fixture GET + SSE frames).
+ */
+function prayerRollsOf(view: unknown): PrayerRollsState {
+  if (view != null && typeof view === "object" && "prayerRolls" in view) {
+    return (view as { prayerRolls?: PrayerRollsState }).prayerRolls ?? null;
+  }
+  return null;
+}
+
+/**
+ * MVT-12: the LM-33 409 body is authoritative — map EXACTLY the four failure
+ * classes to their own Spanish inline messages (one message each). Any other
+ * server string surfaces verbatim, never swallowed.
+ */
+function prayerErrorMessage(
+  serverError: string,
+  t: (key: string) => string,
+): string {
+  switch (serverError) {
+    case "Invalid prayer roll":
+      return t("match.prayers.errorInvalid");
+    case "Duplicate prayer roll":
+      return t("match.prayers.errorDuplicate");
+    case "Rolls exceed purchased prayers":
+      return t("match.prayers.errorExceeds");
+    case "Prayer rolls already recorded":
+      return t("match.prayers.errorRecorded");
+    default:
+      return serverError;
+  }
+}
+
+/**
+ * MVT-12 reveal row — mirrors the demo's T28/T30 reveal wording
+ * (actaPreMatchWizard, read-only reference): the blessing's VERBATIM name +
+ * effect from the `PRAYERS_OF_NUFFLE` model rows via `resolvePrayerRoll`; the
+ * id-bearing rows (10-13, the SPP engine exceptions) get the «+ SPP» chip
+ * while every other row carries the honest table note («este motor no lo
+ * aplica»). A junk face reveals NO invented name — the honest unmodeled note.
+ */
+function PrayerReveal({ roll }: { roll: number }) {
+  const { t } = useI18n();
+  const blessing = resolvePrayerRoll(roll);
+  return (
+    <div className="mt-2 border-l-2 border-red pl-3">
+      {blessing != null ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-red">
+              {t("match.prayers.granted")}
+            </p>
+            {blessing.id != null ? (
+              <span className="border border-red px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-red">
+                {t("match.prayers.spp")}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-lg font-bold text-navy">{blessing.label}</p>
+          <p className="text-sm text-slate-800">{blessing.effect}</p>
+          {blessing.id == null ? (
+            <p className="mt-1 text-xs text-slate-600">{t("match.prayers.tableNote")}</p>
+          ) : null}
+        </>
+      ) : (
+        <p className="text-sm text-slate-800">{t("match.prayers.unmodeled", { roll })}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * MVT-12/S2: the ready-phase «Plegarias a Nuffle» capture block. Renders ONLY
+ * when the panel side's persisted cart bought `prayers-to-nuffle` (count > 0).
+ * Manual 1D16 entry only (T29 parity — coaches roll physical dice, no
+ * auto-roll): ONE integer input (faces 1-16) + «Aceptar» commits the FULL new
+ * rolls array (recorded + the entered face, replace-per-side) through the live
+ * `recordPrayerRolls` command (LM-33). The server 409 body is authoritative:
+ * each failure class maps to its own inline Spanish message and the entered
+ * value stays editable after an error (never pre-validated as the only gate).
+ * Success reveals the granted blessing(s) through `resolvePrayerRoll` and the
+ * block locks (inputs disabled, «Tirada registrada») once every purchased roll
+ * is recorded. Rulebook-light tokens only; mobile-first at 390px.
+ */
+function PrayerRollsBlock({
+  count,
+  recorded,
+  submitting,
+  onRecord,
+}: {
+  /** The purchased `prayers-to-nuffle` count of the panel's side. */
+  count: number;
+  /** The side's recorded faces (`prayerRolls[side]`, LM-34). */
+  recorded: readonly number[];
+  submitting: boolean;
+  /** Commits the FULL new rolls array (recorded + the entered face). */
+  onRecord: (rolls: number[]) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Optimistic mirror of the just-committed rolls (covers a 200 echo that omits
+  // the LM-34 field). The BASE identity guard is what makes it pure: the
+  // mirror is trusted only while the server's `recorded` array is still the
+  // exact one it was built on — the moment the server delivers ANY explicit
+  // value (echo, hub frame, purchaseInducements roll alignment) the identity
+  // changes and the authoritative array wins, so a later clear always sticks.
+  const [optimistic, setOptimistic] = useState<{
+    rolls: readonly number[];
+    base: readonly number[];
+  } | null>(null);
+  const shown = optimistic != null && optimistic.base === recorded ? optimistic.rolls : recorded;
+  const remaining = Math.max(0, count - shown.length);
+  const locked = remaining === 0;
+  const disabled = locked || busy || submitting;
+
+  const accept = async () => {
+    if (disabled) return;
+    const raw = draft.trim();
+    const face = Number(raw);
+    if (raw === "" || !Number.isFinite(face)) {
+      // Empty/unparseable input cannot reach the server; every NUMERIC value is
+      // sent and judged by the LM-33 validation (the server stays the gate).
+      setLocalError(t("match.prayers.errorInvalid"));
+      return;
+    }
+    const next = [...shown, face];
+    setBusy(true);
+    setLocalError(null);
+    const res = await onRecord(next);
+    setBusy(false);
+    if (res.ok) {
+      setDraft("");
+      setOptimistic({ rolls: next, base: recorded });
+      return;
+    }
+    if (res.error != null) setLocalError(prayerErrorMessage(res.error, t));
+  };
+
+  return (
+    <div data-testid="prayer-rolls" className="mt-3 border-t border-border pt-3">
+      <p className="text-sm font-black uppercase tracking-wide text-navy">
+        {t("match.prayers.title")}
+      </p>
+      {locked ? (
+        <p role="status" className="mt-1 text-xs font-bold text-red">
+          {t("match.prayers.recorded")}
+        </p>
+      ) : (
+        <p className="mt-1 text-xs font-semibold text-slate-600 tabular-nums">
+          {t("match.prayers.remaining", { count: remaining })}
+        </p>
+      )}
+
+      {shown.map((roll, index) => (
+        <PrayerReveal key={`${index}-${roll}`} roll={roll} />
+      ))}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label
+          htmlFor="prayer-roll-input"
+          className="text-xs font-semibold text-slate-600"
+        >
+          {t("match.prayers.inputLabel")}
+        </label>
+        <input
+          id="prayer-roll-input"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={16}
+          step={1}
+          className="w-20 rounded border border-navy px-2 py-1.5 text-sm text-navy"
+          value={draft}
+          disabled={disabled}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setLocalError(null);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => void accept()}
+          disabled={disabled}
+          className="rounded-md bg-navy px-4 py-2 text-sm font-black uppercase tracking-wide text-white hover:bg-navy-hover disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {t("match.prayers.accept")}
+        </button>
+      </div>
+      {localError != null ? (
+        <p role="alert" className="mt-2 text-xs font-semibold text-red">
+          {localError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * IND-1..3/LM-30/S2: the ready-phase inducement purchase step. Rendered ONLY
  * for the eligible coach (the lower-TV side — `budget.side === viewerSide`)
@@ -374,9 +584,11 @@ function InducementPurchasePanel({
   budget,
   raceId,
   persisted,
+  prayerRolls,
   submitting,
   error,
   onPurchase,
+  onRecordPrayerRolls,
 }: {
   /** The server-derived eligible side + |ΔTV| budget (IND-2, fixture GET). */
   budget: Extract<InducementBudget, { side: "home" | "away" }>;
@@ -384,10 +596,14 @@ function InducementPurchasePanel({
   raceId: string;
   /** The persisted cart of the eligible side ([] = nothing bought yet). */
   persisted: readonly InducementCartItem[];
+  /** LM-34 live-view `prayerRolls` — same state path as `inducements` (S2d). */
+  prayerRolls: PrayerRollsState;
   submitting: boolean;
   error: string | null;
   /** Fires the replace-cart purchase command for the eligible side. */
   onPurchase: (items: InducementCartItem[]) => void;
+  /** Commits the FULL new rolls array through `recordPrayerRolls` (LM-33). */
+  onRecordPrayerRolls: (rolls: number[]) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const { t } = useI18n();
   // The coach's UNSAVED selection. Starts empty each time the step renders
@@ -425,6 +641,11 @@ function InducementPurchasePanel({
   };
 
   const shownError = error ?? localError;
+
+  // MVT-12: the «Plegarias a Nuffle» capture block — ONLY when this side's
+  // persisted cart actually bought prayers (count > 0).
+  const prayerCount =
+    persisted.find((c) => c.id === "prayers-to-nuffle")?.count ?? 0;
 
   return (
     <div data-testid="inducement-purchase" className="border-t border-red bg-background px-4 py-4">
@@ -541,6 +762,14 @@ function InducementPurchasePanel({
         <p role="alert" className="mt-2 text-xs font-semibold text-red">
           {shownError}
         </p>
+      ) : null}
+      {prayerCount > 0 ? (
+        <PrayerRollsBlock
+          count={prayerCount}
+          recorded={prayerRolls?.[budget.side] ?? NO_ROLLS}
+          submitting={submitting}
+          onRecord={onRecordPrayerRolls}
+        />
       ) : null}
     </div>
   );
@@ -872,14 +1101,17 @@ function MiniStats({
  * (MVT-10/D9): a light strip rendering ABOVE the event rows for a live/finished
  * match that has display-worthy events — never inside the sticky header. Null
  * when no pill is visible (e.g. pre-kickoff/pending, or a bare start-only feed).
- * Preserves the `mini-{key}-{side}` testids; `deriveTeamStats` unchanged.
+ * Preserves the `mini-{key}-{side}` testids. MVT-12/S4a: the SPP pill is
+ * prayer-aware — `activePrayers` feeds the `deriveTeamStats` VALUE only.
  */
 function MiniStatsFeedStrip({
   events,
+  activePrayers,
 }: {
   events: LiveMatchView["events"];
+  activePrayers?: MatchActivePrayers;
 }) {
-  const stats = deriveTeamStats(events);
+  const stats = deriveTeamStats(events, activePrayers);
   const visible = {
     td: stats.home.tds + stats.away.tds > 0,
     comp: stats.home.completions + stats.away.completions > 0,
@@ -1136,6 +1368,41 @@ function LiveActiveMatch({
     }
   };
 
+  /**
+   * MVT-12: the ready-phase `recordPrayerRolls` commit (LM-33). Same command
+   * path as `purchaseInducements` (`sendCommand` → POST .../live, shared
+   * busy/submitting lock) but it RETURNS the outcome so the prayer block can
+   * map the authoritative 409 body inline — the shared `error` line stays the
+   * purchase/command channel, never a prayer error. The `recordPrayerRolls`
+   * variant joins the `LiveCommand` union in features/leagues/api.ts (S1), so
+   * the body crosses the typed boundary without a cast.
+   */
+  const recordPrayerRolls = async (
+    side: "home" | "away",
+    rolls: number[],
+  ): Promise<{ ok: boolean; error?: string }> => {
+    if (busyRef.current) return { ok: false };
+    busyRef.current = true;
+    setError(null);
+    setSubmitting(true);
+    try {
+      await sendCommand({
+        type: "recordPrayerRolls",
+        side,
+        rolls,
+      });
+      return { ok: true };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : t("match.executeError"),
+      };
+    } finally {
+      busyRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
   // The event timeline comes from the SSE hook's accumulated frames once it has
   // converged (the snapshot carries the persisted timeline); until then the
   // fixture detail's persisted events stand in. This keeps the timeline, the
@@ -1213,6 +1480,14 @@ function LiveActiveMatch({
     currentCart != null && inducementBudget != null && inducementBudget.side != null
       ? currentCart[inducementBudget.side] ?? []
       : [];
+  // LM-34/S2d: the captured prayer rolls — the SAME live-view state path as
+  // `currentCart` above (SSE-fresh state first, fixture GET fallback).
+  const currentPrayerRolls: PrayerRollsState =
+    prayerRollsOf(state) ?? (live != null ? prayerRollsOf(live) : null) ?? null;
+  // MVT-12/S3: THE production derivation (LM-34) — the per-side blessings feed
+  // every `eventSpp` call site on this feed (`LiveEventCardsActa` resolves the
+  // earner side per event, exactly as the demo timeline does).
+  const activePrayers = matchActivePrayersFromRolls(currentPrayerRolls);
 
   return (
     <div className="bg-panel border border-border">
@@ -1251,6 +1526,7 @@ function LiveActiveMatch({
               budget={inducementBudget as Extract<InducementBudget, { side: "home" | "away" }>}
               raceId={eligibleRaceId}
               persisted={eligibleSidePersisted}
+              prayerRolls={currentPrayerRolls}
               submitting={submitting}
               error={error}
               onPurchase={(items) =>
@@ -1259,6 +1535,9 @@ function LiveActiveMatch({
                   side: inducementBudget.side as "home" | "away",
                   items,
                 })
+              }
+              onRecordPrayerRolls={(rolls) =>
+                recordPrayerRolls(inducementBudget.side as "home" | "away", rolls)
               }
             />
           ) : null}
@@ -1293,13 +1572,14 @@ function LiveActiveMatch({
           ) : null}
           {/* MVT-10: the per-team mini-stat strip sits in the FEED above the
               event rows (never the sticky header). Null when no pill is shown. */}
-          <MiniStatsFeedStrip events={events} />
+          <MiniStatsFeedStrip events={events} activePrayers={activePrayers} />
           <LiveEventCardsActa
             events={events}
             startedAt={state.startedAt}
             homeTeam={homeTeam}
             awayTeam={awayTeam}
             now={state.startedAt != null ? state.startedAt + clock.elapsed : 0}
+            activePrayers={activePrayers}
           />
 
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
@@ -1362,16 +1642,19 @@ function FinishedLiveTimeline({
   homeTeam: MatchTeamDetail;
   awayTeam: MatchTeamDetail;
 }) {
+  // MVT-12/S3: the same LM-34 derivation over the persisted `prayerRolls`.
+  const activePrayers = matchActivePrayersFromRolls(live.prayerRolls);
   return (
     <div className="bg-panel border border-border">
       {/* MVT-10: the finished feed's per-team mini-strip sits above the rows. */}
-      <MiniStatsFeedStrip events={live.events} />
+      <MiniStatsFeedStrip events={live.events} activePrayers={activePrayers} />
       <LiveEventCardsActa
         events={live.events}
         startedAt={live.startedAt}
         homeTeam={homeTeam}
         awayTeam={awayTeam}
         now={live.startedAt != null ? live.startedAt + live.elapsed : 0}
+        activePrayers={activePrayers}
       />
     </div>
   );
