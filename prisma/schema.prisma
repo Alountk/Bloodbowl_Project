@@ -270,6 +270,13 @@ model LiveMatch {
   /// until a purchase persists it (or for a match with no LiveMatch row). The
   /// finished-match snapshot carries its own `scores.*.inducements` copy.
   inducements       Json?
+  /// LM-33: the per-side recorded prayer faces («Plegarias a Nuffle») rolled
+  /// for the bought `prayers-to-nuffle` inducements while the match is `ready`
+  /// (`{ home: number[], away: number[] }` — one 1D16 face per prayer bought,
+  /// once-rolled extension-only lock). Additive JSON, never re-typed; null
+  /// until a recordPrayerRolls write persists it (or for a match with no
+  /// LiveMatch row).
+  prayerRolls       Json?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   events        LiveEvent[]

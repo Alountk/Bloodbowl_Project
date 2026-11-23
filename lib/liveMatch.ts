@@ -21,7 +21,7 @@
 
 import { resolveInjury, permanentAttribute as permanentAttributeOf } from "./rules/injuries";
 import type { InjuryOutcomeKind, PermanentAttribute } from "./rules/injuries";
-import type { PersistedInducements } from "./rules/inducements";
+import type { PersistedInducements, PersistedPrayerRolls } from "./rules/inducements";
 
 export type TeamSide = "home" | "away";
 export type LiveMatchStatus = "pending" | "ready" | "live" | "finished";
@@ -397,6 +397,11 @@ export interface LiveMatchViewState {
    * transitions that do not touch the cart omit it; null = the row never
    * persisted a cart. */
   inducements?: PersistedInducements | null;
+  /** LM-33/LM-34: the persisted per-side recorded prayer faces (`{ home:
+   * number[], away: number[] }`), exposed on the live-state DTO so the prayer
+   * block and the SSE snapshot can render them. OPTIONAL: hub frames of
+   * transitions that do not touch the rolls omit it; null = nothing recorded. */
+  prayerRolls?: PersistedPrayerRolls | null;
 }
 
 const TURNS_PER_HALF = 8;
@@ -1090,6 +1095,10 @@ export function toLiveViewState(
      * (purchase POST view + SSE snapshot). Undefined → the key is omitted;
      * null → the row has no persisted cart. */
     inducements?: PersistedInducements | null;
+    /** LM-33/LM-34: the persisted per-side prayer rolls to expose on this view
+     * (record/purchase POST views + SSE snapshot). Undefined → the key is
+     * omitted; null → nothing was ever recorded. */
+    prayerRolls?: PersistedPrayerRolls | null;
   } = {},
 ): LiveMatchViewState {
   const clock = deriveLiveClock(state, now);
@@ -1118,5 +1127,7 @@ export function toLiveViewState(
     // LM-30: the cart rides the view ONLY when the caller supplies it (absent
     // on transitions that never touch the cart).
     ...(opts.inducements !== undefined ? { inducements: opts.inducements } : {}),
+    // LM-34: same omit-when-undefined contract as the cart above.
+    ...(opts.prayerRolls !== undefined ? { prayerRolls: opts.prayerRolls } : {}),
   };
 }

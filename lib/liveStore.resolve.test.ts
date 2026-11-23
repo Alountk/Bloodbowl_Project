@@ -115,6 +115,8 @@ function finishedRow(overrides: Partial<LiveMatch> & { events?: LiveEvent[] } = 
     journeymen: null,
     // LM-30: the default finished row carries no persisted inducement cart.
     inducements: null,
+    // T26b (LM-33): no recorded prayer rolls on the default finished row.
+    prayerRolls: null,
     // The legacy pending-casualty column is unused since design B (RAU-82)
     // made casualties single-phase; it stays nullable on the row.
     pendingCasualty: null,

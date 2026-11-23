@@ -14,7 +14,9 @@ import {
   inducementByDisplayName,
   isEligible,
   listInducements,
+  matchActivePrayersFromRolls,
   maxAllowed,
+  parsePrayerRolls,
   raceRules,
   resolvePrayerRoll,
   validateCart,
@@ -532,5 +534,57 @@ describe("T25/T30 · Prayers of Nuffle — the 1D16 blessing rows («Plegarias a
     for (const prayers of otherSets) {
       expect(crowdSppException(prayers)).toBe(false);
     }
+  });
+});
+
+/**
+ * LM-33/LM-34 (live-prayer-rolls S1): the production prayer-roll read/derivation
+ * seams — `parsePrayerRolls` defensively parses the persisted
+ * `LiveMatch.prayerRolls` JSON and `matchActivePrayersFromRolls` is THE single
+ * derivation every production consumer uses (never inline re-derivations).
+ */
+describe("parsePrayerRolls (LM-34 — persisted `LiveMatch.prayerRolls` read)", () => {
+  it("keeps only integer 1-16 faces per side (out-of-range/non-integer faces are dropped)", () => {
+    expect(parsePrayerRolls({ home: [7, 12, 17, 0, -1, 10.5, "13"], away: [13] })).toEqual({
+      home: [7, 12],
+      away: [13],
+    });
+  });
+
+  it("yields both sides' arrays for a well-formed value (empty when a side never recorded)", () => {
+    expect(parsePrayerRolls({ home: [], away: [7] })).toEqual({ home: [], away: [7] });
+    expect(parsePrayerRolls({ home: [3], away: [] })).toEqual({ home: [3], away: [] });
+  });
+
+  it("collapses malformed/foreign shapes to null (never crashes)", () => {
+    expect(parsePrayerRolls(null)).toBeNull();
+    expect(parsePrayerRolls(undefined)).toBeNull();
+    expect(parsePrayerRolls("garbage")).toBeNull();
+    expect(parsePrayerRolls([7])).toBeNull();
+    expect(parsePrayerRolls({ home: [7] })).toBeNull();
+    expect(parsePrayerRolls({ home: [7], away: "nope" })).toBeNull();
+  });
+});
+
+describe("matchActivePrayersFromRolls (LM-34 — THE single active-prayer derivation)", () => {
+  it("derives each side's set via activePrayersFromRolls (id rows 10-13 only, deduped, table order)", () => {
+    // LM-34 scenario: face 3 contributes nothing, face 13 dedupes to one entry.
+    expect(matchActivePrayersFromRolls({ home: [12, 3], away: [13, 13] })).toEqual({
+      home: ["crowd-support"],
+      away: ["foul-and-frenzy"],
+    });
+  });
+
+  it("empty rolls (or nothing recorded) derive empty sets on both sides", () => {
+    expect(matchActivePrayersFromRolls({ home: [], away: [] })).toEqual({ home: [], away: [] });
+    expect(matchActivePrayersFromRolls(null)).toEqual({ home: [], away: [] });
+    expect(matchActivePrayersFromRolls(undefined)).toEqual({ home: [], away: [] });
+  });
+
+  it("orders every blessing in table order regardless of the recorded face order", () => {
+    expect(matchActivePrayersFromRolls({ home: [13, 10, 12, 11], away: [10] })).toEqual({
+      home: ["perfect-pass", "dazzling-catches", "crowd-support", "foul-and-frenzy"],
+      away: ["perfect-pass"],
+    });
   });
 });
