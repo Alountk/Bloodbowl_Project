@@ -740,6 +740,21 @@ const es: Dict = {
   "match.inducements.cart": "Carrito actual",
   "match.inducements.notEligible": "Solo el entrenador del equipo con menor valor de equipo puede comprar incentivos.",
 
+  // MVT-12/S2 — captura de tiradas de «Plegarias a Nuffle» en fase de listos (LM-33 recordPrayerRolls)
+  "match.prayers.title": "Plegarias a Nuffle",
+  "match.prayers.remaining": "Tiradas pendientes: {count}",
+  "match.prayers.inputLabel": "Resultado del 1D16",
+  "match.prayers.accept": "Aceptar",
+  "match.prayers.recorded": "Tirada registrada",
+  "match.prayers.errorInvalid": "Introduce una tirada entre 1 y 16.",
+  "match.prayers.errorDuplicate": "Esa tirada ya está registrada: las repeticiones se vuelven a tirar.",
+  "match.prayers.errorExceeds": "No tienes más plegarias compradas para tirar.",
+  "match.prayers.errorRecorded": "Las tiradas de este equipo ya están registradas.",
+  "match.prayers.granted": "Bendición concedida",
+  "match.prayers.spp": "+ SPP",
+  "match.prayers.tableNote": "Efecto en mesa (este motor no lo aplica)",
+  "match.prayers.unmodeled": "🎲 {roll} — Bendición no modelada; resolución manual en mesa.",
+
   "match.concede.action": "Conceder",
   "match.concede.confirm": "¿Conceder el partido?",
   "match.concede.yes": "Sí, conceder",
@@ -1657,6 +1672,21 @@ const en: Dict = {
   "match.inducements.maxReached": "Maximum reached ({name}).",
   "match.inducements.cart": "Current cart",
   "match.inducements.notEligible": "Only the coach of the lower team-value team may buy inducements.",
+
+  // MVT-12/S2 — ready-phase «Plegarias a Nuffle» roll capture (LM-33 recordPrayerRolls)
+  "match.prayers.title": "Prayers to Nuffle",
+  "match.prayers.remaining": "Rolls left to record: {count}",
+  "match.prayers.inputLabel": "1D16 result",
+  "match.prayers.accept": "Accept",
+  "match.prayers.recorded": "Roll recorded",
+  "match.prayers.errorInvalid": "Enter a roll between 1 and 16.",
+  "match.prayers.errorDuplicate": "That roll is already recorded: repeats are re-rolled.",
+  "match.prayers.errorExceeds": "You have no purchased prayers left to roll.",
+  "match.prayers.errorRecorded": "This team's rolls are already recorded.",
+  "match.prayers.granted": "Granted blessing",
+  "match.prayers.spp": "+ SPP",
+  "match.prayers.tableNote": "Table effect (this engine does not apply it)",
+  "match.prayers.unmodeled": "🎲 {roll} — Unmodeled blessing; resolve manually on the table.",
 
   "match.concede.action": "Concede",
   "match.concede.confirm": "Concede the match?",

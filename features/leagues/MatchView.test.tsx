@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { useSession } from "next-auth/react";
 import { MatchView } from "./MatchView";
 import type { LiveMatchView, LiveMatchViewState, MatchDetail } from "./api";
+import { PRAYERS_OF_NUFFLE } from "@/lib/rules/inducements";
 
 /**
  * The v4 Acta side identity of a `live-event-row`. The `data-testid` sits on the
@@ -572,6 +573,28 @@ describe("MatchView — live fixture (MV-5 shells fed + controls)", () => {
     expect(screen.getByTestId("mini-td-away").textContent).toContain("0");
     // Design 10 drops the "Faltas" stat from the mini grid.
     expect(screen.queryByTestId("mini-foul-home")).toBeNull();
+  });
+
+  it("pays the completion ★2 from the earner's «Pase perfecto» in the mini SPP pill (MVT-12/S4a)", async () => {
+    stubLiveEventSource();
+    // Same 5-event home set as the default-★6 pill above, but the home coach
+    // recorded prayer roll 10 («Pase perfecto») — the completion becomes ★2
+    // (3 td + 2 completion + 2 casualty = 7).
+    const detail = liveDetail();
+    detail.live = {
+      ...detail.live!,
+      prayerRolls: { home: [10], away: [] },
+      events: [
+        { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 8000 },
+        { seq: 5, kind: "td", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 9000 },
+        { seq: 6, kind: "completion", side: "home", playerRosterId: "p2", half: 1, turnNumber: 3, payload: {}, at: 9100 },
+        { seq: 7, kind: "casualty", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: { band: "grave" }, at: 9200 },
+        { seq: 8, kind: "foul", side: "home", playerRosterId: "p2", half: 1, turnNumber: 3, payload: {}, at: 9300 },
+      ],
+    };
+    stubMatch(detail);
+    renderPlayed();
+    await waitFor(() => expect(screen.getByTestId("mini-spp-home").textContent).toContain("7"));
   });
 
   it("shows the LiveActionDock for the ACTIVE coach in a live match (Design A, dock)", async () => {
@@ -2765,5 +2788,278 @@ describe("MatchView — share link (MSL-7/MV-8)", () => {
     expect(writeText).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: "Copiado" })).toBeTruthy();
     Reflect.deleteProperty(document, "execCommand");
+  });
+});
+
+describe("MatchView — ready-phase prayer rolls capture (MVT-12/S2)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  type PrayerRollsState = { home: number[]; away: number[] } | null;
+
+  /** A `ready` fixture whose HOME coach is the eligible inducement buyer
+   *  (budget side "home", viewer u1) with a persisted cart + optional LM-34
+   *  `prayerRolls` riding the same live-view path as `inducements`. */
+  function readyPrayerDetail(
+    overrides: {
+      cart?: { id: string; count: number }[];
+      prayerRolls?: PrayerRollsState;
+    } = {},
+  ): MatchDetail {
+    const raw = scheduledDetail();
+    return {
+      ...raw,
+      homeTeam: { ...raw.homeTeam, user: { id: "u1", name: "Coach A", email: "a@x", avatar: null } },
+      awayTeam: { ...raw.awayTeam, user: { id: "u2", name: "Coach B", email: "b@x", avatar: null } },
+      live: {
+        seq: 2,
+        status: "ready",
+        half: 1,
+        turnNumber: 1,
+        activeSide: "home",
+        homeConsented: true,
+        awayConsented: true,
+        viewerSide: "home",
+        startedAt: null,
+        elapsed: 0,
+        homeTurnMs: 0,
+        awayTurnMs: 0,
+        paused: false,
+        homeScore: 0,
+        awayScore: 0,
+        finishedAt: null,
+        concedeProposedBy: null,
+        mvpNominations: { home: null, away: null },
+        resolutionState: {
+          home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+          away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+        },
+        inducements: { home: overrides.cart ?? [], away: [] },
+        inducementBudget: { side: "home", budget: 300_000 },
+        prayerRolls: overrides.prayerRolls ?? null,
+        events: [],
+      } as LiveMatchView,
+    };
+  }
+
+  /** A faithful LM-34 `recordPrayerRolls` 200 response: the fresh view carries
+   *  the side's persisted rolls. `/live` POSTs get this view; GETs the detail. */
+  function stubPrayerPost(
+    detail: MatchDetail,
+    response:
+      | { ok: true; view: Record<string, unknown> }
+      | { ok: false; status: number; error: string },
+  ) {
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        /\/live$/.test(url)
+          ? response.ok
+            ? {
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ view: response.view }),
+              }
+            : {
+                ok: false,
+                status: response.status,
+                json: () => Promise.resolve({ error: response.error }),
+              }
+          : { ok: true, status: 200, json: () => Promise.resolve(detail) },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  /** The fresh ready view body returned by a successful recordPrayerRolls. */
+  function readyViewWith(prayerRolls: PrayerRollsState): Record<string, unknown> {
+    return {
+      seq: 3,
+      status: "ready",
+      half: 1,
+      turnNumber: 1,
+      activeSide: "home",
+      homeConsented: true,
+      awayConsented: true,
+      viewerSide: "home",
+      startedAt: null,
+      elapsed: 0,
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      paused: false,
+      homeScore: 0,
+      awayScore: 0,
+      finishedAt: null,
+      concedeProposedBy: null,
+      mvpNominations: { home: null, away: null },
+      resolutionState: {
+        home: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+        away: { step: "winnings", fansDone: false, fans: null, mvpConfirmed: false, mvpRolled: false, casualtiesDone: false, journeymenDone: false },
+      },
+      inducements: { home: [{ id: "prayers-to-nuffle", count: 1 }], away: [] },
+      prayerRolls,
+    };
+  }
+
+  it("does NOT render the prayer block when the cart has no prayers-to-nuffle (or count 0)", async () => {
+    stubLiveEventSource();
+    stubMatch(readyPrayerDetail()); // empty cart.
+    renderPlayed();
+    expect(await screen.findByTestId("inducement-purchase")).toBeTruthy();
+    expect(screen.queryByTestId("prayer-rolls")).toBeNull();
+    expect(screen.queryByText(/Tiradas pendientes/)).toBeNull();
+    vi.unstubAllGlobals();
+
+    stubLiveEventSource();
+    stubMatch(readyPrayerDetail({ cart: [{ id: "prayers-to-nuffle", count: 0 }] }));
+    renderPlayed();
+    expect(await screen.findByTestId("inducement-purchase")).toBeTruthy();
+    expect(screen.queryByTestId("prayer-rolls")).toBeNull();
+    expect(screen.queryByText(/Tiradas pendientes/)).toBeNull();
+  });
+
+  it("renders the block with 1 purchased prayer and POSTs recordPrayerRolls with the entered face", async () => {
+    stubLiveEventSource();
+    const fetchMock = stubPrayerPost(
+      readyPrayerDetail({ cart: [{ id: "prayers-to-nuffle", count: 1 }] }),
+      { ok: true, view: readyViewWith({ home: [11], away: [] }) },
+    );
+    renderPlayed();
+
+    const panel = await screen.findByTestId("prayer-rolls");
+    expect(within(panel).getByText("Plegarias a Nuffle")).toBeTruthy();
+    // remaining = count − recorded = 1 − 0.
+    expect(within(panel).getByText("Tiradas pendientes: 1")).toBeTruthy();
+
+    fireEvent.change(within(panel).getByRole("spinbutton"), { target: { value: "11" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Aceptar" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const livePost = fetchMock.mock.calls.find((c) => String(c[0]).endsWith("/live"));
+    expect(livePost).toBeDefined();
+    const init = (livePost as unknown[])[1] as { body: string };
+    const body = JSON.parse(init.body) as { type: string; side: string; rolls: number[] };
+    expect(body).toEqual({ type: "recordPrayerRolls", side: "home", rolls: [11] });
+  });
+
+  it("locks with «Tirada registrada» and a disabled input when the rolls are already recorded", async () => {
+    stubLiveEventSource();
+    stubMatch(
+      readyPrayerDetail({
+        cart: [{ id: "prayers-to-nuffle", count: 1 }],
+        prayerRolls: { home: [11], away: [] },
+      }),
+    );
+    renderPlayed();
+
+    const panel = await screen.findByTestId("prayer-rolls");
+    // remaining = 1 − 1 = 0 → locked state.
+    expect(within(panel).getByText("Tirada registrada")).toBeTruthy();
+    expect((within(panel).getByRole("spinbutton") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("maps the 409 'Duplicate prayer roll' body inline and keeps the input editable", async () => {
+    stubLiveEventSource();
+    stubPrayerPost(
+      readyPrayerDetail({
+        cart: [{ id: "prayers-to-nuffle", count: 2 }],
+        prayerRolls: { home: [11], away: [] },
+      }),
+      { ok: false, status: 409, error: "Duplicate prayer roll" },
+    );
+    renderPlayed();
+
+    const panel = await screen.findByTestId("prayer-rolls");
+    const input = within(panel).getByRole("spinbutton") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "11" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Aceptar" }));
+
+    // The server 409 body is authoritative and maps to its own Spanish message.
+    expect(
+      (await within(panel).findByText(
+        "Esa tirada ya está registrada: las repeticiones se vuelven a tirar.",
+      )).textContent,
+    ).toContain("Esa tirada ya está registrada");
+    // The entered value stays editable after the error.
+    expect(input.disabled).toBe(false);
+    expect(input.value).toBe("11");
+  });
+
+  it("reveals the verbatim blessing for face 11 and locks after a 200", async () => {
+    stubLiveEventSource();
+    stubPrayerPost(
+      readyPrayerDetail({ cart: [{ id: "prayers-to-nuffle", count: 1 }] }),
+      { ok: true, view: readyViewWith({ home: [11], away: [] }) },
+    );
+    renderPlayed();
+
+    const panel = await screen.findByTestId("prayer-rolls");
+    fireEvent.change(within(panel).getByRole("spinbutton"), { target: { value: "11" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Aceptar" }));
+
+    // The verbatim name comes from the PRAYERS_OF_NUFFLE model row (never a
+    // hardcoded guess): face 11 is an id-bearing (10-13) blessing.
+    const blessing11 = PRAYERS_OF_NUFFLE.find((b) => b.roll === 11);
+    expect(blessing11?.label).toBeTruthy();
+    expect((await within(panel).findByText(blessing11!.label)).textContent).toBe(blessing11!.label);
+    // Success locks the block.
+    expect(await within(panel).findByText("Tirada registrada")).toBeTruthy();
+    expect((within(panel).getByRole("spinbutton") as HTMLInputElement).disabled).toBe(true);
+  });
+});
+
+/**
+ * MVT-12/S3 (threading): the recorded prayer faces (`prayerRolls`, LM-34)
+ * derive the per-side `MatchActivePrayers` via `matchActivePrayersFromRolls`
+ * and reach the feed's ★SPP markers — «Pase perfecto» (face 10) pays a
+ * completed pass ★2 instead of the shared T24 default ★1. Pins BOTH
+ * `LiveEventCardsActa` call sites: the live shell (LiveActiveMatch, the
+ * SSE-fresh `currentPrayerRolls`) and the finished timeline
+ * (`FinishedLiveTimeline`, `live.prayerRolls`).
+ */
+describe("MatchView — MVT-12/S3: activePrayers threading into the feed's ★SPP marker", () => {
+  /** The single completion card's ★SPP tab (`acta-card-spp`). */
+  const sppTab = (container: HTMLElement): string | null =>
+    container.querySelector("[data-testid='acta-card-spp']")?.textContent ?? null;
+
+  /** The display feed's ONLY rows: a boundary start + one home completion. */
+  const completionEvents: LiveMatchView["events"] = [
+    { seq: 1, kind: "start", side: null, playerRosterId: null, half: 1, turnNumber: 1, payload: {}, at: 1000 },
+    { seq: 5, kind: "completion", side: "home", playerRosterId: "p1", half: 1, turnNumber: 3, payload: {}, at: 2000 },
+  ];
+
+  /** A finished live whose ONLY display row carrying a marker is the completion. */
+  function finishedCompletion(prayerRolls: LiveMatchView["prayerRolls"]): MatchDetail {
+    const detail = finishedLiveDetail();
+    detail.live = { ...detail.live!, prayerRolls, events: completionEvents };
+    return detail;
+  }
+
+  it("finished timeline: face 10 «Pase perfecto» renders ★2 — nothing recorded stays ★1", async () => {
+    stubMatch(finishedCompletion({ home: [10], away: [] }));
+    const { container, unmount } = renderPlayed();
+    await waitFor(() =>
+      expect(container.querySelectorAll("[data-testid='live-event-row']").length).toBeGreaterThan(0),
+    );
+    expect(sppTab(container)).toBe("★2");
+    unmount();
+
+    stubMatch(finishedCompletion(null));
+    const plain = renderPlayed();
+    await waitFor(() =>
+      expect(plain.container.querySelectorAll("[data-testid='live-event-row']").length).toBeGreaterThan(0),
+    );
+    expect(sppTab(plain.container)).toBe("★1");
+  });
+
+  it("live shell: the SAME derivation drives the live feed card (face 10 → ★2)", async () => {
+    stubLiveEventSource();
+    const detail = liveDetail();
+    detail.live = { ...detail.live!, prayerRolls: { home: [10], away: [] }, events: completionEvents };
+    stubMatch(detail);
+    const { container } = renderPlayed();
+    await waitFor(() =>
+      expect(container.querySelectorAll("[data-testid='live-event-row']").length).toBeGreaterThan(0),
+    );
+    expect(sppTab(container)).toBe("★2");
   });
 });
