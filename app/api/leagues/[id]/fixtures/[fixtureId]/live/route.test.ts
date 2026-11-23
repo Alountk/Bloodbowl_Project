@@ -2714,3 +2714,137 @@ describe("POST .../live — weather change capture (S2: Cambiar clima)", () => {
     expect(applyTransitionMock).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * T26a (L88 SPP map carve-out, payload flags ONLY): production event payloads
+ * carry the flags the shipped T27 earn rule consumes — `causerSkills` + the
+ * CAUSER-side `brawlinBrutes` on caused casualties, `brawlinBrutes` on a TD
+ * scored by a «Brutos Peleones» race (Khorne/Orcos/Enanos/Ogros/Nurgle/Orcos
+ * Negros). Self-inflicted casualties carry NO flags (absence is the contract);
+ * a foul payload stays `{ victimRosterId }` (foul SPP is prayer-13-only).
+ * activePrayers persistence/capture is a SEPARATE task (user, 2026-11-23).
+ */
+describe("POST .../live — T26a SPP payload flags (causerSkills / brawlinBrutes, L88)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+  });
+
+  /**
+   * Home is active (liveState.activeSide = home). Roster: p1/p2 home, p9 away.
+   * Options pin the CAUSER-side (home) team race and the causer's skills.
+   */
+  function liveSetup(
+    sessionId: string,
+    opts: { homeRaceId?: string; causerSkills?: unknown } = {},
+  ) {
+    authMock.mockResolvedValue(authSession(sessionId));
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue({
+      ...readyRow(3),
+      status: "live",
+      startedAt: new Date(1000).toISOString(),
+      homeTurnMs: 0,
+      awayTurnMs: 0,
+      clockStartedAt: new Date(1000).toISOString(),
+    });
+    liveMatchRowToStateMock.mockReturnValue(liveState);
+    prismaMock.player.findMany.mockResolvedValue([
+      opts.causerSkills !== undefined
+        ? { teamId: "home-t", rosterPlayerId: "p1", skills: opts.causerSkills }
+        : { teamId: "home-t", rosterPlayerId: "p1" },
+      { teamId: "home-t", rosterPlayerId: "p2" },
+      { teamId: "away-t", rosterPlayerId: "p9" },
+    ]);
+    prismaMock.team.findMany.mockResolvedValue([
+      {
+        id: "home-t",
+        raceId: opts.homeRaceId ?? "human",
+        roster: [
+          { id: "p1", name: "P1", positionalKey: "lineman" },
+          { id: "p2", name: "P2", positionalKey: "lineman" },
+        ],
+      },
+      { id: "away-t", raceId: "human", roster: [{ id: "p9", name: "P9", positionalKey: "lineman" }] },
+    ]);
+  }
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("td by a «Brutos Peleones» scorer race (orc) → payload exactly { brawlinBrutes: true }", async () => {
+    liveSetup("coach-home", { homeRaceId: "orc" });
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "td", side: "home", playerRosterId: "p1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    const event = applyTransitionMock.mock.calls[0][0].next.events[0];
+    expect(event.kind).toBe("td");
+    expect(event.payload).toEqual({ brawlinBrutes: true });
+  });
+
+  it("td by a non-Brutos scorer race (human) → payload exactly {} (no invented flags)", async () => {
+    liveSetup("coach-home", { homeRaceId: "human" });
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(req({ type: "td", side: "home", playerRosterId: "p1" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(200);
+    const event = applyTransitionMock.mock.calls[0][0].next.events[0];
+    expect(event.kind).toBe("td");
+    expect(event.payload).toEqual({});
+  });
+
+  it("caused casualty stamps causerSkills + the CAUSER-side brawlinBrutes (khorne earner, victim opposite)", async () => {
+    // Home (active) records a blitz casualty: victim p9 away, causer p1 home —
+    // the causer is the EARNEE, so the flags read the causer's skills and the
+    // causer's side race (home-t = khorne), never the victim's.
+    liveSetup("coach-home", { homeRaceId: "khorne", causerSkills: ["violent-innovator"] });
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    const event = applyTransitionMock.mock.calls[0][0].next.events[0];
+    expect(event.kind).toBe("casualty");
+    expect(event.payload).toMatchObject({
+      causerSkills: ["violent-innovator"],
+      brawlinBrutes: true,
+    });
+  });
+
+  it("self-inflicted crowd casualty (no causer) carries NEITHER causerSkills NOR brawlinBrutes (absence is the contract)", async () => {
+    liveSetup("coach-away", { homeRaceId: "khorne", causerSkills: ["violent-innovator"] });
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", cause: "crowd", roll16: 12 }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    const event = applyTransitionMock.mock.calls[0][0].next.events[0];
+    expect(event.kind).toBe("casualty");
+    expect(event.payload).not.toHaveProperty("causerSkills");
+    expect(event.payload).not.toHaveProperty("brawlinBrutes");
+  });
+
+  it("causer without skills on a non-Brutos race stamps causerSkills: [] (honest presence) and NO brawlinBrutes", async () => {
+    liveSetup("coach-home", { homeRaceId: "human" });
+    applyTransitionMock.mockResolvedValue({ seq: 4, view: liveView() });
+    const res = await POST(
+      req({ type: "casualty", side: "away", victimRosterId: "p9", causerRosterId: "p1", cause: "blitz", roll16: 13, roll6: 4 }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    const event = applyTransitionMock.mock.calls[0][0].next.events[0];
+    expect(event.kind).toBe("casualty");
+    expect(event.payload).toMatchObject({ causerSkills: [] });
+    expect(event.payload).not.toHaveProperty("brawlinBrutes");
+  });
+});
