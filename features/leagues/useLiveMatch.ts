@@ -43,6 +43,17 @@ function mergedInducements(
   return "inducements" in frame ? frame.inducements : (prev?.inducements ?? null);
 }
 
+/** LM-33/LM-34 prayer-roll merge (twin of `mergedInducements`): a frame that
+ * OMITS `prayerRolls` means "unchanged" — only an EXPLICIT value applies
+ * (`null` = nothing was ever recorded). Without this, `{...frame}` drops the
+ * previously known rolls on every transition frame that never touched them. */
+function mergedPrayerRolls(
+  frame: Pick<LiveMatchViewState, "prayerRolls">,
+  prev: Pick<LiveMatchViewState, "prayerRolls"> | null | undefined,
+): LiveMatchViewState["prayerRolls"] {
+  return "prayerRolls" in frame ? frame.prayerRolls : (prev?.prayerRolls ?? null);
+}
+
 /** Merges a frame's delta events into the accumulated timeline (upsert by seq). */
 function upsertEvents(existing: LiveMatchEventDto[], incoming: LiveMatchEventDto[]): LiveMatchEventDto[] {
   if (incoming.length === 0) return existing;
@@ -100,6 +111,7 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
         setLive((prev) => ({
           ...frame,
           inducements: mergedInducements(frame, prev),
+          prayerRolls: mergedPrayerRolls(frame, prev),
           // The snapshot is the authoritative persisted timeline → replaces.
           events: frame.events ?? (prev != null ? prev.events : []),
         }));
@@ -139,6 +151,7 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
       setLive((prev) => ({
         ...frame,
         inducements: mergedInducements(frame, prev),
+        prayerRolls: mergedPrayerRolls(frame, prev),
         // Hub frames carry only the DELTA events of their transition; merge so
         // a `state` frame never wipes the accumulated timeline.
         events: prev != null ? upsertEvents(prev.events, frame.events ?? []) : (frame.events ?? []),
@@ -177,6 +190,7 @@ export function useLiveMatch({ leagueId, fixtureId }: UseLiveMatchParams): UseLi
       setLive((prev) => ({
         ...view,
         inducements: mergedInducements(view, prev),
+        prayerRolls: mergedPrayerRolls(view, prev),
         events: prev != null ? prev.events : [],
       }));
       return view;

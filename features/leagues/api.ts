@@ -1,7 +1,7 @@
 import type { Team } from "@/features/teams/types";
 import type { CasualtyCause } from "@/lib/livePhase";
 import type { RulesetDto } from "@/lib/rulesets";
-import type { InducementBudget, PersistedInducements } from "@/lib/rules/inducements";
+import type { InducementBudget, PersistedInducements, PersistedPrayerRolls } from "@/lib/rules/inducements";
 import type { InducementSnapshot } from "@/lib/liveStore";
 
 /** Lifecycle state of a league: joinable/open, locked after a season starts, or
@@ -712,6 +712,11 @@ lastTurnReason?: "voluntary" | "turnover" | "injury" | null;
  * away: [{ id, count }] }`) — exposed on the purchase POST view + SSE snapshot.
  * Optional: hub frames that do not touch the cart omit it; null = no cart. */
 inducements?: PersistedInducements | null;
+/** LM-33/LM-34: the persisted per-side recorded prayer faces (`{ home: number[],
+ * away: number[] }`) — exposed on the record/purchase POST views + SSE snapshot.
+ * Optional: hub frames that do not touch the rolls omit it; null = nothing was
+ * ever recorded. */
+prayerRolls?: PersistedPrayerRolls | null;
 }
 
 /** The per-side resolution wizard step cursor (see the store's `ResolutionState`
@@ -831,6 +836,17 @@ export type LiveCommand =
       type: "purchaseInducements";
       side: "home" | "away";
       items: { id: string; count: number }[];
+    }
+  | {
+      /** LM-33: the ready-phase per-side prayer-roll capture — the caller
+       * records THEIR OWN side's 1D16 faces (one per bought
+       * `prayers-to-nuffle`). The server 409s any face outside 1-16, a
+       * duplicate, a count above the purchased prayers or a submission that is
+       * not a strict extension of the recorded faces (the once-rolled lock).
+       * 404 no row, 409 not-ready / not-your-team / seq. */
+      type: "recordPrayerRolls";
+      side: "home" | "away";
+      rolls: number[];
     }
   | {
       /** RAU-49: server-owned PREVIEW roll for the resolution modal — requires

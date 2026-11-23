@@ -569,6 +569,8 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
           clockStartedAt: null,
           finishedAt: null,
           inducements: { home: [{ id: "wizard", count: 1 }], away: [] },
+          // LM-34: the fixture GET also carries the per-side prayer rolls.
+          prayerRolls: { home: [7, 12], away: [] },
           events: [],
         },
         // Away is richer (5 dwarf blitzers at 100k = 500k roster + 120k
@@ -627,6 +629,9 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     expect(body.live).not.toBeNull();
     // The persisted cart rides the fixture-GET live DTO (replace-cart reads it).
     expect(body.live.inducements).toEqual({ home: [{ id: "wizard", count: 1 }], away: [] });
+    // LM-34: the persisted prayer rolls ride the same DTO (parity with the
+    // SSE snapshot — serializeLive exposes the exact recorded faces).
+    expect(body.live.prayerRolls).toEqual({ home: [7, 12], away: [] });
     // IND-2: away (dwarf, 620k) is richer than home (human, 250k) → the HOME
     // coach is the eligible side with a 370k budget.
     expect(body.live.inducementBudget).toEqual({ side: "home", budget: 370_000 });
@@ -681,6 +686,8 @@ describe("GET /api/leagues/[id]/fixtures/[fixtureId]", () => {
     // A legacy row (no inducements column value) reads back as null; the budget
     // still derives (home lineman 50k < dwarf blitzer 100k → HOME gets 50k).
     expect(body.live.inducements).toBeNull();
+    // LM-34: a legacy row with no prayerRolls column value reads back as null.
+    expect(body.live.prayerRolls).toBeNull();
     expect(body.live.inducementBudget).toEqual({ side: "home", budget: 50_000 });
   });
 
