@@ -30,8 +30,9 @@ import {
   resolutionCasualtiesDone,
   resolutionJourneymenDone,
   purchaseInducements,
+  recordPrayerRolls,
 } from "@/lib/liveStore";
-import { parsePersistedInducements } from "@/lib/rules/inducements";
+import { parsePersistedInducements, parsePrayerRolls } from "@/lib/rules/inducements";
 import { WEATHER_KINDS } from "@/lib/rules/weather";
 import {
   applyEndTurn,
@@ -483,6 +484,9 @@ export async function GET(
               // LM-30: the SSE snapshot exposes the persisted per-side cart
               // (null when the row never persisted one).
               inducements: parsePersistedInducements(liveRow?.inducements ?? null),
+              // LM-34: the snapshot also exposes the per-side prayer rolls
+              // (null when nothing was ever recorded).
+              prayerRolls: parsePrayerRolls(liveRow?.prayerRolls ?? null),
             }),
             seq: snapshotSeq,
             events: toEventDtos(persistedEvents),
@@ -644,6 +648,16 @@ type ControlCommand =
       items: { id: string; count: number }[];
     }
   | {
+      /** LM-33: the ready-phase per-side prayer-roll capture — the caller
+       * records THEIR OWN side's 1D16 faces (one per bought
+       * `prayers-to-nuffle`). The route enforces the caller owns that side; the
+       * store enforces ready-only + the full LM-33 validation (faces 1-16,
+       * distinct, ≤ purchased count, extension-only once-rolled lock). */
+      type: "recordPrayerRolls";
+      side: TeamSide;
+      rolls: number[];
+    }
+  | {
       /** RAU-14: the post-resolve journeyman decision. `hire: true` pays the
        * race Lineman cost from the treasury and makes the Novato a permanent
        * roster player; `hire: false` ("Dejar ir") just removes the option. The
@@ -789,6 +803,16 @@ function isControlCommand(value: unknown): value is ControlCommand {
             typeof (line as Record<string, unknown>).id === "string" &&
             typeof (line as Record<string, unknown>).count === "number",
         )
+      );
+    case "recordPrayerRolls":
+      // LM-33: the caller's side + their rolled faces (SHAPE only: a number[]).
+      // Face validation (1-16 ints, distinct, ≤ count, extension-only lock) is
+      // the store's job — its 409 strings are the frozen UI contract, so a
+      // garbage face must REACH the store, never die here as 400.
+      return (
+        (c.side === "home" || c.side === "away") &&
+        Array.isArray(c.rolls) &&
+        c.rolls.every((face) => typeof face === "number")
       );
     case "resolutionWinningsSeen":
     case "resolutionFanRoll":
@@ -1021,6 +1045,34 @@ export async function POST(
       if (status === 409) {
         const message = error instanceof Error ? error.message : "Cannot purchase in current state";
         return Response.json({ error: message }, { status: 409 });
+      }
+      throw error;
+    }
+  }
+
+  // LM-33: the ready-phase prayer-roll capture — restricted to the caller's OWN
+  // side (like purchaseInducements); the store enforces ready-only, the
+  // purchased count and the extension-only lock. Its 409/404 bodies pass
+  // through VERBATIM (`error.message`) — the four LM-33 strings are the frozen
+  // UI contract and the S2 prayer block maps them to its inline messages.
+  if (command.type === "recordPrayerRolls") {
+    if (side === null) {
+      return Response.json({ error: "No side to record prayer rolls" }, { status: 409 });
+    }
+    if (command.side !== side) {
+      return Response.json({ error: "Not your team" }, { status: 409 });
+    }
+    try {
+      const result = await recordPrayerRolls(
+        { fixtureId, side: command.side, rolls: command.rolls, now },
+        deps,
+      );
+      return Response.json({ view: { ...result.view, viewerSide: side } }, { status: 200 });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      const message = error instanceof Error ? error.message : "Cannot record prayer rolls";
+      if (status === 404 || status === 409) {
+        return Response.json({ error: message }, { status });
       }
       throw error;
     }

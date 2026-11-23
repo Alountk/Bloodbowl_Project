@@ -11,7 +11,7 @@ import {
   parsePersistedJourneymen,
   type ServedPlayer,
 } from "@/lib/journeymen";
-import { inducementBudgetOf, parsePersistedInducements } from "@/lib/rules/inducements";
+import { inducementBudgetOf, parsePersistedInducements, parsePrayerRolls } from "@/lib/rules/inducements";
 
 /** A persisted live event, serialized for the timeline (LM-10). */
 interface LiveEventDto {
@@ -99,6 +99,11 @@ export interface LiveDto {
    * (the SSE snapshot also carries it; hub frames of unrelated transitions
    * omit it — the UI tolerates absence / re-reads the GET). */
   inducements?: { home: { id: string; count: number }[]; away: { id: string; count: number }[] } | null;
+  /** LM-33/LM-34/S2: the persisted per-side recorded prayer faces, exposed on
+   * the fixture GET so the ready-phase prayer block renders an existing record
+   * on load (the SSE snapshot also carries it; hub frames of unrelated
+   * transitions omit it). Null = nothing was ever recorded. */
+  prayerRolls?: { home: number[]; away: number[] } | null;
   /** IND-2/S2: the server-derived eligible side + |ΔTV| budget for the READY
    * phase purchase step (lower-TV side only; null/0 when nobody may buy). */
   inducementBudget?: { side: "home" | "away" | null; budget: number } | null;
@@ -142,6 +147,9 @@ interface LiveMatchRow {
   /** LM-30: the persisted per-side inducement cart JSON (null = never bought).
    * Column added in S1; absent on rows predating the additive migration. */
   inducements?: unknown;
+  /** LM-33: the persisted per-side prayer-roll faces JSON (null = never
+   * recorded). Column added in S1; absent on rows predating the migration. */
+  prayerRolls?: unknown;
   events: {
     seq: number;
     kind: string;
@@ -216,6 +224,9 @@ export function serializeLive(
     // a legacy row that predates the column — the ready UI then shows the
     // empty purchase step, never a stale cart).
     inducements: parsePersistedInducements(row.inducements),
+    // LM-34/S2d: expose the persisted per-side prayer rolls (null when nothing
+    // was recorded) — parity with the cart above.
+    prayerRolls: parsePrayerRolls(row.prayerRolls),
     // LM-16: only display-worthy kinds reach the fixture GET; `turn`/`turnStart`/
     // `requestTurn` stay in the DB (audit/replay) and are never shown here.
     events: row.events

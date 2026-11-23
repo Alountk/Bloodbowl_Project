@@ -28,6 +28,7 @@ const resolveLiveMatchMock = vi.hoisted(() => vi.fn());
 const nominateMvpLiveMatchMock = vi.hoisted(() => vi.fn());
 const hireJourneymanLiveMatchMock = vi.hoisted(() => vi.fn());
 const purchaseInducementsLiveMatchMock = vi.hoisted(() => vi.fn());
+const recordPrayerRollsLiveMatchMock = vi.hoisted(() => vi.fn());
 const acknowledgeEventLiveMatchMock = vi.hoisted(() => vi.fn());
 const liveEventRowToDtoMock = vi.hoisted(() => vi.fn((row: Record<string, unknown>) => ({
   seq: row.seq,
@@ -80,6 +81,7 @@ vi.mock("@/lib/liveStore", () => ({
   nominateMvpLiveMatch: nominateMvpLiveMatchMock,
   hireJourneymanLiveMatch: hireJourneymanLiveMatchMock,
   purchaseInducements: purchaseInducementsLiveMatchMock,
+  recordPrayerRolls: recordPrayerRollsLiveMatchMock,
 }));
 
 import { GET, POST } from "./route";
@@ -2552,6 +2554,122 @@ describe("POST .../live — LM-30 ready-phase inducement purchase (purchaseInduc
   });
 });
 
+describe("POST .../live — LM-33 prayer-roll capture (recordPrayerRolls)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isAuthEnabledMock.mockReturnValue(true);
+    prismaMock.fixture.findFirst.mockResolvedValue(startedFixture("f-1", "lg-1"));
+    prismaMock.liveMatch.findFirst.mockResolvedValue(readyRow(5));
+  });
+
+  function req(body: unknown) {
+    return new Request("http://localhost:3000/api/leagues/lg-1/fixtures/f-1/live", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("wires the own-side rolls through the store (200 view passthrough)", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    recordPrayerRollsLiveMatchMock.mockResolvedValue({
+      seq: 6,
+      view: { ...liveView({ seq: 6, status: "ready", startedAt: null, clockStartedAt: null }) },
+    });
+    const res = await POST(
+      req({ type: "recordPrayerRolls", side: "away", rolls: [7, 12] }),
+      { params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }) } as never,
+    );
+    expect(res.status).toBe(200);
+    expect(recordPrayerRollsLiveMatchMock).toHaveBeenCalledWith(
+      {
+        fixtureId: "f-1",
+        side: "away",
+        rolls: [7, 12],
+        now: expect.any(Number),
+      },
+      expect.anything(),
+    );
+    const body = await res.json();
+    expect(body.view.viewerSide).toBe("away");
+  });
+
+  it("409s a coach who targets the RIVAL side with \"Not your team\" and no store call", async () => {
+    authMock.mockResolvedValue(authSession("coach-home"));
+    const res = await POST(req({ type: "recordPrayerRolls", side: "away", rolls: [7] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "Not your team" });
+    expect(recordPrayerRollsLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("409s a side-less admin (owns neither team) with no store call", async () => {
+    authMock.mockResolvedValue(authSession("owner-1")); // league owner, no team
+    const res = await POST(req({ type: "recordPrayerRolls", side: "home", rolls: [7] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(409);
+    expect(recordPrayerRollsLiveMatchMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the four LM-33 store 409 strings through verbatim", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    for (const message of [
+      "Invalid prayer roll",
+      "Duplicate prayer roll",
+      "Rolls exceed purchased prayers",
+      "Prayer rolls already recorded",
+    ]) {
+      recordPrayerRollsLiveMatchMock.mockRejectedValueOnce(
+        Object.assign(new Error(message), { status: 409 }),
+      );
+      const res = await POST(req({ type: "recordPrayerRolls", side: "away", rolls: [7] }), {
+        params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+      } as never);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: message });
+    }
+  });
+
+  it("passes a store 404 through with the store message", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    recordPrayerRollsLiveMatchMock.mockRejectedValue(
+      Object.assign(new Error("not found"), { status: 404 }),
+    );
+    const res = await POST(req({ type: "recordPrayerRolls", side: "away", rolls: [7] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
+  });
+
+  it("rejects a malformed recordPrayerRolls body with 400 and never calls the store", async () => {
+    authMock.mockResolvedValue(authSession("coach-away"));
+    // rolls missing entirely.
+    let res = await POST(req({ type: "recordPrayerRolls", side: "away" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    // rolls is not an array.
+    res = await POST(req({ type: "recordPrayerRolls", side: "away", rolls: "7" }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    // rolls carries a non-number face (content validation is the store's 409).
+    res = await POST(req({ type: "recordPrayerRolls", side: "away", rolls: ["7"] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    // side outside home/away.
+    res = await POST(req({ type: "recordPrayerRolls", side: "midfield", rolls: [7] }), {
+      params: Promise.resolve({ id: "lg-1", fixtureId: "f-1" }),
+    } as never);
+    expect(res.status).toBe(400);
+    expect(recordPrayerRollsLiveMatchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET .../live — LM-30 SSE snapshot exposes the persisted inducement cart", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2566,6 +2684,8 @@ describe("GET .../live — LM-30 SSE snapshot exposes the persisted inducement c
     prismaMock.liveMatch.findFirst.mockResolvedValue({
       ...readyRow(5),
       inducements: { home: [{ id: "bribes", count: 2 }], away: [] },
+      // LM-34: the snapshot also carries the persisted per-side prayer rolls.
+      prayerRolls: { home: [7], away: [] },
     });
     liveMatchRowToStateMock.mockReturnValue({ ...readyState, seq: 5, events: [] });
 
@@ -2577,6 +2697,7 @@ describe("GET .../live — LM-30 SSE snapshot exposes the persisted inducement c
     const first = new TextDecoder().decode((await reader.read()).value);
     expect(first).toContain("event: snapshot");
     expect(first).toContain('"inducements":{"home":[{"id":"bribes","count":2}],"away":[]}');
+    expect(first).toContain('"prayerRolls":{"home":[7],"away":[]}');
     await reader.cancel();
   });
 
@@ -2592,6 +2713,7 @@ describe("GET .../live — LM-30 SSE snapshot exposes the persisted inducement c
     const first = new TextDecoder().decode((await reader.read()).value);
     expect(first).toContain("event: snapshot");
     expect(first).toContain('"inducements":null');
+    expect(first).toContain('"prayerRolls":null');
     await reader.cancel();
   });
 });
