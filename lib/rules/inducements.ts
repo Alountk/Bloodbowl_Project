@@ -104,6 +104,13 @@ export interface PersistedInducements {
   away: InducementCartItem[];
 }
 
+/** The persisted/DTO per-side prayer-roll shape (`LiveMatch.prayerRolls`,
+ * LM-33/LM-34): the recorded 1D16 faces, one per bought prayer. */
+export interface PersistedPrayerRolls {
+  home: number[];
+  away: number[];
+}
+
 /** The purchase-UI section a catalog entry belongs to (S8 · design A′).
  * `stars` is carried by `starPlayerEntry` lines only — section 05 renders
  * straight from STAR_PLAYERS, so it is NOT part of INDUCEMENT_CATEGORIES. */
@@ -536,6 +543,26 @@ export function emptyPersistedInducements(): PersistedInducements {
   return { home: [], away: [] };
 }
 
+/** Defensively parses a persisted `LiveMatch.prayerRolls` JSON value (LM-34):
+ * malformed/foreign shapes collapse to null (never crash); a well-formed value
+ * keeps ONLY integer 1-16 faces per side (garbage faces are dropped — the
+ * record command never persists them). */
+export function parsePrayerRolls(value: unknown): PersistedPrayerRolls | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const side = (candidate: unknown): number[] | null => {
+    if (!Array.isArray(candidate)) return null;
+    return candidate.filter(
+      (face): face is number =>
+        typeof face === "number" && Number.isInteger(face) && face >= 1 && face <= 16,
+    );
+  };
+  const home = side(raw.home);
+  const away = side(raw.away);
+  if (home === null || away === null) return null;
+  return { home, away };
+}
+
 /** The Σ effective cost of a cart for a race (IND-3): every line's effective
  * cost × count. Unknown/reserved (dynamic-cost) ids are skipped defensively —
  * the catalog never offers them and the purchase command rejects them; this is
@@ -782,6 +809,20 @@ export function activePrayersFromRolls(rolls: readonly number[]): ActivePrayers 
   return PRAYERS_OF_NUFFLE.map((blessing) => blessing.id).filter(
     (id): id is PrayerId => id != null && active.has(id),
   );
+}
+
+/** THE single production derivation of a match's active prayers from the
+ * persisted rolls (LM-34): each side's faces run through `activePrayersFromRolls`
+ * (id-bearing rows 10-13 only, deduped, table order). Every production
+ * consumer uses THIS helper — never an inline re-derivation. Nothing recorded
+ * (null/undefined) derives empty sets on both sides. */
+export function matchActivePrayersFromRolls(
+  rolls: PersistedPrayerRolls | null | undefined,
+): MatchActivePrayers {
+  return {
+    home: activePrayersFromRolls(rolls?.home ?? []),
+    away: activePrayersFromRolls(rolls?.away ?? []),
+  };
 }
 
 /** THE foul-SPP exception seam (T25): the SPP earn rule consults this
