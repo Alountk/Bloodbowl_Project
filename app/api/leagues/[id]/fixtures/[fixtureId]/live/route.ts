@@ -55,6 +55,7 @@ import {
 import {
   checkActorInvariant,
   resolveEventPermission,
+  playerSide,
   CAUSE_REQUIRES_CAUSER,
   CASUALTY_CAUSES,
   type EventKind,
@@ -63,6 +64,7 @@ import {
 } from "@/lib/livePhase";
 import { ensurePlayersForTeam } from "@/lib/players";
 import { mergeRosterWithJourneymen, type ServedPlayer } from "@/lib/journeymen";
+import { brawlinBrutesRace } from "@/features/teams/data/skills";
 import type { PlayerEntry } from "@/features/teams/types";
 
 export const dynamic = "force-dynamic";
@@ -255,11 +257,18 @@ async function materializeTeamRosters(
  * journeymen, `mergeRosterWithJourneymen`) — the same derivation the fixture
  * GET serves, so the journeyman NAMES the begin flow persists in the timeline
  * event match the FAB/combos exactly. Used by the begin handler (to build the
- * `journeymen` kickoff input) and by `loadRosterSideMap` (actor invariants).
+ * `journeymen` kickoff input) and by the foul/casualty actor-invariant gate
+ * (LM-12 side map + the T26a casualty stamp, one load — see below).
  */
 async function loadServedRosters(
   ctx: FixtureContext,
-): Promise<{ home: ServedPlayer[]; away: ServedPlayer[] }> {
+): Promise<{
+  home: ServedPlayer[];
+  away: ServedPlayer[];
+  /** T26a: the per-side team `raceId` (the «Brutos Peleones» lookup) — the
+   *  team rows already selected it; it used to be dropped. */
+  raceIds: { home: string; away: string };
+}> {
   const [teamRows, players] = await Promise.all([
     prisma.team.findMany({
       where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
@@ -290,26 +299,12 @@ async function loadServedRosters(
       players: players.filter((p) => p.teamId === teamId),
     });
   };
-  return { home: servedFor(ctx.homeTeamId), away: servedFor(ctx.awayTeamId) };
-}
-
-/**
- * Loads the materialized Player rows for BOTH teams and groups their
- * `rosterPlayerId`s by side into a `RosterSideMap` (LM-12/D1). The map powers
- * `checkActorInvariant`: a foul victim / casualty causer MUST resolve to a
- * roster player on the opposite side. Reads the idempotent `ensurePlayersForTeam`
- * backfill, so it runs after `begin` materializes the rosters.
- *
- * RAU-13: the map ALSO resolves each side's Journeymen (Novatos) — the fixture
- * GET serves them selectable in the EventControls pools, so a foul victim or
- * casualty causer whose id is a served journeyman must pass the actor
- * invariants (a journeyman leaves after the match; nothing is persisted for it).
- */
-async function loadRosterSideMap(ctx: FixtureContext): Promise<RosterSideMap> {
-  const { home, away } = await loadServedRosters(ctx);
+  const raceIdFor = (teamId: string): string =>
+    teamRows.find((t) => t.id === teamId)?.raceId ?? "human";
   return {
-    home: new Set(home.map((p) => p.rosterPlayerId)),
-    away: new Set(away.map((p) => p.rosterPlayerId)),
+    home: servedFor(ctx.homeTeamId),
+    away: servedFor(ctx.awayTeamId),
+    raceIds: { home: raceIdFor(ctx.homeTeamId), away: raceIdFor(ctx.awayTeamId) },
   };
 }
 
@@ -1381,6 +1376,11 @@ export async function POST(
     return Response.json({ error: "Not your turn" }, { status: 409 });
   }
 
+  // T26a (L88): the casualty SPP stamp — computed ONLY for caused casualties
+  // (a causer present); self-inflicted crowd/dodge carries NO flags (absence
+  // is the contract). Consumed by `recordCasualty` at the transition below.
+  let casualtyStamp: { causerSkills?: readonly string[]; brawlinBrutes?: boolean } | undefined;
+
   // Side-aware event gate (LM-12/D14): only run the pure side matrix for the
   // event commands (endTurn/pass, TD, completion, casualty, foul); a deny maps
   // to 409 (the only callers reaching here are fixture coaches or the no-team
@@ -1477,7 +1477,18 @@ export async function POST(
     // materialized rosters, so we load them here (after the side gate, only for
     // foul/casualty). A deny → 409 with no mutation.
     if (command.type === "foul" || command.type === "casualty") {
-      const rosters = await loadRosterSideMap(ctx);
+      // T26a: ONE served-rosters load feeds BOTH the LM-12 side map and the
+      // casualty stamp (causer skills + causer-side raceId) — the previous
+      // `loadRosterSideMap` round-trip re-queried the same rows and dropped
+      // everything but the id sets. The invariant gate is unchanged: the same
+      // two Sets derived from the same rows (incl. RAU-13 journeymen — a
+      // served journeyman must pass the actor invariants like any roster
+      // player; nothing is persisted for it after the match).
+      const served = await loadServedRosters(ctx);
+      const rosters: RosterSideMap = {
+        home: new Set(served.home.map((p) => p.rosterPlayerId)),
+        away: new Set(served.away.map((p) => p.rosterPlayerId)),
+      };
       const actorSide = command.side; // foul = aggressor side; casualty = victim side
       const opponentId =
         command.type === "foul"
@@ -1495,6 +1506,28 @@ export async function POST(
         }) === "deny"
       ) {
         return Response.json({ error: "Invalid actor side" }, { status: 409 });
+      }
+      // T26a (L88): the SPP stamp — ONLY for caused casualties (the invariant
+      // above proved the causer resolves OPPOSITE the victim, so `playerSide`
+      // resolves the EARNEE's side). A foul or a self-inflicted crowd/dodge
+      // (no causer) carries NO flags (foul SPP is prayer-13-only).
+      if (command.type === "casualty" && command.causerRosterId != null) {
+        const causerSide = playerSide(rosters, command.causerRosterId);
+        if (causerSide != null) {
+          const causer = served[causerSide].find(
+            (p) => p.rosterPlayerId === command.causerRosterId,
+          );
+          const rawSkills: unknown = causer?.skills;
+          casualtyStamp = {
+            // The causer's skill refs, filtered to strings — an honest `[]`
+            // presence marker when the causer has no skills at all.
+            causerSkills: Array.isArray(rawSkills)
+              ? rawSkills.filter((s): s is string => typeof s === "string")
+              : [],
+            // The earner's team race (cmd.side is the VICTIM's side here).
+            brawlinBrutes: brawlinBrutesRace(served.raceIds[causerSide]),
+          };
+        }
       }
     }
   }
@@ -1519,8 +1552,28 @@ export async function POST(
       return Response.json({ error: "Invalid transition" }, { status: 409 });
     }
   } else if (command.type === "td") {
+    // T26a (L88): the «Brutos Peleones» TD modifier keys on the SCORER's
+    // team race (the earner) — a small team-only race lookup, OUTSIDE the
+    // try below so a database failure surfaces as itself, never as a 409
+    // "Invalid transition". Stamped only when true; `applyTD` keeps the
+    // payload `{}` otherwise (additive).
+    const teamRows =
+      (await prisma.team.findMany({
+        where: { id: { in: [ctx.homeTeamId, ctx.awayTeamId] } },
+        select: { id: true, raceId: true },
+      })) ?? [];
+    const scorerTeamId = command.side === "home" ? ctx.homeTeamId : ctx.awayTeamId;
+    const scorerRaceId = teamRows.find((t) => t.id === scorerTeamId)?.raceId ?? "human";
     try {
-      next = applyTD(current, { side: command.side, playerRosterId: command.playerRosterId }, now);
+      next = applyTD(
+        current,
+        {
+          side: command.side,
+          playerRosterId: command.playerRosterId,
+          ...(brawlinBrutesRace(scorerRaceId) ? { brawlinBrutes: true } : {}),
+        },
+        now,
+      );
     } catch {
       return Response.json({ error: "Invalid transition" }, { status: 409 });
     }
@@ -1551,7 +1604,7 @@ export async function POST(
     // band is derived server-side from the 1D16 roll. A roll/derivation failure
     // (e.g. a permanent band without the 1D6) maps to 409, never a 500.
     try {
-      next = recordCasualty(current, command, now);
+      next = recordCasualty(current, command, now, casualtyStamp);
     } catch {
       return Response.json({ error: "Invalid casualty roll" }, { status: 409 });
     }
@@ -1596,8 +1649,15 @@ export async function POST(
  * instantly — the rival's ✓/✗ acknowledgement is informational only. The
  * payload carries the causer when the cause requires one (blitz/foul/block);
  * self-inflicted dodge/crowd carries none (the invariant gate already
- * rejected a causer). */
-function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { type: "casualty" }>, now: number): LiveMatchState {
+ * rejected a causer). T26a (L88): the optional `stamp` adds the SPP flags —
+ * `causerSkills` (honest `[]` marker) and the «Brutos Peleones» earner flag —
+ * ONLY for caused casualties (stamp absent = no flags). */
+function recordCasualty(
+  state: LiveMatchState,
+  cmd: Extract<ControlCommand, { type: "casualty" }>,
+  now: number,
+  stamp?: { causerSkills?: readonly string[]; brawlinBrutes?: boolean },
+): LiveMatchState {
   validateCasualtyRolls(cmd.roll16, cmd.roll6);
   const { band, permanentAttribute: permanentAttributeOutcome } = deriveCasualtyOutcome(cmd.roll16, cmd.roll6);
   return {
@@ -1622,6 +1682,12 @@ function recordCasualty(state: LiveMatchState, cmd: Extract<ControlCommand, { ty
           /** LM-12/D1: the non-active both-down casualty carries the additive
            * marker onto the persisted payload (absent for a plain block). */
           ...(cmd.bothDown === true ? { bothDown: true } : {}),
+          /** T26a (L88): the SPP flags for CAUSED casualties — the causer's
+           * skill refs (honest `[]` presence marker) and the «Brutos
+           * Peleones» earner marker. Absent without a stamp (self-inflicted
+           * crowd/dodge: absence is the contract). */
+          ...(stamp?.causerSkills != null ? { causerSkills: [...stamp.causerSkills] } : {}),
+          ...(stamp?.brawlinBrutes === true ? { brawlinBrutes: true } : {}),
           ...(permanentAttributeOutcome != null ? { permanentAttribute: permanentAttributeOutcome } : {}),
         },
         at: now,

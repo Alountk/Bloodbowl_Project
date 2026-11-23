@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { RACES } from "./races";
 import {
+  BRAWLIN_BRUTES_RACES,
   SKILL_CATEGORIES,
   SKILLS,
   SPECIAL_ACTION_TRAITS,
+  brawlinBrutesRace,
   canHaveViolentInnovator,
   getSkillById,
   getSkillByName,
@@ -161,4 +163,39 @@ describe("T27 · SPP skill flags (L87 — «use these EXACT three names»)", () 
     expect(canHaveViolentInnovator(["block", "Right Stuff"])).toBe(false);
     expect(canHaveViolentInnovator([])).toBe(false);
   });
+});
+
+/**
+ * T26a (L88 — user verbatim): «Brutos Peleones (Brawlin Brutes)» is a TEAM
+ * special rule — NOT a player skill — on exactly the six races the user named
+ * (Khorne / Orcos / Enanos / Ogros / Nurgle / Orcos Negros). Effect: a caused
+ * Casualty pays 3 SPP (instead of 2), a Touchdown pays 2 (instead of 3). The
+ * map pins those races as CATALOG race ids; the earn rule keys the modifier on
+ * the earner's team race (causal causer / TD scorer).
+ */
+describe("T26a · «Brutos Peleones» race map (L88 — team special rule, six races)", () => {
+  it("pins the user's L88 race list as catalog race ids", () => {
+    expect(BRAWLIN_BRUTES_RACES).toEqual([
+      "khorne",
+      "orc",
+      "dwarf",
+      "ogre",
+      "nurgle",
+      "black-orc",
+    ]);
+  });
+
+  it.each(["khorne", "orc", "dwarf", "ogre", "nurgle", "black-orc"])(
+    "%s carries the Brutos Peleones rule",
+    (raceId) => {
+      expect(brawlinBrutesRace(raceId)).toBe(true);
+    },
+  );
+
+  it.each(["human", "tomb-kings", "khorne-blocker", "", "unknown-race"])(
+    "%s does NOT carry the rule",
+    (raceId) => {
+      expect(brawlinBrutesRace(raceId)).toBe(false);
+    },
+  );
 });

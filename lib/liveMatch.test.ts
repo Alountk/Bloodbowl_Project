@@ -400,6 +400,26 @@ describe("applyTD — records event, scores, and auto-ends the turn (D11)", () =
   it("rejects an out-of-turn TD", () => {
     expect(() => applyTD(state(), { side: "away", playerRosterId: "p-2" }, 1100)).toThrow("out");
   });
+
+  // T26a (L88): the «Brutos Peleones» payload flag — an ADDITIVE cmd field;
+  // existing callers pass nothing and keep the `{}` payload.
+  it("stamps { brawlinBrutes: true } on the td payload when the flag is set (L88 T26a)", () => {
+    const next = applyTD(state(), { side: "home", playerRosterId: "p-1", brawlinBrutes: true }, 1100);
+    const td = next.events.find((e) => e.kind === "td");
+    expect(td?.payload).toEqual({ brawlinBrutes: true });
+  });
+
+  it("keeps the td payload `{}` by default (flag absent — additive, existing callers unchanged)", () => {
+    const next = applyTD(state(), { side: "home", playerRosterId: "p-1" }, 1100);
+    const td = next.events.find((e) => e.kind === "td");
+    expect(td?.payload).toEqual({});
+  });
+
+  it("keeps the td payload `{}` when the flag is explicitly false (only `true` stamps)", () => {
+    const next = applyTD(state(), { side: "home", playerRosterId: "p-1", brawlinBrutes: false }, 1100);
+    const td = next.events.find((e) => e.kind === "td");
+    expect(td?.payload).toEqual({});
+  });
 });
 
 describe("applyCompletion — records a ★1 completion event WITHOUT flipping the turn (LM-15)", () => {

@@ -576,7 +576,7 @@ export function applyEndTurn(
  */
 export function applyTD(
   state: LiveMatchState,
-  cmd: { side: TeamSide; playerRosterId: string },
+  cmd: { side: TeamSide; playerRosterId: string; brawlinBrutes?: boolean },
   now: number,
 ): LiveMatchState {
   if (cmd.side !== state.activeSide) throwInvalid("out-of-turn");
@@ -590,7 +590,10 @@ export function applyTD(
     playerRosterId: cmd.playerRosterId,
     half: state.half,
     turnNumber: state.turnNumber,
-    payload: {},
+    // T26a (L88): the additive «Brutos Peleones» marker — a TD by a scorer
+    // from one of the six races pays 2 SPP instead of 3 (the earn rule reads
+    // the flag). Absent by default: existing callers and payloads stay `{}`.
+    payload: cmd.brawlinBrutes === true ? { brawlinBrutes: true } : {},
     at: now,
   };
 

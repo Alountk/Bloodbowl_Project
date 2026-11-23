@@ -500,3 +500,26 @@ export const SPECIAL_ACTION_TRAITS = [
 export function canHaveViolentInnovator(skills: readonly string[]): boolean {
   return SPECIAL_ACTION_TRAITS.some((id) => ownsSkill(skills, id));
 }
+
+/**
+ * «Brutos Peleones (Brawlin Brutes)» (L88, user verbatim) is a TEAM special
+ * rule — NOT a player skill — on exactly the six races the user named:
+ * Khorne / Orcos / Enanos / Ogros / Nurgle / Orcos Negros. Effect (L88): a
+ * caused Casualty pays 3 SPP instead of 2, a Touchdown pays 2 instead of 3.
+ * The list pins those races as CATALOG race ids (races.catalog.json); the
+ * earn rule keys the modifier on the EARNEE's team race — the casualty causer
+ * / the TD scorer — never the victim's.
+ */
+export const BRAWLIN_BRUTES_RACES = [
+  "khorne", // Khorne
+  "orc", // Orcos
+  "dwarf", // Enanos
+  "ogre", // Ogros
+  "nurgle", // Nurgle
+  "black-orc", // Orcos Negros
+] as const satisfies readonly string[];
+
+/** True when the race carries the «Brutos Peleones» team rule (L88). */
+export function brawlinBrutesRace(raceId: string): boolean {
+  return (BRAWLIN_BRUTES_RACES as readonly string[]).includes(raceId);
+}
