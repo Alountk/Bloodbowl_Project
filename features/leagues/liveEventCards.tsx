@@ -20,6 +20,7 @@ import {
 } from "./liveEventLabels";
 import { Icon, type IconName } from "./icons";
 import type { LiveMatchView, MatchTeamDetail } from "./api";
+import type { MatchActivePrayers } from "@/lib/rules/inducements";
 import styles from "./liveEventCards.module.css";
 
 /**
@@ -351,6 +352,7 @@ export function LiveEventCards({
   viewerSide,
   now,
   onAck,
+  activePrayers = { home: [], away: [] },
 }: {
   events: LiveMatchView["events"];
   startedAt: number | null;
@@ -362,6 +364,10 @@ export function LiveEventCards({
   now: number;
   /** Fires `acknowledgeEvent` for the rival's ✓/✗ (informational only). */
   onAck: (eventSeq: number, status: "ok" | "nok") => void;
+  /** MVT-12/S3 («Plegarias a Nuffle»): the per-side active blessings — the
+   *  `eventSpp` context, derived via `matchActivePrayersFromRolls` (LM-34).
+   *  Absent = the T24 earn rule exactly (legacy callers keep compiling). */
+  activePrayers?: MatchActivePrayers;
 }) {
   const { t } = useI18n();
   // Module class map: kebab-case CSS source keys → readable locals (the class
@@ -454,7 +460,19 @@ export function LiveEventCards({
         const iconName: IconName =
           event.kind === "casualty" ? casualtyIcon(event.payload) : EVENT_GLYPH[event.kind] ?? "football";
         const partial = event.kind === "td" ? partialScores.get(event.seq) : undefined;
-        const spp = eventSpp(event);
+        // MVT-12/S3: `eventSpp` consults the EARNING team's active blessings —
+        // a casualty pays its CAUSER side (opposite the victim's row side,
+        // LM-12), any other event its own acting side (the demo timeline's
+        // `earnerPrayersOf` rule, actaTurnTimeline.tsx).
+        const earnerSide =
+          event.side == null
+            ? null
+            : event.kind === "casualty"
+              ? event.side === "home"
+                ? "away"
+                : "home"
+              : event.side;
+        const spp = eventSpp(event, earnerSide != null ? activePrayers[earnerSide] : []);
         // MVT-5 actors (only on the wide team cards they belong to).
         const victim =
           isTeamCard && event.kind === "foul" && team

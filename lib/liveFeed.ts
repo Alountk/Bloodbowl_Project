@@ -1,4 +1,5 @@
 import { eventSpp as sppForEvent, type LiveEventLabelInput } from "@/features/leagues/liveEventLabels";
+import type { ActivePrayers, MatchActivePrayers } from "@/lib/rules/inducements";
 
 /**
  * Pure display derivations for the Design-A history feed (LM-17/LM-19, D22):
@@ -74,9 +75,11 @@ export function playerRef(players: FeedPlayers): Map<string, number> {
 /** Re-export of the shared SPP helper so feed consumers import it from one place (D23). */
 export { sppForEvent as eventSpp };
 
-/** SPP span needed by `deriveTeamStats` for a single event (uses liveEventLabels). */
-function sppOf(event: FeedEvent): number {
-  return sppForEvent(event as LiveEventLabelInput);
+/** SPP span needed by `deriveTeamStats` for a single event (uses liveEventLabels).
+ * MVT-12/S4a: the value consults the EARNING side's blessings (never the
+ * attributed side's) — `deriveTeamStats` resolves the earner per event. */
+function sppOf(event: FeedEvent, activePrayers: ActivePrayers): number {
+  return sppForEvent(event as LiveEventLabelInput, activePrayers);
 }
 
 /**
@@ -86,8 +89,18 @@ function sppOf(event: FeedEvent): number {
  * coach-reported injure), but only a LASTING band (Baja) awards its ★2. A
  * null-side boundary event (`endHalf`/`endMatch`) is ignored. Empty events →
  * every stat 0.
+ *
+ * MVT-12/S4a: `activePrayers` feeds the SPP VALUE only — the team ATTRIBUTION
+ * (`target.spp += …`, the event's own side) never moves. The VALUE consults the
+ * EARNER side's blessings (the shipped `earnerPrayersOf` rule): a casualty pays
+ * its CAUSER side (opposite the victim's row side, LM-12), any other event its
+ * own acting side. Absent set = the prayer-blind T24 defaults (every existing
+ * caller keeps compiling).
  */
-export function deriveTeamStats(events: readonly FeedEvent[]): { home: TeamStats; away: TeamStats } {
+export function deriveTeamStats(
+  events: readonly FeedEvent[],
+  activePrayers: MatchActivePrayers = { home: [], away: [] },
+): { home: TeamStats; away: TeamStats } {
   const home = { ...ZERO_STATS };
   const away = { ...ZERO_STATS };
   for (const e of events) {
@@ -109,7 +122,15 @@ export function deriveTeamStats(events: readonly FeedEvent[]): { home: TeamStats
       default:
         break;
     }
-    target.spp += sppOf(e);
+    const earnerSide =
+      e.side === "home"
+        ? e.kind === "casualty"
+          ? "away"
+          : "home"
+        : e.kind === "casualty"
+          ? "home"
+          : "away";
+    target.spp += sppOf(e, activePrayers[earnerSide]);
   }
   return { home, away };
 }

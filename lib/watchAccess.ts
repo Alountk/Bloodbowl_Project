@@ -16,6 +16,7 @@
  */
 
 import { isDisplayEvent, type LiveMatchStatus, type TeamSide } from "./liveMatch";
+import { parsePrayerRolls } from "@/lib/rules/inducements";
 
 /** The fixture fields that determine whether a share link is still valid. */
 export interface ShareFixtureState {
@@ -119,6 +120,12 @@ export interface WatchLiveView {
   paused: boolean;
   viewerSide: null;
   events: WatchEvent[];
+  /** LM-34 (guest exposure — user ruling 2026-11-23): the recorded per-side
+   * prayer faces, PUBLIC table facts. Optional — a frame that OMITS the key
+   * means "unchanged" (mirrors `toLiveViewState`'s optional-opts contract);
+   * only the fixture GET / SSE snapshot carry it explicitly (null = nothing
+   * recorded). */
+  prayerRolls?: { home: number[]; away: number[] } | null;
 }
 
 /** The public fixture identity (no `result`, no nested relations). */
@@ -176,6 +183,8 @@ export interface WatchFrameInput {
   awayTurnMs?: number;
   paused?: boolean;
   events?: readonly WatchEventInput[];
+  /** Loose input surface — `reduceWatchFrame` parses/normalizes it (LM-34). */
+  prayerRolls?: unknown;
 }
 
 /** The route's minimal Prisma read (fixture + teams + live + result nullness). */
@@ -218,7 +227,10 @@ function toWatchEvent(event: WatchEventInput): WatchEvent {
  * `WatchLiveView`. Explicitly picks fields — never spreads — so private fields
  * (`mvpNominations`, `resolutionState`, `inducements`, consent flags, …) can
  * never leak. Forces `viewerSide: null` and filters events through
- * `isDisplayEvent` (LM-16).
+ * `isDisplayEvent` (LM-16). LM-34 (frozen ruling 2026-11-23): `prayerRolls` is
+ * picked + parsed when the frame carries the key and OMITTED when it does not
+ * (omission = unchanged, mirroring `toLiveViewState`); malformed faces collapse
+ * to empty sides via `parsePrayerRolls` (never crash, never leak garbage).
  */
 export function reduceWatchFrame(frame: WatchFrameInput): WatchLiveView {
   return {
@@ -239,6 +251,7 @@ export function reduceWatchFrame(frame: WatchFrameInput): WatchLiveView {
     events: (frame.events ?? [])
       .filter((event) => isDisplayEvent(event.kind))
       .map(toWatchEvent),
+    ...(frame.prayerRolls !== undefined ? { prayerRolls: parsePrayerRolls(frame.prayerRolls) } : {}),
   };
 }
 

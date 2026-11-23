@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { LiveEventCards } from "./liveEventCards";
 import type { LiveMatchView, MatchTeamDetail, LiveMatchEventDto } from "./api";
+import type { MatchActivePrayers } from "@/lib/rules/inducements";
 
 /**
  * Compact full-width event cards (MVT-1/D3): team events are full-width white
@@ -44,7 +45,12 @@ function ev(
 
 function renderCards(
   events: LiveMatchEventDto[],
-  opts: { viewerSide?: "home" | "away" | null; onAck?: (eventSeq: number, status: "ok" | "nok") => void } = {},
+  opts: {
+    viewerSide?: "home" | "away" | null;
+    onAck?: (eventSeq: number, status: "ok" | "nok") => void;
+    /** MVT-12/S3: the per-side active blessings (the `eventSpp` context). */
+    activePrayers?: MatchActivePrayers;
+  } = {},
 ) {
   const live = {
     seq: events.length,
@@ -74,6 +80,7 @@ function renderCards(
       viewerSide={opts.viewerSide ?? null}
       now={Date.now()}
       onAck={opts.onAck ?? (() => undefined)}
+      activePrayers={opts.activePrayers}
     />,
   );
 }
@@ -856,5 +863,35 @@ describe("LiveEventCards — ack kind gate: only coach-recorded kinds carry the 
       expect(container.textContent).toMatch(/Correcto|Revisar/);
       unmount();
     }
+  });
+});
+
+/**
+ * MVT-12/S3 (threading): `eventSpp` receives the EARNING team's `ActivePrayers`
+ * (a casualty pays its CAUSER side — opposite the victim's row side, LM-12 —
+ * any other event its own acting side; the demo timeline's earnerPrayersOf
+ * rule). «Pase perfecto» (prayer face 10) pays a completed pass ★2 instead of
+ * the shared T24 default ★1; nothing recorded pins the default.
+ */
+describe("LiveEventCards — MVT-12/S3: eventSpp consults the EARNING team's activePrayers", () => {
+  it("«Pase perfecto» (prayer 10): the home completion pays ★2 with the blessing and ★1 without it", () => {
+    const blessed = renderCards([ev(5, "completion", "home", {}, "p1", 3, 2000)], {
+      activePrayers: { home: ["perfect-pass"], away: [] },
+    });
+    const blessedRow = blessed.container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(blessedRow.querySelector(".stars")?.textContent).toBe("(★2)");
+    blessed.unmount();
+
+    const plain = renderCards([ev(5, "completion", "home", {}, "p1", 3, 2000)]);
+    const plainRow = plain.container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(plainRow.querySelector(".stars")?.textContent).toBe("(★1)");
+  });
+
+  it("the blessing belongs to the EARNING side only: an away completion ignores home's «Pase perfecto»", () => {
+    const { container } = renderCards([ev(5, "completion", "away", {}, "p2", 3, 2000)], {
+      activePrayers: { home: ["perfect-pass"], away: [] },
+    });
+    const row = container.querySelector("[data-testid='live-event-row']") as HTMLElement;
+    expect(row.querySelector(".stars")?.textContent).toBe("(★1)");
   });
 });

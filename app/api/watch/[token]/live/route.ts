@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { liveHub, type HubSubscriber, type TickSnapshot } from "@/lib/liveHub";
 import { liveMatchRowToState } from "@/lib/liveStore";
+import { parsePrayerRolls } from "@/lib/rules/inducements";
 import { toLiveViewState, type TeamSide } from "@/lib/liveMatch";
 import {
   isShareLinkActive,
@@ -190,10 +191,14 @@ export async function GET(
       };
 
       // Snapshot-first (LM-8): the reduced live view, or `live:null` when the
-      // fixture has no live row. No `id` field on the snapshot frame.
+      // fixture has no live row. No `id` field on the snapshot frame. LM-34
+      // (frozen ruling 2026-11-23): the snapshot carries `prayerRolls` EXPLICITLY
+      // (null = nothing recorded) via the `toLiveViewState` opts.
       const snapshotPayload = live
         ? reduceWatchFrame({
-            ...toLiveViewState(live, now),
+            ...toLiveViewState(live, now, {
+              prayerRolls: parsePrayerRolls(liveRow?.prayerRolls ?? null),
+            }),
             seq: snapshotSeq,
             events: toWatchEventInputs(persistedEvents),
           })

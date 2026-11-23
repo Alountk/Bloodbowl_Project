@@ -36,6 +36,8 @@ interface RawLiveRow {
   awayTurnMs: number;
   paused: boolean;
   clockStartedAt: Date | null;
+  /** LM-34 (guest exposure): the persisted per-side prayer faces (Json | null). */
+  prayerRolls?: unknown;
   events: {
     seq: number;
     kind: string;
@@ -81,6 +83,9 @@ function toWatchFrame(row: RawLiveRow, now: number): WatchFrameInput {
     homeTurnMs: clock.homeTurnMs,
     awayTurnMs: clock.awayTurnMs,
     paused: clock.paused,
+    // LM-34 (frozen ruling 2026-11-23): the recorded rolls ride the frame
+    // EXPLICITLY (null = nothing recorded) — `reduceWatchFrame` parses them.
+    prayerRolls: row.prayerRolls ?? null,
     events: row.events.map((event) => ({
       seq: event.seq,
       kind: event.kind,
@@ -170,6 +175,7 @@ export async function GET(
           awayTurnMs: true,
           paused: true,
           clockStartedAt: true,
+          prayerRolls: true,
           events: {
             orderBy: { seq: "asc" },
             select: {

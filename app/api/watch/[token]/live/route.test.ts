@@ -288,6 +288,29 @@ describe("GET /api/watch/[token]/live — reduced frames (MSL-5)", () => {
     await reader.cancel().catch(() => {});
   });
 
+  it("carries the recorded prayerRolls on the snapshot frame (frozen ruling 2026-11-23)", async () => {
+    prismaMock.liveMatch.findFirst.mockResolvedValue(
+      liveRow({ prayerRolls: { home: [10], away: [] } }),
+    );
+
+    const res = await get();
+    const reader = res.body!.getReader();
+    const first = await readChunk(reader);
+
+    expect(first).toContain('"prayerRolls":{"home":[10],"away":[]}');
+    await reader.cancel().catch(() => {});
+  });
+
+  it("carries an explicit null prayerRolls on the snapshot when nothing was recorded", async () => {
+    // beforeEach already seeds a live row WITHOUT rolls → explicit null.
+    const res = await get();
+    const reader = res.body!.getReader();
+    const first = await readChunk(reader);
+
+    expect(first).toContain('"prayerRolls":null');
+    await reader.cancel().catch(() => {});
+  });
+
   it("reduces every hub frame so private fields never reach a guest frame", async () => {
     const res = await get();
     const reader = res.body!.getReader();
