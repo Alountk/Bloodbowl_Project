@@ -23,7 +23,7 @@
  * pre-live). `seq` remains monotonically increasing (LM-6).
  */
 
-import type { LiveMatch, LiveEvent, Player, Prisma } from "@prisma/client";
+import { Prisma, type LiveMatch, type LiveEvent, type Player } from "@prisma/client";
 import {
   beginMatch,
   consentStart,
@@ -87,9 +87,11 @@ import {
   emptyPersistedInducements,
   getInducement,
   parsePersistedInducements,
+  parsePrayerRolls,
   validateCart,
   type InducementCartItem,
   type PersistedInducements,
+  type PersistedPrayerRolls,
 } from "./rules/inducements";
 
 /** Minimal Prisma transaction surface the store uses (injectable for tests). */
@@ -932,6 +934,11 @@ export interface PurchaseInducementsInput {
  *
  * Guards: 404 no live row/team, 409 match not ready / not the lower-TV side /
  * stale-seq, 400 invalid cart. No mutation happens for any rejection.
+ *
+ * LM-33 alignment: the SAME write also aligns THAT side's recorded prayer
+ * rolls to the replaced cart — a `prayers-to-nuffle` count of 0 or below the
+ * recorded length clears the side's rolls (releasing the once-rolled lock), an
+ * unchanged-or-higher count keeps them.
  */
 export async function purchaseInducements(
   input: PurchaseInducementsInput,
@@ -948,6 +955,9 @@ export async function purchaseInducements(
   // before the assignment (every throw propagates, so it is never returned).
   const current = parsePersistedInducements(row.inducements) ?? emptyPersistedInducements();
   let nextCart: PersistedInducements = emptyPersistedInducements();
+  /** LM-33: the aligned per-side rolls for the SAME write (null when nothing
+   * is recorded anywhere — written as `Prisma.JsonNull`). */
+  let nextRolls: PersistedPrayerRolls | null = null;
   await deps.prisma.$transaction(async (tx) => {
     const teams = await tx.team.findMany({
       where: { id: { in: [input.homeTeamId, input.awayTeamId] } },
@@ -994,10 +1004,29 @@ export async function purchaseInducements(
         ? { home: validated.cart, away: current.away }
         : { home: current.home, away: validated.cart };
 
+    // LM-33: align THIS side's recorded rolls to the REPLACED cart — a prayer
+    // count of 0 or below the recorded length clears the side's rolls
+    // (lock released); an unchanged-or-higher count keeps them.
+    const currentRolls = parsePrayerRolls(row.prayerRolls) ?? { home: [], away: [] };
+    const newPrayerCount =
+      nextCart[input.side].find((line) => line.id === "prayers-to-nuffle")?.count ?? 0;
+    const recorded = currentRolls[input.side];
+    const alignedSide = newPrayerCount === 0 || newPrayerCount < recorded.length ? [] : recorded;
+    const aligned: PersistedPrayerRolls =
+      input.side === "home"
+        ? { home: alignedSide, away: currentRolls.away }
+        : { home: currentRolls.home, away: alignedSide };
+    nextRolls = aligned.home.length === 0 && aligned.away.length === 0 ? null : aligned;
+
     const updated = await tx.liveMatch.updateMany({
       where: { id: row.id, seq: row.seq },
       data: {
         inducements: nextCart as unknown as Prisma.InputJsonValue,
+        // LM-33: both roll arrays empty → the row stores JSON null (the DTO
+        // then exposes `prayerRolls: null` — "nothing recorded").
+        prayerRolls: nextRolls
+          ? (nextRolls as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
         seq: row.seq + 1,
       },
     });
@@ -1007,7 +1036,94 @@ export async function purchaseInducements(
   const view = toLiveViewState(
     { ...liveMatchRowToState(row), seq: row.seq + 1 },
     input.now,
-    { viewerSide: input.side, inducements: nextCart },
+    { viewerSide: input.side, inducements: nextCart, prayerRolls: nextRolls },
+  );
+  deps.hub.publish(input.fixtureId, { ...view, events: [] });
+  return { seq: row.seq + 1, view };
+}
+
+export interface RecordPrayerRollsInput {
+  fixtureId: string;
+  /** The recording side — the ROUTE enforces the caller owns that team (LM-2). */
+  side: TeamSide;
+  /** The side's FULL rolls array (extension-only replace-per-side, LM-33). */
+  rolls: number[];
+  now: number;
+}
+
+/**
+ * LM-33: the ready-phase per-side prayer-roll capture. The route enforces the
+ * caller owns the side; this store enforces the full LM-33 validation over the
+ * side's rolls — (1) non-empty integer faces 1-16 (`Invalid prayer roll`),
+ * (2) distinct (`Duplicate prayer roll`), (3) at most the side's purchased
+ * `prayers-to-nuffle` count in the current cart (`Rolls exceed purchased
+ * prayers`, count 0 included) and (4) a STRICT EXTENSION of the side's
+ * recorded faces (`Prayer rolls already recorded` — the once-rolled lock,
+ * S7-6 «una vez tirado los dados, ya no se puede volver a tirar»; released by
+ * a purchaseInducements alignment clear). All 409 with no mutation and no seq
+ * bump; the write is the same dedicated seq-guarded `updateMany` pattern as
+ * `purchaseInducements`, touching ONLY that side's array + the seq bump.
+ */
+export async function recordPrayerRolls(
+  input: RecordPrayerRollsInput,
+  deps: StoreDeps,
+): Promise<{ seq: number; view: ReturnType<typeof toLiveViewState> }> {
+  const row = await deps.prisma.liveMatch.findFirst({ where: { fixtureId: input.fixtureId } });
+  if (!row) throw Object.assign(new Error("not found"), { status: 404 });
+  if (row.status !== "ready") {
+    throw Object.assign(new Error("record only when ready"), { status: 409 });
+  }
+
+  // (1) non-empty integer faces 1-16 (an empty array is a no-op capture).
+  if (
+    input.rolls.length === 0 ||
+    input.rolls.some((face) => !Number.isInteger(face) || face < 1 || face > 16)
+  ) {
+    throw Object.assign(new Error("Invalid prayer roll"), { status: 409 });
+  }
+  // (2) distinct faces (the rulebook re-rolls repeats — a duplicate never persists).
+  if (new Set(input.rolls).size !== input.rolls.length) {
+    throw Object.assign(new Error("Duplicate prayer roll"), { status: 409 });
+  }
+  // (3) at most the side's purchased prayers-to-nuffle count (count 0 → never).
+  const cart = parsePersistedInducements(row.inducements) ?? emptyPersistedInducements();
+  const purchased =
+    cart[input.side].find((line) => line.id === "prayers-to-nuffle")?.count ?? 0;
+  if (input.rolls.length > purchased) {
+    throw Object.assign(new Error("Rolls exceed purchased prayers"), { status: 409 });
+  }
+  // (4) extension-only lock: with faces already recorded, the submission must
+  // START with them as an exact prefix and be strictly longer — an identical
+  // resubmission or any mutation/removal of a recorded face is rejected.
+  const current = parsePrayerRolls(row.prayerRolls) ?? { home: [], away: [] };
+  const prev = current[input.side];
+  if (
+    prev.length >= 1 &&
+    !(input.rolls.length > prev.length && prev.every((face, i) => input.rolls[i] === face))
+  ) {
+    throw Object.assign(new Error("Prayer rolls already recorded"), { status: 409 });
+  }
+
+  const nextRolls: PersistedPrayerRolls =
+    input.side === "home"
+      ? { home: input.rolls, away: current.away }
+      : { home: current.home, away: input.rolls };
+
+  await deps.prisma.$transaction(async (tx) => {
+    const updated = await tx.liveMatch.updateMany({
+      where: { id: row.id, seq: row.seq },
+      data: {
+        prayerRolls: nextRolls as unknown as Prisma.InputJsonValue,
+        seq: row.seq + 1,
+      },
+    });
+    if (updated.count === 0) throw Object.assign(new Error("seq conflict"), { status: 409 });
+  });
+
+  const view = toLiveViewState(
+    { ...liveMatchRowToState(row), seq: row.seq + 1 },
+    input.now,
+    { viewerSide: input.side, prayerRolls: nextRolls },
   );
   deps.hub.publish(input.fixtureId, { ...view, events: [] });
   return { seq: row.seq + 1, view };

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 import {
   acknowledgeEventLiveMatch,
   consentLiveMatch,
@@ -11,6 +12,7 @@ import {
   declineConcedeLiveMatch,
   acceptConcedeLiveMatch,
   purchaseInducements,
+  recordPrayerRolls,
   resetLiveMatch,
   expireStaleLiveMatches,
   isStaleLiveMatch,
@@ -1802,6 +1804,40 @@ describe("RAU-44 — finish-time live winnings persisted by persistAndPublish", 
   });
 });
 
+/** A `ready` LiveMatch row for the LM-30/LM-33 store tests (purchase cart +
+ * prayer rolls live OUTSIDE the state machine — both ride dedicated columns). */
+function readyRow(
+  seq: number,
+  inducements: unknown = null,
+  prayerRolls: unknown = null,
+): Record<string, unknown> {
+  return {
+    id: "lm-1",
+    fixtureId: "f-1",
+    status: "ready",
+    half: 1,
+    turnNumber: 1,
+    activeSide: "home",
+    homeConsented: true,
+    awayConsented: true,
+    startedAt: null,
+    homeTurnMs: 0,
+    awayTurnMs: 0,
+    homeScore: 0,
+    awayScore: 0,
+    seq,
+    paused: false,
+    clockStartedAt: null,
+    finishedAt: null,
+    concedeProposedBy: null,
+    mvpNominations: null,
+    resolutionState: null,
+    lastTurnReason: null,
+    inducements,
+    prayerRolls,
+  };
+}
+
 /**
  * purchaseInducements (LM-30): a ready-phase cart write for the LOWER-TV side.
  * The server derives each side's TV from the persisted team rows
@@ -1834,33 +1870,6 @@ describe("purchaseInducements — ready-phase cart write (LM-30)", () => {
   };
   /** home = away TV (both 400k) → equal TVs, zero budget, no eligible side. */
   const equalTeams = [orcTeam, { ...orcTeam, id: "away-t" }];
-
-  function readyRow(seq: number, inducements: unknown = null): Record<string, unknown> {
-    return {
-      id: "lm-1",
-      fixtureId: "f-1",
-      status: "ready",
-      half: 1,
-      turnNumber: 1,
-      activeSide: "home",
-      homeConsented: true,
-      awayConsented: true,
-      startedAt: null,
-      homeTurnMs: 0,
-      awayTurnMs: 0,
-      homeScore: 0,
-      awayScore: 0,
-      seq,
-      paused: false,
-      clockStartedAt: null,
-      finishedAt: null,
-      concedeProposedBy: null,
-      mvpNominations: null,
-      resolutionState: null,
-      lastTurnReason: null,
-      inducements,
-    };
-  }
 
   function rowOf(overrides: Record<string, unknown>): Record<string, unknown> {
     return { ...readyRow(5), ...overrides };
@@ -1901,10 +1910,16 @@ describe("purchaseInducements — ready-phase cart write (LM-30)", () => {
 
     expect(result.seq).toBe(6);
     expect(result.view.inducements).toEqual({ home: [], away: [{ id: "bribes", count: 3 }] });
-    // The dedicated row-scoped write touches ONLY the cart column + the seq bump.
+    // The dedicated row-scoped write touches ONLY the cart column + the prayer
+    // rolls column + the seq bump (LM-33 alignment: no prayers anywhere →
+    // both roll arrays empty → Prisma.JsonNull).
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "lm-1", seq: 5 },
-      data: { inducements: { home: [], away: [{ id: "bribes", count: 3 }] }, seq: 6 },
+      data: {
+        inducements: { home: [], away: [{ id: "bribes", count: 3 }] },
+        prayerRolls: Prisma.JsonNull,
+        seq: 6,
+      },
     });
     // Hub publish after commit: the view carries the cart + no events.
     expect(publish).toHaveBeenCalledTimes(1);
@@ -1974,6 +1989,7 @@ describe("purchaseInducements — ready-phase cart write (LM-30)", () => {
       where: { id: "lm-1", seq: 5 },
       data: {
         inducements: { home: [{ id: "bribes", count: 1 }], away: [{ id: "biased-referee", count: 1 }] },
+        prayerRolls: Prisma.JsonNull,
         seq: 6,
       },
     });
@@ -1987,7 +2003,96 @@ describe("purchaseInducements — ready-phase cart write (LM-30)", () => {
     await purchaseInducements({ ...baseInput, items: [] }, deps);
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: "lm-1", seq: 5 },
-      data: { inducements: { home: [{ id: "bribes", count: 1 }], away: [] }, seq: 6 },
+      data: {
+        inducements: { home: [{ id: "bribes", count: 1 }], away: [] },
+        prayerRolls: Prisma.JsonNull,
+        seq: 6,
+      },
+    });
+  });
+
+  /**
+   * LM-33 alignment: a cart REPLACE re-derives that side's prayer count —
+   * count 0 or below the recorded length clears the rolls (releasing the
+   * once-rolled lock); an unchanged-or-higher count keeps them. The aligned
+   * value rides the SAME updateMany as the cart.
+   */
+  describe("prayer-roll alignment on cart replace (LM-33)", () => {
+    const prayersCart = (count: number) => ({ home: [], away: [{ id: "prayers-to-nuffle", count }] });
+
+    it("KEEPS the recorded rolls when the new prayer count is unchanged-or-higher", async () => {
+      const { deps, liveMatchFindFirst, teamFindMany, updateMany } = makeDeps(1);
+      liveMatchFindFirst.mockResolvedValue(
+        readyRow(5, prayersCart(2), { home: [], away: [7, 12] }),
+      );
+      teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+
+      const result = await purchaseInducements(
+        { ...baseInput, items: [{ id: "prayers-to-nuffle", count: 2 }] },
+        deps,
+      );
+
+      expect(updateMany).toHaveBeenCalledWith({
+        where: { id: "lm-1", seq: 5 },
+        data: {
+          inducements: { home: [], away: [{ id: "prayers-to-nuffle", count: 2 }] },
+          prayerRolls: { home: [], away: [7, 12] },
+          seq: 6,
+        },
+      });
+      expect(result.view.prayerRolls).toEqual({ home: [], away: [7, 12] });
+    });
+
+    it("CLEARS the side's rolls when the count drops below the recorded length (both sides empty → JsonNull)", async () => {
+      const { deps, liveMatchFindFirst, teamFindMany, updateMany } = makeDeps(1);
+      // Recorded length 2, new count 1 → below → cleared → nothing left anywhere.
+      liveMatchFindFirst.mockResolvedValue(
+        readyRow(5, prayersCart(2), { home: [], away: [7, 12] }),
+      );
+      teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+
+      const result = await purchaseInducements(
+        { ...baseInput, items: [{ id: "prayers-to-nuffle", count: 1 }] },
+        deps,
+      );
+
+      expect(updateMany).toHaveBeenCalledWith({
+        where: { id: "lm-1", seq: 5 },
+        data: {
+          inducements: { home: [], away: [{ id: "prayers-to-nuffle", count: 1 }] },
+          prayerRolls: Prisma.JsonNull,
+          seq: 6,
+        },
+      });
+      expect(result.view.prayerRolls).toBeNull();
+    });
+
+    it("CLEARS the rolls when the prayers leave the cart (count 0) and keeps the rival's faces", async () => {
+      const { deps, liveMatchFindFirst, teamFindMany, updateMany } = makeDeps(1);
+      liveMatchFindFirst.mockResolvedValue(
+        readyRow(
+          5,
+          { home: [], away: [{ id: "prayers-to-nuffle", count: 2 }, { id: "bribes", count: 1 }] },
+          { home: [3], away: [7, 12] },
+        ),
+      );
+      teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
+
+      const result = await purchaseInducements(
+        { ...baseInput, items: [{ id: "bribes", count: 1 }] },
+        deps,
+      );
+
+      // away's faces cleared (prayers gone from the cart); home's survive.
+      expect(updateMany).toHaveBeenCalledWith({
+        where: { id: "lm-1", seq: 5 },
+        data: {
+          inducements: { home: [], away: [{ id: "bribes", count: 1 }] },
+          prayerRolls: { home: [3], away: [] },
+          seq: 6,
+        },
+      });
+      expect(result.view.prayerRolls).toEqual({ home: [3], away: [] });
     });
   });
 
@@ -1996,6 +2101,165 @@ describe("purchaseInducements — ready-phase cart write (LM-30)", () => {
     liveMatchFindFirst.mockResolvedValue(readyRow(5));
     teamFindMany.mockResolvedValue([orcTeam, goblinTeam]);
     await expect(purchaseInducements(baseInput, deps)).rejects.toMatchObject({ status: 409 });
+    expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * recordPrayerRolls (LM-33): the ready-phase per-side prayer-roll capture.
+ * Seq-guarded replace-per-side write of ONLY that side's array under the full
+ * LM-33 validation: faces are non-empty integers 1-16, distinct, at most the
+ * purchased `prayers-to-nuffle` count of THAT side's cart, and a record with
+ * already-recorded faces must STRICTLY EXTEND them (the once-rolled lock,
+ * S7-6 «una vez tirado los dados, ya no se puede volver a tirar» — released by
+ * a purchaseInducements cart replace that drops the count). Every rejection is
+ * 409/404 with no mutation and no seq bump; the 409 strings are the frozen UI
+ * contract: `Invalid prayer roll`, `Duplicate prayer roll`,
+ * `Rolls exceed purchased prayers`, `Prayer rolls already recorded`.
+ */
+describe("recordPrayerRolls — ready-phase per-side prayer rolls (LM-33)", () => {
+  /** A `ready` row where AWAY bought 2 prayers and nothing is recorded yet. */
+  function prayerRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      ...readyRow(5, { home: [], away: [{ id: "prayers-to-nuffle", count: 2 }] }),
+      prayerRolls: null,
+      ...overrides,
+    };
+  }
+
+  const baseInput = {
+    fixtureId: "f-1",
+    side: "away" as const,
+    rolls: [7, 12],
+    now: 3000,
+  };
+
+  it("404s when no LiveMatch row exists (no roll write)", async () => {
+    const { deps, updateMany, publish } = makeDeps(1);
+    await expect(recordPrayerRolls(baseInput, deps)).rejects.toMatchObject({ status: 404 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("409s unless the match is ready (pending/live rows are rejected)", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(prayerRow({ status: "pending" }));
+    await expect(recordPrayerRolls(baseInput, deps)).rejects.toMatchObject({ status: 409 });
+    liveMatchFindFirst.mockResolvedValue(prayerRow({ status: "live" }));
+    await expect(recordPrayerRolls(baseInput, deps)).rejects.toMatchObject({ status: 409 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("persists ONLY the side's rolls and publishes the view with prayerRolls", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(prayerRow({ prayerRolls: { home: [3], away: [] } }));
+
+    const result = await recordPrayerRolls(baseInput, deps);
+
+    expect(result.seq).toBe(6);
+    // ONLY the away array is written — the home faces survive untouched.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 5 },
+      data: { prayerRolls: { home: [3], away: [7, 12] }, seq: 6 },
+    });
+    expect(result.view.prayerRolls).toEqual({ home: [3], away: [7, 12] });
+    // Hub publish after commit: the view carries the rolls + no events.
+    expect(publish).toHaveBeenCalledTimes(1);
+    const payload = publish.mock.calls[0];
+    expect(payload[0]).toBe("f-1");
+    expect(payload[1]).toMatchObject({
+      seq: 6,
+      prayerRolls: { home: [3], away: [7, 12] },
+      events: [],
+    });
+  });
+
+  it('409 "Invalid prayer roll" for an empty list, a face outside 1-16 or a non-integer — no mutation', async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(prayerRow());
+    for (const rolls of [[], [0], [17], [-3], [7, 10.5]]) {
+      await expect(recordPrayerRolls({ ...baseInput, rolls }, deps)).rejects.toMatchObject({
+        status: 409,
+        message: "Invalid prayer roll",
+      });
+    }
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('409 "Duplicate prayer roll" for a repeated face — no mutation', async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    liveMatchFindFirst.mockResolvedValue(prayerRow());
+    await expect(recordPrayerRolls({ ...baseInput, rolls: [7, 7] }, deps)).rejects.toMatchObject({
+      status: 409,
+      message: "Duplicate prayer roll",
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('409 "Rolls exceed purchased prayers" beyond the cart count (including count 0)', async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    // 2 rolls against a purchased count of 1.
+    liveMatchFindFirst.mockResolvedValue(
+      prayerRow({ inducements: { home: [], away: [{ id: "prayers-to-nuffle", count: 1 }] } }),
+    );
+    await expect(recordPrayerRolls(baseInput, deps)).rejects.toMatchObject({
+      status: 409,
+      message: "Rolls exceed purchased prayers",
+    });
+    // A side that bought NO prayers may never record (count 0).
+    liveMatchFindFirst.mockResolvedValue(
+      prayerRow({ inducements: { home: [], away: [] } }),
+    );
+    await expect(recordPrayerRolls({ ...baseInput, rolls: [7] }, deps)).rejects.toMatchObject({
+      status: 409,
+      message: "Rolls exceed purchased prayers",
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("extension-only lock: `[7]`→`[7,12]` accepts, `[7]`→`[9]`/`[7]` rejects with the lock error", async () => {
+    const { deps, liveMatchFindFirst, updateMany, publish } = makeDeps(1);
+    const recorded = prayerRow({ prayerRolls: { home: [], away: [7] } });
+
+    // An identical resubmission — a recorded face is NEVER re-rolled.
+    liveMatchFindFirst.mockResolvedValue(recorded);
+    await expect(recordPrayerRolls({ ...baseInput, rolls: [7] }, deps)).rejects.toMatchObject({
+      status: 409,
+      message: "Prayer rolls already recorded",
+    });
+    // Mutating a recorded face.
+    liveMatchFindFirst.mockResolvedValue(recorded);
+    await expect(recordPrayerRolls({ ...baseInput, rolls: [9] }, deps)).rejects.toMatchObject({
+      status: 409,
+      message: "Prayer rolls already recorded",
+    });
+    // Dropping a recorded face (shorter array).
+    liveMatchFindFirst.mockResolvedValue(prayerRow({ prayerRolls: { home: [], away: [7, 12] } }));
+    await expect(recordPrayerRolls({ ...baseInput, rolls: [7] }, deps)).rejects.toMatchObject({
+      status: 409,
+      message: "Prayer rolls already recorded",
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+
+    // A strict extension with distinct faces persists BOTH faces.
+    liveMatchFindFirst.mockResolvedValue(recorded);
+    const result = await recordPrayerRolls({ ...baseInput, rolls: [7, 12] }, deps);
+    expect(result.view.prayerRolls).toEqual({ home: [], away: [7, 12] });
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "lm-1", seq: 5 },
+      data: { prayerRolls: { home: [], away: [7, 12] }, seq: 6 },
+    });
+  });
+
+  it("409s on a stale seq (0 rows → a concurrent transition won the race), no publish", async () => {
+    const { deps, liveMatchFindFirst, publish } = makeDeps(0);
+    liveMatchFindFirst.mockResolvedValue(prayerRow());
+    await expect(recordPrayerRolls(baseInput, deps)).rejects.toMatchObject({ status: 409 });
     expect(publish).not.toHaveBeenCalled();
   });
 });
