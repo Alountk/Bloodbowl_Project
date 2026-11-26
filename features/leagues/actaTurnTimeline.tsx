@@ -816,17 +816,18 @@ function EventBubble({
         >
           <ActaIcon name={icon} className="size-5" />
         </span>
-        <span
-          data-testid="acta-event-tab"
-          className={`flex h-[26px] shrink-0 items-center rounded-sm px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${
-            muted || system ? "bg-slate" : tab.injury ? "bg-red" : "bg-navy"
-          }`}
-        >
-          {tab.label}
-        </span>
         <div className="min-w-0 flex-1">
-          {/* The description gets the FULL width — the old inline category
-              chip no longer steals it (T18, L60). */}
+          {/* The tab rides ABOVE the copy INSIDE the text column (S2): a long
+              label («Fin de la mitad») takes its own line instead of starving
+              the description at 390px (T18, L60). */}
+          <span
+            data-testid="acta-event-tab"
+            className={`mb-1.5 flex h-[26px] w-fit items-center rounded-sm px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${
+              muted || system ? "bg-slate" : tab.injury ? "bg-red" : "bg-navy"
+            }`}
+          >
+            {tab.label}
+          </span>
           <p className={`text-sm ${muted ? "text-slate-strong" : "text-ink"}`}>
             {subject}
           </p>
@@ -1043,7 +1044,7 @@ export function ActaTurnTimeline({
   const cards = turnCardsOf(events, active);
   const fresh = useFreshSeqs(events);
   return (
-    <div data-testid="acta-turn-timeline" className="flex flex-col gap-3 px-4 py-3">
+    <div data-testid="acta-turn-timeline" className="flex flex-col gap-3 py-3">
       {cards.map((card, index) => {
         const chip = STATE_CHIP[card.state];
         const teamLabel = card.actingSide ? teams[card.actingSide].name : "SISTEMA";

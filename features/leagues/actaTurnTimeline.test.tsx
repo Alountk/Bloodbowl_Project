@@ -2352,3 +2352,43 @@ describe("T5 (S4) — action icon tiles on the chat bubbles", () => {
     expect(iconTileOf(container, "foul")?.className).toContain("text-slate");
   });
 });
+
+describe("S2 readability — the category tab sits above the copy inside the text column (390px)", () => {
+  it("every bubble's tab lives in the flex-1 text column so a long label never starves the description", () => {
+    seqCounter = 0;
+    const events = [
+      tdEvent(),
+      ...closedTurnEvents(),
+      // A long category label («Fin de la mitad») on a system row.
+      event({
+        kind: "endHalf",
+        side: null,
+        playerRosterId: null,
+        turnNumber: 4,
+        at: STARTED + 38 * MIN,
+      }),
+    ];
+    const { container } = render(
+      <ActaTurnTimeline
+        {...timelineProps({ events, active: { ...liveActive(), turnStarter: "home" } })}
+      />,
+    );
+    const rows = Array.from(
+      container.querySelectorAll('[data-testid="acta-event-row"]'),
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const tab = row.querySelector('[data-testid="acta-event-tab"]');
+      expect(tab).not.toBeNull();
+      // The tab is INSIDE the flex-1 text column (its parent holds both
+      // min-w-0 and flex-1), never a sibling of it in the head row.
+      expect(tab?.parentElement?.className).toContain("min-w-0");
+      expect(tab?.parentElement?.className).toContain("flex-1");
+    }
+    // The long system label renders as the tab of its own row.
+    const longTab = Array.from(
+      container.querySelectorAll('[data-testid="acta-event-tab"]'),
+    ).find((t) => /Fin de la mitad/i.test(t.textContent || ""));
+    expect(longTab).toBeTruthy();
+  });
+});
