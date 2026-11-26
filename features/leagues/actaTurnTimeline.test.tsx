@@ -188,7 +188,7 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
     expect(cards[2].textContent).toContain("CERRADO");
   });
 
-  it("titles cards with the turn tag + acting team and the match minute", () => {
+  it("titles the group chip with the turn tag + acting team and stamps EACH bubble with its own minute (T4/S3)", () => {
     seqCounter = 0;
     render(
       <ActaTurnTimeline
@@ -197,11 +197,20 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
     );
 
     const cards = screen.getAllByTestId("acta-turn-card");
-    // Active turn → the active side's team (Gouged Eye).
-    expect(cards[0].textContent).toMatch(/T6\s*•\s*Gouged Eye/);
+    // Group chip: the active turn → the active side's team (Gouged Eye).
+    expect(cards[0].textContent).toMatch(/T6\s*·\s*Gouged Eye/);
     // T5's casualty is CAUSED by the home side → the home coach's turn.
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
-    expect(cards[1].textContent).toContain("Min 44'");
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
+    // T4 (S3): the minute lives on EVERY bubble (its own capture time) — the
+    // group chip carries none.
+    const tdRow = cards[0].querySelector(
+      '[data-testid="acta-event-row"][data-kind="td"]',
+    ) as HTMLElement;
+    expect(tdRow.textContent).toContain("Min 52'");
+    const casualtyRow = cards[1].querySelector(
+      '[data-testid="acta-event-row"][data-kind="casualty"]',
+    ) as HTMLElement;
+    expect(casualtyRow.textContent).toContain("Min 44'");
   });
 
   it("a pair where BOTH coaches act splits into two cards — never one merged AMBOS EQUIPOS card (T8)", () => {
@@ -228,8 +237,8 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
     // ONE CARD PER HALF-TURN: each coach's play of turn 5 keeps its own card
     // (the pair's second play first) — the span-both merge is gone.
     expect(cards).toHaveLength(3);
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
-    expect(cards[2].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Gouged Eye/);
+    expect(cards[2].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
     expect(screen.queryByText(/AMBOS EQUIPOS/)).toBeNull();
   });
 
@@ -254,7 +263,7 @@ describe("ActaTurnTimeline — per-turn cards (MVA-3 / B1)", () => {
       const cards = screen.getAllByTestId("acta-turn-card");
       // The single capture is the home side's own action → their turn title
       // (never the AMBOS EQUIPOS fallback the td|completion|foul vote missed).
-      expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+      expect(cards[1].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
       expect(cards[1].textContent).not.toMatch(/AMBOS EQUIPOS/);
     },
   );
@@ -285,13 +294,21 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
     );
 
     const cards = screen.getAllByTestId("acta-turn-card");
-    // T6 live + home-owned → navy (the accent no longer encodes "live").
-    expect(cards[0].className).toContain("border-l-navy");
-    expect(cards[0].className).not.toContain("border-l-red");
-    // T5 completed away turn → red.
-    expect(cards[1].className).toContain("border-l-red");
-    // T4 closed home turn → navy.
-    expect(cards[2].className).toContain("border-l-navy");
+    // T6 live + home-owned + EMPTY: the transparent group chrome carries no
+    // accent at all (T2) — identity lives on the bubbles.
+    expect(cards[0].querySelectorAll('[data-testid="acta-event-row"]')).toHaveLength(0);
+    // T5 completed away turn → the away bubble mirrors red (never state-coded).
+    const awayBubble = cards[1].querySelector(
+      '[data-testid="acta-event-row"]',
+    ) as HTMLElement;
+    expect(awayBubble.className).toContain("border-r-4");
+    expect(awayBubble.className).toContain("border-r-red");
+    // T4 closed home turn → navy bubbles.
+    const homeBubble = cards[2].querySelector(
+      '[data-testid="acta-event-row"]',
+    ) as HTMLElement;
+    expect(homeBubble.className).toContain("border-l-4");
+    expect(homeBubble.className).toContain("border-l-navy");
   });
 
   it("a pair where both coaches act tints each half-turn card by its own team (T8 split — no slate merge)", () => {
@@ -318,10 +335,21 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
     );
 
     const cards = screen.getAllByTestId("acta-turn-card");
-    expect(cards[1].className).toContain("border-l-red");
-    expect(cards[2].className).toContain("border-l-navy");
-    expect(cards[1].className).not.toContain("border-l-slate");
-    expect(cards[2].className).not.toContain("border-l-slate");
+    // Each half-turn keeps its own group chip…
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Gouged Eye/);
+    expect(cards[2].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
+    // …and every bubble keeps its own side accent — never a slate merge.
+    const awayBubble = cards[1].querySelector(
+      '[data-testid="acta-event-row"]',
+    ) as HTMLElement;
+    expect(awayBubble.className).toContain("border-r-red");
+    expect(awayBubble.className).not.toContain("border-l-slate");
+    // The casualty bubble carries its own EVENT side (the victim's, LM-12).
+    const victimBubble = cards[2].querySelector(
+      '[data-testid="acta-event-row"]',
+    ) as HTMLElement;
+    expect(victimBubble.className).toContain("border-r-red");
+    expect(victimBubble.className).not.toContain("border-l-slate");
   });
 });
 
@@ -356,7 +384,7 @@ describe("ActaTurnTimeline — event rows (MVA-3 / B2)", () => {
     expect(casRow!.textContent).toContain("+2 SPP");
   });
 
-  it("closed turns render compact summary rows (icon + sentence, T4 style)", () => {
+  it("closed turns render the SAME bubbles, muted (the compact split is gone — T3)", () => {
     seqCounter = 0;
     render(
       <ActaTurnTimeline
@@ -365,12 +393,22 @@ describe("ActaTurnTimeline — event rows (MVA-3 / B2)", () => {
     );
 
     const closedCard = screen.getAllByTestId("acta-turn-card")[2];
-    const rows = closedCard.querySelectorAll('[data-testid="acta-event-row"][data-compact="true"]');
+    const rows = closedCard.querySelectorAll('[data-testid="acta-event-row"]');
     expect(rows.length).toBe(2);
+    // No compact variant exists anymore — the bubble layout is universal.
+    expect(rows[0].getAttribute("data-compact")).toBeNull();
+    // Same bubble chrome (subject + description), muted…
     expect(closedCard.textContent).toContain("Brunhilda Eisenfaust");
-    expect(closedCard.textContent).toMatch(/realizó falta sobre Ugluk/);
+    expect(closedCard.textContent).toContain("Falta sobre Ugluk");
     expect(closedCard.textContent).toContain("Rodrick Ashworth");
-    expect(closedCard.textContent).toMatch(/complet[óo] Pase/);
+    expect(closedCard.textContent).toContain("Pase completado con éxito");
+    // …with its own per-bubble minute (T4/S3).
+    expect(rows[0].textContent).toContain("Min 36'");
+    expect(rows[1].textContent).toContain("Min 35'");
+    // Muted: the category tab desaturates to slate on closed bubbles.
+    expect(rows[0].querySelector('[data-testid="acta-event-tab"]')!.className).toContain(
+      "bg-slate",
+    );
   });
 });
 
@@ -676,7 +714,7 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
 
     let cards = screen.getAllByTestId("acta-turn-card");
     expect(cards).toHaveLength(1);
-    expect(cards[0].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[0].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
     expect(cards[0].textContent).toContain("EN JUEGO");
     expect(
       cards[0].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
@@ -706,11 +744,11 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     cards = screen.getAllByTestId("acta-turn-card");
     expect(cards).toHaveLength(2);
     // The new active half-turn shows its card with EN JUEGO, even empty.
-    expect(cards[0].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(cards[0].textContent).toMatch(/T5\s*·\s*Gouged Eye/);
     expect(cards[0].textContent).toContain("EN JUEGO");
     expect(cards[0].querySelectorAll('[data-testid="acta-event-row"]')).toHaveLength(0);
     // The closed sibling persists with its own actions (COMPLETADO).
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
     expect(cards[1].textContent).toContain("COMPLETADO");
     expect(
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
@@ -753,7 +791,7 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     const cards = screen.getAllByTestId("acta-turn-card");
     // [T6 away active] · [T5 away (the pair's second play)] · [T5 home (opener)].
     expect(cards).toHaveLength(3);
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Gouged Eye/);
     expect(
       cards[1].querySelectorAll('[data-testid="acta-event-row"]'),
     ).toHaveLength(1);
@@ -764,7 +802,7 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
     ).toBeNull();
     // Home's half-turn (the GAME TURN of those captures) holds both rows.
-    expect(cards[2].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[2].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
     expect(
       cards[2].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
     ).not.toBeNull();
@@ -861,8 +899,8 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
       ["5", "completed"],
       ["5", "closed"],
     ]);
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
-    expect(cards[2].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
+    expect(cards[2].textContent).toMatch(/T5\s*·\s*Gouged Eye/);
   });
 
   it("system captures AFTER kickoff (side null) keep their own neutral SISTEMA card, at the pair's bottom — never titled «AMBOS EQUIPOS»", () => {
@@ -895,18 +933,26 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     const cards = screen.getAllByTestId("acta-turn-card");
     expect(cards).toHaveLength(3);
     // The coach's half-turn card holds ONLY their own action…
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
     expect(
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
     ).not.toBeNull();
     expect(
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="weather"]'),
     ).toBeNull();
-    // …and the system capture lands in the pair's own neutral card (slate),
-    // titled SISTEMA — the «AMBOS EQUIPOS» title is gone (S1).
-    expect(cards[2].textContent).toMatch(/T5\s*•\s*SISTEMA/);
+    // …and the system capture lands in the pair's own neutral card, titled
+    // SISTEMA — the «AMBOS EQUIPOS» title is gone (S1).
+    expect(cards[2].textContent).toMatch(/T5\s*·\s*SISTEMA/);
     expect(cards[2].textContent).not.toMatch(/AMBOS EQUIPOS/);
-    expect(cards[2].className).toContain("border-l-slate");
+    // The slate identity + centering live on the SYSTEM BUBBLE (T3) — the
+    // group article is a transparent separator, never a panel.
+    const weatherRow = cards[2].querySelector(
+      '[data-testid="acta-event-row"][data-kind="weather"]',
+    ) as HTMLElement;
+    expect(weatherRow.className).toContain("border-l-slate");
+    expect(weatherRow.className).toContain("mx-auto");
+    expect(cards[2].className).not.toContain("bg-panel");
+    expect(cards[2].className).not.toContain("shadow");
     expect(
       cards[2].querySelector('[data-testid="acta-event-row"][data-kind="weather"]'),
     ).not.toBeNull();
@@ -1014,9 +1060,9 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
       ["8", "completed"],
       ["7", "closed"],
     ]);
-    expect(cards[0].textContent).toMatch(/T8\s*•\s*Gouged Eye/);
-    expect(cards[1].textContent).toMatch(/T8\s*•\s*Reikland Reavers/);
-    expect(cards[2].textContent).toMatch(/T7\s*•\s*Reikland Reavers/);
+    expect(cards[0].textContent).toMatch(/T8\s*·\s*Gouged Eye/);
+    expect(cards[1].textContent).toMatch(/T8\s*·\s*Reikland Reavers/);
+    expect(cards[2].textContent).toMatch(/T7\s*·\s*Reikland Reavers/);
   });
 
   it("a causer-less casualty (self-inflicted) lands in the game turn's half-turn — never a neutral card", () => {
@@ -1037,7 +1083,7 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
 
     const cards = screen.getAllByTestId("acta-turn-card");
     // The mishap belongs to the AWAY coach's game turn (their player fell).
-    expect(cards[1].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
+    expect(cards[1].textContent).toMatch(/T5\s*·\s*Gouged Eye/);
     expect(
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
     ).not.toBeNull();
@@ -1115,7 +1161,7 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
 
     // A's card = the game turn (T5 · Reikland Reavers) holds the injury row…
     const card = screen
-      .getByText(/T5\s*•\s*Reikland Reavers/)
+      .getByText(/T5\s*·\s*Reikland Reavers/)
       .closest("article") as HTMLElement;
     const row = card.querySelector(
       '[data-testid="acta-event-row"][data-kind="casualty"]',
@@ -1124,7 +1170,7 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
     // …and the badge names B (the victim's owner) as quien la registró.
     expect(row.textContent).toContain("Registrado por Gouged Eye");
     // The victim's team gets NO card of its own for this capture.
-    expect(screen.queryByText(/T5\s*•\s*Gouged Eye/)).toBeNull();
+    expect(screen.queryByText(/T5\s*·\s*Gouged Eye/)).toBeNull();
   });
 
   it("mid-turn: the victim-side capture resolves to the ACTIVE coach's card even before the pass boundary lands", () => {
@@ -1148,7 +1194,7 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
         })}
       />,
     );
-    expect(screen.getByText(/T5\s*•\s*Reikland Reavers/)).toBeTruthy();
+    expect(screen.getByText(/T5\s*·\s*Reikland Reavers/)).toBeTruthy();
 
     // The pass lands: the same row stays on the same card (no re-group).
     const homePassed = event({
@@ -1171,7 +1217,7 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
       />,
     );
     const card = screen
-      .getByText(/T5\s*•\s*Reikland Reavers/)
+      .getByText(/T5\s*·\s*Reikland Reavers/)
       .closest("article") as HTMLElement;
     expect(
       card.querySelector('[data-testid="acta-event-row"][data-kind="casualty"]'),
@@ -1213,7 +1259,7 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
     // The ONE game-turn card holds both rows (never one card per author)…
     expect(cards).toHaveLength(2);
     const card = cards[1];
-    expect(card.textContent).toMatch(/T5\s*•\s*Reikland Reavers/);
+    expect(card.textContent).toMatch(/T5\s*·\s*Reikland Reavers/);
     expect(
       Array.from(card.querySelectorAll('[data-testid="acta-event-row"]')).map(
         (row) => row.getAttribute("data-kind"),
@@ -1224,7 +1270,7 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
     expect(card.textContent).toContain("Registrado por Gouged Eye");
   });
 
-  it("closed cards carry the compact badge too, and system rows read «Registro de sistema»", () => {
+  it("closed bubbles keep their capture-author badge (S10.4.2) and system bubbles carry NONE (T3)", () => {
     seqCounter = 0;
     const events = [
       ...closedTurnEvents(),
@@ -1240,15 +1286,17 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
     render(<ActaTurnTimeline {...timelineProps({ events })} />);
 
     const closed = screen
-      .getByText(/T4\s*•\s*Reikland Reavers/)
+      .getByText(/T4\s*·\s*Reikland Reavers/)
       .closest("article") as HTMLElement;
-    // Compact rows (closed cards) show the same registrar marker…
+    // Closed bubbles show the same registrar marker (the compact row and its
+    // badge are gone with the split)…
     expect(closed.textContent).toContain("Registrado por Reikland Reavers");
-    // …and a side-less system capture has no coach registrar to name.
-    const neutral = screen.getByText(/T4\s*•\s*SISTEMA/).closest(
+    // …and a side-less system bubble has NO author badge at all (T3).
+    const neutral = screen.getByText(/T4\s*·\s*SISTEMA/).closest(
       "article",
     ) as HTMLElement;
-    expect(neutral.textContent).toContain("Registro de sistema");
+    expect(neutral.textContent).not.toContain("Registro de sistema");
+    expect(neutral.textContent).not.toContain("Registrado por");
   });
 });
 
@@ -1372,8 +1420,8 @@ describe("ActaTurnTimeline — T18 folder-tab acta rows (design/acta-folder-tabs
   });
 });
 
-describe("ActaTurnTimeline — T19 mirror-chat side identity (design/acta-folder-tabs/04)", () => {
-  it("home rows sit LEFT (92% hugging the left edge) with a navy who-line «Player · Team» above the description", () => {
+describe("ActaTurnTimeline — T3 chat-bubble side identity (design/stitch-timeline-chat/01)", () => {
+  it("home bubbles sit LEFT (92% hugging the left edge) with the navy accent and the navy category tab", () => {
     seqCounter = 0;
     render(
       <ActaTurnTimeline
@@ -1387,55 +1435,46 @@ describe("ActaTurnTimeline — T19 mirror-chat side identity (design/acta-folder
     const foulRow = rows.find((r) => r.getAttribute("data-kind") === "foul") as HTMLElement;
     expect(foulRow.className).toContain("w-[92%]");
     expect(foulRow.className).toContain("mr-auto");
-    // WHY new (T19, intentional — artboard 04 «Khalid · Águilas»): the short
-    // who-line sits above the description and is colored per side (home navy).
-    const who = foulRow.querySelector('[data-testid="acta-event-who"]') as HTMLElement;
-    expect(who).not.toBeNull();
-    expect(who.textContent).toBe("Brunhilda Eisenfaust · Reikland Reavers");
-    expect(who.className).toContain("text-navy");
-    // The tab keeps design A geometry on home rows (top-left).
+    // WHY changed (T3, intentional): the side identity is the bubble's own
+    // accent bar («Implementar tal cual» — design/01) — the who-line and the
+    // body tint are gone.
+    expect(foulRow.className).toContain("border-l-4");
+    expect(foulRow.className).toContain("border-l-navy");
     const tab = foulRow.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
-    expect(tab.className).toContain("left-0");
+    expect(tab.className).toContain("bg-navy");
+    expect(foulRow.textContent).toContain("Brunhilda Eisenfaust");
   });
 
-  it("away rows MIRROR: tab top-right (navy — never red), flipped body radius, right-aligned text and a red who-line", () => {
+  it("away bubbles MIRROR: right-aligned with the red accent — the category tab stays navy (red ONLY for Casualty)", () => {
     seqCounter = 0;
     render(<ActaTurnTimeline {...timelineProps({ events: [tdEvent()] })} />);
     const row = screen.getAllByTestId("acta-event-row")[0] as HTMLElement;
     expect(row.className).toContain("w-[92%]");
     expect(row.className).toContain("ml-auto");
-    expect(row.className).toContain("text-right");
+    expect(row.className).toContain("border-r-4");
+    expect(row.className).toContain("border-r-red");
     const tab = row.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
-    expect(tab.className).toContain("right-0");
-    // CRITICAL (L67): the category tab colors stay per design A — navy default,
-    // red ONLY for Casualty. The away side identity comes from tab SIDE +
-    // alignment + who-line color, never from a red tab.
+    // CRITICAL (L67, kept): the category tab colors stay per design A — navy
+    // default, red ONLY for Casualty. The away side identity comes from the
+    // bubble placement + accent, never from a red tab.
     expect(tab.className).toContain("bg-navy");
     expect(tab.className).not.toContain("bg-red");
-    // Body radius flips (top-right square where the mirrored tab meets it).
-    const body = row.querySelector("div") as HTMLElement;
-    expect(body.className).toContain("rounded-tl-lg");
-    expect(body.className).not.toContain("rounded-tr-lg");
-    // Red who-line above the description («Grishnak · Colmillos» shape).
-    const who = row.querySelector('[data-testid="acta-event-who"]') as HTMLElement;
-    expect(who.textContent).toBe('Morg "El Picador" · Gouged Eye');
-    expect(who.className).toContain("text-red");
+    expect(row.textContent).toContain('Morg "El Picador"');
   });
 
-  it("the casualty who-line speaks for the row's own event side — the VICTIM (LM-12), fixed, never the viewer's side", () => {
+  it("a casualty bubble mirrors with its own event side — the VICTIM (LM-12), fixed, never the viewer's side", () => {
     seqCounter = 0;
     render(<ActaTurnTimeline {...timelineProps({ events: [casualtyEvent(true)] })} />);
     const row = screen.getAllByTestId("acta-event-row")[0] as HTMLElement;
     expect(row.className).toContain("ml-auto"); // event.side = away → mirrored
-    const who = row.querySelector('[data-testid="acta-event-who"]') as HTMLElement;
-    expect(who.textContent).toBe("Ugluk · Gouged Eye");
-    expect(who.className).toContain("text-red");
+    expect(row.className).toContain("border-r-red");
     // The casualty category tab stays RED (design A: red ONLY for Casualty).
     const tab = row.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
     expect(tab.className).toContain("bg-red");
+    expect(row.textContent).toContain("Ugluk");
   });
 
-  it("closed compact rows carry the same side identity: chat offset + per-side name color (home navy / away red)", () => {
+  it("closed groups keep the SAME bubble layout — muted, with the per-side accents (the compact rows are gone)", () => {
     seqCounter = 0;
     render(
       <ActaTurnTimeline
@@ -1445,23 +1484,27 @@ describe("ActaTurnTimeline — T19 mirror-chat side identity (design/acta-folder
         })}
       />,
     );
-    const compact = Array.from(
-      document.querySelectorAll('[data-testid="acta-event-row"][data-compact="true"]'),
+    const closedRows = Array.from(
+      document.querySelectorAll(
+        '[data-testid="acta-turn-card"][data-state="closed"] [data-testid="acta-event-row"]',
+      ),
     ) as HTMLElement[];
-    expect(compact.length).toBe(3);
-    const homeRow = compact.find((r) => r.getAttribute("data-kind") === "foul") as HTMLElement;
-    expect(homeRow.className).toContain("w-[92%]");
+    // The closed turn-5 casualty + the two turn-4 rows — all full bubbles now.
+    expect(closedRows.length).toBe(3);
+    const homeRow = closedRows.find((r) => r.getAttribute("data-kind") === "foul") as HTMLElement;
     expect(homeRow.className).toContain("mr-auto");
-    expect(homeRow.querySelector("strong")!.className).toContain("text-navy");
-    const awayRow = compact.find((r) => r.getAttribute("data-kind") === "casualty") as HTMLElement;
+    expect(homeRow.className).toContain("border-l-navy");
+    const awayRow = closedRows.find((r) => r.getAttribute("data-kind") === "casualty") as HTMLElement;
     expect(awayRow.className).toContain("ml-auto");
-    expect(awayRow.className).toContain("text-right");
-    expect(awayRow.className).toContain("flex-row-reverse");
-    expect(awayRow.querySelector("strong")!.className).toContain("text-red");
+    expect(awayRow.className).toContain("border-r-red");
+    // Muted: the category tab desaturates to slate on closed bubbles.
+    expect(homeRow.querySelector('[data-testid="acta-event-tab"]')!.className).toContain(
+      "bg-slate",
+    );
   });
 });
 
-describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, victim-note mirror, body identity tint", () => {
+describe("ActaTurnTimeline — T20 UX round 3 (L70) under T3: SPP visible, victim-note mirror, bubble accent identity", () => {
   /** A DEMO-shaped casualty payload: the 1D16 roll but NO server `band`
    *  (actaDemoReducer records the roll only — the band is derived). */
   function demoCasualtyEvent(
@@ -1513,13 +1556,14 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, vic
     ).toContain("+2 SPP");
   });
 
-  it("the SPP tab mirrors with the category tab: home rows hang it bottom-RIGHT (ml-auto), away rows bottom-LEFT (mr-auto) (L70)", () => {
+  it("the SPP tab sits at the bubble's FOOTER END on both sides (T3 — every footer carries Min + author + award)", () => {
     seqCounter = 0;
     const homePass = event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 5, at: STARTED + 40 * MIN });
     const homeRender = render(
       <ActaTurnTimeline {...timelineProps({ events: [homePass] })} />,
     );
-    // Home row: category tab top-left → SPP tab bottom-right (ml-auto).
+    // WHY changed (T3, intentional): the chat footer is uniform (design/01) —
+    // the old bottom-right/bottom-LEFT mirror is gone with the tab mirror.
     const homeSpp = rowOf("completion").querySelector('[data-testid="acta-event-spp"]') as HTMLElement;
     expect(homeSpp.className).toContain("ml-auto");
     expect(homeSpp.className).not.toContain("mr-auto");
@@ -1527,10 +1571,9 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, vic
 
     seqCounter = 0;
     render(<ActaTurnTimeline {...timelineProps({ events: [demoCasualtyEvent(9)] })} />);
-    // Away row: category tab top-right → SPP tab bottom-LEFT (mr-auto).
     const awaySpp = rowOf("casualty").querySelector('[data-testid="acta-event-spp"]') as HTMLElement;
-    expect(awaySpp.className).toContain("mr-auto");
-    expect(awaySpp.className).not.toContain("ml-auto");
+    expect(awaySpp.className).toContain("ml-auto");
+    expect(awaySpp.className).not.toContain("mr-auto");
   });
 
   it("the victim-note accent flips on mirrored rows: away rows carry the red rule on the RIGHT (border-r-[3px]/border-r-red), home rows keep it on the LEFT (L70)", () => {
@@ -1555,7 +1598,7 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, vic
     expect(homeNote.className).not.toContain("border-r-red");
   });
 
-  it("the action body background identifies WHO acted: navy tint on home rows, red tint on away rows (L70 «las aguilas azules y los colmillos los colmillos»)", () => {
+  it("the bubble accent identifies WHO acted: navy bar on home bubbles, red bar on away bubbles (design/01 supersedes the body tint)", () => {
     seqCounter = 0;
     render(
       <ActaTurnTimeline
@@ -1565,17 +1608,15 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70): SPP visible + mirrored, vic
         })}
       />,
     );
-    // tdEvent is away and sits on the LIVE card — the old uniform live red
-    // (bg-red/5) painted BOTH sides; the tint is body identity now.
-    const awayBody = rowOf("td").querySelector("div") as HTMLElement;
-    expect(awayBody.className).toContain("bg-red/[0.025]");
-    expect(awayBody.className).not.toContain("bg-red/5");
-    expect(awayBody.className).not.toContain("bg-navy");
-    // Home row (completed card) gets the navy tint, never plain white.
-    const homeBody = rowOf("completion").querySelector("div") as HTMLElement;
-    expect(homeBody.className).toContain("bg-navy/[0.025]");
-    expect(homeBody.className).not.toContain("bg-white");
-    expect(homeBody.className).not.toContain("bg-red");
+    // WHY changed (T3, intentional — «Implementar tal cual»): the side
+    // identity moved from the L70 body tint (bg-red/[0.025] «las aguilas
+    // azules y los colmillos los colmillos») onto the bubble's accent bar.
+    const awayBubble = rowOf("td");
+    expect(awayBubble.className).toContain("border-r-4");
+    expect(awayBubble.className).toContain("border-r-red");
+    const homeBubble = rowOf("completion");
+    expect(homeBubble.className).toContain("border-l-4");
+    expect(homeBubble.className).toContain("border-l-navy");
   });
 
   it("the SPP tab renders ONLY when someone EARNS it — a self-inflicted casualty (dodge/crowd) never shows one, whatever the roll (RAU-47 «no-causer pays no-★»)", () => {
@@ -1881,9 +1922,9 @@ describe("ActaTurnTimeline — T25 Prayers of Nuffle SPP exceptions", () => {
     expect(sppTabOf("completion")?.textContent).toContain("+3 SPP");
   });
 
-  it("the CLOSED card's pass sentence follows the blessing too («completó Pase con éxito (+2 SPP)») — no stale award anywhere in the turn cards", () => {
-    // Two older home passes: the newest old card renders COMPLETADO (EventRow),
-    // the older one CERRADO (CompactRow — the sentence carries the award).
+  it("the CLOSED card's pass bubble follows the blessing too (its SPP tab reads +2 SPP) — no stale award anywhere in the turn groups", () => {
+    // Two older home passes: the newest old card renders COMPLETADO, the
+    // older one CERRADO — both render the SAME bubble (no compact sentence).
     seqCounter = 0;
     const older = event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 3, at: STARTED + 25 * MIN });
     const newer = event({ kind: "completion", side: "home", playerRosterId: "h2", turnNumber: 5, at: STARTED + 40 * MIN });
@@ -1896,9 +1937,12 @@ describe("ActaTurnTimeline — T25 Prayers of Nuffle SPP exceptions", () => {
       />,
     );
     const closed = document.querySelector(
-      '[data-testid="acta-event-row"][data-kind="completion"][data-compact="true"]',
+      '[data-testid="acta-turn-card"][data-state="closed"] [data-testid="acta-event-row"][data-kind="completion"]',
     ) as HTMLElement;
-    expect(closed.textContent).toContain("completó Pase con éxito (+2 SPP).");
+    expect(closed.getAttribute("data-compact")).toBeNull();
+    expect(closed.querySelector('[data-testid="acta-event-spp"]')?.textContent).toContain(
+      "+2 SPP",
+    );
   });
 
   it("the ZERO rows with NO exception stay pinned with EVERY blessing active: both-down and auto-lesiones/dodge rows never show a tab", () => {

@@ -299,12 +299,15 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     const { container } = render(<ActaDemoHarness />);
     fireEvent.click(demoButton("1T · turno 3"));
 
-    // Home is the active coach in this scenario: the LIVE card is navy —
-    // the accent is TEAM-coded and no longer encodes the live state.
+    // Home is the active coach in this scenario: the LIVE group's bubbles are
+    // navy — the accent is TEAM-coded and no longer encodes the live state
+    // (T3: the transparent group chrome carries no accent of its own).
     const liveCard = container.querySelector(
       '[data-testid="acta-turn-card"][data-turn="3"]',
     );
-    expect(liveCard?.className).toContain("border-l-navy");
+    expect(
+      liveCard?.querySelector('[data-testid="acta-event-row"]')?.className,
+    ).toContain("border-l-navy");
 
     fireEvent.click(demoButton("Fin de turno"));
 
@@ -518,9 +521,9 @@ describe("ActaDemoHarness — T9: the kickoff stays OUT of the flow (L39)", () =
  *     perspective and recorded cards survive a remount.
  */
 
-/** The turn card whose heading reads «T{n} • {team}» (user-visible text). */
+/** The turn card whose heading reads «T{n} · {team}» (user-visible text). */
 const turnCard = (turn: number, team: string): HTMLElement =>
-  screen.getByText(`T${turn} • ${team}`).closest("article") as HTMLElement;
+  screen.getByText(`T${turn} · ${team}`).closest("article") as HTMLElement;
 
 /** The single card carrying the EN JUEGO chip (the ACTIVE half-turn). */
 const enJuegoCard = (): HTMLElement =>
@@ -570,7 +573,7 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
     startWithHomeReceiver();
     // The match starts DIRECTLY in turn 1 with the RECEIVER (Águilas) active.
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
-    expect(enJuegoCard().textContent).toContain("T1 • Águilas de Khemri");
+    expect(enJuegoCard().textContent).toContain("T1 · Águilas de Khemri");
     expect(pressed("Águilas de Khemri")).toBe("true");
 
     // T1 home: a real dock capture lands in the EN JUEGO card.
@@ -586,7 +589,7 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
     // NOT advance yet (pair rule) and the EN JUEGO card flips sides.
     finTurno("Voluntario");
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
-    expect(enJuegoCard().textContent).toContain("T1 • Colmillos del Caos");
+    expect(enJuegoCard().textContent).toContain("T1 · Colmillos del Caos");
     expect(pressed("Colmillos del Caos")).toBe("true");
     expect(
       within(turnCard(1, "Águilas de Khemri")).getByText("COMPLETADO"),
@@ -598,7 +601,7 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
 
     // The pair closed → T2 of the RECEIVER; both T1 half-turns keep cards.
     expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
-    expect(enJuegoCard().textContent).toContain("T2 • Águilas de Khemri");
+    expect(enJuegoCard().textContent).toContain("T2 · Águilas de Khemri");
     expect(pressed("Águilas de Khemri")).toBe("true");
     expect(
       within(turnCard(1, "Colmillos del Caos")).getByText("COMPLETADO"),
@@ -613,22 +616,22 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
     // The narrative fixture opens with Colmillos active in T1: the ACTIVE
     // half-turn always shows its card (EN JUEGO) even before any capture.
     fireEvent.click(perspective("Colmillos del Caos"));
-    expect(enJuegoCard().textContent).toContain("T1 • Colmillos del Caos");
+    expect(enJuegoCard().textContent).toContain("T1 · Colmillos del Caos");
 
     // «Fin Turno» with zero captures (reason «Baja») → NO card for that
     // half-turn; the rival's new half-turn card appears as EN JUEGO (still
     // T1 — the pair is open).
     finTurno("Baja");
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
     expect(screen.getByText(/TURNO 1 EN JUEGO/)).toBeTruthy();
-    expect(enJuegoCard().textContent).toContain("T1 • Águilas de Khemri");
+    expect(enJuegoCard().textContent).toContain("T1 · Águilas de Khemri");
 
     // The rival also passes with nothing recorded → T2 opens and BOTH empty
     // T1 half-turns are gone (only their EN JUEGO successors remain).
     finTurno("Voluntario");
-    expect(screen.queryByText("T1 • Águilas de Khemri")).toBeNull();
+    expect(screen.queryByText("T1 · Águilas de Khemri")).toBeNull();
     expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
-    expect(enJuegoCard().textContent).toContain("T2 • Colmillos del Caos");
+    expect(enJuegoCard().textContent).toContain("T2 · Colmillos del Caos");
   });
 
   it("mid-match reload keeps the turn, the active side, the perspective and the recorded cards (v5)", () => {
@@ -639,7 +642,7 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
     finTurno("Voluntario"); // → Águilas T1 (nothing recorded)
     finTurno("Voluntario"); // the pair closes → T2, Colmillos active again
     expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
-    expect(enJuegoCard().textContent).toContain("T2 • Colmillos del Caos");
+    expect(enJuegoCard().textContent).toContain("T2 · Colmillos del Caos");
     expect(pressed("Colmillos del Caos")).toBe("true");
     const saved = JSON.parse(
       window.localStorage.getItem("bb-demo-partido") ?? "null",
@@ -652,7 +655,7 @@ describe("ActaDemoHarness — T10: turn flow through the UI (L42)", () => {
     // perspective and the recorded cards all survive.
     render(<ActaDemoHarness />);
     expect(screen.getByText(/TURNO 2 EN JUEGO/)).toBeTruthy();
-    expect(enJuegoCard().textContent).toContain("T2 • Colmillos del Caos");
+    expect(enJuegoCard().textContent).toContain("T2 · Colmillos del Caos");
     expect(pressed("Colmillos del Caos")).toBe("true");
     expect(
       within(turnCard(1, "Colmillos del Caos"))
@@ -727,7 +730,7 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
   it("«+ TD», «+ Pase» and «+ Baja» in one half-turn land on the acting team's EN JUEGO card; the rival's card stays clean", () => {
     startWithHomeReceiver();
     // The match starts with the RECEIVER (Águilas) playing T1.
-    expect(enJuegoCard().textContent).toContain("T1 • Águilas de Khemri");
+    expect(enJuegoCard().textContent).toContain("T1 · Águilas de Khemri");
 
     capture("+ TD");
     capture("+ Pase");
@@ -735,16 +738,16 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
 
     // All three rows land on THAT half-turn's card (the EN JUEGO card)…
     const card = enJuegoCard();
-    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(card.textContent).toContain("T1 · Águilas de Khemri");
     expect(rowKinds(card)).toEqual(["td", "completion", "casualty"]);
     // …and the rival has NO card at all: nothing leaked to Colmillos.
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
 
     // After the pass the rival's new half-turn opens with a CLEAN card while
     // the acting card keeps all three captured rows.
     finTurno("Voluntario");
     const rival = enJuegoCard();
-    expect(rival.textContent).toContain("T1 • Colmillos del Caos");
+    expect(rival.textContent).toContain("T1 · Colmillos del Caos");
     expect(within(rival).queryAllByTestId("acta-event-row")).toHaveLength(0);
     expect(rowKinds(turnCard(1, "Águilas de Khemri"))).toEqual([
       "td",
@@ -764,7 +767,7 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     // The capture author (the home causer) shows on the row's badge instead of
     // driving the grouping.
     const card = enJuegoCard();
-    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(card.textContent).toContain("T1 · Águilas de Khemri");
     expect(rowKinds(card)).toEqual(["casualty"]);
     expect(card.textContent).toContain(
       "Khalid el Impávido (#1) → Grishnak Mordaz (#1)",
@@ -774,13 +777,13 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     expect(card.textContent).toContain("Registrado por Águilas de Khemri");
     // …and the VICTIM's team never gets a card for this capture (grouping by
     // the event's victim-side `side` would have created one).
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
   });
 
   it("during team A's turn, team B (victim's owner) captures an injury for its own player — the row lands on A's card with B's author badge", () => {
     startWithHomeReceiver();
     // A = Águilas de Khemri plays T1 (the game turn).
-    expect(enJuegoCard().textContent).toContain("T1 • Águilas de Khemri");
+    expect(enJuegoCard().textContent).toContain("T1 · Águilas de Khemri");
 
     // S10.4.1 (L54): B — the victim's owner, watching from the NON-active
     // dock — registers the injury of its OWN knocked-down player («Baja
@@ -804,12 +807,12 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     // The row lands on A's GAME-TURN card («placaje y herida de la misma
     // jugada caen en la MISMA card»)…
     const card = enJuegoCard();
-    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(card.textContent).toContain("T1 · Águilas de Khemri");
     expect(rowKinds(card)).toEqual(["casualty"]);
     // …with B's author badge (S10.4.2 — quién la registró)…
     expect(card.textContent).toContain("Registrado por Colmillos del Caos");
     // …and B gets NO card of its own for this capture.
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
   });
 
   it("when the pair moves on the cards close per play order (second play COMPLETADO, opener CERRADO) keeping their rows", () => {
@@ -843,11 +846,11 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     // by the «Antes del partido» block (S1).
     const cards = screen.getAllByTestId("acta-turn-card");
     const titles = cards.map(
-      (card) => within(card).getByText(/^T\d+ • /).textContent,
+      (card) => within(card).getByText(/^T\d+ · /).textContent,
     );
     expect(titles).toEqual([
-      "T2 • Águilas de Khemri",
-      "T1 • Águilas de Khemri",
+      "T2 · Águilas de Khemri",
+      "T1 · Águilas de Khemri",
     ]);
     expect(screen.queryByText(/AMBOS EQUIPOS/)).toBeNull();
     // Tight rows: each team card holds exactly its own capture.
@@ -964,7 +967,7 @@ describe("ActaDemoHarness — T17: combat chain on the game-turn cards (S10.1/S1
     captureBloqueo([6, 1], "11");
 
     const card = enJuegoCard();
-    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(card.textContent).toContain("T1 · Águilas de Khemri");
     expect(rowKinds(card)).toEqual(["knockdown"]);
     // The row's label carries the recorded chain (face + armour vs AV).
     expect(card.textContent).toContain("Derribo · Ar 11 (10+) rota");
@@ -987,7 +990,7 @@ describe("ActaDemoHarness — T17: combat chain on the game-turn cards (S10.1/S1
     expect(landed.textContent).toContain("Registrado por Colmillos del Caos");
     expect(landed.textContent).toContain("Tirada 1D16: 12");
     // …and the victim side gets NO card of its own for this play (T16).
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
   });
 
   it("S10.2: armour holding registers the standalone knockdown row and opens NO injury callout", () => {
@@ -1000,7 +1003,7 @@ describe("ActaDemoHarness — T17: combat chain on the game-turn cards (S10.1/S1
     expect(card.textContent).toContain("Derribo · Ar 5 (10+) aguanta");
     fireEvent.click(perspective("Colmillos del Caos"));
     expect(screen.queryByTestId("dock-pending-injury")).toBeNull();
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
   });
 });
 
@@ -1068,7 +1071,7 @@ describe("ActaDemoHarness — T23: «Ambos caen» WITH injuries (S10.3 closed)",
     // («Derribo · ambos caen», both players, no armour line) with the
     // tackler's coach badge.
     const card = enJuegoCard();
-    expect(card.textContent).toContain("T1 • Águilas de Khemri");
+    expect(card.textContent).toContain("T1 · Águilas de Khemri");
     expect(rowKinds(card)).toEqual(["knockdown"]);
     expect(card.textContent).toContain("Derribo · ambos caen");
     expect(card.textContent).toContain("Registrado por Águilas de Khemri");
@@ -1100,7 +1103,7 @@ describe("ActaDemoHarness — T23: «Ambos caen» WITH injuries (S10.3 closed)",
     // derribados)» marker copy (e2e pins its text — never rename it).
     expect(landed.textContent).toContain("(Ambos derribados)");
     // …and the victim side gets NO card of its own for this play (T16).
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
   });
 
   it("one armour holds -> only the broken player's owner records an injury (both may fall out, one, or none)", () => {
@@ -1120,12 +1123,12 @@ describe("ActaDemoHarness — T23: «Ambos caen» WITH injuries (S10.3 closed)",
     const landed = turnCard(1, "Águilas de Khemri");
     expect(rowKinds(landed)).toEqual(["knockdown", "casualty"]);
     expect(landed.textContent).toContain("Registrado por Colmillos del Caos");
-    expect(screen.queryByText("T1 • Colmillos del Caos")).toBeNull();
+    expect(screen.queryByText("T1 · Colmillos del Caos")).toBeNull();
   });
 });
 
-describe("ActaDemoHarness — T20 (L70): earned SPP VISIBLE + mirrored on the demo rows", () => {
-  it("the roll-12 grave row shows the causer's +2 SPP tab, mirrored bottom-left on the victim-side (away) row", () => {
+describe("ActaDemoHarness — T20 (L70) under T3: earned SPP VISIBLE on the demo bubbles", () => {
+  it("the roll-12 grave row shows the causer's +2 SPP tab at the bubble footer's end, whatever the side", () => {
     startWithHomeReceiver();
     captureBloqueo([6, 1], "11");
     fireEvent.click(perspective("Colmillos del Caos"));
@@ -1143,10 +1146,11 @@ describe("ActaDemoHarness — T20 (L70): earned SPP VISIBLE + mirrored on the de
     // grave = lasting = the CAUSER's +2 — the tab must render.
     expect(sppTab).not.toBeNull();
     expect(sppTab.textContent).toContain("+2 SPP");
-    // Mirrored with the row: the victim's side (Colmillos = away) hangs its
-    // SPP tab bottom-LEFT — the category tab's mirrored opposite (L70).
-    expect(sppTab.className).toContain("mr-auto");
-    expect(sppTab.className).not.toContain("ml-auto");
+    // WHY changed (T3, intentional): the chat footer is uniform (design/01) —
+    // the award sits at the footer END on both sides (the L70 mirror is gone
+    // with the category-tab mirror).
+    expect(sppTab.className).toContain("ml-auto");
+    expect(sppTab.className).not.toContain("mr-auto");
   });
 });
 

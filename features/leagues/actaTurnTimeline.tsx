@@ -17,7 +17,6 @@ import {
   KICKOFF_OUTCOME_LABELS,
   liveEventLabel,
   provisionalCasualtySpp,
-  whoLineLabel,
 } from "./liveEventLabels";
 import {
   buildGuidedCommand,
@@ -36,23 +35,28 @@ import {
 import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
 
 /**
- * Acta en Vivo turn timeline (MVA-3 timeline half + MVA-4, T8 Slice B): the
- * "MAIN CONTENT: TURN TIMELINE" section of
- * `design/match-report-redesign/08-acta-en-vivo.html` — per-HALF-TURN cards
- * over the live feed (T8 / L37: ONE CARD per (half, turnNumber, side) — one
- * each time a coach plays), newest first:
+ * Acta en Vivo turn timeline (MVA-3 timeline half + MVA-4, T8 Slice B; chat
+ * redesign T2-T4, `design/stitch-timeline-chat/01`): the chronology as a CHAT
+ * FEED of per-HALF-TURN groups (T8 / L37: ONE GROUP per (half, turnNumber,
+ * side) — one each time a coach plays), newest first. The group chrome is a
+ * CENTERED separator chip — "T{n} · {TEAM or SISTEMA}" + the
+ * EN JUEGO / COMPLETADO / CERRADO state chip — and the group article itself
+ * is TRANSPARENT (no panel border/shadow): the bubbles sit directly on the
+ * background:
  *
- *   - card header: "T6 • GOUGED EYE" (per-half turn tag + acting team) with
- *     the EN JUEGO / COMPLETADO / CERRADO state chip and "Min N'" label;
- *     left accent in the ACTING TEAM's color (S3: home navy · away red ·
- *     SISTEMA slate — never state-coded; the chips carry the state);
- *   - event rows (live/completed cards): the T18 folder card — category tab
- *     on the top-left («Casualty» red only, «Pase», «TD», «Derribo»…), bold
- *     player + muted role/number and the one-line description at FULL width,
- *     the capture-author badge, and earned SPP only on the inverted
- *     bottom-right tab (captured data renders WITHOUT re-entry, S3);
- *   - compact icon + sentence rows on closed cards (T4 style);
- *   - the MVA-4 pending injury-roll callout inside the card owning a casualty
+ *   - chat bubbles (T3/S2 — ONE component for every row): the EVENT's own
+ *     team side (LM-12) hugs LEFT with the navy accent bar (home) or mirrors
+ *     RIGHT with the red one (away); side-null system rows render CENTERED in
+ *     slate with no author badge. Closed groups keep the same bubbles, muted.
+ *     Inside each bubble: the category tab (`acta-event-tab` — the label slot
+ *     until T5 adds the action icons: «Casualty» red only, «Pase», «TD»,
+ *     «Derribo»…), bold player + muted role/number and the one-line
+ *     description, the capture-author badge (S10.4.2), the earned SPP tab
+ *     (`acta-event-spp` — captured data renders WITHOUT re-entry, S3) and the
+ *     casualty's «Lo que informa quien la recibe» note (`acta-victim-note`);
+ *   - per-message timestamps (T4/S3): every bubble carries its own «Min N'»
+ *     from `deriveMinute(event.at, startedAt)` on its footer;
+ *   - the MVA-4 pending injury-roll callout inside the group owning a casualty
  *     whose 1D16 is still missing: warning label, player + armor-break line,
  *     the "TIRAR 1D16 DE LESIÓN" action and the BB2025 D16 severity table
  *     (S1 — bands verbatim).
@@ -61,7 +65,7 @@ import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
  * even before any action); while live, the card right before it renders
  * COMPLETADO and older cards CERRADO (the MVA-3 scenario: "turns 1-4 closed,
  * turn 5 completed, turn 6 active"); once the match is over the last turn
- * renders COMPLETADO and every older card CERRADO. Card titles fall back to
+ * renders COMPLETADO and every older card CERRADO. Group titles fall back to
  * "SISTEMA" only on a pair's neutral system card (side-null captures).
  *
  * The pending-roll action resolves through the EXISTING flow — the shared
@@ -115,6 +119,9 @@ const ICON_PATHS = {
     "M160-80q-33 0-56.5-23.5T80-160v-480q0-33 23.5-56.5T160-720h160v-80q0-33 23.5-56.5T400-880h160q33 0 56.5 23.5T640-800v80h160q33 0 56.5 23.5T880-640v480q0 33-23.5 56.5T800-80H160Zm0-80h640v-480H160v480Zm240-560h160v-80H400v80ZM160-160v-480 480Zm280-200v120h80v-120h120v-80H520v-120h-80v120H320v80h120Z",
   run: "M480-480ZM362-202 202-362q-3 38-1.5 79t7.5 73q23 7 69.5 9t84.5-1Zm96-16q59-13 106-37t82-59q34-34 58-80.5T742-500L500-742q-57 14-103 38.5T316-644q-35 35-59.5 81.5T218-458l240 240Zm-62-122-56-56 224-224 56 56-224 224Zm362-256q4-39 2.5-81t-8.5-73q-23-8-69.5-10t-84.5 2l160 162ZM310-120q-57 0-104-8.5T148-148q-11-12-19.5-60T120-314q0-119 36-220.5T258-702q66-66 169-102t223-36q58 0 104.5 8.5T812-812q11 12 19.5 60t8.5 108q0 117-36 218.5T702-258q-65 65-168 101.5T310-120Z",
   dots: "M240-400q-33 0-56.5-23.5T160-480q0-33 23.5-56.5T240-560q33 0 56.5 23.5T320-480q0 33-23.5 56.5T240-400Zm240 0q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm240 0q-33 0-56.5-23.5T640-480q0-33 23.5-56.5T720-560q33 0 56.5 23.5T800-480q0 33-23.5 56.5T720-400Z",
+  // T4 (S3): the per-message timestamp marker (the artboard's «🕐 Min N'»).
+  clock:
+    "M200-360A280 280 0 1 0 760-360A280 280 0 1 0 200-360ZM280-360A200 200 0 1 1 680-360A200 200 0 1 1 280-360ZM466-500h28v140h-28ZM480-374h140v28H480Z",
 } as const;
 
 function ActaIcon({
@@ -279,7 +286,8 @@ export interface ActaTurnCard {
   /** The coach playing this HALF-TURN (the card's grouping side) — null only
    *  on the pair's neutral "SISTEMA" card (system captures, no side). */
   actingSide: TurnSide;
-  /** The latest capture timestamp of the turn (the card's minute). */
+  /** The latest capture timestamp of the turn (the bubbles carry each their
+   *  own minute — T4/S3). */
   minuteAt: number;
   /** Display events in capture order (seq asc). */
   events: LiveMatchEventDto[];
@@ -644,21 +652,38 @@ function victimBadgeLabel(event: LiveMatchEventDto, teams: TeamMap): string {
     : "Registro de sistema";
 }
 
-function EventRow({
+/**
+ * T3 (S2 chat bubbles): ONE bubble for every captured row — live, completed
+ * and closed groups render the SAME layout (closed groups mute it: slate tab
+ * + slate-strong text) and side-null system rows render as CENTERED slate
+ * bubbles with no author badge. Side identity («Implementar tal cual»,
+ * `design/stitch-timeline-chat/01`): the bubble follows the EVENT's own team
+ * side (LM-12 — the victim's side on a casualty row) — home hugs LEFT with
+ * the navy accent bar, away mirrors RIGHT with the red one. The chrome keeps
+ * the shipped T18 atoms: the category tab (`acta-event-tab` — the label slot
+ * until T5 adds the action icons), the bold player + description, the
+ * capture-author badge (S10.4.2), the SPP tab (`acta-event-spp`) and the
+ * casualty's victim note (`acta-victim-note`); T4/S3 puts the per-message
+ * «Min N'» on the bubble footer.
+ */
+function EventBubble({
   event,
   teams,
-  highlight,
   fresh,
+  muted,
   activePrayers,
+  startedAt,
 }: {
   event: LiveMatchEventDto;
   teams: TeamMap;
-  highlight: boolean;
   fresh: boolean;
+  muted: boolean;
   activePrayers?: MatchActivePrayers;
+  startedAt: number | null;
 }) {
   const tab = tabFor(event);
   const marker = sppMarkerFor(event, earnerPrayersOf(event, activePrayers));
+  const system = event.side == null;
   let subject: ReactNode;
   if (event.kind === "casualty" && event.side != null) {
     // The causal line (artboard T5): "Grashnak Viletooth (#4) → Ugluk (#6)".
@@ -685,193 +710,89 @@ function EventRow({
   // injury roll + consequences live in the «Lo que informa quien la recibe»
   // sub-box with the RECEIVER's own badge.
   const voices = event.kind === "casualty" ? casualtyVoices(event) : null;
-  // T19 (artboard 04): the short who-line speaks for the ROW's own event side
-  // (the victim on a casualty row — LM-12), fixed, never the viewer's side.
-  const whoPlayer = event.side
-    ? resolvePlayer(
-        teams[event.side],
-        event.kind === "casualty" ? victimIdOf(event) : event.playerRosterId,
-      )
-    : null;
-  const who = whoPlayer && event.side ? whoLineLabel(whoPlayer.name, teams[event.side].name) : null;
-  // T19: home rows sit LEFT with the folder design; away rows MIRROR (tab
-  // right, right-aligned text). Row side = the EVENT's team side (fixed).
+  // T3: home bubbles hug LEFT (navy accent), away bubbles MIRROR (red accent
+  // on the outer edge). Row side = the EVENT's team side (fixed).
   const mirrored = event.side === "away";
+  // T4/S3: the per-message timestamp — the bubble's own capture minute.
+  const minute = startedAt != null ? deriveMinute(event.at, startedAt) : "0'";
   return (
     <div
       data-testid="acta-event-row"
       data-kind={event.kind}
-      className={`relative pt-[26px] ${
-        mirrored
-          ? "w-[92%] ml-auto text-right"
-          : event.side === "home"
-            ? "w-[92%] mr-auto"
-            : ""
+      className={`relative flex w-[92%] flex-col gap-2 rounded-sm border border-border p-2.5 ${
+        system
+          ? "mx-auto border-l-4 border-l-slate bg-fill-hover"
+          : mirrored
+            ? "ml-auto border-r-4 border-r-red bg-panel"
+            : "mr-auto border-l-4 border-l-navy bg-panel"
       } ${fresh ? "acta-motion-row-flash" : ""}`}
     >
-      <span
-        data-testid="acta-event-tab"
-        className={`absolute ${mirrored ? "right-0" : "left-0"} top-0 flex h-[26px] items-center rounded-t-md px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${
-          tab.injury ? "bg-red" : "bg-navy"
-        }`}
-      >
-        {tab.label}
-      </span>
-      <div
-        className={`${mirrored ? "rounded-b-lg rounded-tl-lg" : "rounded-b-lg rounded-tr-lg"} border p-2.5 ${
-          highlight ? "border-red/30" : "border-border"
-        } ${
-          // T20 (L70): the body BACKGROUND identifies WHO acted — navy tint on
-          // home rows, red tint on away rows («las aguilas azules y los
-          // colmillos los colmillos»). Low-alpha (WCAG AA for the body text —
-          // see eventCardActa.test.tsx's contrast lock); the tint is BODY
-          // identity, never the category tab (which keeps design A).
-          mirrored ? "bg-red/[0.025]" : event.side === "home" ? "bg-navy/[0.025]" : "bg-white"
-        }`}
-      >
-        {/* T19: the who-line above the description (home navy / away red). */}
-        {who != null ? (
-          <p
-            data-testid="acta-event-who"
-            className={`text-xs font-bold ${mirrored ? "text-red" : "text-navy"}`}
-          >
-            {who}
+      <div className="flex items-start gap-2">
+        <span
+          data-testid="acta-event-tab"
+          className={`flex h-[26px] shrink-0 items-center rounded-sm px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${
+            muted || system ? "bg-slate" : tab.injury ? "bg-red" : "bg-navy"
+          }`}
+        >
+          {tab.label}
+        </span>
+        <div className="min-w-0 flex-1">
+          {/* The description gets the FULL width — the old inline category
+              chip no longer steals it (T18, L60). */}
+          <p className={`text-sm ${muted ? "text-slate-strong" : "text-ink"}`}>
+            {subject}
           </p>
-        ) : null}
-        {/* The description gets the FULL width — the old inline category chip
-            no longer steals it (T18, L60). */}
-        <p className="text-sm text-ink">{subject}</p>
-        <p className="text-xs text-slate">
-          {voices != null ? voices.mark : descriptionFor(event, teams)}
-        </p>
-        {/* S10.4.2 role transparency: who REGISTERED the capture (compact,
-            secondary — never competes with the row itself on mobile). */}
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate">
-          {authorBadgeLabel(event, teams)}
-        </p>
-        {voices != null ? (
+          <p className="text-xs text-slate">
+            {voices != null ? voices.mark : descriptionFor(event, teams)}
+          </p>
+          {voices != null ? (
+            <div
+              data-testid="acta-victim-note"
+              className={`mt-2.5 border border-border bg-background px-2.5 py-2 ${
+                // T20 (L70, the user's exact words): «cuando el jugador es el de
+                // la derecha deberiamos cambiar border-l-red y border-l-[3px] a
+                // border-r-red y border-r-[3px]» — the accent stays on the
+                // mirrored OUTER edge.
+                mirrored
+                  ? "rounded-l-sm border-r-[3px] border-r-red"
+                  : "rounded-r-sm border-l-[3px] border-l-red"
+              }`}
+            >
+              <p className="text-[10px] font-bold uppercase tracking-wider text-red">
+                Lo que informa quien la recibe
+              </p>
+              <p className="mt-1 text-xs text-slate">{voices.note}</p>
+              <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate">
+                {victimBadgeLabel(event, teams)}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {/* T4/S3: every bubble carries its own «Min N'» + the capture-author
+          badge (S10.4.2 role transparency — never dropped on team rows; a
+          side-less system bubble has no author to name, T3). */}
+      <div className="flex items-center gap-1.5">
+        <ActaIcon name="clock" className="size-4 shrink-0 text-slate" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate">
+          Min {minute}
+        </span>
+        {system ? null : (
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate">
+            · {authorBadgeLabel(event, teams)}
+          </span>
+        )}
+        {marker != null ? (
           <div
-            data-testid="acta-victim-note"
-            className={`mt-2.5 border border-border bg-background px-2.5 py-2 ${
-              // T20 (L70, the user's exact words): «cuando el jugador es el de
-              // la derecha deberiamos cambiar border-l-red y border-l-[3px] a
-              // border-r-red y border-r-[3px]» — the accent stays on the
-              // mirrored OUTER edge.
-              mirrored
-                ? "rounded-l-md border-r-[3px] border-r-red"
-                : "rounded-r-md border-l-[3px] border-l-red"
-            }`}
+            data-testid="acta-event-spp"
+            className={`ml-auto w-fit rounded-sm border border-border bg-fill-hover px-3 py-1 text-[11px] font-bold ${marker.className}`}
           >
-            <p className="text-[10px] font-bold uppercase tracking-wider text-red">
-              Lo que informa quien la recibe
-            </p>
-            <p className="mt-1 text-xs text-slate">{voices.note}</p>
-            <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-slate">
-              {victimBadgeLabel(event, teams)}
-            </p>
+            {marker.text}
           </div>
         ) : null}
       </div>
-      {marker != null ? (
-        <div
-          data-testid="acta-event-spp"
-          className={`${
-            // T20 (L70): the SPP tab mirrors the category tab's side — home
-            // (tab top-left) hangs it bottom-right, away (tab top-right)
-            // bottom-left (resolves the L68 open flag in the mirrored sense).
-            mirrored ? "mr-auto" : "ml-auto"
-          } w-fit rounded-b-lg border border-t-0 border-border bg-fill-hover px-3 py-1 text-[11px] font-bold ${marker.className}`}
-        >
-          {marker.text}
-        </div>
-      ) : null}
     </div>
   );
-}
-
-/** Compact icon + sentence row (closed cards, T4 style). */
-function CompactRow({
-  event,
-  teams,
-  fresh,
-  activePrayers,
-}: {
-  event: LiveMatchEventDto;
-  teams: TeamMap;
-  fresh: boolean;
-  activePrayers?: MatchActivePrayers;
-}) {
-  // The victim is the subject on a casualty row; the acting player otherwise.
-  const subjectId = event.kind === "casualty" ? victimIdOf(event) : event.playerRosterId;
-  const team = event.side ? teams[event.side] : null;
-  const player = team ? resolvePlayer(team, subjectId) : null;
-  const name = player ? `${player.name} (#${player.dorsal})` : event.side ? teams[event.side].name : "—";
-  const icon: keyof typeof ICON_PATHS =
-    event.kind === "td"
-      ? "run"
-      : event.kind === "completion"
-        ? "send"
-        : event.kind === "foul"
-          ? "foul"
-          : event.kind === "casualty"
-            ? "medical"
-            : "dots";
-  // T19: compact rows carry the same side identity (chat offset + name color
-  // per side — the name IS the compact who).
-  const mirrored = event.side === "away";
-  return (
-    <div
-      data-testid="acta-event-row"
-      data-kind={event.kind}
-      data-compact="true"
-      className={`flex items-start gap-2 border-b border-border pb-2 text-sm text-ink last:border-0 last:pb-0 ${
-        mirrored
-          ? "w-[92%] ml-auto flex-row-reverse text-right"
-          : event.side === "home"
-            ? "w-[92%] mr-auto"
-            : ""
-      } ${fresh ? "acta-motion-row-flash" : ""}`}
-    >
-      <ActaIcon name={icon} className="mt-0.5 size-4 shrink-0 text-slate" />
-      <p className="min-w-0 flex-1">
-        <strong className={mirrored ? "text-red" : "text-navy"}>{name}</strong>{" "}
-        {compactSentence(event, teams, earnerPrayersOf(event, activePrayers))}{" "}
-        {/* S10.4.2: the compact-row variant of the capture-author badge. */}
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate">
-          · {authorBadgeLabel(event, teams)}
-        </span>
-      </p>
-    </div>
-  );
-}
-
-function compactSentence(
-  event: LiveMatchEventDto,
-  teams: TeamMap,
-  prayers: ActivePrayers,
-): string {
-  switch (event.kind) {
-    case "td":
-      return "anotó Touchdown (+3 SPP).";
-    case "completion":
-      // T25: the award sentence follows the SHARED earn rule (T24 + the
-      // «Plegarias a Nuffle» blessings) — never a hardcoded count.
-      return `completó Pase con éxito (+${eventSpp(event, prayers)} SPP).`;
-    case "foul": {
-      const victim = event.side ? resolvePlayer(teams[opposite(event.side)], victimIdOf(event)) : null;
-      return victim
-        ? `realizó falta sobre ${victim.name} (#${victim.dorsal}).`
-        : "realizó una falta.";
-    }
-    case "casualty": {
-      const cause = typeof event.payload.cause === "string" ? causeLabel(event.payload.cause) : "baja";
-      const roll16 = event.payload.roll16;
-      const outcome = typeof roll16 === "number" ? bandLabel(resolveInjury(roll16).kind) : "tirada de lesión pendiente";
-      return `sufrió una baja (${cause}) — ${outcome}.`;
-    }
-    default:
-      return `${descriptionFor(event, teams)}`;
-  }
 }
 
 // --- Callout (MVA-4) ------------------------------------------------------
@@ -989,7 +910,8 @@ export interface ActaTurnTimelineProps {
   awayTeam: MatchTeamDetail;
   /** The kickoff anchor for the "Min N'" labels (null → 0'). */
   startedAt: number | null;
-  /** The current wall clock (the live card's minute). */
+  /** The current wall clock (kept for API stability — since T4 every bubble
+   *  renders its OWN capture minute, so nothing derives from `now` anymore). */
   now: number;
   /** The live-match state slice the turn states derive from. */
   active: {
@@ -1019,25 +941,11 @@ const STATE_CHIP: Record<TurnCardState, { label: string; className: string }> = 
   closed: { label: "CERRADO", className: "border border-border bg-fill-hover text-slate" },
 };
 
-/**
- * S3: the left accent is TEAM-coded (never state-coded) — the side palette:
- * home navy · away red · both/unknown slate neutral. The state stays visible
- * through the EN JUEGO / COMPLETADO / CERRADO chips above.
- */
-function accentOf(side: TurnSide): string {
-  return side === "home"
-    ? "border-l-navy"
-    : side === "away"
-      ? "border-l-red"
-      : "border-l-slate";
-}
-
 export function ActaTurnTimeline({
   events,
   homeTeam,
   awayTeam,
   startedAt,
-  now,
   active,
   viewerSide,
   onSubmit,
@@ -1051,8 +959,6 @@ export function ActaTurnTimeline({
       {cards.map((card, index) => {
         const chip = STATE_CHIP[card.state];
         const teamLabel = card.actingSide ? teams[card.actingSide].name : "SISTEMA";
-        const minuteAt = card.state === "live" ? now : card.minuteAt;
-        const minute = startedAt != null ? deriveMinute(minuteAt, startedAt) : "0'";
         return (
           <article
             key={card.key}
@@ -1060,59 +966,52 @@ export function ActaTurnTimeline({
             data-half={card.half}
             data-turn={card.turnNumber}
             data-state={card.state}
-            className={`acta-motion-fade-in-up acta-motion-stagger-${Math.min(index + 1, 5)} overflow-hidden rounded-sm border border-border border-l-4 bg-panel shadow-sm ${accentOf(card.actingSide)}`}
+            className={`acta-motion-fade-in-up acta-motion-stagger-${Math.min(index + 1, 5)} flex flex-col gap-2.5`}
           >
-            <div className="flex items-center justify-between gap-2 border-b border-border bg-fill-hover px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2">
+            {/* T2/S2: the group chrome is a CENTERED separator chip — the
+                article itself is transparent (no panel): the bubbles sit
+                directly on the background. The state stays visible through
+                the EN JUEGO / COMPLETADO / CERRADO chip (S3: never
+                state-coded colors). */}
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className="h-px flex-1 bg-border" />
+              <span className="flex items-center gap-1.5 rounded-sm border border-border bg-fill-hover px-2 py-1">
                 <span
-                  className={`truncate font-display text-[15px] uppercase tracking-wide ${
+                  className={`font-display text-[11px] font-bold uppercase tracking-wide ${
                     card.state === "closed" ? "text-slate-strong" : "text-ink"
                   }`}
                 >
-                  T{card.turnNumber} • {teamLabel}
+                  T{card.turnNumber} · {teamLabel}
                 </span>
                 <span
-                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${chip.className}`}
+                  className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${chip.className}`}
                 >
                   {chip.label}
                 </span>
-              </div>
-              <span className="shrink-0 text-[11px] text-slate">Min {minute}</span>
+              </span>
+              <span aria-hidden="true" className="h-px flex-1 bg-border" />
             </div>
-            {card.events.length > 0 || card.pendingInjuries.length > 0 ? (
-              <div className="space-y-2.5 p-3">
-                {card.events.map((event) =>
-                  card.state === "closed" ? (
-                    <CompactRow
-                      key={event.seq}
-                      event={event}
-                      teams={teams}
-                      fresh={fresh.has(event.seq)}
-                      activePrayers={activePrayers}
-                    />
-                  ) : (
-                    <EventRow
-                      key={event.seq}
-                      event={event}
-                      teams={teams}
-                      highlight={card.state === "live"}
-                      fresh={fresh.has(event.seq)}
-                      activePrayers={activePrayers}
-                    />
-                  ),
-                )}
-                {card.pendingInjuries.map((event) => (
-                  <InjuryRollCallout
-                    key={`pending-${event.seq}`}
-                    event={event}
-                    teams={teams}
-                    viewerSide={viewerSide}
-                    active={active}
-                    onSubmit={onSubmit}
-                  />
-                ))}
-              </div>
-            ) : null}
+            {card.events.map((event) => (
+              <EventBubble
+                key={event.seq}
+                event={event}
+                teams={teams}
+                fresh={fresh.has(event.seq)}
+                muted={card.state === "closed"}
+                activePrayers={activePrayers}
+                startedAt={startedAt}
+              />
+            ))}
+            {card.pendingInjuries.map((event) => (
+              <InjuryRollCallout
+                key={`pending-${event.seq}`}
+                event={event}
+                teams={teams}
+                viewerSide={viewerSide}
+                active={active}
+                onSubmit={onSubmit}
+              />
+            ))}
           </article>
         );
       })}
