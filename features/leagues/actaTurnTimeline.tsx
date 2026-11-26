@@ -11,6 +11,7 @@ import { isDisplayEvent } from "@/lib/liveMatch";
 import { deriveMinute } from "@/lib/liveFeed";
 import {
   bothDownMarkerLabel,
+  CAUSE_LABELS,
   causeLabel,
   eventCategoryTab,
   eventSpp,
@@ -108,7 +109,18 @@ function useFreshSeqs(events: readonly LiveMatchEventDto[]): ReadonlySet<number>
   return fresh;
 }
 
-/** Material Symbols paths (960 grid) copied from artboard 08 — inline SVG only. */
+/**
+ * Material Symbols paths (960 grid, `0 -960 960 960`) copied from artboard 08
+ * — inline SVG only. T5 (S4) adds the action icon set of
+ * `design/stitch-timeline-chat/02-iconos`: `flag` (TD), `bolt` (Blitz),
+ * `block` (Block), `send` (Pase), `medical` (Baja), `falling` (Derribo),
+ * `hand` (Intercepción), `cloud` (Clima) + `star` (MVP). `flag`/`bolt`/`star`/
+ * `hand` are the verbatim 960-grid paths of
+ * `design/match-report-redesign/.compiled/icons/{flag,bolt,star,pan_tool}.svg`;
+ * the icon set has no shield/cloud/falling glyph, so `block` adapts the MDI
+ * shield, `falling` rotates the sports_football figure into a falling posture
+ * and `cloud` is a constructed silhouette — all single-path, stroke-free fills.
+ */
 const ICON_PATHS = {
   warning:
     "m40-120 440-760 440 760H40Zm138-80h604L480-720 178-200Zm302-40q17 0 28.5-11.5T520-280q0-17-11.5-28.5T480-320q-17 0-28.5 11.5T440-280q0 17 11.5 28.5T480-240Zm-40-120h80v-200h-80v200Zm40-100Z",
@@ -122,6 +134,17 @@ const ICON_PATHS = {
   // T4 (S3): the per-message timestamp marker (the artboard's «🕐 Min N'»).
   clock:
     "M200-360A280 280 0 1 0 760-360A280 280 0 1 0 200-360ZM280-360A200 200 0 1 1 680-360A200 200 0 1 1 280-360ZM466-500h28v140h-28ZM480-374h140v28H480Z",
+  // T5 (S4): the icon-sheet action glyphs (see the map's doc comment).
+  flag: "M200-120v-680h360l16 80h224v400H520l-16-80H280v280h-80Zm300-440Zm86 160h134v-240H510l-16-80H280v240h290l16 80Z",
+  bolt: "m422-232 207-248H469l29-227-185 267h139l-30 208ZM320-80l40-280H160l360-520h80l-40 320h240L400-80h-80Zm151-390Z",
+  block:
+    "M480-920 120-760v240c0 222 153.6 429.6 360 480 206.4-50.4 360-258 360-480V-760L480-920Z",
+  hand: "M402-40q-30 0-56-13.5T303-92L48-465l24-23q19-19 45-22t47 12l116 81v-383q0-17 11.5-28.5T320-840q17 0 28.5 11.5T360-800v537L212-367l157 229q5 8 14 13t19 5h278q33 0 56.5-23.5T760-200v-560q0-17 11.5-28.5T800-800q17 0 28.5 11.5T840-760v560q0 66-47 113T680-40H402Zm38-440v-400q0-17 11.5-28.5T480-920q17 0 28.5 11.5T520-880v400h-80Zm160 0v-360q0-17 11.5-28.5T640-880q17 0 28.5 11.5T680-840v360h-80ZM486-300Z",
+  star: "m354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143ZM233-120l65-281L80-590l288-25 112-265 112 265 288 25-218 189 65 281-247-149-247 149Zm247-350Z",
+  cloud:
+    "M145-400A150 150 0 0 1 445-400A150 150 0 0 1 145-400ZM245-480A230 230 0 0 1 705-480A230 230 0 0 1 245-480ZM495-410A160 160 0 0 1 815-410A160 160 0 0 1 495-410ZM145-280H815V-250H145Z",
+  falling:
+    "M480-480ZM180.2-443.2L238.8-661.8q-34.4 16.4-69.2 38.2t-59.5 43q5.4 23.4 27 64.7t43.1 72.7Zm61.9 75.1q40.8 44.6 85 73.3t92.1 41.5q46.4 12.4 98.7 10T628.3-263.1L716.9-593.7q-40.6-42.4-84.8-70T540-704q-47.8-12.8-100.3-10.8T329.9-695.9l-87.8 327.8Zm74.7-114.7l20.5-76.5l306 82l-20.5 76.5l-306-82Zm402.7 185.5q35.8-16 71.4-38.3t59-43.9q-4.6-23.9-26.1-65.2t-44-72.2l-60.3 219.6ZM83.2-447.2q-28.5-49.4-44.6-94.3T26.5-601.5q4.9-15.5 42.2-46.9T156.2-708.8q103.1-59.5 209-79.1T561.3-783.3q90.2 24.2 172.8 95.4t142.7 175.1q29 50.2 44.9 94.7T933.5-358.5q-4.9 15.5-42.2 46.9t-89.3 61.4q-101.3 58.5-207.2 78.1T398.7-176.7q-88.8-23.8-171.9-94.7T83.2-447.2Z",
 } as const;
 
 function ActaIcon({
@@ -132,7 +155,10 @@ function ActaIcon({
   className?: string;
 }) {
   return (
-    <svg viewBox="0 0 960 960" aria-hidden="true" focusable="false" className={className}>
+    // The paths are the Material Symbols 960 grid (`0 -960 960 960`, matching
+    // the source .svg files) — with `0 0 960 960` the whole glyph lies above
+    // the viewport and clips to nothing.
+    <svg viewBox="0 -960 960 960" aria-hidden="true" focusable="false" className={className}>
       <path d={ICON_PATHS[name]} fill="currentColor" />
     </svg>
   );
@@ -510,6 +536,51 @@ function tabFor(event: LiveMatchEventDto): { label: string; injury?: boolean } {
   return eventCategoryTab(event) ?? { label: liveEventLabel(event) };
 }
 
+/**
+ * T5 (S4) — the action icon per bubble (icon sheet
+ * `design/stitch-timeline-chat/02-iconos`). Mapping priority:
+ *  (a) an action CAUSE on the payload (`CAUSE_LABELS` — blitz, block, foul …)
+ *      wins and renders the cause's glyph (a blitz-caused knockdown shows the
+ *      bolt, never the generic falling figure);
+ *  (b) otherwise the event KIND maps to its icon-sheet glyph: td → flag,
+ *      completion/throwTeamMate → send (Pase), interception → hand, casualty
+ *      → medical (Baja), knockdown → falling (Derribo), foul → foul (Falta),
+ *      weather → cloud (Clima), mvp → star, endHalf/endMatch → dots.
+ * Unknown/unmapped kinds fall back to the dots glyph; side-null system
+ * bubbles follow the same rule (weather → cloud).
+ */
+const CAUSE_ICONS: Record<string, keyof typeof ICON_PATHS> = {
+  blitz: "bolt",
+  block: "block",
+  foul: "foul",
+  dodge: "falling",
+  crowd: "warning",
+  specialAction: "bolt",
+  thrownLanding: "falling",
+};
+
+const KIND_ICONS: Record<string, keyof typeof ICON_PATHS> = {
+  td: "flag",
+  completion: "send",
+  throwTeamMate: "send",
+  interception: "hand",
+  casualty: "medical",
+  knockdown: "falling",
+  foul: "foul",
+  weather: "cloud",
+  mvp: "star",
+  endHalf: "dots",
+  endMatch: "dots",
+};
+
+function bubbleIconOf(event: LiveMatchEventDto): keyof typeof ICON_PATHS {
+  const cause = event.payload.cause;
+  if (typeof cause === "string" && Object.hasOwn(CAUSE_LABELS, cause)) {
+    return CAUSE_ICONS[cause] ?? "dots";
+  }
+  return KIND_ICONS[event.kind] ?? "dots";
+}
+
 /** The inverted bottom SPP tab text (TD +3 · casualty +2 · completion +1 …) —
  *  rendered ONLY when earned (T18: SPP is a consequence, never a title).
  *  T24 (L78, «external-assets/Puntos de SPP.md»): the gate is the EARNER — rows
@@ -660,11 +731,13 @@ function victimBadgeLabel(event: LiveMatchEventDto, teams: TeamMap): string {
  * `design/stitch-timeline-chat/01`): the bubble follows the EVENT's own team
  * side (LM-12 — the victim's side on a casualty row) — home hugs LEFT with
  * the navy accent bar, away mirrors RIGHT with the red one. The chrome keeps
- * the shipped T18 atoms: the category tab (`acta-event-tab` — the label slot
- * until T5 adds the action icons), the bold player + description, the
+ * the shipped T18 atoms: the category tab (`acta-event-tab` — kept alongside
+ * the T5 action icon), the bold player + description, the
  * capture-author badge (S10.4.2), the SPP tab (`acta-event-spp`) and the
  * casualty's victim note (`acta-victim-note`); T4/S3 puts the per-message
- * «Min N'» on the bubble footer.
+ * «Min N'» on the bubble footer. T5 (S4) adds the action icon tile
+ * (`acta-bubble-icon`) at the bubble's leading edge — navy on white, red only
+ * on the casualty/Baja tile, muted like the rest of a closed group's bubble.
  */
 function EventBubble({
   event,
@@ -715,6 +788,8 @@ function EventBubble({
   const mirrored = event.side === "away";
   // T4/S3: the per-message timestamp — the bubble's own capture minute.
   const minute = startedAt != null ? deriveMinute(event.at, startedAt) : "0'";
+  // T5 (S4): the action icon (decorative duplication of the tab label).
+  const icon = bubbleIconOf(event);
   return (
     <div
       data-testid="acta-event-row"
@@ -728,6 +803,19 @@ function EventBubble({
       } ${fresh ? "acta-motion-row-flash" : ""}`}
     >
       <div className="flex items-start gap-2">
+        {/* T5 (S4): the small square icon tile at the bubble's leading edge —
+            navy on white, red only for casualty/Baja, muted like the rest of a
+            closed group's bubble. Decorative duplication of the tab label. */}
+        <span
+          aria-hidden="true"
+          data-testid="acta-bubble-icon"
+          data-icon={icon}
+          className={`flex size-8 shrink-0 items-center justify-center rounded-sm border border-border bg-panel ${
+            muted ? "text-slate" : tab.injury ? "text-red" : "text-navy"
+          }`}
+        >
+          <ActaIcon name={icon} className="size-5" />
+        </span>
         <span
           data-testid="acta-event-tab"
           className={`flex h-[26px] shrink-0 items-center rounded-sm px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-white ${

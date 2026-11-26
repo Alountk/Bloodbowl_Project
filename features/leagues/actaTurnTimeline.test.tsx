@@ -2212,3 +2212,143 @@ describe("ActaTurnTimeline — T27 skill & team-rule SPP exceptions (L87/L88)", 
     expect(sppTabOf()).toBeNull();
   });
 });
+
+// --- T5 (S4): action icon tiles (icon sheet `design/stitch-timeline-chat/02`) ---
+
+/** The bubble's icon tile (S4): `data-icon` names the ICON_PATHS key. */
+function iconTileOf(container: HTMLElement, kind: string): HTMLElement | null {
+  const row = container.querySelector(
+    `[data-testid="acta-event-row"][data-kind="${kind}"]`,
+  );
+  return (row?.querySelector('[data-testid="acta-bubble-icon"]') as HTMLElement) ?? null;
+}
+
+describe("T5 (S4) — action icon tiles on the chat bubbles", () => {
+  it("maps the representative actions to the icon-sheet glyphs: TD→flag, Falta→foul, Clima→cloud, unknown kind→dots", () => {
+    seqCounter = 0;
+    const events = [
+      tdEvent(),
+      ...closedTurnEvents(), // a foul + a completion on the closed T4
+      // A mid-match system weather row (its in-play capture comes first, S1).
+      event({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        turnNumber: 5,
+        at: STARTED + 40 * MIN,
+        payload: { value: "rain", roll: 7 },
+      }),
+      // A display kind with NO icon-sheet glyph (LM-16 whitelist, unmapped).
+      event({
+        kind: "expensive_mistake",
+        side: "home",
+        playerRosterId: "h1",
+        turnNumber: 5,
+        at: STARTED + 41 * MIN,
+      }),
+    ];
+    const { container } = render(
+      <ActaTurnTimeline
+        {...timelineProps({ events, active: { ...liveActive(), turnStarter: "home" } })}
+      />,
+    );
+    expect(iconTileOf(container, "td")?.getAttribute("data-icon")).toBe("flag");
+    expect(iconTileOf(container, "foul")?.getAttribute("data-icon")).toBe("foul");
+    expect(iconTileOf(container, "weather")?.getAttribute("data-icon")).toBe("cloud");
+    expect(iconTileOf(container, "expensive_mistake")?.getAttribute("data-icon")).toBe(
+      "dots",
+    );
+  });
+
+  it("an action CAUSE on the payload wins over the kind: a blitz-caused knockdown shows the bolt, a cause-less one the falling figure", () => {
+    seqCounter = 0;
+    const events = [
+      event({
+        kind: "knockdown",
+        side: "home",
+        playerRosterId: "h1",
+        turnNumber: 5,
+        at: STARTED + 20 * MIN,
+        payload: { cause: "blitz", victimRosterId: "a2" },
+      }),
+      event({
+        kind: "knockdown",
+        side: "home",
+        playerRosterId: "h1",
+        turnNumber: 5,
+        at: STARTED + 21 * MIN,
+        payload: {},
+      }),
+    ];
+    const { container } = render(<ActaTurnTimeline {...timelineProps({ events })} />);
+    const rows = container.querySelectorAll(
+      '[data-testid="acta-event-row"][data-kind="knockdown"]',
+    );
+    expect(rows).toHaveLength(2);
+    expect(
+      rows[0].querySelector('[data-testid="acta-bubble-icon"]')?.getAttribute("data-icon"),
+    ).toBe("bolt");
+    expect(
+      rows[1].querySelector('[data-testid="acta-bubble-icon"]')?.getAttribute("data-icon"),
+    ).toBe("falling");
+  });
+
+  it("a casualty shows the Baja glyph when cause-less — and the cause's glyph when the payload carries one (a)", () => {
+    seqCounter = 0;
+    const events = [
+      // No `cause` on the payload → the kind's Baja glyph (icon sheet #6).
+      event({
+        kind: "casualty",
+        side: "away",
+        playerRosterId: "a2",
+        turnNumber: 5,
+        at: STARTED + 43 * MIN,
+        payload: { victimRosterId: "a2", roll16: 9, band: "apaleado" },
+      }),
+      // `cause: "block"` → the cause wins over the kind glyph (rule a).
+      casualtyEvent(true),
+    ];
+    const { container } = render(<ActaTurnTimeline {...timelineProps({ events })} />);
+    const rows = container.querySelectorAll(
+      '[data-testid="acta-event-row"][data-kind="casualty"]',
+    );
+    expect(rows).toHaveLength(2);
+    expect(
+      rows[0].querySelector('[data-testid="acta-bubble-icon"]')?.getAttribute("data-icon"),
+    ).toBe("medical");
+    expect(
+      rows[1].querySelector('[data-testid="acta-bubble-icon"]')?.getAttribute("data-icon"),
+    ).toBe("block");
+  });
+
+  it("the tile is decorative duplication of the tab: aria-hidden + stable testid + data-icon, exactly one per bubble", () => {
+    seqCounter = 0;
+    const { container } = render(
+      <ActaTurnTimeline {...timelineProps({ events: [tdEvent()] })} />,
+    );
+    const row = container.querySelector('[data-testid="acta-event-row"][data-kind="td"]')!;
+    const tiles = row.querySelectorAll('[data-testid="acta-bubble-icon"]');
+    expect(tiles).toHaveLength(1);
+    expect(tiles[0].getAttribute("aria-hidden")).toBe("true");
+    expect(tiles[0].getAttribute("data-icon")).toBe("flag");
+    // The category tab keeps its text label alongside the icon (S4 keeps the
+    // bubble chrome untouched).
+    expect(row.querySelector('[data-testid="acta-event-tab"]')?.textContent).toBe("TD");
+  });
+
+  it("colors: navy on white, red ONLY on the casualty/Baja tile, muted (closed) groups keep a muted icon", () => {
+    seqCounter = 0;
+    const { container } = render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [tdEvent(), casualtyEvent(true), ...closedTurnEvents()],
+        })}
+      />,
+    );
+    // tdEvent lands on the LIVE T6 card; the casualty on completed T5; the
+    // foul/completion on the CLOSED T4 (muted).
+    expect(iconTileOf(container, "td")?.className).toContain("text-navy");
+    expect(iconTileOf(container, "casualty")?.className).toContain("text-red");
+    expect(iconTileOf(container, "foul")?.className).toContain("text-slate");
+  });
+});
