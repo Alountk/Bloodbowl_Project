@@ -45,7 +45,7 @@ import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
  *   - card header: "T6 • GOUGED EYE" (per-half turn tag + acting team) with
  *     the EN JUEGO / COMPLETADO / CERRADO state chip and "Min N'" label;
  *     left accent in the ACTING TEAM's color (S3: home navy · away red ·
- *     AMBOS EQUIPOS slate — never state-coded; the chips carry the state);
+ *     SISTEMA slate — never state-coded; the chips carry the state);
  *   - event rows (live/completed cards): the T18 folder card — category tab
  *     on the top-left («Casualty» red only, «Pase», «TD», «Derribo»…), bold
  *     player + muted role/number and the one-line description at FULL width,
@@ -62,7 +62,7 @@ import type { LiveCommand, LiveMatchEventDto, MatchTeamDetail } from "./api";
  * COMPLETADO and older cards CERRADO (the MVA-3 scenario: "turns 1-4 closed,
  * turn 5 completed, turn 6 active"); once the match is over the last turn
  * renders COMPLETADO and every older card CERRADO. Card titles fall back to
- * "AMBOS EQUIPOS" only on a pair's neutral system card (side-null captures).
+ * "SISTEMA" only on a pair's neutral system card (side-null captures).
  *
  * The pending-roll action resolves through the EXISTING flow — the shared
  * `RollStepper` (1D16 + conditional 1D6) feeding the guided `casualty`
@@ -277,7 +277,7 @@ export interface ActaTurnCard {
   turnNumber: number;
   state: TurnCardState;
   /** The coach playing this HALF-TURN (the card's grouping side) — null only
-   *  on the pair's neutral "AMBOS EQUIPOS" card (system captures, no side). */
+   *  on the pair's neutral "SISTEMA" card (system captures, no side). */
   actingSide: TurnSide;
   /** The latest capture timestamp of the turn (the card's minute). */
   minuteAt: number;
@@ -304,9 +304,15 @@ export interface ActaTurnCard {
  * action lands on the card of the half-turn being played, whatever coach
  * registered it. The registrar still shows on the row itself (the
  * "Registrado por …" badge — S10.4.2 role transparency). A capture with no
- * coach attribution at all (weather / fan factor / endHalf / endMatch …) keeps
+ * coach attribution at all (mid-match weather / endHalf / endMatch …) keeps
  * its OWN neutral card keyed with the turn — sorted as the pair's OLDEST entry
- * (its exact moment inside the pair is unknowable) and titled "AMBOS EQUIPOS".
+ * (its exact moment inside the pair is unknowable) and titled "SISTEMA".
+ *
+ * S1: side-null FACT captures (fan factor, weather, the start marker) that
+ * precede the first in-play capture are PRE-MATCH facts — the «Antes del
+ * partido» block substitutes them, so the timeline never renders those rows
+ * and never opens a neutral card for them. A fact captured after the match is
+ * underway stays (a mid-match weather change renders as a system bubble).
  * Feeds with no turn-boundary evidence (legacy v5 saves, constructed feeds)
  * fall back to the capture author — see `gameTurnSidesOf`.
  *
@@ -320,6 +326,13 @@ export interface ActaTurnCard {
  * in `pendingInjuries` unless a LATER capture already resolved the same
  * victim (then the resolved row renders it — never a stale callout).
  */
+/** S1: the side-null fact kinds the «Antes del partido» block already reports. */
+const PRE_MATCH_FACT_KINDS: ReadonlySet<string> = new Set([
+  "start",
+  "fan_factor",
+  "weather",
+]);
+
 export function turnCardsOf(
   events: readonly LiveMatchEventDto[],
   active: {
@@ -373,8 +386,25 @@ export function turnCardsOf(
   // boundaries the feed carries). Side-less captures have NO entry → their
   // neutral "both" card below.
   const gameTurns = gameTurnSidesOf(events, active);
+  // S1: the first IN-PLAY capture (anything that is not a pre-match fact
+  // kind) delimits the pre-match block: fact rows before it belong to
+  // «Antes del partido»; a fact row after it is a mid-match system event.
+  let firstInPlaySeq = Number.POSITIVE_INFINITY;
   for (const event of visible) {
-    const card = ensure(event.half, event.turnNumber, gameTurns.get(event.seq) ?? null);
+    if (!PRE_MATCH_FACT_KINDS.has(event.kind) && event.seq < firstInPlaySeq) {
+      firstInPlaySeq = event.seq;
+    }
+  }
+  for (const event of visible) {
+    const side = gameTurns.get(event.seq) ?? null;
+    if (
+      side == null &&
+      PRE_MATCH_FACT_KINDS.has(event.kind) &&
+      event.seq < firstInPlaySeq
+    ) {
+      continue;
+    }
+    const card = ensure(event.half, event.turnNumber, side);
     card.events.push(event);
     card.minuteAt = Math.max(card.minuteAt, event.at);
   }
@@ -1020,7 +1050,7 @@ export function ActaTurnTimeline({
     <div data-testid="acta-turn-timeline" className="flex flex-col gap-3 px-4 py-3">
       {cards.map((card, index) => {
         const chip = STATE_CHIP[card.state];
-        const teamLabel = card.actingSide ? teams[card.actingSide].name : "AMBOS EQUIPOS";
+        const teamLabel = card.actingSide ? teams[card.actingSide].name : "SISTEMA";
         const minuteAt = card.state === "live" ? now : card.minuteAt;
         const minute = startedAt != null ? deriveMinute(minuteAt, startedAt) : "0'";
         return (

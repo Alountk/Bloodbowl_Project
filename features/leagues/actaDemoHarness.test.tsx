@@ -386,11 +386,13 @@ describe("ActaDemoHarness — pre-match surface (stale saves, header wiring)", (
         },
       }),
     );
-    render(<ActaDemoHarness />);
-    // The kickoff trio (clima + factor de aficionados) must survive the load.
-    expect(screen.queryAllByText(/Factor de aficionados/).length).toBeGreaterThan(0);
-    // The weather card's tag renders exactly «Clima» (no trailing period).
-    expect(screen.queryAllByText(/^Clima$/).length).toBeGreaterThan(0);
+    const { container } = render(<ActaDemoHarness />);
+    // S1: the trio survives the load — surfaced by the header and the
+    // «Antes del partido» block; the timeline no longer renders pre-match rows.
+    expect(container.textContent).toContain("Afición: 4 + 🎲3 = 7");
+    expect(ante().textContent).toMatch(/Afición/);
+    expect(ante().textContent).toMatch(/Clima/);
+    expect(screen.queryAllByText(/Factor de aficionados/).length).toBe(0);
   });
 
   it("the header surfaces the pre-match data: inducements, fan factor and the weather roll", () => {
@@ -835,9 +837,10 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     finTurno("Voluntario"); // T1 · Colmillos plays EMPTY → no card
     capture("+ Pase"); // T2 · Águilas (the EN JUEGO card)
 
-    // EXACTLY three cards: T2 · Águilas (EN JUEGO), T1 · Águilas (the pair's
-    // only recorded half-turn) and the side-null pre-match system card
-    // («AMBOS EQUIPOS»). NO T1 · Colmillos card.
+    // EXACTLY two cards: T2 · Águilas (EN JUEGO) and T1 · Águilas (the pair's
+    // only recorded half-turn). NO T1 · Colmillos card and NO neutral
+    // «AMBOS EQUIPOS» card: the side-null pre-match captures are substituted
+    // by the «Antes del partido» block (S1).
     const cards = screen.getAllByTestId("acta-turn-card");
     const titles = cards.map(
       (card) => within(card).getByText(/^T\d+ • /).textContent,
@@ -845,18 +848,13 @@ describe("ActaDemoHarness — T11: dock captures land on the right cards (L44)",
     expect(titles).toEqual([
       "T2 • Águilas de Khemri",
       "T1 • Águilas de Khemri",
-      "T1 • AMBOS EQUIPOS",
     ]);
-    // Tight rows: each team card holds exactly its own capture, and no capture
-    // row exists anywhere else (the system card holds only side-null rows).
+    expect(screen.queryByText(/AMBOS EQUIPOS/)).toBeNull();
+    // Tight rows: each team card holds exactly its own capture.
     expect(rowKinds(turnCard(2, "Águilas de Khemri"))).toEqual(["completion"]);
     expect(rowKinds(turnCard(1, "Águilas de Khemri"))).toEqual(["td"]);
-    const inGameKinds = new Set(["td", "completion", "casualty", "foul"]);
-    expect(
-      rowKinds(turnCard(1, "AMBOS EQUIPOS")).some((kind) =>
-        inGameKinds.has(kind ?? ""),
-      ),
-    ).toBe(false);
+    // The substituted facts still live in the pre-match block above.
+    expect(ante().textContent).toMatch(/Afición/);
   });
 });
 

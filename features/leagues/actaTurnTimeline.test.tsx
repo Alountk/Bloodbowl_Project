@@ -865,23 +865,25 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     expect(cards[2].textContent).toMatch(/T5\s*•\s*Gouged Eye/);
   });
 
-  it("system captures (side null) get their own neutral AMBOS EQUIPOS card, at the pair's bottom", () => {
+  it("system captures AFTER kickoff (side null) keep their own neutral SISTEMA card, at the pair's bottom — never titled «AMBOS EQUIPOS»", () => {
     seqCounter = 0;
     const events = [
-      event({
-        kind: "weather",
-        side: null,
-        playerRosterId: null,
-        turnNumber: 5,
-        at: STARTED + 41 * MIN,
-        payload: { value: "perfect", roll: 4 },
-      }),
+      // The pair's in-play capture comes FIRST — so the later weather row is
+      // a mid-match system event, not a pre-match fact (S1).
       event({
         kind: "completion",
         side: "home",
         playerRosterId: "h2",
         turnNumber: 5,
+        at: STARTED + 10 * MIN,
+      }),
+      event({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        turnNumber: 5,
         at: STARTED + 42 * MIN,
+        payload: { value: "perfect", roll: 4 },
       }),
     ];
     render(
@@ -900,8 +902,10 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     expect(
       cards[1].querySelector('[data-testid="acta-event-row"][data-kind="weather"]'),
     ).toBeNull();
-    // …and the system capture lands in the pair's own neutral card (slate).
-    expect(cards[2].textContent).toMatch(/T5\s*•\s*AMBOS EQUIPOS/);
+    // …and the system capture lands in the pair's own neutral card (slate),
+    // titled SISTEMA — the «AMBOS EQUIPOS» title is gone (S1).
+    expect(cards[2].textContent).toMatch(/T5\s*•\s*SISTEMA/);
+    expect(cards[2].textContent).not.toMatch(/AMBOS EQUIPOS/);
     expect(cards[2].className).toContain("border-l-slate");
     expect(
       cards[2].querySelector('[data-testid="acta-event-row"][data-kind="weather"]'),
@@ -909,6 +913,52 @@ describe("ActaTurnTimeline — one card per HALF-TURN (T8 / L37)", () => {
     expect(
       cards[2].querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
     ).toBeNull();
+  });
+
+  it("pre-match side-null fact captures (before the first in-play capture) are substituted by the «Antes del partido» block — no neutral card, no rows (S1)", () => {
+    seqCounter = 0;
+    const events = [
+      event({
+        kind: "fan_factor",
+        side: null,
+        playerRosterId: null,
+        turnNumber: 0,
+        at: STARTED - 3 * MIN,
+        payload: { side: "home", roll: 3 },
+      }),
+      event({
+        kind: "weather",
+        side: null,
+        playerRosterId: null,
+        turnNumber: 0,
+        at: STARTED - 2 * MIN,
+        payload: { value: "perfect", roll: 4 },
+      }),
+      event({
+        kind: "completion",
+        side: "home",
+        playerRosterId: "h2",
+        turnNumber: 5,
+        at: STARTED + 40 * MIN,
+      }),
+    ];
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({ events, active: { ...liveActive(), turnStarter: "home" } })}
+      />,
+    );
+
+    expect(screen.queryByText(/AMBOS EQUIPOS/)).toBeNull();
+    expect(
+      document.querySelector('[data-testid="acta-event-row"][data-kind="fan_factor"]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('[data-testid="acta-event-row"][data-kind="weather"]'),
+    ).toBeNull();
+    // …while the in-game capture still renders its own card.
+    expect(
+      document.querySelector('[data-testid="acta-event-row"][data-kind="completion"]'),
+    ).not.toBeNull();
   });
 
   it("on a finished match the last turn renders COMPLETADO and every older card CERRADO (per half-turn)", () => {
@@ -1195,7 +1245,7 @@ describe("ActaTurnTimeline — S10.4: game-turn grouping + capture-author badges
     // Compact rows (closed cards) show the same registrar marker…
     expect(closed.textContent).toContain("Registrado por Reikland Reavers");
     // …and a side-less system capture has no coach registrar to name.
-    const neutral = screen.getByText(/T4\s*•\s*AMBOS EQUIPOS/).closest(
+    const neutral = screen.getByText(/T4\s*•\s*SISTEMA/).closest(
       "article",
     ) as HTMLElement;
     expect(neutral.textContent).toContain("Registro de sistema");
