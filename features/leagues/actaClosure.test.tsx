@@ -498,3 +498,12 @@ describe("Closure weather follows the live capture", () => {
     expect(buildActaPayload(seed).weather).toBe("Ventisca");
   });
 });
+
+describe("Closure inducements", () => {
+  it("GIVEN a live cart WHEN the closure reviews the acta THEN it names the purchases", () => {
+    renderClosure({
+      live: finishedLive({ inducements: { home: [{ id: "bribes", count: 1 }], away: [] } }),
+    });
+    expect(screen.getByTestId("acta-closure").textContent).toContain("incentivos Sobornos ×1 / —");
+  });
+});

@@ -14,7 +14,7 @@ import {
 } from "./api";
 import type { LeagueAccess } from "./useLeagueName";
 import { buildResultPrefill } from "./resultPrefill";
-import { latestWeather } from "./actaPreMatch";
+import { inducementsOf, latestWeather } from "./actaPreMatch";
 import {
   actaPrefill,
   buildActaPayload,
@@ -527,6 +527,10 @@ export function ActaClosure({
               awayName={awayName}
               homeRoster={homeRoster}
               awayRoster={awayRoster}
+              inducementCards={{
+                home: inducementsOf(detail, "home"),
+                away: inducementsOf(detail, "away"),
+              }}
             />
           </section>
 
