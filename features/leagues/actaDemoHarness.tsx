@@ -14,7 +14,12 @@ import {
 } from "./actaDemoReducer";
 import { ActaKickoffGate } from "./actaKickoffGate";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
-import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
+import {
+  fanFactorOf,
+  inducementsOf,
+  latestWeather,
+  preMatchWeather,
+} from "./actaPreMatch";
 import { ActaPreMatchSection, type PreMatchCommit } from "./actaPreMatchWizard";
 import {
   activePrayersFromRolls,
@@ -113,6 +118,7 @@ export function ActaFlow({
   // stays untouched; the production server never emits `kickoff` anyway.
   const kickoffRows = events.filter((event) => event.kind === "kickoff");
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
+  const weatherRolled = preMatchWeather(events);
   // T28 (L92): the pre-match «Plegarias a Nuffle» rolls become the team's
   // active blessings — the SPP context every acta card consumes.
   const activePrayers: MatchActivePrayers = {
@@ -262,11 +268,12 @@ export function ActaFlow({
               away: fanFactorOf(events, "away"),
             },
             weather:
-              weatherNow.roll != null
+              weatherRolled != null
                 ? {
-                    roll: weatherNow.roll,
+                    roll: weatherRolled.roll,
                     value:
-                      weatherNow.value ?? weatherFromRoll(weatherNow.roll).kind,
+                      weatherRolled.value ??
+                      weatherFromRoll(weatherRolled.roll).kind,
                   }
                 : null,
             weatherDice: preMatch?.weatherDice ?? { home: null, away: null },

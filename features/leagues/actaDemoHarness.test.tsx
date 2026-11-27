@@ -8,9 +8,9 @@ import {
   within,
 } from "@testing-library/react";
 
-import { ActaDemoHarness } from "./actaDemoHarness";
+import { ActaDemoHarness, ActaFlow } from "./actaDemoHarness";
 import { demoState } from "./actaDemoReducer";
-import { BASE, MIN } from "./actaFlow.fixtures";
+import { BASE, MIN, liveState, narrativeEvents } from "./actaFlow.fixtures";
 
 // Deterministic dice for die-button rolls (S3 · T4 kickoff walk): a per-test
 // queue, defaulting to the wizard's classic 2/5 demo rolls.
@@ -1931,5 +1931,20 @@ describe("ActaDemoHarness — T29: the MANUAL prayer roll pays the blessing SPP 
       "Plegarias — Águilas de Khemri: Apoyo del público",
     );
     expect(rowSpp(enJuegoCard(), "casualty")).toContain("+2 SPP");
+  });
+});
+
+describe("ActaFlow — pre-match weather vs live weather", () => {
+  it("a live weather change without a roll keeps the rolled pre-match «Clima»", () => {
+    render(
+      <ActaFlow
+        state={liveState()}
+        events={[
+          ...narrativeEvents,
+          { seq: 99, kind: "weather", side: null, playerRosterId: null, half: 2, turnNumber: 3, payload: { value: "rain" }, at: BASE + 57 * MIN },
+        ]}
+      />,
+    );
+    expect(document.body.textContent).toContain("2D6 = 4");
   });
 });

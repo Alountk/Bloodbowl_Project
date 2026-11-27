@@ -14,10 +14,12 @@ import {
 } from "./api";
 import type { LeagueAccess } from "./useLeagueName";
 import { buildResultPrefill } from "./resultPrefill";
+import { latestWeather } from "./actaPreMatch";
 import {
   actaPrefill,
   buildActaPayload,
   emptyActaState,
+  weatherOptionForKind,
   type ActaState,
 } from "./acta/actaState";
 import {
@@ -290,7 +292,12 @@ export function ActaClosure({
   // are still asked (a captured/renamed/vanished field drops the stale answer).
   const draftKey = fixtureId ? actaDraftKey("cierre", fixtureId) : null;
   const [seed] = useState<ActaState>(() =>
-    detail.live ? actaPrefill(buildResultPrefill(detail.live)) : emptyActaState(),
+    detail.live
+      ? actaPrefill(
+          buildResultPrefill(detail.live),
+          weatherOptionForKind(latestWeather(detail.live.events, null).value),
+        )
+      : emptyActaState(),
   );
   const [state, setState] = useState<ActaState>(() =>
     draftKey

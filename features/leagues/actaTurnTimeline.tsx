@@ -5,6 +5,7 @@ import {
   type ActivePrayers,
   type MatchActivePrayers,
 } from "@/lib/rules/inducements";
+import { weatherLabel } from "./matchSummary";
 import { resolveInjury } from "@/lib/rules/injuries";
 import { CASUALTY_CAUSES, type CasualtyCause } from "@/lib/livePhase";
 import { isDisplayEvent } from "@/lib/liveMatch";
@@ -644,6 +645,10 @@ function descriptionFor(
       return "Touchdown anotado.";
     case "completion":
       return "Pase completado con éxito.";
+    case "weather": {
+      const value = event.payload.value;
+      return typeof value === "string" ? `Clima: ${weatherLabel(value)}.` : "Clima.";
+    }
     case "foul": {
       const victim = event.side ? resolvePlayer(teams[opposite(event.side)], victimIdOf(event)) : null;
       return victim ? `Falta sobre ${victim.name} (#${victim.dorsal}).` : "Falta cometida.";

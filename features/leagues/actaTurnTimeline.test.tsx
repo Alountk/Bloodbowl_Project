@@ -2392,3 +2392,14 @@ describe("S2 readability — the category tab sits above the copy inside the tex
     expect(longTab).toBeTruthy();
   });
 });
+
+describe("Weather bubble", () => {
+  it("names the new weather instead of repeating the event label", () => {
+    const { container } = render(
+      <ActaTurnTimeline
+        {...timelineProps({ events: [tdEvent(), event({ kind: "weather", payload: { value: "rain" }, turnNumber: 6 })] })}
+      />,
+    );
+    expect(container.textContent).toContain("Clima: Lluvioso.");
+  });
+});

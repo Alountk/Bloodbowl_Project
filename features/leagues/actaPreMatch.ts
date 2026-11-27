@@ -47,6 +47,24 @@ export function latestWeather(
   return { value: resultWeather, roll: null };
 }
 
+/**
+ * The weather the pre-match sequence rolled: the FIRST `weather` event that
+ * recorded its roll. A later live change never rewrites that summary.
+ */
+export function preMatchWeather(
+  events: readonly LiveMatchEventDto[],
+): { value: string | null; roll: number } | null {
+  let first: { seq: number; value: string | null; roll: number } | null = null;
+  for (const event of events) {
+    if (event.kind !== "weather") continue;
+    const roll = numOf(event.payload.roll);
+    if (roll === null || (first !== null && event.seq >= first.seq)) continue;
+    const value = typeof event.payload.value === "string" ? event.payload.value : null;
+    first = { seq: event.seq, value, roll };
+  }
+  return first === null ? null : { value: first.value, roll: first.roll };
+}
+
 /** The latest `fan_factor` kickoff roll for one side, or null (never invented). */
 export function fanFactorOf(
   events: readonly LiveMatchEventDto[],
