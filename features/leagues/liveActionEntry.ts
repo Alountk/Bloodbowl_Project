@@ -16,7 +16,8 @@
 import { CASUALTY_CAUSES, type CasualtyCause } from "@/lib/livePhase";
 import { getRaceById } from "@/features/teams/data/races";
 import type { BlockDieFace } from "@/lib/rules/blocks";
-import type { LiveCommand, MatchPlayer } from "./api";
+import { resolveInjury } from "@/lib/rules/injuries";
+import type { LiveCommand, LiveMatchEventDto, MatchPlayer } from "./api";
 
 /** The casualty causes that REQUIRE an explicit causer (blitz/foul/block). */
 export const CAUSES_REQUIRING_CAUSER: ReadonlySet<CasualtyCause> = new Set([
@@ -60,6 +61,27 @@ export function shortName(player: MatchPlayer): string {
 /** The alive, eligible players of a roster offered by the dock (RAU-12/13). */
 export function eligiblePlayers(pool: MatchPlayer[]): MatchPlayer[] {
   return pool.filter((p) => p.alive && !p.missNextMatch);
+}
+
+/**
+ * Roster flags only change when the result is saved, so a player who died in
+ * THIS match is read from the live feed (a casualty's `side` is the victim's).
+ * Dead entries stay in place (dorsals derive from roster order) with
+ * `alive: false`, which `eligiblePlayers` drops.
+ */
+export function withoutLiveDead(
+  pool: MatchPlayer[],
+  side: "home" | "away",
+  events: readonly LiveMatchEventDto[],
+): MatchPlayer[] {
+  const dead = new Set<unknown>();
+  for (const event of events) {
+    const roll16 = event.payload.roll16;
+    if (event.kind !== "casualty" || event.side !== side) continue;
+    if (typeof roll16 !== "number" || resolveInjury(roll16).kind !== "dead") continue;
+    dead.add(event.payload.victimRosterId ?? event.playerRosterId);
+  }
+  return pool.map((p) => (dead.has(p.rosterPlayerId) ? { ...p, alive: false } : p));
 }
 
 /**

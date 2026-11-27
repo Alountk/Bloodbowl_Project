@@ -14,7 +14,12 @@ import {
 } from "./actaDemoReducer";
 import { ActaKickoffGate } from "./actaKickoffGate";
 import { ActaSheetHeader, bribesOf, casualtyTurnsOf } from "./actaSheetHeader";
-import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
+import {
+  fanFactorOf,
+  inducementsOf,
+  latestWeather,
+  preMatchWeather,
+} from "./actaPreMatch";
 import { ActaPreMatchSection, type PreMatchCommit } from "./actaPreMatchWizard";
 import {
   activePrayersFromRolls,
@@ -26,6 +31,7 @@ import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { LiveEventCardsActa } from "./eventCardActa";
 import { ActaClosure, canCloseActa } from "./actaClosure";
 import { LiveActionDock } from "./liveActionDock";
+import { withoutLiveDead } from "./liveActionEntry";
 import { MIN, PRE_MATCH_FINANCE, league, liveState, matchDetail, viewer } from "./actaFlow.fixtures";
 
 /**
@@ -113,6 +119,9 @@ export function ActaFlow({
   // stays untouched; the production server never emits `kickoff` anyway.
   const kickoffRows = events.filter((event) => event.kind === "kickoff");
   const weatherNow = latestWeather(events, detail.result?.weather ?? null);
+  const weatherRolled = preMatchWeather(events);
+  const homePool = withoutLiveDead(detail.homeTeam.players, "home", events);
+  const awayPool = withoutLiveDead(detail.awayTeam.players, "away", events);
   // T28 (L92): the pre-match «Plegarias a Nuffle» rolls become the team's
   // active blessings — the SPP context every acta card consumes.
   const activePrayers: MatchActivePrayers = {
@@ -220,14 +229,10 @@ export function ActaFlow({
               activeSide={state.activeSide}
               status={state.status}
               roster={
-                state.viewerSide === "away"
-                  ? detail.awayTeam.players
-                  : detail.homeTeam.players
+                state.viewerSide === "away" ? awayPool : homePool
               }
               opponentRoster={
-                state.viewerSide === "away"
-                  ? detail.homeTeam.players
-                  : detail.awayTeam.players
+                state.viewerSide === "away" ? homePool : awayPool
               }
               rosterRaceId={
                 state.viewerSide === "away"
@@ -262,11 +267,12 @@ export function ActaFlow({
               away: fanFactorOf(events, "away"),
             },
             weather:
-              weatherNow.roll != null
+              weatherRolled != null
                 ? {
-                    roll: weatherNow.roll,
+                    roll: weatherRolled.roll,
                     value:
-                      weatherNow.value ?? weatherFromRoll(weatherNow.roll).kind,
+                      weatherRolled.value ??
+                      weatherFromRoll(weatherRolled.roll).kind,
                   }
                 : null,
             weatherDice: preMatch?.weatherDice ?? { home: null, away: null },

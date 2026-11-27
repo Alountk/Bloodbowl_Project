@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LiveMatchEventDto, MatchDetail } from "./api";
-import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
+import { fanFactorOf, inducementsOf, latestWeather, preMatchWeather } from "./actaPreMatch";
 
 function ev(seq: number, kind: string, payload: Record<string, unknown>): LiveMatchEventDto {
   return { seq, kind, side: null, playerRosterId: null, half: 1, turnNumber: 1, payload, at: 0 };
@@ -74,5 +74,21 @@ describe("actaPreMatch — feed derivations (S1/S4)", () => {
     } as unknown as Pick<MatchDetail, "live" | "result">;
     expect(inducementsOf(detail, "away")).toEqual([{ name: "Sobornos", count: 1 }]);
     expect(inducementsOf(detail, "home")).toEqual([]);
+  });
+});
+
+describe("preMatchWeather", () => {
+  const weather = (seq: number, payload: Record<string, unknown>) => ({
+    seq, kind: "weather" as const, side: null, playerRosterId: null, half: 1, turnNumber: 1, payload, at: seq,
+  });
+
+  it("keeps the first rolled weather after a live change", () => {
+    expect(
+      preMatchWeather([weather(9, { value: "rain" }), weather(2, { value: "perfect", roll: 7 })]),
+    ).toEqual({ value: "perfect", roll: 7 });
+  });
+
+  it("is null when no weather was ever rolled", () => {
+    expect(preMatchWeather([weather(3, { value: "rain" })])).toBeNull();
   });
 });

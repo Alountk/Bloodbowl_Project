@@ -110,6 +110,14 @@ const WEATHER_KIND_BY_VALUE: Record<string, WeatherKind> = {
 };
 
 /**
+ * The canonical persisted value for a captured weather kind, or undefined when
+ * the kind is unknown/absent (the acta then keeps its default).
+ */
+export function weatherOptionForKind(kind: string | null): string | undefined {
+  return ACTA_WEATHER_OPTIONS.find((option) => WEATHER_KIND_BY_VALUE[option] === kind);
+}
+
+/**
  * Renders a weather LABEL for the active locale from the canonical persisted
  * value (s6b corrective). Only the label is localized: the value the wizard
  * sends stays the `ACTA_WEATHER_OPTIONS` Spanish string, unchanged. An unknown
@@ -271,6 +279,7 @@ export function actaPrefill(
   if (isLoadPrefill(source)) {
     return {
       ...base,
+      weather: weather ?? base.weather,
       home: teamFromResultDraft(source.home),
       away: teamFromResultDraft(source.away),
     };

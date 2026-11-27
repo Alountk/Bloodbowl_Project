@@ -475,3 +475,35 @@ function reportedResult() {
     createdAt: "2026-03-01T21:00:00.000Z",
   };
 }
+
+describe("Closure weather follows the live capture", () => {
+  const weather = (seq: number, value: string, roll?: number) => ({
+    seq, kind: "weather" as const, side: null, playerRosterId: null, half: 1, turnNumber: 1,
+    payload: roll == null ? { value } : { value, roll }, at: seq * 1000,
+  });
+
+  it("GIVEN the weather changed live WHEN the closure derives THEN it records the latest weather, not the default", () => {
+    renderClosure({
+      live: finishedLive({
+        events: [weather(0, "perfect", 7), ...CAPTURED_EVENTS, weather(7, "rain")],
+      }),
+    });
+    const text = screen.getByTestId("acta-closure").textContent ?? "";
+    expect(text).toContain("Lluvioso");
+    expect(text).not.toContain("Perfecto");
+  });
+
+  it("GIVEN a live weather prefill WHEN the payload is built THEN it carries the canonical weather value", () => {
+    const seed = actaPrefill(buildResultPrefill(finishedLive()), "Ventisca");
+    expect(buildActaPayload(seed).weather).toBe("Ventisca");
+  });
+});
+
+describe("Closure inducements", () => {
+  it("GIVEN a live cart WHEN the closure reviews the acta THEN it names the purchases", () => {
+    renderClosure({
+      live: finishedLive({ inducements: { home: [{ id: "bribes", count: 1 }], away: [] } }),
+    });
+    expect(screen.getByTestId("acta-closure").textContent).toContain("incentivos Sobornos ×1 / —");
+  });
+});

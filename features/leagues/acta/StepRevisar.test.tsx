@@ -184,3 +184,34 @@ describe("StepRevisar — summary", () => {
     expect(summary.textContent).not.toContain("Perfecto");
   });
 });
+
+describe("StepRevisar — live closure facts", () => {
+  it("names a self-inflicted victim without inventing a causer or leaking its id", () => {
+    const state = validState();
+    state.home.actions = [
+      tdLine("h", "h1", 2),
+      casualtyLine({ rosterPlayerId: "", victimTeam: "home", victimRosterPlayerId: "h1" }),
+    ];
+    renderStep(state);
+
+    const text = screen.getByRole("region", { name: "Resumen del acta" }).textContent ?? "";
+    expect(text).toContain(`${homeName}: Khalid el Impávido — lesión propia (sin causante)`);
+    expect(text).not.toContain("— — baja causada");
+  });
+
+  it("lists the bought inducements instead of the unused gold budget", () => {
+    render(
+      <StepRevisar
+        state={validState()}
+        homeName={homeName}
+        awayName={awayName}
+        homeRoster={homeRoster}
+        awayRoster={awayRoster}
+        inducementCards={{ home: [{ name: "Sobornos", count: 2 }], away: [] }}
+      />,
+    );
+
+    const text = screen.getByRole("region", { name: "Resumen del acta" }).textContent ?? "";
+    expect(text).toContain("incentivos Sobornos ×2 / —");
+  });
+});

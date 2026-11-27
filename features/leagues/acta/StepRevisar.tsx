@@ -100,6 +100,18 @@ export interface StepRevisarProps {
   awayName: string;
   homeRoster: RosterPlayerRef[];
   awayRoster: RosterPlayerRef[];
+  /** A live match's bought cart. When given, it replaces the typed gold budget,
+   *  which a live closure never asks for (the server persists the live cart). */
+  inducementCards?: Record<"home" | "away", InducementCard[]>;
+}
+
+interface InducementCard {
+  name: string;
+  count: number;
+}
+
+function cardsText(cards: InducementCard[]): string {
+  return cards.map((card) => `${card.name} ×${card.count}`).join(", ") || "—";
 }
 
 /** Thousands grouping ("65.000") plus the resolved currency unit. */
@@ -138,6 +150,13 @@ function describeLine(
   rivalRoster: RosterPlayerRef[],
   t: Translate,
 ): string {
+  // A self-inflicted wound has no causer, and its victim is on this same team.
+  if (line.kind === "casualty" && !line.rosterPlayerId) {
+    return t("acta.revisar.lineOwnInjury", {
+      team: teamName,
+      victim: nameOf(ownRoster, line.victimRosterPlayerId ?? ""),
+    });
+  }
   const actor = nameOf(ownRoster, line.rosterPlayerId);
   if (line.kind === "casualty") {
     return t("acta.revisar.lineCasualty", {
@@ -194,6 +213,7 @@ export function StepRevisar({
   awayName,
   homeRoster,
   awayRoster,
+  inducementCards,
 }: StepRevisarProps) {
   const { t } = useI18n();
   const validation = validateActa(state, homeName, awayName);
@@ -224,8 +244,12 @@ export function StepRevisar({
               away: ffText(state.away),
             })}`}
             {` · ${t("acta.revisar.incentives", {
-              home: formatGold(state.home.inducements, t("acta.gold")),
-              away: formatGold(state.away.inducements, t("acta.gold")),
+              home: inducementCards
+                ? cardsText(inducementCards.home)
+                : formatGold(state.home.inducements, t("acta.gold")),
+              away: inducementCards
+                ? cardsText(inducementCards.away)
+                : formatGold(state.away.inducements, t("acta.gold")),
             })}`}
             {neverHeld.length > 0
               ? ` · ${t("acta.revisar.neverHeldSummary", { teams: neverHeld.join(", ") })}`

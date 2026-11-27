@@ -11,6 +11,7 @@ import {
   knockdownVictimOf,
   positionName,
   statsFor,
+  withoutLiveDead,
 } from "./liveActionEntry";
 import type { LiveCommand, MatchPlayer } from "./api";
 
@@ -290,5 +291,31 @@ describe("liveActionEntry — buildWeatherCommand (S2: Cambiar clima)", () => {
       value: "blizzard",
       roll: 6,
     });
+  });
+});
+
+describe("withoutLiveDead", () => {
+  const roster = ["p1", "p2"].map((id) => ({
+    rosterPlayerId: id, name: id, positionalKey: "lineman", pe: 0, skills: [], injuries: [],
+    alive: true, missNextMatch: false, valueBonus: 0,
+  }));
+  const casualty = (side: "home" | "away", victim: string, roll16?: number) => ({
+    seq: 1, kind: "casualty" as const, side, playerRosterId: victim, half: 1, turnNumber: 1,
+    payload: { victimRosterId: victim, ...(roll16 == null ? {} : { roll16 }) }, at: 0,
+  });
+
+  it("drops a player who died in this match from the selectable pool, keeping roster order", () => {
+    const next = withoutLiveDead(roster, "home", [casualty("home", "p1", 16)]);
+    expect(next.map((p) => p.rosterPlayerId)).toEqual(["p1", "p2"]);
+    expect(eligiblePlayers(next).map((p) => p.rosterPlayerId)).toEqual(["p2"]);
+  });
+
+  it("keeps non-dead, pending and other-side casualties selectable", () => {
+    const next = withoutLiveDead(roster, "home", [
+      casualty("home", "p1", 9),
+      casualty("home", "p2"),
+      casualty("away", "p2", 16),
+    ]);
+    expect(eligiblePlayers(next)).toHaveLength(2);
   });
 });
