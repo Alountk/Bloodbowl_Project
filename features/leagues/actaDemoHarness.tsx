@@ -150,40 +150,6 @@ export function ActaFlow({
           casualtyTurns={casualtyTurnsOf(events, state.half)}
           turnSides={turnSidesOf(events, state.half, state)}
         />
-        <ActaPreMatchSection
-          homeName={detail.homeTeam.name}
-          awayName={detail.awayTeam.name}
-          homeBase={DEMO_FAN_BASES.home}
-          awayBase={DEMO_FAN_BASES.away}
-          viewerSide={state.viewerSide ?? "home"}
-          finance={PRE_MATCH_FINANCE}
-          open={preMatchOpen}
-          onOpenChange={onPreMatchOpenChange}
-          snapshot={{
-            fans: {
-              home: fanFactorOf(events, "home"),
-              away: fanFactorOf(events, "away"),
-            },
-            weather:
-              weatherNow.roll != null
-                ? {
-                    roll: weatherNow.roll,
-                    value:
-                      weatherNow.value ?? weatherFromRoll(weatherNow.roll).kind,
-                  }
-                : null,
-            weatherDice: preMatch?.weatherDice ?? { home: null, away: null },
-            inducements: state.inducements ?? { home: [], away: [] },
-            inducementsDone: preMatch?.inducementsDone ?? {
-              home: false,
-              away: false,
-            },
-            kickDice: preMatch?.kickDice ?? { home: null, away: null },
-            prayerRolls: preMatch?.prayerRolls,
-            kicking: preMatch?.kicking ?? null,
-          }}
-          onCommit={onCommitPreMatch}
-        />
         {matchStarted ? (
           <h2 className="mt-4 text-lg font-bold text-navy">Partido</h2>
         ) : null}
@@ -277,10 +243,48 @@ export function ActaFlow({
                 await onSubmit(cmd);
               }}
             />
-            {/* Spacer so the fixed dock never covers the tail of the feed. */}
-            <div aria-hidden className="h-20" />
           </>
         )}
+        {/* The chronology reads newest-first, so the pre-match — the first
+            thing that happens — closes it at the very bottom. */}
+        <ActaPreMatchSection
+          homeName={detail.homeTeam.name}
+          awayName={detail.awayTeam.name}
+          homeBase={DEMO_FAN_BASES.home}
+          awayBase={DEMO_FAN_BASES.away}
+          viewerSide={state.viewerSide ?? "home"}
+          finance={PRE_MATCH_FINANCE}
+          open={preMatchOpen}
+          onOpenChange={onPreMatchOpenChange}
+          snapshot={{
+            fans: {
+              home: fanFactorOf(events, "home"),
+              away: fanFactorOf(events, "away"),
+            },
+            weather:
+              weatherNow.roll != null
+                ? {
+                    roll: weatherNow.roll,
+                    value:
+                      weatherNow.value ?? weatherFromRoll(weatherNow.roll).kind,
+                  }
+                : null,
+            weatherDice: preMatch?.weatherDice ?? { home: null, away: null },
+            inducements: state.inducements ?? { home: [], away: [] },
+            inducementsDone: preMatch?.inducementsDone ?? {
+              home: false,
+              away: false,
+            },
+            kickDice: preMatch?.kickDice ?? { home: null, away: null },
+            prayerRolls: preMatch?.prayerRolls,
+            kicking: preMatch?.kicking ?? null,
+          }}
+          onCommit={onCommitPreMatch}
+        />
+        {/* Spacer so the fixed dock never covers the tail of the page. */}
+        {!finished && !kickoffPending ? (
+          <div aria-hidden className="h-20" />
+        ) : null}
       </div>
     </div>
   );
