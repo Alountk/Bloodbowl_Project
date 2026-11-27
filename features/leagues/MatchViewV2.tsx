@@ -23,6 +23,7 @@ import { turnSidesOf } from "./actaTurnSides";
 import { fanFactorOf, inducementsOf, latestWeather } from "./actaPreMatch";
 import { ActaTurnTimeline } from "./actaTurnTimeline";
 import { LiveActionDock } from "./liveActionDock";
+import { withoutLiveDead } from "./liveActionEntry";
 import { ActaClosure, canCloseActa, type ActaClosureViewer } from "./actaClosure";
 import { ResetLiveMatchModal } from "./ResetLiveMatchModal";
 import {
@@ -573,8 +574,16 @@ function ActiveMatchBody({
               viewerSide={state.viewerSide}
               activeSide={state.activeSide}
               status={state.status}
-              roster={state.viewerSide === "away" ? detail.awayTeam.players : detail.homeTeam.players}
-              opponentRoster={state.viewerSide === "away" ? detail.homeTeam.players : detail.awayTeam.players}
+              roster={withoutLiveDead(
+                state.viewerSide === "away" ? detail.awayTeam.players : detail.homeTeam.players,
+                state.viewerSide === "away" ? "away" : "home",
+                events,
+              )}
+              opponentRoster={withoutLiveDead(
+                state.viewerSide === "away" ? detail.homeTeam.players : detail.awayTeam.players,
+                state.viewerSide === "away" ? "home" : "away",
+                events,
+              )}
               rosterRaceId={state.viewerSide === "away" ? detail.awayTeam.raceId : detail.homeTeam.raceId}
               opponentRaceId={state.viewerSide === "away" ? detail.homeTeam.raceId : detail.awayTeam.raceId}
               onSubmit={act}

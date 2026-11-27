@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -10,7 +11,7 @@ import {
 
 import { ActaDemoHarness, ActaFlow } from "./actaDemoHarness";
 import { demoState } from "./actaDemoReducer";
-import { BASE, MIN, liveState, narrativeEvents } from "./actaFlow.fixtures";
+import { BASE, MIN, liveState, matchDetail, narrativeEvents } from "./actaFlow.fixtures";
 
 // Deterministic dice for die-button rolls (S3 · T4 kickoff walk): a per-test
 // queue, defaulting to the wizard's classic 2/5 demo rolls.
@@ -1946,5 +1947,30 @@ describe("ActaFlow — pre-match weather vs live weather", () => {
       />,
     );
     expect(document.body.textContent).toContain("2D6 = 4");
+  });
+});
+
+describe("ActaFlow — a dead player leaves the dock", () => {
+  it("is not offered as a touchdown scorer after a dead result", () => {
+    const state = liveState({ activeSide: "home", viewerSide: "home" });
+    const dead = matchDetail().homeTeam.players[0];
+    const chips = () =>
+      within(screen.getByTestId("dock-pool-own")).queryAllByRole("button", { name: /#1(?!\d)/ });
+    render(<ActaFlow state={state} events={narrativeEvents} />);
+    fireEvent.click(demoButton("+ TD"));
+    expect(chips().length).toBeGreaterThan(0);
+    cleanup();
+
+    render(
+      <ActaFlow
+        state={state}
+        events={[
+          ...narrativeEvents,
+          { seq: 99, kind: "casualty", side: "home", playerRosterId: dead.rosterPlayerId, half: 2, turnNumber: 3, payload: { victimRosterId: dead.rosterPlayerId, roll16: 16 }, at: BASE + 57 * MIN },
+        ]}
+      />,
+    );
+    fireEvent.click(demoButton("+ TD"));
+    expect(chips()).toHaveLength(0);
   });
 });
