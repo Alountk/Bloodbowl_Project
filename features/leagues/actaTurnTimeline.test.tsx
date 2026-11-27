@@ -344,12 +344,12 @@ describe("ActaTurnTimeline — team-colored turn accents (S3)", () => {
     ) as HTMLElement;
     expect(awayBubble.className).toContain("border-r-red");
     expect(awayBubble.className).not.toContain("border-l-slate");
-    // The casualty bubble carries its own EVENT side (the victim's, LM-12).
-    const victimBubble = cards[2].querySelector(
+    // A caused casualty sits on the CAUSER's side, matching its half-turn card.
+    const casualtyBubble = cards[2].querySelector(
       '[data-testid="acta-event-row"]',
     ) as HTMLElement;
-    expect(victimBubble.className).toContain("border-r-red");
-    expect(victimBubble.className).not.toContain("border-l-slate");
+    expect(casualtyBubble.className).toContain("border-l-navy");
+    expect(casualtyBubble.className).not.toContain("border-l-slate");
   });
 });
 
@@ -1462,12 +1462,12 @@ describe("ActaTurnTimeline — T3 chat-bubble side identity (design/stitch-timel
     expect(row.textContent).toContain('Morg "El Picador"');
   });
 
-  it("a casualty bubble mirrors with its own event side — the VICTIM (LM-12), fixed, never the viewer's side", () => {
+  it("a CAUSED casualty bubble sits on the CAUSER's side — who earns the SPP — even though the row's side is the victim's (LM-12)", () => {
     seqCounter = 0;
     render(<ActaTurnTimeline {...timelineProps({ events: [casualtyEvent(true)] })} />);
     const row = screen.getAllByTestId("acta-event-row")[0] as HTMLElement;
-    expect(row.className).toContain("ml-auto"); // event.side = away → mirrored
-    expect(row.className).toContain("border-r-red");
+    expect(row.className).toContain("mr-auto"); // victim away → caused by home
+    expect(row.className).toContain("border-l-navy");
     // The casualty category tab stays RED (design A: red ONLY for Casualty).
     const tab = row.querySelector('[data-testid="acta-event-tab"]') as HTMLElement;
     expect(tab.className).toContain("bg-red");
@@ -1494,9 +1494,9 @@ describe("ActaTurnTimeline — T3 chat-bubble side identity (design/stitch-timel
     const homeRow = closedRows.find((r) => r.getAttribute("data-kind") === "foul") as HTMLElement;
     expect(homeRow.className).toContain("mr-auto");
     expect(homeRow.className).toContain("border-l-navy");
-    const awayRow = closedRows.find((r) => r.getAttribute("data-kind") === "casualty") as HTMLElement;
-    expect(awayRow.className).toContain("ml-auto");
-    expect(awayRow.className).toContain("border-r-red");
+    const casualtyRow = closedRows.find((r) => r.getAttribute("data-kind") === "casualty") as HTMLElement;
+    expect(casualtyRow.className).toContain("mr-auto");
+    expect(casualtyRow.className).toContain("border-l-navy");
     // Muted: the category tab desaturates to slate on closed bubbles.
     expect(homeRow.querySelector('[data-testid="acta-event-tab"]')!.className).toContain(
       "bg-slate",
@@ -1578,7 +1578,7 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70) under T3: SPP visible, victi
 
   it("the victim-note accent flips on mirrored rows: away rows carry the red rule on the RIGHT (border-r-[3px]/border-r-red), home rows keep it on the LEFT (L70)", () => {
     seqCounter = 0;
-    const awayRender = render(<ActaTurnTimeline {...timelineProps({ events: [casualtyEvent(true)] })} />);
+    const awayRender = render(<ActaTurnTimeline {...timelineProps({ events: [demoCasualtyEvent(9, "home")] })} />);
     const awayNote = rowOf("casualty").querySelector('[data-testid="acta-victim-note"]') as HTMLElement;
     // WHY changed (T20, intentional — the user's exact words): «cuando el
     // jugador es el de la derecha deberiamos cambiar border-l-red y
@@ -1591,7 +1591,7 @@ describe("ActaTurnTimeline — T20 UX round 3 (L70) under T3: SPP visible, victi
     awayRender.unmount();
 
     seqCounter = 0;
-    render(<ActaTurnTimeline {...timelineProps({ events: [demoCasualtyEvent(9, "home")] })} />);
+    render(<ActaTurnTimeline {...timelineProps({ events: [casualtyEvent(true)] })} />);
     const homeNote = rowOf("casualty").querySelector('[data-testid="acta-victim-note"]') as HTMLElement;
     expect(homeNote.className).toContain("border-l-[3px]");
     expect(homeNote.className).toContain("border-l-red");
@@ -2401,5 +2401,39 @@ describe("Weather bubble", () => {
       />,
     );
     expect(container.textContent).toContain("Clima: Lluvioso.");
+  });
+});
+
+describe("Card facts: who fell, whose side, what was lost", () => {
+  const rows = () => screen.getAllByTestId("acta-event-row");
+
+  it("a knockdown card names who fell", () => {
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [event({ kind: "knockdown", side: "home", playerRosterId: "h3", turnNumber: 6, payload: { causerRosterId: "h3", victimRosterId: "a2" } })],
+        })}
+      />,
+    );
+    expect(rows()[0].textContent).toContain("Derribo. Rival: Ugluk (#2).");
+  });
+
+  it("a self-inflicted casualty stays on the victim's side", () => {
+    render(<ActaTurnTimeline {...timelineProps({ events: [selfInflictedEvent()] })} />);
+    expect(rows()[0].className).toContain("ml-auto");
+  });
+
+  it.each([
+    ["the recorded attribute", { permanentAttribute: "mv" }],
+    ["the captured 1D6", { roll6: 3 }],
+  ])("a permanent injury shows the reduced attribute from %s", (_label, extra) => {
+    render(
+      <ActaTurnTimeline
+        {...timelineProps({
+          events: [event({ kind: "casualty", side: "away", playerRosterId: "a2", turnNumber: 6, payload: { victimRosterId: "a2", cause: "dodge", roll16: 13, ...extra } })],
+        })}
+      />,
+    );
+    expect(rows()[0].textContent).toContain("Permanente · −1 MV");
   });
 });

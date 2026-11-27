@@ -6,7 +6,7 @@ import {
   type MatchActivePrayers,
 } from "@/lib/rules/inducements";
 import { weatherLabel } from "./matchSummary";
-import { resolveInjury } from "@/lib/rules/injuries";
+import { permanentAttribute, resolveInjury } from "@/lib/rules/injuries";
 import { CASUALTY_CAUSES, type CasualtyCause } from "@/lib/livePhase";
 import { isDisplayEvent } from "@/lib/liveMatch";
 import { deriveMinute } from "@/lib/liveFeed";
@@ -617,6 +617,30 @@ function sppMarkerFor(
 }
 
 /**
+ * The side a bubble sits on. A casualty row's `side` is the VICTIM's (LM-12),
+ * but a caused one belongs to whoever caused it and earns the SPP; only a
+ * self-inflicted wound stays on the victim's side.
+ */
+function bubbleSideOf(event: LiveMatchEventDto): LiveMatchEventDto["side"] {
+  if (event.kind !== "casualty" || event.side == null) return event.side;
+  const caused =
+    causerIdOf(event) != null ||
+    (CAUSES_REQUIRING_CAUSER as ReadonlySet<unknown>).has(event.payload.cause);
+  return caused ? opposite(event.side) : event.side;
+}
+
+/** The characteristic a permanent injury reduces, or "" when not captured. */
+function permanentLossOf(payload: LiveMatchEventDto["payload"]): string {
+  const attribute =
+    typeof payload.permanentAttribute === "string"
+      ? payload.permanentAttribute
+      : typeof payload.roll6 === "number"
+        ? permanentAttribute(payload.roll6)
+        : null;
+  return attribute ? ` · −1 ${attribute.toUpperCase()}` : "";
+}
+
+/**
  * T18 (L62): the casualty row's two voices — the attacker-side mark (the
  * cause + both-down marker, «X marca herida a Y» lives in the subject) and
  * what the RECEIVER reports (the injury roll + its consequences, or its
@@ -628,10 +652,12 @@ function casualtyVoices(event: LiveMatchEventDto): { mark: string; note: string 
   const suffix = bothDown ? ` (${bothDown})` : "";
   const cause = typeof event.payload.cause === "string" ? causeLabel(event.payload.cause) : "Baja";
   const roll16 = event.payload.roll16;
-  const note =
-    typeof roll16 === "number"
-      ? `Tirada 1D16: ${roll16} · ${bandLabel(resolveInjury(roll16).kind)}`
-      : "Tirada de lesión pendiente.";
+  let note = "Tirada de lesión pendiente.";
+  if (typeof roll16 === "number") {
+    const { kind } = resolveInjury(roll16);
+    const loss = kind === "permanent" ? permanentLossOf(event.payload) : "";
+    note = `Tirada 1D16: ${roll16} · ${bandLabel(kind)}${loss}`;
+  }
   return { mark: `${cause}${suffix}`, note };
 }
 
@@ -645,6 +671,13 @@ function descriptionFor(
       return "Touchdown anotado.";
     case "completion":
       return "Pase completado con éxito.";
+    case "knockdown": {
+      const victim = event.side ? resolvePlayer(teams[opposite(event.side)], victimIdOf(event)) : null;
+      // The shared label says which role fell and the armour result; this
+      // names the opponent, who is otherwise nowhere on the card.
+      const rival = victim ? ` Rival: ${victim.name} (#${victim.dorsal}).` : "";
+      return `${liveEventLabel(event)}.${rival}`;
+    }
     case "weather": {
       const value = event.payload.value;
       return typeof value === "string" ? `Clima: ${weatherLabel(value)}.` : "Clima.";
@@ -733,8 +766,8 @@ function victimBadgeLabel(event: LiveMatchEventDto, teams: TeamMap): string {
  * and closed groups render the SAME layout (closed groups mute it: slate tab
  * + slate-strong text) and side-null system rows render as CENTERED slate
  * bubbles with no author badge. Side identity («Implementar tal cual»,
- * `design/stitch-timeline-chat/01`): the bubble follows the EVENT's own team
- * side (LM-12 — the victim's side on a casualty row) — home hugs LEFT with
+ * `design/stitch-timeline-chat/01`): the bubble follows the ACTING team
+ * (`bubbleSideOf` — the causer on a caused casualty) — home hugs LEFT with
  * the navy accent bar, away mirrors RIGHT with the red one. The chrome keeps
  * the shipped T18 atoms: the category tab (`acta-event-tab` — kept alongside
  * the T5 action icon), the bold player + description, the
@@ -789,8 +822,8 @@ function EventBubble({
   // sub-box with the RECEIVER's own badge.
   const voices = event.kind === "casualty" ? casualtyVoices(event) : null;
   // T3: home bubbles hug LEFT (navy accent), away bubbles MIRROR (red accent
-  // on the outer edge). Row side = the EVENT's team side (fixed).
-  const mirrored = event.side === "away";
+  // on the outer edge). Fixed per event (`bubbleSideOf`), never the viewer's.
+  const mirrored = bubbleSideOf(event) === "away";
   // T4/S3: the per-message timestamp — the bubble's own capture minute.
   const minute = startedAt != null ? deriveMinute(event.at, startedAt) : "0'";
   // T5 (S4): the action icon (decorative duplication of the tab label).
