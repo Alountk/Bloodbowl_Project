@@ -265,6 +265,15 @@ describe("ActaDemoHarness — dual-view demo (perspective, real capture, persist
     expect(screen.queryByRole("heading", { name: "Partido", level: 2 })).toBeNull();
   });
 
+  it("«Antes del partido» closes the newest-first chronology: it renders below the match timeline", () => {
+    render(<ActaDemoHarness />);
+    const timeline = screen.getByTestId("acta-turn-timeline");
+    const preMatch = screen.getByRole("region", { name: "Antes del partido" });
+    expect(
+      timeline.compareDocumentPosition(preMatch) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("the «Solicitar turno» button is gone from the view: the flow is deprecated (face-to-face play)", () => {
     render(<ActaDemoHarness />);
     fireEvent.click(perspective("Colmillos del Caos"));
